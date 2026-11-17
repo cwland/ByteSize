@@ -113,6 +113,7 @@ function MealTitle({ meal, day, onPick }: { meal: Meal; day: string; onPick: (m:
 // One sheet for finding a food (same as yesterday, recently tracked for this meal, search, barcode,
 // describe it, create) and tracking it. Quick add (+) logs as shown and keeps the sheet open.
 export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day: string; meal: Meal; onClose: () => void }) {
+  const units = useSession().user?.units ?? "imperial";
   const [meal, setMeal] = useState<Meal>(initialMeal);
   const [view, setView] = useState<View>({ k: "search" });
   const [query, setQuery] = useState("");
@@ -170,7 +171,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
   }, [lookup, attempt]);
 
   // The portion a food starts at: the last one used for this meal, else its own serving
-  const startPortion = (food: FoodResult) => recent.find((r) => r.kind === food.kind && r.id === food.id)?.last ?? defaultPortion(food.servings);
+  const startPortion = (food: FoodResult) => recent.find((r) => r.kind === food.kind && r.id === food.id)?.last ?? defaultPortion(food.servings, units);
   const pick = (food: FoodResult, initial = startPortion(food)) => setView({ k: "detail", food, initial });
   const edit = (food: FoodResult) =>
     setView({
@@ -222,7 +223,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
     const heading = view.mode.kind === "override" ? "Correct this food" : view.mode.kind === "edit" ? "Edit food" : "New food";
     return (
       <Sheet tall label={label} heading={heading} onClose={onClose} onBack={back}>
-        <FoodForm mode={view.mode} draft={view.draft} fillRef={view.fillRef} onSaved={(f) => pick(f, defaultPortion(f.servings))} />
+        <FoodForm mode={view.mode} draft={view.draft} fillRef={view.fillRef} onSaved={(f) => pick(f, defaultPortion(f.servings, units))} />
       </Sheet>
     );
   }
