@@ -135,3 +135,42 @@ export const m3Routes = {
   "GET /api/trends/weekly": () => ({ weeks: [] }),
   "GET /api/vacations": () => ({ vacations: [] }),
 };
+
+// Culury (§14 A). Not linked is the default for any screen that opens Add food:
+// fakeServer({ ...culuryOff, … })
+export const culuryOff = { "GET /api/settings/culury": () => ({ url: null, hasKey: false }) };
+export const culuryOn = { "GET /api/settings/culury": () => ({ url: "http://culury.lan:4000", hasKey: true }) };
+
+// As GET /api/culury/plan sends it: the selected day (Wed) first, its dinner first; then the rest in date order
+export const culuryPlan = {
+  linked: true,
+  days: [
+    {
+      day: "2026-11-18",
+      items: [
+        { slot: "dinner", title: "Chili con carne", recipeId: 812, servings: 2, note: null },
+        { slot: "lunch", title: "Leftovers", recipeId: null, servings: null, note: "Leftovers" },
+      ],
+    },
+    { day: "2026-11-16", items: [{ slot: "breakfast", title: "Overnight oats", recipeId: 77, servings: 1, note: null }] },
+    { day: "2026-11-17", items: [{ slot: "second-breakfast", title: "Taco soup", recipeId: 90, servings: null, note: null }] },
+  ],
+  errors: [],
+};
+
+// GET /api/culury/recipes/812: per serving, a serving weight from Culury's "About 1½ cups (340 g)"
+export const culuryChili = {
+  kind: "culury",
+  id: 812,
+  name: "Chili con carne",
+  brand: null,
+  icon: "🍲",
+  barcode: null,
+  servings: [{ label: "1 serving", grams: 340 }],
+  nutrients: { calories: 520, protein_g: 38, fiber_g: 9, carbs_g: 40, fat_g: 22 },
+  aiFields: [],
+  imageUrl: null,
+  override: false,
+  source: "culury",
+  foodKind: "recipe",
+};

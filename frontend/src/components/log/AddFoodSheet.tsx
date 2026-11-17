@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Camera, ChevronDown, Plus, ScanBarcode, Sparkles } from "lucide-react";
+import { BookOpen, CalendarDays, Camera, ChevronDown, Plus, ScanBarcode, Sparkles } from "lucide-react";
 import { api } from "../../api";
 import { formatAmount } from "../../amounts";
 import { notifyDayChanged } from "../../day";
@@ -7,12 +7,14 @@ import { MEALS, MEAL_NAMES } from "../../meals";
 import { isMyFoods, myFoodsHref } from "../../routes";
 import { addDays, dayLabel, todayIn } from "../../selectedDay";
 import { useSession } from "../../session";
-import type { Day, FoodResult, Item, LogEntry, Meal, Nutrients, PhotoDraft, PhotoMode, Portion, RecentFood, SearchResult, SourceError } from "../../types";
+import type { CuluryLink, CuluryRecipe, Day, FoodResult, Item, LogEntry, Meal, Nutrients, PhotoDraft, PhotoMode, Portion, RecentFood, SearchResult, SourceError } from "../../types";
 import FoodForm, { draftOf, emptyDraft, type FoodDraft, type FoodFormMode } from "./FoodForm";
 import FoodDetail, { defaultPortion, nutrientsFor, startingPortion } from "./FoodDetail";
 import FoodRow, { QuickAddButton, tagOf, useQuickAdd } from "./FoodRow";
 import { TrackMeal } from "../myfoods/QuickMealEditor";
 import Pills from "./Pills";
+import MealPlanView from "./MealPlanView";
+import CuluryTrack from "./CuluryTrack";
 import PhotoPicker, { MAX_PHOTOS, analyzePhotos, usePhotoInput } from "./PhotoPicker";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
@@ -27,7 +29,9 @@ type View =
   // barcodeFill: the barcode a barcode photo added to that draft found, merged into the form as it stands
   | { k: "form"; mode: FoodFormMode; draft: FoodDraft; fillRef?: { kind: "cache" | "user_food"; id: number }; photos?: File[]; barcodeFill?: string }
   | { k: "detail"; food: FoodResult; initial: Portion }
-  | { k: "meal"; food: FoodResult }; // a quick meal: adjust its foods, then Track
+  | { k: "meal"; food: FoodResult } // a quick meal: adjust its foods, then Track
+  | { k: "plan" } // Culury's meal plan
+  | { k: "culury"; recipe: CuluryRecipe; from: "plan" | "search" }; // a Culury recipe, read live
 
 // Digits, spaces and dashes only: someone typing a barcode. Lookup only at a barcode's length.
 const barcodeLike = (q: string) => /^[\d\s-]+$/.test(q);
@@ -167,6 +171,11 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
   const [describe, setDescribe] = useState("");
   const [msg, setMsg] = useState<Msg>(null);
   const [attempt, setAttempt] = useState(0); // "Try again" re-runs the lookup
+  const [culury, setCulury] = useState(false); // linked: the Meal plan button shows
+
+  useEffect(() => {
+    api<CuluryLink>("GET", "/api/settings/culury").then((l) => setCulury(!!l.url && l.hasKey), () => {});
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -213,13 +222,17 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
 
   // The portion a food starts at: the last one used for this meal, else its own serving (a recipe: 1 serving)
   const startPortion = (food: FoodResult) => recent.find((r) => r.kind === food.kind && r.id === food.id)?.last ?? startingPortion(food, units);
-  const pick = (food: FoodResult, initial = startPortion(food)) => setView(food.foodKind === "quick_meal" ? { k: "meal", food } : { k: "detail", food, initial });
+  const openCulury = async (id: number, from: "plan" | "search") => setView({ k: "culury", recipe: await api<CuluryRecipe>("GET", `/api/culury/recipes/${id}`), from });
+  const pick = (food: FoodResult, initial = startPortion(food)) => {
+    if (food.kind === "culury") return void openCulury(food.id, "search").catch((e) => setMsg(errorMsg(e)));
+    setView(food.foodKind === "quick_meal" ? { k: "meal", food } : { k: "detail", food, initial });
+  };
   const edit = (food: FoodResult) =>
     setView({
       k: "form",
       mode: food.kind === "cache" ? { kind: "override", cacheId: food.id } : { kind: "edit", id: food.id },
       draft: draftOf(food),
-      fillRef: { kind: food.kind, id: food.id },
+      fillRef: { kind: food.kind as "cache" | "user_food", id: food.id }, // never a Culury recipe (its own view)
     });
 
   const estimate = async () => {
@@ -237,9 +250,10 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
     await api("POST", "/api/log/meal", { day, meal, foodId: food.id, ...(items ? { items } : {}) });
     notifyDayChanged();
   };
-  const log = async (food: FoodResult, p: Portion) => {
+  // estimate: per-serving AI nutrients for a Culury recipe that has none
+  const log = async (food: FoodResult, p: Portion, estimate?: Nutrients) => {
     if (food.foodKind === "quick_meal") return logMeal(food);
-    await api("POST", "/api/log", { day, meal, food: { kind: food.kind, id: food.id }, servingIndex: p.servingIndex, unit: p.unit, quantity: p.quantity, fraction: p.fraction });
+    await api("POST", "/api/log", { day, meal, food: { kind: food.kind, id: food.id }, servingIndex: p.servingIndex, unit: p.unit, quantity: p.quantity, fraction: p.fraction, ...(estimate ? { nutrients: estimate } : {}) });
     notifyDayChanged();
   };
   const copyYesterday = async (entries: LogEntry[]) => {
@@ -261,6 +275,26 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
           onEditFood={view.food.foodKind === "recipe" ? undefined : () => edit(view.food)}
           onSubmit={async (p) => {
             await log(view.food, p);
+            onClose();
+          }}
+        />
+      </Sheet>
+    );
+  }
+  if (view.k === "plan") {
+    return (
+      <Sheet tall label={label} heading="Meal plan" onClose={onClose} onBack={back}>
+        <MealPlanView day={day} meal={meal} onOpen={(id) => openCulury(id, "plan")} />
+      </Sheet>
+    );
+  }
+  if (view.k === "culury") {
+    return (
+      <Sheet tall label={label} heading="Track food" onClose={onClose} onBack={() => setView(view.from === "plan" ? { k: "plan" } : { k: "search" })}>
+        <CuluryTrack
+          recipe={view.recipe}
+          onTrack={async (p, estimate) => {
+            await log(view.recipe.food, p, estimate);
             onClose();
           }}
         />
@@ -325,7 +359,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
       imageUrl={f.imageUrl}
       amount={amountOf(f.servings, p)}
       brand={f.brand}
-      tag={tagOf(f.foodKind)}
+      tag={f.kind === "culury" ? "Culury" : tagOf(f.foodKind)}
       nutrients={nutrientsFor(f, p)}
       onOpen={() => pick(f, p)}
       onQuickAdd={() => log(f, p)}
@@ -392,6 +426,11 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
         >
           <BookOpen className="size-4" /> My Foods
         </button>
+        {culury && (
+          <button type="button" onClick={() => setView({ k: "plan" })} className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}>
+            <CalendarDays className="size-4" /> Meal plan
+          </button>
+        )}
       </div>
       <Notice msg={msg} />
         </>

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import AppShell from "./AppShell";
 import { fakeServer } from "../test/fakeServer";
 import { renderWithSession } from "../test/renderWithSession";
-import { bodyA, plansA, settingsMe, steadyTargets } from "../test/fixtures";
+import { bodyA, culuryOff, plansA, settingsMe, steadyTargets } from "../test/fixtures";
 
 describe("AppShell week strip", () => {
   afterEach(() => void vi.useRealTimers());
@@ -119,7 +119,7 @@ describe("AppShell log button", () => {
   it("the floating + opens Add food for the meal of the moment on the selected day", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-11-16T19:00:00Z")); // noon in Boise → lunch
-    fakeServer({ "GET /api/foods/recent": () => ({ foods: [] }), "GET /api/foods/frequent": () => ({ foods: [] }) });
+    fakeServer({ ...culuryOff, "GET /api/foods/recent": () => ({ foods: [] }), "GET /api/foods/frequent": () => ({ foods: [] }) });
     renderWithSession(<AppShell />, { timezone: "America/Boise" });
     await userEvent.setup().click(screen.getByRole("button", { name: "Log food" }));
     expect(await screen.findByRole("dialog", { name: "Add food to Lunch" })).toBeInTheDocument();

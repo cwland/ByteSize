@@ -6,7 +6,7 @@ import { SelectedDayProvider } from "../../selectedDay";
 import TopBar from "../TopBar";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
-import { barFood, dayJson, m3Routes, settingsMe } from "../../test/fixtures";
+import { barFood, culuryOff, dayJson, m3Routes, settingsMe } from "../../test/fixtures";
 import { glp1View } from "../../test/glp1Fixtures";
 import { weightJson } from "../../test/weightFixtures";
 
@@ -15,6 +15,7 @@ const totals = { calories: 1138, protein_g: 97, fiber_g: 29, water_ml: 769, unkn
 function show(day: object, over: Record<string, (b: any) => unknown> = {}) {
   const server = fakeServer({
     ...m3Routes,
+    ...culuryOff,
     "GET /api/day/:date": () => day,
     "GET /api/settings/me": () => settingsMe,
     "GET /api/weight": () => weightJson(),

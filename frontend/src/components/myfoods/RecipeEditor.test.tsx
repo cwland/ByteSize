@@ -115,6 +115,24 @@ describe("Recipe editor", () => {
     ]);
   });
 
+  it("Culury recipes aren't offered as ingredients (they're read live, not stored foods)", async () => {
+    const stew = { ...chili, kind: "culury", id: 812, name: "Beans stew", source: "culury" };
+    fakeServer({
+      "GET /api/foods/search": (b, path) => {
+        const out = search(b, path);
+        return { ...out, groups: [...out.groups, { source: "culury", label: "Culury", foods: [stew] }] };
+      },
+    });
+    renderWithSession(<RecipeEditor onDone={() => {}} onBack={() => {}} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Add ingredient" }));
+    const sheet = screen.getByRole("dialog", { name: "Add ingredient" });
+    await user.type(within(sheet).getByRole("searchbox", { name: "Search foods" }), "beans");
+    await within(sheet).findByRole("button", { name: /^Kidney beans/ });
+    expect(within(sheet).queryByRole("button", { name: /^Beans stew/ })).toBeNull();
+    expect(within(sheet).queryByRole("heading", { name: "Culury" })).toBeNull();
+  });
+
   it("removing an ingredient, and saving with nothing in it says why", async () => {
     const server = fakeServer({ "GET /api/foods/search": search });
     renderWithSession(<RecipeEditor onDone={() => {}} onBack={() => {}} />);

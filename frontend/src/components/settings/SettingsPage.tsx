@@ -1,9 +1,10 @@
-import { Bot, ChevronLeft, ChevronRight, LogOut, ScrollText, Shield, User, Users, Database } from "lucide-react";
+import { Bot, ChevronLeft, ChevronRight, LogOut, ScrollText, Shield, User, Users, Database, Link2 } from "lucide-react";
 import { settingsSectionFromHash, useHash } from "../../routes";
 import { useSession } from "../../session";
 import AiSettings from "./AiSettings";
 import LogsSettings from "./LogsSettings";
 import FoodSourcesSettings from "./FoodSourcesSettings";
+import IntegrationsSettings from "./IntegrationsSettings";
 import ProfileSettings from "./ProfileSettings";
 import SecuritySettings from "./SecuritySettings";
 import UsersSettings from "./UsersSettings";
@@ -12,6 +13,7 @@ import UsersSettings from "./UsersSettings";
 const TABS = [
   { id: "profile", label: "Profile", hint: "Name, units, time zone, appearance", admin: false, Icon: User, Panel: ProfileSettings },
   { id: "security", label: "Security", hint: "Password, passkeys, devices", admin: false, Icon: Shield, Panel: SecuritySettings },
+  { id: "integrations", label: "Integrations", hint: "Culury meal plan and recipes", admin: false, Icon: Link2, Panel: IntegrationsSettings },
   { id: "users", label: "Users", hint: "Add and manage people", admin: true, Icon: Users, Panel: UsersSettings },
   { id: "ai", label: "AI services", hint: "Providers and failover order", admin: true, Icon: Bot, Panel: AiSettings },
   { id: "food-sources", label: "Food sources", hint: "Open Food Facts and USDA", admin: true, Icon: Database, Panel: FoodSourcesSettings },

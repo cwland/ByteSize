@@ -4,7 +4,7 @@ import { api } from "../../api";
 import { formatAmount } from "../../amounts";
 import { amountFactor } from "../../nutrition";
 import { useSession } from "../../session";
-import { NUTRIENT_KEYS, type FoodResult, type Item, type ItemView, type Nutrients, type Portion, type SearchResult } from "../../types";
+import { NUTRIENT_KEYS, type FoodRef, type FoodResult, type Item, type ItemView, type Nutrients, type Portion, type SearchResult } from "../../types";
 import { fmt } from "../../units";
 import AmountPicker from "../log/AmountPicker";
 import FoodDetail, { nutrientsFor, startingPortion } from "../log/FoodDetail";
@@ -28,7 +28,7 @@ export const itemFromView = ({ nutrients: _saved, servingIndex, unit, quantity, 
 });
 export const itemFromFood = (f: FoodResult, portion: Portion): EditItem => ({
   key: nextKey++,
-  food: { kind: f.kind, id: f.id },
+  food: { kind: f.kind as FoodRef["kind"], id: f.id }, // FoodPicker never offers a Culury recipe
   foodKind: f.foodKind,
   name: f.name,
   brand: f.brand,
@@ -201,7 +201,7 @@ export function FoodPicker({ title, allowed, onAdd, onClose }: { title: string; 
     );
   }
 
-  const groups = (found?.groups ?? []).map((g) => ({ ...g, foods: g.foods.filter(allowed) })).filter((g) => g.foods.length);
+  const groups = (found?.groups ?? []).map((g) => ({ ...g, foods: g.foods.filter((f) => f.kind !== "culury" && allowed(f)) })).filter((g) => g.foods.length);
   return (
     <Sheet
       tall
