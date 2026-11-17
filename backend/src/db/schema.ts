@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, date, doublePrecision, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 // Shared tables. Every table that holds a person's own data has a user_id that cascades,
 // so deleting a user removes everything they own.
@@ -128,6 +128,8 @@ export const userBody = pgTable("user_body", {
   goalWeightKg: doublePrecision("goal_weight_kg").notNull(),
   activity: text("activity").$type<"sitting" | "some" | "most" | "physical">().notNull(),
   glp1: boolean("glp1").notNull().default(false),
+  // The weight the current targets were set with (set when a plan is selected); null until then
+  targetsWeightKg: doublePrecision("targets_weight_kg"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -294,4 +296,83 @@ export const recipeItems = pgTable(
     snapshot: jsonb("snapshot").$type<RecipeItemSnapshot>().notNull(),
   },
   (t) => [index("recipe_items_recipe_idx").on(t.recipeId, t.position), index("recipe_items_food_idx").on(t.foodKind, t.foodId)]
+);
+
+// ---- Milestone 3: weight, GLP-1, badges, vacations ----
+// Days are YYYY-MM-DD in the person's timezone; weights are kg.
+
+// One weigh-in per person per day
+export const weighIns = pgTable(
+  "weigh_ins",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    day: date("day", { mode: "string" }).notNull(),
+    weightKg: doublePrecision("weight_kg").notNull(),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("weigh_ins_user_day_idx").on(t.userId, t.day)]
+);
+
+// A person's GLP-1 medication (one row each; missing row = not using one)
+export const glp1Settings = pgTable("glp1_settings", {
+  userId: userRef().primaryKey(),
+  medication: text("medication").notNull(),
+  doseMg: doublePrecision("dose_mg").notNull(),
+  injectionWeekday: integer("injection_weekday").notNull(), // 0 = Sunday ... 6 = Saturday
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Shots taken (medication and dose are snapshots, so a later dose change doesn't rewrite history)
+export const glp1Shots = pgTable(
+  "glp1_shots",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    day: date("day", { mode: "string" }).notNull(),
+    medication: text("medication").notNull(),
+    doseMg: doublePrecision("dose_mg").notNull(),
+    site: text("site").notNull(), // abdomen_left, abdomen_right, thigh_left, thigh_right, arm_left, arm_right
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("glp1_shots_user_day_idx").on(t.userId, t.day)]
+);
+
+// How a person felt on a day: effect name -> level 1-3
+export const sideEffects = pgTable(
+  "side_effects",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    day: date("day", { mode: "string" }).notNull(),
+    effects: jsonb("effects").$type<Record<string, 1 | 2 | 3>>().notNull(),
+    note: text("note"),
+  },
+  (t) => [uniqueIndex("side_effects_user_day_idx").on(t.userId, t.day)]
+);
+
+// Badges earned; once earned, never removed
+export const badges = pgTable(
+  "badges",
+  {
+    userId: userRef(),
+    badge: text("badge").notNull(),
+    earnedOn: date("earned_on", { mode: "string" }).notNull(),
+    seen: boolean("seen").notNull().default(false),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.badge] })]
+);
+
+// Vacation mode ranges (inclusive): these days don't count toward or against streaks
+export const vacations = pgTable(
+  "vacations",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    fromDay: date("from_day", { mode: "string" }).notNull(),
+    toDay: date("to_day", { mode: "string" }).notNull(),
+  },
+  (t) => [index("vacations_user_from_idx").on(t.userId, t.fromDay)]
 );
