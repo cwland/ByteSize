@@ -70,7 +70,7 @@ export default function IntegrationsSettings() {
         <Field
           label="API key"
           type="password"
-          autoComplete="off"
+          autoComplete="new-password"
           value={key}
           onChange={(e) => setKey(e.target.value)}
           placeholder={link?.hasKey ? "Enter a new key to replace it" : "Paste a Read only key"}

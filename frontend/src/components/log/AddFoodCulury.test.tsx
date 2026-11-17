@@ -9,12 +9,14 @@ import { barFood, culuryChili, culuryOff, culuryOn, culuryPlan, dayJson, setting
 
 // Add food with Culury linked (§14 A): the Meal plan button, Culury recipes in search, tracking them
 const taco = { ...culuryChili, id: 90, name: "Taco soup", icon: "🍽️", servings: [{ label: "1 serving" }], nutrients: {} };
-const recipes: Record<string, unknown> = {
+// A fresh fake Culury recipe store per test: GET /api/culury/recipes/:id
+const makeRecipes = (): Record<string, unknown> => ({
   "812": { food: culuryChili, hasNutrition: true, outdated: false },
   "90": { food: taco, hasNutrition: false, outdated: false },
-};
+});
+const twoServings = { servingIndex: 0, unit: "serving", quantity: 2, fraction: 1 };
 
-function open(routes: Record<string, (b: any, path: string) => unknown> = {}) {
+function open(routes: Record<string, (b: any, path: string) => unknown> = {}, recipes = makeRecipes()) {
   const server = fakeServer({
     "GET /api/day/:date": () => dayJson(),
     "GET /api/settings/me": () => settingsMe,
@@ -127,13 +129,13 @@ describe("Add food with Culury", () => {
   });
 
   it("an estimate for a weighed serving is scaled to that weight", async () => {
-    recipes["91"] = { food: { ...taco, id: 91, name: "Lentil curry", servings: [{ label: "1 serving", grams: 200 }] }, hasNutrition: false, outdated: false };
+    const recipes = { ...makeRecipes(), "91": { food: { ...taco, id: 91, name: "Lentil curry", servings: [{ label: "1 serving", grams: 200 }] }, hasNutrition: false, outdated: false } };
     const server = open({
       "GET /api/culury/plan": () => ({ linked: true, days: [{ day: "2026-11-16", items: [{ slot: "dinner", title: "Lentil curry", recipeId: 91, servings: 1, note: null }] }], errors: [] }),
       "POST /api/ai/estimate": () => ({
         food: { name: "Lentil curry", brand: null, icon: "🍛", barcode: null, category: "", servings: [{ label: "1 cup", grams: 400 }], nutrients: { calories: 400, protein_g: 20 }, aiFields: ["calories", "protein_g"], imageUrl: null, override: false, source: "ai" },
       }),
-    });
+    }, recipes);
     const user = userEvent.setup();
     const sheet = await openDinner(user);
     await user.click(await within(sheet).findByRole("button", { name: /Meal plan/ }));
@@ -158,14 +160,12 @@ describe("Add food with Culury", () => {
   });
 
   it("Culury's nutrition marked outdated shows a small note", async () => {
-    recipes["812"] = { food: culuryChili, hasNutrition: true, outdated: true };
-    open();
+    open({}, { ...makeRecipes(), "812": { food: culuryChili, hasNutrition: true, outdated: true } });
     const user = userEvent.setup();
     const sheet = await openDinner(user);
     await user.click(await within(sheet).findByRole("button", { name: /Meal plan/ }));
     await user.click(await within(sheet).findByRole("button", { name: /Chili con carne/ }));
     expect(await within(sheet).findByText(/may be out of date/)).toBeInTheDocument();
-    recipes["812"] = { food: culuryChili, hasNutrition: true, outdated: false };
   });
 
   it("search: Culury recipes carry a Culury tag and open through Culury", async () => {
@@ -220,5 +220,126 @@ describe("Add food with Culury", () => {
     await user.click(await within(sheet).findByRole("button", { name: /^Chili con carne/ }));
     expect(await within(sheet).findByRole("alert")).toHaveTextContent("Couldn't reach Culury");
     expect(within(sheet).getByRole("button", { name: /^Chili con carne/ })).toBeInTheDocument();
+  });
+
+  it("Recently tracked: a Culury recipe opens at its last portion", async () => {
+    const server = open({ "GET /api/foods/recent": () => ({ foods: [{ ...culuryChili, last: twoServings }] }) });
+    const user = userEvent.setup();
+    const sheet = await openDinner(user);
+    await user.click(await within(sheet).findByRole("button", { name: /^Chili con carne/ }));
+    expect(await within(sheet).findByRole("heading", { name: "Track food" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: /^Serving/ })).toHaveTextContent("2 servings");
+    expect(within(sheet).queryByText(/Culury is unavailable/)).toBeNull();
+    await user.click(within(sheet).getByRole("button", { name: "Track" }));
+    expect(logged(server)).toMatchObject({ food: { kind: "culury", id: 812 }, quantity: 2 });
+  });
+
+  it("Recently tracked with Culury down: Track food from the last logged version", async () => {
+    const server = open({
+      "GET /api/foods/recent": () => ({ foods: [{ ...culuryChili, last: twoServings }] }),
+      "GET /api/culury/recipes/:id": () => ({ status: 502, json: { error: "Couldn't reach Culury" } }),
+    });
+    const user = userEvent.setup();
+    const sheet = await openDinner(user);
+    await user.click(await within(sheet).findByRole("button", { name: /^Chili con carne/ }));
+    expect(await within(sheet).findByText("Culury is unavailable — using the last logged version")).toBeInTheDocument();
+    expect(within(sheet).getByRole("heading", { name: "Track food" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: /^Serving/ })).toHaveTextContent("2 servings");
+    expect(within(sheet).queryByRole("button", { name: "Estimate with AI" })).toBeNull();
+    await user.click(within(sheet).getByRole("button", { name: "Track" }));
+    expect(logged(server)).toEqual({ day: "2026-11-16", meal: "dinner", food: { kind: "culury", id: 812 }, servingIndex: 0, unit: "serving", quantity: 2, fraction: 1 });
+  });
+
+  it("Recently tracked, recipe gone from Culury (404): says so, no fallback", async () => {
+    open({
+      "GET /api/foods/recent": () => ({ foods: [{ ...culuryChili, last: twoServings }] }),
+      "GET /api/culury/recipes/:id": () => ({ status: 404, json: { error: "Culury didn't find that recipe" } }),
+    });
+    const user = userEvent.setup();
+    const sheet = await openDinner(user);
+    await user.click(await within(sheet).findByRole("button", { name: /^Chili con carne/ }));
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent("Culury didn't find that recipe");
+    expect(within(sheet).queryByRole("heading", { name: "Track food" })).toBeNull();
+  });
+
+  it("from search, a Culury recipe starts at 1 serving even when Recently tracked has another portion", async () => {
+    open({
+      "GET /api/foods/recent": () => ({ foods: [{ ...culuryChili, last: twoServings }] }),
+      "GET /api/foods/search": () => ({ groups: [{ source: "culury", label: "Culury", foods: [culuryChili] }], errors: [] }),
+    });
+    const user = userEvent.setup();
+    const sheet = await openDinner(user);
+    await within(sheet).findByRole("heading", { name: "Recently tracked" });
+    await user.type(within(sheet).getByRole("searchbox", { name: "Search foods" }), "chili");
+    await within(sheet).findByRole("heading", { name: "Culury" });
+    await user.click(within(sheet).getByRole("button", { name: /^Chili con carne/ }));
+    await within(sheet).findByRole("heading", { name: "Track food" });
+    expect(within(sheet).getByRole("button", { name: /^Serving/ })).toHaveTextContent(/^Serving1 serving$/);
+  });
+
+  it("quick add on a Culury row with nutrition logs it", async () => {
+    const server = open({ "GET /api/foods/search": () => ({ groups: [{ source: "culury", label: "Culury", foods: [culuryChili] }], errors: [] }) });
+    const user = userEvent.setup();
+    const sheet = await openDinner(user);
+    await user.type(within(sheet).getByRole("searchbox", { name: "Search foods" }), "chili");
+    await user.click(await within(sheet).findByRole("button", { name: "Quick add Chili con carne" }));
+    expect(logged(server)).toMatchObject({ food: { kind: "culury", id: 812 }, quantity: 1 });
+  });
+
+  it("quick add on a Culury search row without nutrition opens it instead, offering Estimate with AI", async () => {
+    const server = open({ "GET /api/foods/search": () => ({ groups: [{ source: "culury", label: "Culury", foods: [taco] }], errors: [] }) });
+    const user = userEvent.setup();
+    const sheet = await openDinner(user);
+    await user.type(within(sheet).getByRole("searchbox", { name: "Search foods" }), "taco");
+    await user.click(await within(sheet).findByRole("button", { name: "Quick add Taco soup" }));
+    expect(await within(sheet).findByRole("button", { name: "Estimate with AI" })).toBeInTheDocument();
+    expect(server.writes().filter((w) => w.path === "/api/log")).toEqual([]);
+  });
+
+  it("quick add on a Recently tracked Culury row without nutrition opens it at its last portion", async () => {
+    const server = open({ "GET /api/foods/recent": () => ({ foods: [{ ...taco, last: twoServings }] }) });
+    const user = userEvent.setup();
+    const sheet = await openDinner(user);
+    await user.click(await within(sheet).findByRole("button", { name: "Quick add Taco soup" }));
+    expect(await within(sheet).findByRole("button", { name: "Estimate with AI" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: /^Serving/ })).toHaveTextContent("2 servings");
+    expect(server.writes().filter((w) => w.path === "/api/log")).toEqual([]);
+  });
+
+  it("opening shows on the row (disabled), and a late answer after moving on is ignored", async () => {
+    let answer!: (v: unknown) => void;
+    open({
+      "GET /api/foods/search": () => ({ groups: [{ source: "culury", label: "Culury", foods: [culuryChili] }], errors: [] }),
+      "GET /api/culury/recipes/:id": () => new Promise((r) => (answer = r)),
+    });
+    const user = userEvent.setup();
+    const sheet = await openDinner(user);
+    await user.type(within(sheet).getByRole("searchbox", { name: "Search foods" }), "chili");
+    await user.click(await within(sheet).findByRole("button", { name: /^Chili con carne/ }));
+    const opening = within(sheet).getByRole("button", { name: /^Chili con carne/ });
+    expect(opening).toBeDisabled();
+    expect(opening).toHaveTextContent("Opening…");
+    await user.click(within(sheet).getByRole("button", { name: /Describe it/ }));
+    answer({ food: culuryChili, hasNutrition: true, outdated: false });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(within(sheet).getByRole("heading", { name: "Describe it" })).toBeInTheDocument();
+    expect(within(sheet).queryByRole("heading", { name: "Track food" })).toBeNull();
+  });
+
+  it("a plan item shows Opening… while it loads; going back meanwhile ignores the answer", async () => {
+    let answer!: (v: unknown) => void;
+    open({ "GET /api/culury/recipes/:id": () => new Promise((r) => (answer = r)) });
+    const user = userEvent.setup();
+    const sheet = await openDinner(user);
+    await user.click(await within(sheet).findByRole("button", { name: /Meal plan/ }));
+    await user.click(await within(sheet).findByRole("button", { name: /Chili con carne/ }));
+    const item = within(sheet).getByRole("button", { name: /Chili con carne/ });
+    expect(item).toBeDisabled();
+    expect(item).toHaveTextContent("Opening…");
+    await user.click(within(sheet).getByRole("button", { name: "‹ Back" }));
+    answer({ food: culuryChili, hasNutrition: true, outdated: false });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(within(sheet).getByRole("searchbox", { name: "Search foods" })).toBeInTheDocument();
+    expect(within(sheet).queryByRole("heading", { name: "Track food" })).toBeNull();
   });
 });

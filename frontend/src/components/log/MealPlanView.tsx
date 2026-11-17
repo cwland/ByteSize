@@ -81,6 +81,7 @@ export default function MealPlanView({ day, meal, onOpen }: { day: string; meal:
                       className="flex w-full items-center gap-2 rounded-2xl bg-pressed px-3 py-2.5 text-left hover:bg-strong disabled:opacity-60"
                     >
                       {text("text-action")}
+                      {opening === it.recipeId && <span className="shrink-0 text-sm text-subtle">Opening…</span>}
                       <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-inactive" />
                     </button>
                   </li>

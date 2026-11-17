@@ -36,6 +36,7 @@ describe("Integrations settings (Culury)", () => {
     expect(await screen.findByLabelText("Culury address")).toHaveValue("http://culury.lan:4000");
     expect(screen.getByText(/A key is saved/)).toBeInTheDocument();
     expect(screen.getByLabelText("API key")).toHaveValue("");
+    expect(screen.getByLabelText("API key")).toHaveAttribute("autocomplete", "new-password"); // no browser autofill of a saved password
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(server.writes().find((w) => w.method === "PUT")?.body).toEqual({ url: "http://culury.lan:4000" });
   });

@@ -21,7 +21,19 @@ async function estimateServing(food: FoodResult): Promise<Nutrients> {
 
 // Track food for a Culury recipe (read live from Culury, starts at 1 serving). Culury's nutrition may be
 // marked out of date; with none at all, "Estimate with AI" fills it in for this entry only (logged as AI-estimated).
-export default function CuluryTrack({ recipe, onTrack }: { recipe: CuluryRecipe; onTrack: (p: Portion, estimate?: Nutrients) => Promise<void> }) {
+// initial: where the amount starts (1 serving, or the last portion from Recently tracked).
+// stale: Culury couldn't answer, so this is the last logged copy (the server logs from it too).
+export default function CuluryTrack({
+  recipe,
+  initial = ONE_SERVING,
+  stale = false,
+  onTrack,
+}: {
+  recipe: CuluryRecipe;
+  initial?: Portion;
+  stale?: boolean;
+  onTrack: (p: Portion, estimate?: Nutrients) => Promise<void>;
+}) {
   const [estimate, setEstimate] = useState<Nutrients | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
@@ -41,6 +53,7 @@ export default function CuluryTrack({ recipe, onTrack }: { recipe: CuluryRecipe;
 
   return (
     <div className="flex flex-col gap-3">
+      {stale && <p className="rounded-xl bg-pressed px-3 py-2 text-sm text-subtle">Culury is unavailable — using the last logged version</p>}
       {recipe.outdated && <p className="px-1 text-xs text-muted">Culury's nutrition for this recipe may be out of date.</p>}
       {!recipe.hasNutrition &&
         (estimate ? (
@@ -56,7 +69,7 @@ export default function CuluryTrack({ recipe, onTrack }: { recipe: CuluryRecipe;
             <Notice msg={msg} />
           </div>
         ))}
-      <FoodDetail key={estimate ? "estimate" : "culury"} food={{ ...food, nutrients: estimate ?? food.nutrients }} initial={ONE_SERVING} submitLabel="Track" onSubmit={(p) => onTrack(p, estimate ?? undefined)} />
+      <FoodDetail key={estimate ? "estimate" : "culury"} food={{ ...food, nutrients: estimate ?? food.nutrients }} initial={initial} submitLabel="Track" onSubmit={(p) => onTrack(p, estimate ?? undefined)} />
     </div>
   );
 }

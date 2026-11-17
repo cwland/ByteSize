@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { BookOpen, CalendarDays, Camera, ChevronDown, Plus, ScanBarcode, Sparkles } from "lucide-react";
-import { api } from "../../api";
+import { ApiError, api } from "../../api";
 import { formatAmount } from "../../amounts";
 import { notifyDayChanged } from "../../day";
 import { MEALS, MEAL_NAMES } from "../../meals";
@@ -31,7 +31,9 @@ type View =
   | { k: "detail"; food: FoodResult; initial: Portion }
   | { k: "meal"; food: FoodResult } // a quick meal: adjust its foods, then Track
   | { k: "plan" } // Culury's meal plan
-  | { k: "culury"; recipe: CuluryRecipe; from: "plan" | "search" }; // a Culury recipe, read live
+  | { k: "culury"; recipe: CuluryRecipe; from: CuluryFrom; initial: Portion; stale?: boolean }; // a Culury recipe, read live
+type CuluryFrom = "plan" | "search" | "recent";
+const ONE_SERVING: Portion = { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 };
 
 // Digits, spaces and dashes only: someone typing a barcode. Lookup only at a barcode's length.
 const barcodeLike = (q: string) => /^[\d\s-]+$/.test(q);
@@ -172,6 +174,9 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
   const [msg, setMsg] = useState<Msg>(null);
   const [attempt, setAttempt] = useState(0); // "Try again" re-runs the lookup
   const [culury, setCulury] = useState(false); // linked: the Meal plan button shows
+  const [opening, setOpening] = useState<number | null>(null); // the Culury recipe a row is opening
+  const viewSeq = useRef(0); // bumps on every view change, so a late Culury answer can tell it's stale
+  useEffect(() => void viewSeq.current++, [view]);
 
   useEffect(() => {
     api<CuluryLink>("GET", "/api/settings/culury").then((l) => setCulury(!!l.url && l.hasKey), () => {});
@@ -222,9 +227,35 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
 
   // The portion a food starts at: the last one used for this meal, else its own serving (a recipe: 1 serving)
   const startPortion = (food: FoodResult) => recent.find((r) => r.kind === food.kind && r.id === food.id)?.last ?? startingPortion(food, units);
-  const openCulury = async (id: number, from: "plan" | "search") => setView({ k: "culury", recipe: await api<CuluryRecipe>("GET", `/api/culury/recipes/${id}`), from });
+  // A Culury recipe is read live: from Recently tracked at its last portion, and when Culury can't answer
+  // (anything but "not found") from the saved copy; from the plan or search at 1 serving. An answer that
+  // arrives after the person moved to another view is dropped.
+  const openCulury = async (id: number, from: CuluryFrom, saved?: RecentFood) => {
+    const seq = viewSeq.current;
+    const initial = saved?.last ?? ONE_SERVING;
+    let next: View;
+    try {
+      next = { k: "culury", recipe: await api<CuluryRecipe>("GET", `/api/culury/recipes/${id}`), from, initial };
+    } catch (e) {
+      if (!saved || (e instanceof ApiError && e.status === 404)) {
+        if (seq === viewSeq.current) throw e;
+        return;
+      }
+      const { last: _last, ...food } = saved;
+      next = { k: "culury", recipe: { food, hasNutrition: true, outdated: false }, from, initial, stale: true };
+    }
+    if (seq === viewSeq.current) setView(next);
+  };
+  const openRow = async (food: FoodResult, saved?: RecentFood) => {
+    setOpening(food.id);
+    try {
+      await openCulury(food.id, saved ? "recent" : "search", saved);
+    } finally {
+      setOpening(null);
+    }
+  };
   const pick = (food: FoodResult, initial = startPortion(food)) => {
-    if (food.kind === "culury") return void openCulury(food.id, "search").catch((e) => setMsg(errorMsg(e)));
+    if (food.kind === "culury") return void openRow(food).catch((e) => setMsg(errorMsg(e)));
     setView(food.foodKind === "quick_meal" ? { k: "meal", food } : { k: "detail", food, initial });
   };
   const edit = (food: FoodResult) =>
@@ -293,6 +324,8 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
       <Sheet tall label={label} heading="Track food" onClose={onClose} onBack={() => setView(view.from === "plan" ? { k: "plan" } : { k: "search" })}>
         <CuluryTrack
           recipe={view.recipe}
+          initial={view.initial}
+          stale={view.stale}
           onTrack={async (p, estimate) => {
             await log(view.recipe.food, p, estimate);
             onClose();
@@ -351,7 +384,9 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
     );
   }
 
-  const row = (f: FoodResult, p: Portion) => (
+  // saved: the row is from Recently tracked. A Culury row with no nutrition opens on + too (to offer the estimate).
+  const culuryRow = (f: FoodResult) => f.kind === "culury";
+  const row = (f: FoodResult, p: Portion, saved?: RecentFood) => (
     <FoodRow
       key={`${f.kind}${f.id}`}
       name={f.name}
@@ -361,8 +396,9 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
       brand={f.brand}
       tag={f.kind === "culury" ? "Culury" : tagOf(f.foodKind)}
       nutrients={nutrientsFor(f, p)}
-      onOpen={() => pick(f, p)}
-      onQuickAdd={() => log(f, p)}
+      busy={culuryRow(f) && opening === f.id}
+      onOpen={() => (culuryRow(f) ? void openRow(f, saved).catch((e) => setMsg(errorMsg(e))) : pick(f, p))}
+      onQuickAdd={() => (culuryRow(f) && !Object.keys(f.nutrients).length ? openRow(f, saved) : log(f, p))}
     />
   );
   const sameMeal = yesterday.filter((e) => e.meal === meal);
@@ -444,7 +480,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
               <h3 id="recently-tracked" className="px-1 text-xs font-bold tracking-wide text-muted uppercase">
                 Recently tracked
               </h3>
-              <ul className="mt-2 flex flex-col gap-2">{recent.map((f) => row(f, f.last))}</ul>
+              <ul className="mt-2 flex flex-col gap-2">{recent.map((f) => row(f, f.last, f))}</ul>
             </section>
           )}
         </>
