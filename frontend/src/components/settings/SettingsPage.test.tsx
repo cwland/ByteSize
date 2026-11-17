@@ -10,7 +10,7 @@ describe("SettingsPage", () => {
     renderWithSession(<SettingsPage />, { isAdmin: false });
     expect(await screen.findByRole("tab", { name: "Profile" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Security" })).toBeInTheDocument();
-    for (const name of ["Users", "AI services", "Logs"]) {
+    for (const name of ["Users", "AI services", "Food sources", "Logs"]) {
       expect(screen.queryByRole("tab", { name })).not.toBeInTheDocument();
     }
   });
@@ -18,7 +18,7 @@ describe("SettingsPage", () => {
   it("admins see Users, AI services and Logs", async () => {
     fakeServer({});
     renderWithSession(<SettingsPage />, { isAdmin: true });
-    for (const name of ["Profile", "Security", "Users", "AI services", "Logs"]) {
+    for (const name of ["Profile", "Security", "Users", "AI services", "Food sources", "Logs"]) {
       expect(await screen.findByRole("tab", { name })).toBeInTheDocument();
     }
   });
