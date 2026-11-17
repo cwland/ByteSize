@@ -296,6 +296,10 @@ toggle, typed barcode lookup, photo upload (barcode decode + AI label extraction
   free dataset of top US chains, but the public download looks dated — verify freshness), USDA FDC branded/restaurant
   foods (already integrated), and AI estimation for local restaurants not in any database. Fits as another source
   in the 6.4 search waterfall with results cached in `food_cache`.
+- **iPhone: unknown barcode → scan the label** — requested by Cory 2026-11-17, for the iOS app (M5). When a scanned
+  barcode isn't found anywhere, offer "Add it": photograph the Nutrition Facts panel, read it (AI vision / on-device
+  text recognition), and create the food with that barcode filled in. The food is saved as the person's own, so the
+  next scan of that barcode finds it instantly — kept on the phone for offline use and synced to their account.
 
 ## 9. Addendum 2026-11-16 — Lose It! look and plans (decided by Cory)
 
