@@ -96,6 +96,26 @@ describe("Add food", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("Did you mean: a close spelling shows under few results, and tapping it searches for it", async () => {
+    const bananas = { ...usdaPeanuts, id: 78, name: "Bananas, raw", icon: "🍌" };
+    const server = open({
+      "GET /api/foods/search": (_b, path) =>
+        path.includes("q=bananna")
+          ? { groups: [{ source: "cache", label: "Saved foods", foods: [bananas] }], errors: [], suggestion: "banana" }
+          : { groups: [{ source: "basic", label: "Basic foods", foods: [bananas] }], errors: [] },
+    });
+    const user = userEvent.setup();
+    const sheet = await openSnacks(user);
+    const box = within(sheet).getByRole("searchbox", { name: "Search foods" });
+    await user.type(box, "bananna");
+    const foods = within(sheet).getByRole("region", { name: "Foods" });
+    await user.click(await within(foods).findByRole("button", { name: "Did you mean banana?" }));
+    expect(box).toHaveValue("banana");
+    await within(sheet).findByRole("heading", { name: "Basic foods" });
+    expect(server.sent.filter((s) => s.path.startsWith("/api/foods/search")).map((s) => s.path)).toEqual(["/api/foods/search?q=bananna", "/api/foods/search?q=banana"]);
+    expect(within(sheet).queryByRole("button", { name: /Did you mean/ })).toBeNull();
+  });
+
   it("only the food list scrolls: the meal, search box and buttons stay put", async () => {
     open();
     const user = userEvent.setup();

@@ -140,6 +140,8 @@ export const userSettings = pgTable("user_settings", {
     .notNull()
     .default({ breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" }),
   waterButtonsMl: jsonb("water_buttons_ml").$type<number[]>().notNull().default([237, 473]),
+  // First day of the week in the day strip: 0 = Sunday ... 6 = Saturday
+  weekStart: integer("week_start").notNull().default(0),
   culuryUrl: text("culury_url"),
   culuryKeyEnc: text("culury_key_enc"), // encrypted
 });

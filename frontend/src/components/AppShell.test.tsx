@@ -1,28 +1,55 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import AppShell from "./AppShell";
 import { fakeServer } from "../test/fakeServer";
 import { renderWithSession } from "../test/renderWithSession";
-import { bodyA, plansA, steadyTargets } from "../test/fixtures";
+import { bodyA, plansA, settingsMe, steadyTargets } from "../test/fixtures";
 
-describe("AppShell day switcher", () => {
+describe("AppShell week strip", () => {
   afterEach(() => void vi.useRealTimers());
 
-  it("starts on today in the user's time zone and steps a day back and forward", async () => {
+  it("starts on today in the user's time zone and picks other days from the strip", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-11-17T03:00:00Z")); // still Mon, Nov 16 in Boise
     fakeServer({});
     renderWithSession(<AppShell />, { timezone: "America/Boise" });
-    expect(screen.getByRole("button", { name: "Go to today" })).toHaveTextContent("Mon, Nov 16");
+    const week = screen.getByRole("group", { name: "Week of Nov 15" });
+    expect(within(week).getByRole("button", { name: "Mon 16" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(week).getByRole("button", { name: "Mon 16" })).toHaveAttribute("aria-current", "date");
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Previous day" }));
-    expect(screen.getByRole("button", { name: "Go to today" })).toHaveTextContent("Sun, Nov 15");
-    await user.click(screen.getByRole("button", { name: "Next day" }));
-    await user.click(screen.getByRole("button", { name: "Next day" }));
-    expect(screen.getByRole("button", { name: "Go to today" })).toHaveTextContent("Tue, Nov 17");
-    await user.click(screen.getByRole("button", { name: "Go to today" }));
-    expect(screen.getByRole("button", { name: "Go to today" })).toHaveTextContent("Mon, Nov 16");
+    await user.click(within(week).getByRole("button", { name: "Sun 15" }));
+    expect(within(week).getByRole("button", { name: "Sun 15" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "Next week" }));
+    await user.click(within(screen.getByRole("group", { name: "Week of Nov 22" })).getByRole("button", { name: "Tue 24" }));
+    expect(within(screen.getByRole("group", { name: "Week of Nov 22" })).getByRole("button", { name: "Tue 24" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(week).getByRole("button", { name: "Sun 15" })).toHaveAttribute("aria-pressed", "false");
+    // The old ‹ date › switcher is gone
+    expect(screen.queryByRole("button", { name: "Go to today" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Previous day" })).not.toBeInTheDocument();
+  });
+
+  it("leaving to Settings and coming back to Log selects today", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-17T19:00:00Z")); // Tue, Nov 17 in Boise
+    window.location.hash = "#/log";
+    fakeServer({ "GET /api/settings/me": () => ({ ...settingsMe, weekStart: 0 }) });
+    renderWithSession(<AppShell />, { timezone: "America/Boise" });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Wed 18" }));
+    expect(screen.getByRole("button", { name: "Wed 18" })).toHaveAttribute("aria-pressed", "true");
+    act(() => {
+      window.location.hash = "#/settings";
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    // Settings has no week strip
+    expect(screen.queryByRole("group", { name: "Days" })).not.toBeInTheDocument();
+    act(() => {
+      window.location.hash = "#/log";
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Tue 17" })).toHaveAttribute("aria-pressed", "true"));
+    expect(screen.getByRole("button", { name: "Wed 18" })).toHaveAttribute("aria-pressed", "false");
   });
 });
 

@@ -322,3 +322,32 @@ describe("food log", () => {
     }
   });
 });
+
+describe("logged days", () => {
+  it("logged days lists only days with food, not water-only days", async () => {
+    const food = await myFood();
+    await log(food, {}, "2026-11-16");
+    await log(food, {}, "2026-11-16", "lunch"); // two entries, one day
+    await log(food, {}, "2026-11-12");
+    await t.api("POST", "/api/log", { day: "2026-11-14", meal: "supplements", water_ml: 237 }); // water only
+    await t.api("POST", "/api/log", { day: "2026-11-12", meal: "supplements", water_ml: 237 });
+    await log(food, {}, "2026-11-30"); // outside the range
+    const res = await t.api("GET", "/api/days/logged?from=2026-11-10&to=2026-11-17");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ days: ["2026-11-12", "2026-11-16"] });
+    // the ends of the range count
+    expect((await t.api("GET", "/api/days/logged?from=2026-11-16&to=2026-11-16")).body).toEqual({ days: ["2026-11-16"] });
+  });
+
+  it("logged days range over 62 days is 400", async () => {
+    expect((await t.api("GET", "/api/days/logged?from=2026-09-17&to=2026-11-17")).status).toBe(200); // 62 days counting both ends
+    const tooLong = await t.api("GET", "/api/days/logged?from=2026-09-16&to=2026-11-17");
+    expect(tooLong.status).toBe(400);
+    expect(tooLong.body.error).toBe("Choose up to 62 days");
+    const backwards = await t.api("GET", "/api/days/logged?from=2026-11-17&to=2026-11-16");
+    expect(backwards.status).toBe(400);
+    expect(backwards.body.error).toBe("Choose up to 62 days");
+    expect((await t.api("GET", "/api/days/logged?from=2026-11-17")).status).toBe(400);
+    expect((await t.api("GET", "/api/days/logged?from=nope&to=2026-11-17")).status).toBe(400);
+  });
+});

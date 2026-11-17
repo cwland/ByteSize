@@ -62,17 +62,17 @@ describe("per-user isolation", () => {
     expect((await a.as("PUT", "/api/body", body)).status).toBe(200);
     expect((await a.as("POST", "/api/plans/select", { plan: "steady" })).status).toBe(200);
     const windows = { breakfast: "08:00", lunch: "12:00", snacks: "15:00", dinner: "19:00" };
-    expect((await a.as("PUT", "/api/settings/me", { mealWindows: windows, waterButtonsMl: [300] })).status).toBe(200);
+    expect((await a.as("PUT", "/api/settings/me", { mealWindows: windows, waterButtonsMl: [300], weekStart: 2 })).status).toBe(200);
 
     expect((await b.as("GET", "/api/body")).body).toEqual({ body: null });
     expect((await b.as("GET", "/api/plans")).status).toBe(409);
     expect((await b.as("GET", "/api/targets")).body).toEqual({ targets: null });
-    expect((await b.as("GET", "/api/settings/me")).body.waterButtonsMl).toEqual([237, 473]);
+    expect((await b.as("GET", "/api/settings/me")).body).toMatchObject({ waterButtonsMl: [237, 473], weekStart: 0 });
     // ben's own changes don't touch anna's
     expect((await b.as("PUT", "/api/targets", { calories: { min: 1000, max: 1100 }, protein_g: { min: 1, max: 2 }, fiber_g: { min: 1, max: 2 }, water_ml: { min: 1, max: 2 } })).status).toBe(200);
     expect((await a.as("GET", "/api/targets")).body.targets.plan).toBe("steady");
     expect((await a.as("GET", "/api/body")).body).toEqual({ body: { ...body, needsReview: false } });
-    expect((await a.as("GET", "/api/settings/me")).body).toEqual({ mealWindows: windows, waterButtonsMl: [300] });
+    expect((await a.as("GET", "/api/settings/me")).body).toEqual({ mealWindows: windows, waterButtonsMl: [300], weekStart: 2 });
   });
 
   it("a user can't see, edit or archive another user's foods or overrides, and lookups never return them", async () => {
@@ -100,6 +100,9 @@ describe("per-user isolation", () => {
     expect(seen).not.toContain(`user_food:${override.id}`);
     expect(seen).not.toContain(`user_food:${custom.id}`);
     expect((await b.as("GET", "/api/foods/search?q=0012345678905")).body.groups).toMatchObject([{ source: "cache", foods: [{ id: cached.id }] }]);
+    // "Did you mean" draws on anna's own food names for anna only
+    expect((await a.as("GET", "/api/foods/search?q=smoothy")).body.suggestion).toBe("smoothie");
+    expect((await b.as("GET", "/api/foods/search?q=smoothy")).body).not.toHaveProperty("suggestion");
     // ...and anna's are untouched
     expect((await a.as("GET", "/api/my-foods")).body.foods.map((f: any) => f.name).sort()).toEqual(["Anna's bar", "Anna's secret smoothie"]);
   });
@@ -130,5 +133,14 @@ describe("per-user isolation", () => {
     // ...and anna's entries are untouched
     expect((await a.as("GET", `/api/day/${day}`)).body.entries).toEqual([entry, water]);
     expect((await a.as("GET", "/api/day/2026-11-18")).body.entries).toEqual([]);
+  });
+
+  it("a user's logged days never include another user's entries", async () => {
+    const { a, b } = await twoUsers(t);
+    const food = (await a.as("POST", "/api/my-foods", { name: "Anna's toast", servings: [{ label: "1 slice", grams: 30 }], nutrients: { calories: 80 } })).body.food;
+    await a.as("POST", "/api/log", { day: "2026-11-17", meal: "breakfast", food: { kind: "user_food", id: food.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
+    const range = "/api/days/logged?from=2026-11-10&to=2026-11-20";
+    expect((await b.as("GET", range)).body).toEqual({ days: [] });
+    expect((await a.as("GET", range)).body).toEqual({ days: ["2026-11-17"] });
   });
 });

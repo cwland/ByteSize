@@ -82,7 +82,7 @@ describe("Dashboard", () => {
       },
     });
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Previous day" }));
+    await user.click(screen.getByRole("button", { name: "Sun 15" }));
     await user.click(await screen.findByRole("button", { name: "+8 oz" }));
     expect(server.writes()).toContainEqual(expect.objectContaining({ method: "POST", path: "/api/log", body: { day: "2026-11-15", meal: "supplements", water_ml: 237 } }));
     expect(await screen.findByText("34 / 64 fl oz")).toBeInTheDocument();

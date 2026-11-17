@@ -8,7 +8,7 @@ const apple = fixture("usda-foundation-apple.json");
 const yogurt = fixture("usda-branded-yogurt.json");
 const page = (foods: unknown[]) => ({ totalHits: foods.length, currentPage: 1, totalPages: 1, pageList: [1], foodSearchCriteria: {}, foods, aggregations: {} });
 
-function fakeFetch(answer: (url: string, init?: RequestInit) => { status: number; json: unknown } | Promise<never>) {
+function fakeFetch(answer: (url: string, init?: RequestInit) => { status: number; json: unknown } | Promise<{ status: number; json: unknown }>) {
   const calls: { url: string; init?: RequestInit }[] = [];
   const f = (async (input: any, init?: RequestInit) => {
     const url = String(input);
@@ -76,13 +76,62 @@ describe("normalizeUsda", () => {
 });
 
 describe("usda clients", () => {
-  it("search posts the query, page size and data types with the key", async () => {
-    const { f, calls } = fakeFetch(() => ({ status: 200, json: page([apple, yogurt, { fdcId: 9, description: "No energy", dataType: "SR Legacy", foodNutrients: [] }]) }));
-    const foods = await usdaSearch(f, "KEY123", "apple", 1000);
-    expect(foods.map((x) => x.sourceId)).toEqual(["1750340", "2346404"]);
-    expect(calls[0].url).toBe("https://api.nal.usda.gov/fdc/v1/foods/search?api_key=KEY123");
-    expect(calls[0].init?.method).toBe("POST");
-    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ query: "apple", pageSize: 10, dataType: ["Foundation", "SR Legacy", "Branded"] });
+  it("search asks for basic foods and branded foods separately (in parallel) with the key", async () => {
+    const noEnergy = { fdcId: 9, description: "No energy", dataType: "SR Legacy", foodNutrients: [] };
+    // Like the real API: each call gets only the data types it asked for
+    const { f, calls } = fakeFetch((_url, init) => {
+      const want: string[] = JSON.parse(String(init?.body)).dataType;
+      return { status: 200, json: page([apple, yogurt, noEnergy].filter((x) => want.includes(x.dataType))) };
+    });
+    const { foods, error } = await usdaSearch(f, "KEY123", "apple", 1000);
+    expect(error).toBeNull();
+    expect(foods.map((x) => [x.sourceId, x.basic])).toEqual([
+      ["1750340", true],
+      ["2346404", undefined],
+    ]);
+    expect(calls).toHaveLength(2);
+    for (const c of calls) {
+      expect(c.url).toBe("https://api.nal.usda.gov/fdc/v1/foods/search?api_key=KEY123");
+      expect(c.init?.method).toBe("POST");
+    }
+    expect(calls.map((c) => JSON.parse(String(c.init?.body)))).toEqual([
+      { query: "apple", pageSize: 5, dataType: ["Foundation", "SR Legacy"] },
+      { query: "apple", pageSize: 10, dataType: ["Branded"] },
+    ]);
+  });
+
+  it("a food both calls return is kept once, as a basic food", async () => {
+    const { f } = fakeFetch(() => ({ status: 200, json: page([apple]) }));
+    const { foods } = await usdaSearch(f, "KEY123", "apple", 1000);
+    expect(foods.map((x) => [x.sourceId, x.basic])).toEqual([["1750340", true]]);
+  });
+
+  it("one call failing keeps the other's foods and reports the failure; both failing is an error", async () => {
+    const failing = (bad: string) =>
+      fakeFetch((_url, init) => {
+        const want: string[] = JSON.parse(String(init?.body)).dataType;
+        return want.includes(bad) ? { status: 500, json: {} } : { status: 200, json: page([apple, yogurt].filter((x) => want.includes(x.dataType))) };
+      }).f;
+    const brandedDown = await usdaSearch(failing("Branded"), "KEY123", "apple", 1000);
+    expect(brandedDown.foods.map((x) => [x.sourceId, x.basic])).toEqual([["1750340", true]]);
+    expect(brandedDown.error).toBeInstanceOf(SourceError);
+    expect(brandedDown.error!.message).toBe("USDA answered with an error (500)");
+    const basicDown = await usdaSearch(failing("Foundation"), "KEY123", "apple", 1000);
+    expect(basicDown.foods.map((x) => x.sourceId)).toEqual(["2346404"]);
+    expect(basicDown.error).toBeInstanceOf(SourceError);
+  });
+
+  it("the two calls run at the same time", async () => {
+    let open = 0;
+    let most = 0;
+    const { f } = fakeFetch(async () => {
+      most = Math.max(most, ++open);
+      await new Promise((r) => setTimeout(r, 20));
+      open--;
+      return { status: 200, json: page([]) };
+    });
+    await usdaSearch(f, "KEY123", "apple", 1000);
+    expect(most).toBe(2);
   });
 
   it("barcode searches Branded foods and keeps only a matching gtinUpc", async () => {

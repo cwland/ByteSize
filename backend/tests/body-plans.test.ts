@@ -182,10 +182,10 @@ describe("targets", () => {
 
 describe("personal settings", () => {
   it("settings me has meal windows and water buttons, and saves changes", async () => {
-    const defaults = { mealWindows: { breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" }, waterButtonsMl: [237, 473] };
+    const defaults = { mealWindows: { breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" }, waterButtonsMl: [237, 473], weekStart: 0 };
     expect((await t.api("GET", "/api/settings/me")).body).toEqual(defaults);
 
-    const changed = { mealWindows: { breakfast: "09:00", lunch: "13:00", snacks: "16:30", dinner: "20:00" }, waterButtonsMl: [250, 500, 750] };
+    const changed = { mealWindows: { breakfast: "09:00", lunch: "13:00", snacks: "16:30", dinner: "20:00" }, waterButtonsMl: [250, 500, 750], weekStart: 0 };
     const put = await t.api("PUT", "/api/settings/me", changed);
     expect(put.status).toBe(200);
     expect(put.body).toEqual(changed);
