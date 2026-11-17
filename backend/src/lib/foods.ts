@@ -14,7 +14,7 @@ import { offByBarcode, offSearch } from "./foodSources/off.js";
 import { usdaKey } from "./foodSources/settings.js";
 import { SourceError, type SourceFood } from "./foodSources/types.js";
 import { usdaByBarcode, usdaSearch } from "./foodSources/usda.js";
-import { NUTRIENT_KEYS, type NutrientKey, type Nutrients, type Serving } from "./nutrients.js";
+import { NUTRIENT_KEYS, withLiquidVolumes, type NutrientKey, type Nutrients, type Serving } from "./nutrients.js";
 
 export type FoodResult = {
   kind: "cache" | "user_food";
@@ -64,7 +64,7 @@ export function toResult(row: CacheRow, kind: "cache"): FoodResult;
 export function toResult(row: UserFoodRow, kind: "user_food"): FoodResult;
 export function toResult(row: CacheRow | UserFoodRow, kind: "cache" | "user_food"): FoodResult {
   const nutrients = (row.nutrients ?? {}) as Nutrients;
-  const base = { kind, id: row.id, name: row.name, brand: row.brand, icon: iconFor(row.category, row.name), barcode: row.barcode, servings: row.servings as Serving[], nutrients };
+  const base = { kind, id: row.id, name: row.name, brand: row.brand, icon: iconFor(row.category, row.name), barcode: row.barcode, servings: withLiquidVolumes(row.servings as Serving[], row.category, row.name), nutrients };
   if (kind === "cache") {
     const c = row as CacheRow;
     return { ...base, aiFields: [], imageUrl: c.imageUrl, override: false, source: c.source === "usda" ? "usda" : "off" };
@@ -282,8 +282,10 @@ const serving = z
     label: z.string().trim().min(1, "Give the serving a name").max(60),
     grams: z.number().positive().max(100000).optional(),
     ml: z.number().positive().max(100000).optional(),
+    approx: z.boolean().optional(),
   })
-  .transform((s) => ({ label: s.label, ...(s.grams !== undefined ? { grams: s.grams } : {}), ...(s.ml !== undefined ? { ml: s.ml } : {}) }));
+  // An approximate volume (worked out from the grams when read) is never stored as a real one
+  .transform((s) => ({ label: s.label, ...(s.grams !== undefined ? { grams: s.grams } : {}), ...(s.ml !== undefined && !(s.approx && s.grams !== undefined) ? { ml: s.ml } : {}) }));
 const nutrientsSchema = z.strictObject(Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, z.number().nonnegative().max(1000000).optional()])) as Record<NutrientKey, z.ZodOptional<z.ZodNumber>>);
 
 export const foodFields = z.object({

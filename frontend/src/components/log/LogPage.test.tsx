@@ -59,14 +59,24 @@ describe("Log", () => {
     expect(within(breakfast).getByText("16g protein · 1g carbs · 24g fat · 5g fiber")).toBeInTheDocument();
     const toastRow = within(breakfast).getByRole("button", { name: /Toast/ });
     expect(within(toastRow).getByText("🍞")).toBeInTheDocument();
-    expect(within(toastRow).getByText("2 slices")).toBeInTheDocument();
-    expect(within(toastRow).getByText("160")).toBeInTheDocument();
-    const barRow = within(breakfast).getByRole("button", { name: /Peanut butter bar/ });
-    expect(within(barRow).getByText("½ × 1 bar")).toBeInTheDocument();
-    expect(within(barRow).getByText("fiber unknown")).toBeInTheDocument();
     expect(within(breakfast).queryByText(/calories suggested/)).not.toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Lunch" })).getByText("490 calories suggested")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Snacks" })).getByRole("button", { name: "Add Food" })).toBeInTheDocument();
+  });
+
+  it("meal card rows show amount first and pills", async () => {
+    show();
+    const breakfast = await screen.findByRole("region", { name: "Breakfast" });
+    const toastRow = within(breakfast).getByRole("button", { name: /Toast/ });
+    expect(within(toastRow).getByText("2 slices")).toBeInTheDocument();
+    expect(within(toastRow).getByText("160 cal")).toBeInTheDocument();
+    expect(within(toastRow).getByText("6 g protein")).toBeInTheDocument();
+    expect(within(toastRow).getByText("4 g fiber")).toBeInTheDocument();
+    const barRow = within(breakfast).getByRole("button", { name: /Peanut butter bar/ });
+    expect(within(barRow).getByText("½ bar")).toBeInTheDocument();
+    expect(within(barRow).getByText("127 cal")).toBeInTheDocument();
+    expect(within(barRow).getByText("? g fiber")).toBeInTheDocument(); // unknown, not 0
+    expect(within(breakfast).queryByText(/×/)).not.toBeInTheDocument();
   });
 
   it("move an entry to tomorrow's lunch", async () => {
@@ -103,23 +113,42 @@ describe("Log", () => {
     expect(screen.queryByRole("button", { name: /Toast/ })).not.toBeInTheDocument();
   });
 
-  it("editing a portion sends the new amount", async () => {
+  it("editing an entry uses the same sheet with Save", async () => {
     const server = show({ "PATCH /api/log/:id": (b) => ({ entry: { ...bar, ...b } }) });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Peanut butter bar/ }));
-    await user.click(screen.getByRole("radio", { name: "Full" }));
-    expect(screen.getByTestId("portion-preview")).toHaveTextContent("254 cal");
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    const sheet = screen.getByRole("dialog", { name: "Edit portion" });
+    expect(within(sheet).getByRole("region", { name: "Nutrition facts" })).toBeInTheDocument();
+    for (const b of ["Move", "Copy", "Delete"]) expect(within(sheet).getByRole("button", { name: b })).toBeInTheDocument();
+    const serving = within(sheet).getByRole("button", { name: /^Serving/ });
+    expect(serving).toHaveTextContent("½ bar");
+    await user.click(serving);
+    await user.selectOptions(within(sheet).getByRole("combobox", { name: "Whole number" }), "1");
+    await user.selectOptions(within(sheet).getByRole("combobox", { name: "Fraction" }), "—");
+    expect(serving).toHaveTextContent("1 bar");
+    const cal = within(within(sheet).getByRole("region", { name: "Summary" })).getByText("Calories").parentElement!;
+    expect(cal).toHaveTextContent("254");
+    await user.click(within(sheet).getByRole("button", { name: "Save" }));
     expect(server.writes()).toContainEqual(expect.objectContaining({ method: "PATCH", path: "/api/log/2", body: { servingIndex: 1, unit: "serving", quantity: 1, fraction: 1 } }));
   });
 
-  it("a food with unknown calories shows a question mark, not 0, in the row and the portion preview", async () => {
+  it("a refused edit shows the server's message in the sheet", async () => {
+    show({ "PATCH /api/log/:id": () => ({ status: 400, json: { error: "Can't measure this food in ml" } }) });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Toast/ }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Can't measure this food in ml");
+  });
+
+  it("a food with unknown calories shows a question mark, not 0, in the row and the sheet", async () => {
     const mystery = entryJson({ id: 3, name: "Mystery soup", icon: "🍲", nutrients: { protein_g: 8 } });
     show({ "GET /api/day/:date": () => ({ ...day, entries: [mystery] }) });
     const row = await screen.findByRole("button", { name: /Mystery soup/ });
-    expect(within(row).getByLabelText("Calories unknown")).toHaveTextContent("?");
-    expect(within(row).queryByText("0")).not.toBeInTheDocument();
+    expect(within(row).getByText("? cal")).toBeInTheDocument();
+    expect(within(row).queryByText("0 cal")).not.toBeInTheDocument();
     await userEvent.setup().click(row);
-    expect(screen.getByTestId("portion-preview")).toHaveTextContent("calories unknown");
+    const cal = within(screen.getByRole("region", { name: "Summary" })).getByText("Calories").parentElement!;
+    expect(cal).toHaveTextContent("?");
+    expect(cal).not.toHaveTextContent("0");
   });
 });

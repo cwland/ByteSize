@@ -336,3 +336,24 @@ can suggest re-planning as weight changes.
 - Milestone 2 is split: **2a** = plan picker, food engine, Dashboard, Log; **2b** = My Foods polish (recipes, quick meals),
   photo upload, Culury link. 2a is built unattended overnight and, when all tests and the final review pass, merged to main
   and pushed.
+
+## 10. Addendum 2026-11-17 — feedback round after using 2a (decided by Cory)
+
+**Plans:** ask a full **birthdate** (exact age; future date projections). Activity question becomes "How active is your day,
+not counting workouts?" — mostly sitting ×1.2 · on your feet some of the day or a daily walk ×1.3 · on your feet most of the
+day ×1.4 · physical job ×1.5 (Cory: desk + 1–2 mile daily walk = ×1.3). Existing bodies are asked to review once.
+Each plan has its own ranges, shown on its card and set as targets when selected: calories plan ±50; protein per lb of goal
+weight — relaxed 0.8–0.9, steady 0.9–1.0, accelerated 0.95–1.05, vigorous 1.0–1.1; fiber — relaxed/steady 30–35 g,
+accelerated 28–32 g, vigorous 25–30 g; water unchanged. Cards carry "Best for" lines (relaxed: easing into a new dose,
+minimal side effects, strength gains; steady: the sweet spot — sustainable loss, high energy, no muscle loss; accelerated:
+strong appetite suppression when eating more feels forced; vigorous: fastest loss, hardest to sustain). Plan cards are a
+carousel where neighbours peek in (dots under it); all four side by side on wide screens. Goals has "Edit my details".
+
+**Logging (Weight Watchers-inspired):** entry rows show the amount first then the unit ("4 fl oz", "2 slices"). Add Food
+sheet: meal name at the very top as a dropdown (changes the meal), date under it, search with a barcode button;
+"Same as yesterday?" (yesterday's same meal, one + logs all) and "Recently tracked" for that meal type; a quick-add + on
+recents, yesterday and search results — tap logs, shows ✓ briefly, back to + for another. Rows show coloured pills for
+calories, protein and fiber (ring colours). Tapping a food opens a "Track food" detail sheet: summary (calories, protein,
+fiber), Serving row (whole number + fraction + unit picker), nutritional insights, full nutrition facts, big Track button.
+Liquids offer ml, fl oz, cups with fractions, tbsp, tsp; a drink known only in grams uses 1 g ≈ 1 ml, marked approximate.
+Saturated fat is tracked.

@@ -9,7 +9,7 @@ import type { LogEntry, Meal, Nutrients } from "../../types";
 import AddFoodSheet from "./AddFoodSheet";
 import MealCard from "./MealCard";
 import MoveSheet from "./MoveSheet";
-import PortionSheet from "./PortionSheet";
+import FoodDetail from "./FoodDetail";
 import { Confirm } from "../ui/Confirm";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
@@ -109,9 +109,9 @@ export default function LogPage() {
 
       {adding && <AddFoodSheet day={day} meal={adding} onClose={() => setAdding(null)} />}
       {editing && (
-        <Sheet label="Edit portion" onClose={() => setEditing(null)}>
-          <PortionSheet
-            food={{ name: editing.name, icon: editing.icon, servings: editing.servings, nutrients: perServing(editing) }}
+        <Sheet label="Edit portion" heading="Edit entry" onClose={() => setEditing(null)}>
+          <FoodDetail
+            food={{ name: editing.name, brand: editing.brand, icon: editing.icon, servings: editing.servings, nutrients: perServing(editing) }}
             initial={{ servingIndex: editing.servingIndex, unit: editing.unit, quantity: editing.quantity, fraction: editing.fraction }}
             submitLabel="Save"
             onSubmit={async (p) => {
@@ -143,7 +143,7 @@ export default function LogPage() {
             >
               Delete
             </button>
-          </PortionSheet>
+          </FoodDetail>
         </Sheet>
       )}
       {moving && (
