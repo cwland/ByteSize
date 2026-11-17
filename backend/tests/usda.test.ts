@@ -29,7 +29,7 @@ describe("normalizeUsda", () => {
       brand: null,
       category: "Fruits and Fruit Juices",
       servings: [{ label: "100 g", grams: 100 }],
-      nutrients: { calories: 63, protein_g: 0.15, fiber_g: 2.1, carbs_g: 15.7, fat_g: 0.16, sugar_g: 13.3, sodium_mg: 0, potassium_mg: 109, magnesium_mg: 4.7 },
+      nutrients: { calories: 63, protein_g: 0.15, fiber_g: 2.1, carbs_g: 15.7, fat_g: 0.16, saturated_fat_g: 0.03, sugar_g: 13.3, sodium_mg: 0, potassium_mg: 109, magnesium_mg: 4.7 },
       imageUrl: null,
       raw: apple,
     });
@@ -47,7 +47,7 @@ describe("normalizeUsda", () => {
         { label: "100 g", grams: 100 },
         { label: "3/4 cup", grams: 170 },
       ],
-      nutrients: { calories: 53, protein_g: 10, fiber_g: 0, carbs_g: 3.53, fat_g: 0, sugar_g: 2.35, added_sugar_g: 0, sodium_mg: 35, potassium_mg: 141 },
+      nutrients: { calories: 53, protein_g: 10, fiber_g: 0, carbs_g: 3.53, fat_g: 0, saturated_fat_g: 0, sugar_g: 2.35, added_sugar_g: 0, sodium_mg: 35, potassium_mg: 141 },
       imageUrl: null,
       raw: yogurt,
     });

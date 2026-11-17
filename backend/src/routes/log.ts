@@ -65,6 +65,7 @@ const waterBody = z.object({
   water_ml: z.number().positive("Enter an amount above 0").max(10000, "That's more water than one entry can hold"),
 });
 const patchBody = z.object(portionFields).partial();
+const mealQuery = z.object({ meal: z.enum(MEALS, { error: "Choose a meal" }).optional() });
 const moveBody = z.object({ ids: z.array(id).min(1, "Choose at least one entry").max(500), day: DAY, meal: z.enum(MEALS), copy: z.boolean().default(false) });
 
 export function toEntry(r: Row): LogEntry {
@@ -146,9 +147,15 @@ async function dayView(app: FastifyInstance, userId: number, day: string) {
   return { day, entries, totals: { ...sums, unknownCount }, meals, targets, exercise: { calories: 0 }, streak: await streak(app.db, userId, await todayFor(app, userId)) };
 }
 
-/** The newest entry for each food the person logged (water left out), newest first. */
-function lastPerFood(db: Db, userId: number, since?: string) {
-  const where = and(eq(logEntries.userId, userId), isNotNull(logEntries.sourceRef), since ? gte(logEntries.day, since) : undefined);
+/** The newest entry for each food the person logged (water left out), newest first; only that meal's entries when given. */
+function lastPerFood(db: Db, userId: number, opts: { since?: string; meal?: Meal } = {}) {
+  const { since, meal } = opts;
+  const where = and(
+    eq(logEntries.userId, userId),
+    isNotNull(logEntries.sourceRef),
+    since ? gte(logEntries.day, since) : undefined,
+    meal ? eq(logEntries.meal, meal) : undefined
+  );
   const counts = db
     .select({ ref: logEntries.sourceRef, uses: sql<number>`count(*)::int`.as("uses"), lastId: sql<number>`max(${logEntries.id})`.as("last_id") })
     .from(logEntries)
@@ -356,17 +363,20 @@ export default async function foodLogRoutes(app: FastifyInstance) {
   });
 
   // The last 30 different foods logged, newest first, each with the portion used last time
+  // (?meal=breakfast: only what was logged at breakfast, with the portion used there)
   app.get("/api/foods/recent", async (req) => {
     const userId = requireUser(req);
-    const picks = await lastPerFood(db, userId).orderBy(desc(sql`last_id`)).limit(RECENT_LIMIT);
+    const { meal } = mealQuery.parse(req.query ?? {});
+    const picks = await lastPerFood(db, userId, { meal }).orderBy(desc(sql`last_id`)).limit(RECENT_LIMIT);
     return { foods: await resolveFoods(db, userId, picks) };
   });
 
-  // The 20 foods logged most often in the last 60 days (ties: the one used last first)
+  // The 20 foods logged most often in the last 60 days (ties: the one used last first); ?meal= as above
   app.get("/api/foods/frequent", async (req) => {
     const userId = requireUser(req);
+    const { meal } = mealQuery.parse(req.query ?? {});
     const since = addDays(await todayFor(app, userId), -(FREQUENT_DAYS - 1));
-    const picks = await lastPerFood(db, userId, since).orderBy(desc(sql`uses`), desc(sql`last_id`)).limit(FREQUENT_LIMIT);
+    const picks = await lastPerFood(db, userId, { since, meal }).orderBy(desc(sql`uses`), desc(sql`last_id`)).limit(FREQUENT_LIMIT);
     return { foods: await resolveFoods(db, userId, picks) };
   });
 }
