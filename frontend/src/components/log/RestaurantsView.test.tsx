@@ -321,6 +321,29 @@ describe("Restaurants tab", () => {
     expect(within(sheet).queryByText("Searching…")).not.toBeInTheDocument();
   });
 
+  it("clearing the box while a search is out shows the landing again; the late answer is dropped", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    open({
+      "GET /api/restaurants/recent-chains": () => ({ chains: ["Panera Bread"] }),
+      "GET /api/restaurants/favourites": () => ({ chains: [{ chain: "Panera Bread", foods: [panini] }] }),
+      "GET /api/restaurants/search": async () => {
+        await gate;
+        return results;
+      },
+    });
+    const user = userEvent.setup();
+    const sheet = await openRestaurants(user);
+    await search(user, "chipotle");
+    expect(within(sheet).getByText("Searching…")).toBeInTheDocument();
+    await user.clear(screen.getByRole("searchbox", { name: "Search restaurants" }));
+    await act(async () => release());
+    expect(await within(sheet).findByRole("region", { name: "Favourites" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("region", { name: "Recent chains" })).toBeInTheDocument();
+    expect(within(sheet).queryByText("Searching…")).not.toBeInTheDocument();
+    expect(within(sheet).queryByRole("region", { name: "Chipotle" })).not.toBeInTheDocument();
+  });
+
   describe("no repeated calls", () => {
     async function withFakeTimers(routes: Record<string, (b: any, path: string) => unknown>, fn: (server: ReturnType<typeof fakeServer>, box: HTMLElement) => Promise<void>) {
       const { server } = open(routes);

@@ -84,6 +84,7 @@ export default function RestaurantsView({
   const [favs, setFavs] = useState<RestaurantFavourites["chains"]>([]);
   const [chains, setChains] = useState<string[]>([]);
   const searched = useRef(memo.searched); // the words of the last search sent (no second call for the same words)
+  const latest = useRef(0); // the live search's number: an older (or cleared) one's answer and finish are ignored
   const failed = useRef(false); // the last search failed: only Enter (or a chip) sends it again, never the pause
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const fetching = useRef<Record<string, Promise<FoodResult>>>({}); // items being fetched (a double tap waits on the same one)
@@ -106,20 +107,21 @@ export default function RestaurantsView({
     if (asked) clearTimeout(timer.current);
     if (t.length < MIN_LETTERS || (t === searched.current && !(asked && failed.current))) return;
     searched.current = memo.searched = t;
+    const n = ++latest.current;
     failed.current = false;
     setBusy(true);
     setMsg(null);
     try {
       const r = await api<MenuSearch>("GET", `/api/restaurants/search?q=${encodeURIComponent(t)}`);
-      if (searched.current !== t) return; // newer words were searched meanwhile
+      if (latest.current !== n) return; // newer words were searched, or the box was cleared, meanwhile
       setFound((memo.found = r));
       noteLeft(r.lookupsLeft);
     } catch (e) {
-      if (searched.current !== t) return;
+      if (latest.current !== n) return;
       failed.current = true;
       setMsg(errorMsg(e));
     } finally {
-      if (searched.current === t) setBusy(false); // a superseded search doesn't end the newer one's wait
+      if (latest.current === n) setBusy(false); // a superseded search doesn't end the newer one's wait
     }
   };
 
@@ -127,6 +129,8 @@ export default function RestaurantsView({
     memo.q = q;
     if (q.trim().length < MIN_LETTERS) {
       searched.current = memo.searched = "";
+      latest.current++; // drop any search still out
+      setBusy(false);
       setFound((memo.found = null));
       return;
     }
