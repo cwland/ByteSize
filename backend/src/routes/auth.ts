@@ -171,8 +171,9 @@ export default async function authRoutes(app: FastifyInstance) {
     // The last 60 days (older ones are deleted)
     await pruneLoginLog(db);
     // An admin sees every sign-in (and attempt); a member sees their own
-    const [me] = await db.select({ username: users.username, email: users.email }).from(users).where(eq(users.id, req.auth!.userId));
-    const mine = req.auth!.isAdmin ? undefined : or(sql`lower(${loginEvents.username}) = ${me.username.toLowerCase()}`, me.email ? sql`lower(${loginEvents.username}) = ${me.email.toLowerCase()}` : undefined, inArray(loginEvents.sessionId, db.select({ id: sessions.id }).from(sessions).where(eq(sessions.userId, req.auth!.userId))));
+    // (by username and their own sessions only: an email is self-chosen, so matching on it could show someone else's)
+    const [me] = await db.select({ username: users.username }).from(users).where(eq(users.id, req.auth!.userId));
+    const mine = req.auth!.isAdmin ? undefined : or(sql`lower(trim(${loginEvents.username})) = ${me.username}`, inArray(loginEvents.sessionId, db.select({ id: sessions.id }).from(sessions).where(eq(sessions.userId, req.auth!.userId))));
     const rows = await db.select().from(loginEvents).where(mine).orderBy(desc(loginEvents.at), desc(loginEvents.id)).limit(5000);
     return rows.map((e) => ({ ...e, device: describeDevice(e.userAgent) }));
   });

@@ -12,6 +12,8 @@ services:
       # The password is passed on its own (PGPASSWORD), so any characters work (/, +, = …), no encoding
       DATABASE_URL: postgresql://${POSTGRES_USER}@db:5432/${POSTGRES_DB}
       PGPASSWORD: ${POSTGRES_PASSWORD}
+      # Inside the container the app always listens on 4100; PORT in .env only picks the port on this server
+      PORT: "4100"
     depends_on:
       db:
         condition: service_healthy
