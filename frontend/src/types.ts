@@ -151,3 +151,8 @@ export type Glp1View = {
 };
 export type SideEffectDay = { day: string; effects: Partial<Record<SideEffect, 1 | 2 | 3>>; note: string | null };
 export type AfterInjection = { enough: boolean; days: { offset: number; avgCalories: number | null; avgProtein: number | null; daysCounted: number }[] };
+// M3 weekly trends, badges, vacation mode (GET /api/trends/weekly, /api/badges, /api/vacations)
+export type TrendKey = "calories" | "protein_g" | "fiber_g" | "water_ml";
+export type WeekTrend = { start: string; end: string; daysLogged: number; avg: Record<TrendKey, number | null>; status: Record<TrendKey, "below" | "in" | "above" | null>; weightChangeKg: number | null };
+export type Badge = { id: string; earnedOn: string | null; seen: boolean };
+export type Vacation = { id: number; from: string; to: string };

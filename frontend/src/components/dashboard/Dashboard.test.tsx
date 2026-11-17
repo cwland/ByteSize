@@ -125,4 +125,13 @@ describe("Dashboard", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Pick a plan" }));
     expect(window.location.hash).toBe("#/goals/plan");
   });
+
+  it("dashboard celebrates a new badge", async () => {
+    const server = show(dayJson({ totals, streak: 7 }), {
+      "GET /api/badges": () => ({ badges: [{ id: "streak_7", earnedOn: "2026-11-16", seen: false }], new: ["streak_7"] }),
+      "POST /api/badges/seen": (b) => ({ seen: b.ids }),
+    });
+    expect(await screen.findByRole("region", { name: "New badge" })).toHaveTextContent("New badge: 7-day streak 🎉");
+    await vi.waitFor(() => expect(server.writes().some((w) => w.path === "/api/badges/seen")).toBe(true));
+  });
 });

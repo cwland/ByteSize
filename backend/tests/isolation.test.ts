@@ -260,4 +260,41 @@ describe("per-user isolation", () => {
     expect(annasAfter.enough).toBe(true);
     expect(annasAfter.days[0]).toEqual({ offset: 0, avgCalories: 80, avgProtein: 3, daysCounted: 1 });
   });
+
+
+  it("a user's trends, badges and vacations never include another user's weigh-ins, shots, food or vacations", async () => {
+    const { a, b } = await twoUsers(t);
+    const { glp1Shots, weighIns } = await import("../src/db/schema.js");
+    t.clock.date = new Date("2026-11-17T19:00:00Z");
+    await t.db.insert(weighIns).values([
+      { userId: a.id, day: "2026-11-01", weightKg: 100 },
+      { userId: a.id, day: "2026-11-10", weightKg: 90 },
+    ]);
+    for (const day of ["2026-10-20", "2026-10-27", "2026-11-03", "2026-11-10"]) await t.db.insert(glp1Shots).values({ userId: a.id, day, medication: "Zepbound", doseMg: 2.5, site: "arm_left" });
+    const food = (await a.as("POST", "/api/my-foods", { name: "Anna's toast", servings: [{ label: "1 slice", grams: 30 }], nutrients: { calories: 80 } })).body.food;
+    for (const day of ["2026-11-14", "2026-11-17"]) await a.as("POST", "/api/log", { day, meal: "breakfast", food: { kind: "user_food", id: food.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
+    const vacation = (await a.as("POST", "/api/vacations", { from: "2026-11-15", to: "2026-11-16" })).body.vacation;
+    const annas = (await a.as("GET", "/api/badges")).body;
+    expect(annas.new).toEqual(["first_weigh_in", "lost_5", "lost_10", "shots_on_time_4"]);
+    expect((await a.as("GET", "/api/day/today")).body.streak).toBe(2);
+
+    // ben sees nothing of anna's
+    const bens = (await b.as("GET", "/api/badges")).body;
+    expect(bens.new).toEqual([]);
+    expect(bens.badges.every((x: any) => x.earnedOn === null)).toBe(true);
+    expect((await b.as("GET", "/api/vacations")).body).toEqual({ vacations: [] });
+    const [week] = (await b.as("GET", "/api/trends/weekly?weeks=1")).body.weeks;
+    expect(week).toMatchObject({ daysLogged: 0, weightChangeKg: null, avg: { calories: null } });
+    // ...can't remove anna's vacation or mark her badges seen, and her vacation doesn't help his streak
+    expect((await b.as("DELETE", `/api/vacations/${vacation.id}`)).status).toBe(404);
+    expect((await b.as("POST", "/api/badges/seen", { ids: ["first_weigh_in"] })).body).toEqual({ seen: [] });
+    const bensFood = (await b.as("POST", "/api/my-foods", { name: "Ben's egg", servings: [{ label: "1 egg", grams: 50 }], nutrients: { calories: 70 } })).body.food;
+    for (const day of ["2026-11-14", "2026-11-17"]) await b.as("POST", "/api/log", { day, meal: "breakfast", food: { kind: "user_food", id: bensFood.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
+    expect((await b.as("GET", "/api/day/today")).body.streak).toBe(1);
+
+    // ...and anna's are untouched
+    expect((await a.as("GET", "/api/vacations")).body.vacations).toEqual([vacation]);
+    expect((await a.as("GET", "/api/badges")).body).toEqual(annas);
+    expect((await a.as("GET", "/api/trends/weekly?weeks=1")).body.weeks[0]).toMatchObject({ daysLogged: 1, avg: { calories: 80 } });
+  });
 });

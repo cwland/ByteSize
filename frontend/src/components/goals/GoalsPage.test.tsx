@@ -81,4 +81,17 @@ describe("Goals", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Check your plan" }));
     expect(await screen.findByRole("heading", { name: "Choose your plan" })).toBeInTheDocument();
   });
+
+  it("Goals shows weekly trends, badges and vacation mode", async () => {
+    fakeServer({
+      "GET /api/targets": () => ({ targets: steadyTargets }),
+      "GET /api/trends/weekly": () => ({ weeks: [] }),
+      "GET /api/badges": () => ({ badges: [{ id: "first_weigh_in", earnedOn: null, seen: false }], new: [] }),
+      "GET /api/vacations": () => ({ vacations: [] }),
+    });
+    renderWithSession(<GoalsPage />);
+    expect(await screen.findByRole("region", { name: "Weekly trends" })).toBeInTheDocument();
+    expect(await screen.findByRole("listitem", { name: "First weigh-in" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Vacation mode" })).toBeInTheDocument();
+  });
 });

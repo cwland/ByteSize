@@ -7,6 +7,9 @@ import type { Targets } from "../../types";
 import { fmt, waterUnit, waterValue } from "../../units";
 import PlanFlow from "../plan/PlanFlow";
 import TargetsEditor from "./TargetsEditor";
+import WeeklyTrends from "./WeeklyTrends";
+import Badges from "./Badges";
+import VacationMode from "./VacationMode";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { linkButton, primaryButton, secondaryButton } from "../ui/styles";
 import WeightSection from "../weight/WeightSection";
@@ -81,6 +84,9 @@ export default function GoalsPage() {
       )}
       <WeightSection onReplan={() => setMode("plan")} />
       <a href="#/glp1?from=/goals" className={`${secondaryButton} text-center`}>GLP-1 shots</a>
+      <WeeklyTrends />
+      <Badges />
+      <VacationMode />
     </div>
   );
 }
