@@ -4,7 +4,7 @@ import { twoUsers } from "./isolation.js";
 import { softPasskey } from "./softPasskey.js";
 import { aiSettings, offKnows, offProduct } from "./foodFakes.js";
 import { labelPhoto, photoUpload } from "./photoFakes.js";
-import { CULURY, culuryCalls, culuryKnows, culuryRecipe } from "./culuryFakes.js";
+import { CULURY, culuryCalls, culuryKnows, culuryRecipe, fakeDns } from "./culuryFakes.js";
 
 // Every route that reads or changes a person's data gets a case here (M2 adds foods, logs, targets...)
 let t: TestApp;
@@ -329,5 +329,13 @@ describe("per-user isolation", () => {
     // removing his link leaves hers
     await b.as("DELETE", "/api/settings/culury");
     expect((await a.as("GET", "/api/settings/culury")).body).toEqual({ url: CULURY, hasKey: true });
+
+    // with his Culury unreachable, re-logging never falls back to anna's snapshot of "her" recipe 7
+    fakeDns["bens-down.lan"] = [];
+    expect((await b.as("PUT", "/api/settings/culury", { url: "http://bens-down.lan", apiKey: "bens-key" })).status).toBe(200);
+    expect((await b.as("POST", "/api/log", { day: "2026-11-17", meal: "dinner", food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1 })).status).toBe(502);
+    await b.as("DELETE", "/api/settings/culury");
+    expect((await b.as("POST", "/api/log", { day: "2026-11-17", meal: "dinner", food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1 })).status).toBe(400);
+    expect((await b.as("GET", "/api/day/2026-11-17")).body.entries).toEqual([]);
   });
 });

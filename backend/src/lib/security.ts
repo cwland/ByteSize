@@ -24,13 +24,14 @@ export interface RateLimitOptions {
 }
 export const DEFAULT_RATE_LIMIT: RateLimitOptions = { max: 10, windowMs: 60_000 };
 
-// Sign-in, password reset and account setup: limited per address (on top of the login lockout)
+// Sign-in, password reset, account setup and Culury's connection test: limited per address (on top of the login lockout)
 export const SENSITIVE_ROUTES = new Set([
   "POST /api/auth/setup",
   "POST /api/auth/login",
   "POST /api/passkeys/login/options",
   "POST /api/passkeys/login/verify",
   "POST /api/auth/password",
+  "POST /api/settings/culury/test", // calls out to an address the person typed
 ]);
 
 export function securityHeaders(app: FastifyInstance) {

@@ -2,12 +2,14 @@
 // ByteSize never writes to it. The link is per person (user_settings.culury_url / culury_key_enc, the key
 // encrypted). Only GET {culury}/api/plan and GET {culury}/api/recipes… are ever called, with a 3 s timeout,
 // no redirects followed, and failures reported as plain messages (never Culury's answer, the key or the URL).
+import dns from "node:dns/promises";
+import net from "node:net";
 import type { FastifyInstance } from "fastify";
 import { eq } from "drizzle-orm";
 import { userSettings } from "../db/schema.js";
 import { logEvent } from "./appLog.js";
 import { addDays, MEALS, type Meal } from "./days.js";
-import { badRequest } from "./errors.js";
+import { badRequest, HttpError } from "./errors.js";
 import { iconFor } from "./foodIcons.js";
 import type { FoodResult } from "./foods.js";
 import type { NutrientKey, Nutrients, Serving } from "./nutrients.js";
@@ -16,8 +18,59 @@ import { decryptSecret, encryptSecret } from "./secrets.js";
 export const CULURY_TIMEOUT_MS = 3000;
 const MAX_URL = 300;
 const MAX_KEY = 300;
-// Cloud metadata services: never a Culury
-const BLOCKED_HOSTS = new Set(["metadata.google.internal", "metadata", "169.254.169.254", "[fd00:ec2::254]"]);
+const PLAN_OR_RECIPE_MAX_BYTES = 512 * 1024;
+const LIST_MAX_BYTES = 1024 * 1024;
+const LOG_EVERY_MS = 10 * 60 * 1000; // a Culury that stays down: one warning per person per 10 minutes
+// Cloud metadata services by name: never a Culury
+const BLOCKED_NAMES = new Set(["metadata.google.internal", "metadata"]);
+
+/** The 8 groups of an IPv6 address (with an embedded IPv4 tail), or null. */
+function ipv6Groups(ip: string): number[] | null {
+  let s = ip.toLowerCase();
+  const v4 = /(\d+\.\d+\.\d+\.\d+)$/.exec(s);
+  if (v4) {
+    const p = v4[1].split(".").map(Number);
+    s = s.slice(0, -v4[1].length) + `${((p[0] << 8) | p[1]).toString(16)}:${((p[2] << 8) | p[3]).toString(16)}`;
+  }
+  const [head, tail] = s.split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail !== undefined && tail ? tail.split(":") : [];
+  const fill = s.includes("::") ? 8 - h.length - t.length : 0;
+  const groups = [...h, ...Array(fill).fill("0"), ...t].map((g) => parseInt(g, 16));
+  return groups.length === 8 && groups.every((g) => g >= 0 && g <= 0xffff) ? groups : null;
+}
+
+const blockedV4 = (ip: string) => /^169\.254\./.test(ip) || ip === "100.100.100.200";
+
+/**
+ * Where cloud metadata lives: link-local 169.254.0.0/16 (also inside IPv6 as ::ffff:a.b.c.d or ::a.b.c.d),
+ * fe80::/10, Alibaba's 100.100.100.200 and AWS's fd00:ec2::254. LAN / private addresses are fine.
+ */
+export function blockedAddress(raw: string): boolean {
+  const ip = raw.replace(/^\[|\]$/g, "").replace(/%.*$/, "");
+  if (net.isIPv4(ip)) return blockedV4(ip);
+  if (!net.isIPv6(ip)) return false;
+  const g = ipv6Groups(ip);
+  if (!g) return true; // can't tell: refuse
+  if ((g[0] & 0xffc0) === 0xfe80) return true;
+  if (g.join(":") === [0xfd00, 0xec2, 0, 0, 0, 0, 0, 0x254].join(":")) return true;
+  if (g.slice(0, 5).every((x) => x === 0) && (g[5] === 0xffff || g[5] === 0)) {
+    return blockedV4(`${g[6] >> 8}.${g[6] & 0xff}.${g[7] >> 8}.${g[7] & 0xff}`);
+  }
+  return false;
+}
+
+/** A URL's host name as checked: lower case, no brackets' contents changed, no trailing dot. */
+const hostOf = (u: URL) => u.hostname.toLowerCase().replace(/\.$/, "");
+const blockedHost = (host: string) => BLOCKED_NAMES.has(host) || blockedAddress(host);
+
+// Host names are looked up before each call (tests swap in a fake DNS)
+export type HostLookup = (host: string) => Promise<string[]>;
+const systemLookup: HostLookup = async (host) => (await dns.lookup(host, { all: true, verbatim: true })).map((a) => a.address);
+let lookupHost: HostLookup = systemLookup;
+export function setCuluryLookup(fn: HostLookup | null) {
+  lookupHost = fn ?? systemLookup;
+}
 
 /** Culury didn't answer usefully. The message is safe to show (never the key, the URL or Culury's answer). */
 export class CuluryError extends Error {
@@ -47,9 +100,7 @@ export function cleanCuluryUrl(raw: string): string {
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") throw bad();
   if (u.username || u.password || !u.hostname) throw bad();
-  const host = u.hostname.toLowerCase();
-  // link-local (169.254.x.x, also as ::ffff:169.254.x.x, fe80::) is where cloud metadata lives
-  if (BLOCKED_HOSTS.has(host) || /^169\.254\./.test(host) || /^\[fe[89ab][0-9a-f]:/i.test(host) || /^\[::ffff:a9fe:/i.test(host)) throw bad();
+  if (blockedHost(hostOf(u))) throw bad();
   return `${u.origin}${u.pathname.replace(/\/+$/, "")}`;
 }
 
@@ -96,6 +147,7 @@ export async function removeCuluryLink(app: FastifyInstance, userId: number) {
 async function culuryGet(app: FastifyInstance, link: CuluryLink, path: "/api/plan" | "/api/recipes" | `/api/recipes/${number}`, query: Record<string, string> = {}, timeoutMs = CULURY_TIMEOUT_MS): Promise<unknown> {
   const qs = new URLSearchParams(query).toString();
   const url = `${link.url}${path}${qs ? `?${qs}` : ""}`;
+  const maxBytes = path === "/api/recipes" ? LIST_MAX_BYTES : PLAN_OR_RECIPE_MAX_BYTES;
   const ctrl = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timedOut = new Promise<never>((_, reject) => {
@@ -105,6 +157,7 @@ async function culuryGet(app: FastifyInstance, link: CuluryLink, path: "/api/pla
     }, Math.max(0, timeoutMs));
   });
   const call = (async () => {
+    await checkHost(url);
     let res: Response;
     try {
       // redirect "manual": a 3xx is answered as it is (and refused below), never followed to another host
@@ -116,8 +169,9 @@ async function culuryGet(app: FastifyInstance, link: CuluryLink, path: "/api/pla
     if (res.status === 403) throw new CuluryError("Culury refused the API key (it needs Read only access, with API keys turned on in Culury)");
     if (res.status === 404) throw new CuluryError("Culury didn't find that (check the address)", true);
     if (res.status < 200 || res.status >= 300) throw new CuluryError(`Culury answered with an error (${res.status})`);
+    const body = await readCapped(res, maxBytes, ctrl);
     try {
-      return (await res.json()) as unknown;
+      return JSON.parse(body) as unknown;
     } catch {
       throw new CuluryError("Culury's answer didn't make sense");
     }
@@ -130,9 +184,71 @@ async function culuryGet(app: FastifyInstance, link: CuluryLink, path: "/api/pla
   }
 }
 
+/**
+ * The host name is looked up before each call (so a name that points at, or is later re-pointed at, a
+ * metadata / link-local address is never called). LAN and private addresses are fine.
+ */
+async function checkHost(url: string) {
+  const host = hostOf(new URL(url));
+  if (blockedHost(host)) throw new CuluryError(NOT_ALLOWED);
+  if (net.isIP(host.replace(/^\[|\]$/g, ""))) return;
+  let addresses: string[];
+  try {
+    addresses = await lookupHost(host);
+  } catch {
+    throw new CuluryError("Couldn't reach Culury");
+  }
+  if (!addresses.length) throw new CuluryError("Couldn't reach Culury");
+  if (addresses.some(blockedAddress)) throw new CuluryError(NOT_ALLOWED);
+}
+const NOT_ALLOWED = "Culury's address isn't allowed";
+const TOO_LARGE = "Culury's answer was too large";
+
+/** The body as text, refused (and the request aborted) past maxBytes. */
+async function readCapped(res: Response, maxBytes: number, ctrl: AbortController): Promise<string> {
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    ctrl.abort();
+    throw new CuluryError(TOO_LARGE);
+  }
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        ctrl.abort();
+        await reader.cancel().catch(() => {});
+        throw new CuluryError(TOO_LARGE);
+      }
+      chunks.push(value);
+    }
+  } catch (err) {
+    if (err instanceof CuluryError) throw err;
+    throw new CuluryError("Couldn't reach Culury");
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 export const culuryMessage = (err: unknown) => (err instanceof CuluryError ? err.message : "Culury couldn't be reached");
 
-export async function logCuluryFailure(app: FastifyInstance, userId: number, what: string, err: unknown) {
+const lastLogged = new WeakMap<FastifyInstance, Map<number, number>>();
+
+/**
+ * A warning in Settings › Logs, at most once per 10 minutes per person (a Culury that stays down would
+ * otherwise add a line on every search). force: always (a connection test the person asked for).
+ */
+export async function logCuluryFailure(app: FastifyInstance, userId: number, what: string, err: unknown, force = false) {
+  const now = app.now().getTime();
+  const seen = lastLogged.get(app) ?? new Map<number, number>();
+  lastLogged.set(app, seen);
+  const last = seen.get(userId);
+  if (!force && last !== undefined && now >= last && now - last < LOG_EVERY_MS) return;
+  seen.set(userId, now);
   await logEvent(app.db, { category: "food", level: "warning", source: "Culury", event: `Culury ${what} failed`, detail: culuryMessage(err), userId });
 }
 
@@ -222,9 +338,8 @@ export function culuryFood(recipe: any): CuluryFood | null {
     const v = n?.[from];
     if (typeof v === "number" && Number.isFinite(v) && v >= 0) nutrients[to] = round(v, decimals);
   }
-  // "About 1½ cups (340 g)" -> 340 g; anything else: servings only
-  const grams = typeof n?.servingSize === "string" ? /\((\d+(?:\.\d+)?)\s*g\)/i.exec(n.servingSize) : null;
-  const serving: Serving = { label: "1 serving", ...(grams && Number(grams[1]) > 0 ? { grams: Number(grams[1]) } : {}) };
+  const grams = servingGrams(n?.servingSize);
+  const serving: Serving = { label: "1 serving", ...(grams ? { grams } : {}) };
   const keys = Object.keys(nutrients);
   return {
     food: {
@@ -264,10 +379,43 @@ export async function searchCulury(app: FastifyInstance, link: CuluryLink, q: st
   const deadline = Date.now() + CULURY_TIMEOUT_MS;
   const json = (await culuryGet(app, link, "/api/recipes", { q, limit: String(SEARCH_LIMIT) })) as { recipes?: unknown };
   if (!json || !Array.isArray(json.recipes)) throw new CuluryError("Culury's answer didn't make sense");
-  const listed = json.recipes.map(culuryFood).filter((f): f is CuluryFood => f !== null).slice(0, SEARCH_LIMIT);
+  const listed = json.recipes.slice(0, SEARCH_LIMIT).map(culuryFood).filter((f): f is CuluryFood => f !== null);
   const details = await Promise.allSettled(listed.map((f) => culuryRecipe(app, link, f.food.id, deadline - Date.now())));
   return listed.map((f, i) => {
     const d = details[i];
     return d.status === "fulfilled" ? d.value.food : f.food;
   });
+}
+
+/**
+ * The grams in a Culury serving note: "About 1½ cups (340 g)", "(1,200 g)", "(340 g / 12 oz)", "(85.5g)".
+ * Undefined when the note gives no grams (servings only, then).
+ */
+export function servingGrams(text: unknown): number | undefined {
+  if (typeof text !== "string") return undefined;
+  const m = /\(\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(?:g|grams?)\b[^)]*\)/i.exec(text);
+  const grams = m ? Number(m[1].replace(/,/g, "") + (m[2] ?? "")) : NaN;
+  return Number.isFinite(grams) && grams > 0 ? grams : undefined;
+}
+
+// ---------- for routes ----------
+
+const NOT_LINKED = "Link Culury in Settings › Integrations first";
+
+/** Culury failing for a request that needs it: a plain 404 / 502. */
+export function culuryHttpError(err: unknown): HttpError {
+  if (err instanceof CuluryError && err.notFound) return new HttpError(404, "Culury doesn't have that recipe (any more)");
+  return new HttpError(502, culuryMessage(err));
+}
+
+/** A recipe from the caller's own Culury, for showing or logging. 400 not linked; 404 / 502 from Culury. */
+export async function loadCuluryRecipe(app: FastifyInstance, userId: number, id: number): Promise<CuluryFood> {
+  const link = await culuryLink(app, userId);
+  if (!link) throw badRequest(NOT_LINKED);
+  try {
+    return await culuryRecipe(app, link, id);
+  } catch (err) {
+    if (!(err instanceof CuluryError && err.notFound)) await logCuluryFailure(app, userId, "recipe", err);
+    throw culuryHttpError(err);
+  }
 }

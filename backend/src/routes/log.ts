@@ -7,7 +7,7 @@ import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
 import { addDays, DAY, localDay, mealFor, MEALS, streak, suggestedFor, todayFor, userTimezone, type Meal } from "../lib/days.js";
 import { cleanNutrients, loadFood, toResult, type FoodResult } from "../lib/foods.js";
-import { loadCuluryRecipe } from "./culury.js";
+import { loadCuluryRecipe } from "../lib/culury.js";
 import { itemList, portionFields, quickMealParts } from "../lib/recipes.js";
 import { amountFactor, scaleNutrients, sumNutrients, UnitError, type Nutrients, type Serving, type Unit } from "../lib/nutrients.js";
 import { DEFAULT_MEAL_WINDOWS } from "./settings-me.js";
@@ -215,6 +215,23 @@ function culurySnapshot(r: Row): FoodResult {
   };
 }
 
+/**
+ * This person's newest snapshot of a Culury recipe, as the food to log when Culury can't be asked. A recipe
+ * Culury says it doesn't have (404) isn't revived; never logged: Culury's own error stands.
+ */
+async function lastCuluryLogged(db: Db, userId: number, recipeId: number, err: unknown) {
+  if (err instanceof HttpError && err.statusCode === 404) throw err;
+  const [last] = await db
+    .select()
+    .from(logEntries)
+    .where(and(eq(logEntries.userId, userId), eq(logEntries.sourceRef, `culury:${recipeId}`)))
+    .orderBy(desc(logEntries.id))
+    .limit(1);
+  if (!last) throw err;
+  const food = culurySnapshot(last);
+  return { food, hasNutrition: Object.keys(food.nutrients).length > 0 }; // an AI-estimated snapshot stays flagged
+}
+
 /** The meal for this time of day, by the person's meal windows. */
 async function mealNow(db: Db, userId: number, timezone: string, now: Date): Promise<Meal> {
   const [s] = await db.select({ mealWindows: userSettings.mealWindows }).from(userSettings).where(eq(userSettings.userId, userId));
@@ -290,8 +307,9 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     const b = foodBody.parse(raw);
     let food: FoodResult;
     if (b.food.kind === "culury") {
-      // Read live from the caller's own Culury, then snapshotted like any food
-      const recipe = await loadCuluryRecipe(app, userId, b.food.id);
+      // Read live from the caller's own Culury, then snapshotted like any food; when Culury can't be asked
+      // (down, or the link removed), the caller's own last snapshot of it is used
+      const recipe = await loadCuluryRecipe(app, userId, b.food.id).catch((err) => lastCuluryLogged(db, userId, b.food.id, err));
       food = recipe.food;
       if (b.nutrients) {
         if (recipe.hasNutrition) throw badRequest(ESTIMATE_ONLY);

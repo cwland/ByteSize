@@ -5,6 +5,22 @@
 // A wrong or missing X-API-Key gets 401 { error: "Not logged in" }, like Culury.
 import type { TestApp } from "./helpers.js";
 import { OFF_SEARCH, USDA } from "./foodFakes.js";
+import { setCuluryLookup } from "../src/lib/culury.js";
+
+/**
+ * The fake DNS ByteSize checks a Culury host name with before each call: a name listed here resolves to
+ * its addresses; any other name resolves to a LAN address (192.168.1.20). Tests change it per case.
+ */
+export const fakeDns: Record<string, string[]> = {};
+export const dnsLookups: string[] = [];
+setCuluryLookup(async (host) => {
+  dnsLookups.push(host);
+  return fakeDns[host] ?? ["192.168.1.20"];
+});
+export function resetFakeDns() {
+  for (const k of Object.keys(fakeDns)) delete fakeDns[k];
+  dnsLookups.length = 0;
+}
 
 export const CULURY = "http://culury.lan:4000";
 export const CULURY_KEY = "cul_readonly_SECRET_9f8e7d";
@@ -44,7 +60,7 @@ export const fullNutrition = (extra: Partial<CuluryNutrition> = {}): CuluryNutri
 });
 
 export function culuryRecipe(id: number, title: string, nutrition: CuluryNutrition | null = fullNutrition()) {
-  return { id, title, description: null, imageUrl: `/api/images/${id}.jpg`, servings: 4, yieldText: "4 servings", totalMinutes: 30, nutrition, tags: [], me: { favorite: false } };
+  return { id, title, description: null as string | null, imageUrl: `/api/images/${id}.jpg`, servings: 4, yieldText: "4 servings", totalMinutes: 30, nutrition, tags: [], me: { favorite: false } };
 }
 
 export type PlanRow = { date: string; slot: string; recipeId: number | null; title: string; servings?: number | null; note?: string | null; position?: number };

@@ -1,13 +1,21 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { never } from "./foodFakes.js";
-import { CULURY, CULURY_KEY, culuryCalls, culuryKnows, culuryRecipe, fullNutrition } from "./culuryFakes.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { and, eq } from "drizzle-orm";
+import { CULURY, CULURY_KEY, culuryCalls, culuryKnows, culuryRecipe, fakeDns, fullNutrition, resetFakeDns } from "./culuryFakes.js";
 import { appLog, userSettings } from "../src/db/schema.js";
+import { buildApp } from "../src/app.js";
+import { servingGrams } from "../src/lib/culury.js";
+import { TEST_SECRET } from "./helpers.js";
 
 let t: TestApp;
 beforeAll(async () => (t = await setupTestApp()));
 beforeEach(async () => {
   await t.reset();
+  resetFakeDns();
   await t.login();
 });
 afterAll(async () => t.close());
@@ -57,6 +65,12 @@ describe("Culury settings", () => {
     ["http://[::ffff:169.254.169.254]"],
     ["http://2852039166"],
     ["http://[fe80::1]"],
+    ["http://metadata.google.internal."],
+    ["http://169.254.169.254."],
+    ["http://100.100.100.200"],
+    ["http://[::169.254.169.254]"],
+    ["http://[0:0:0:0:0:ffff:169.254.1.1]"],
+    ["http://[::ffff:a9fe:1]"],
     ["http://metadata.google.internal"],
     ["not a url"],
   ])("refuses %s", async (url) => {
@@ -400,5 +414,164 @@ describe("Logging a Culury recipe", () => {
     // ids are numbers: no path tricks
     expect((await t.api("GET", "/api/culury/recipes/..%2F..%2Fadmin")).status).toBe(400);
     for (const c of t.foodWeb.calls) expect(c.url).toMatch(/^http:\/\/culury\.lan:4000\/sub\/api\/(plan|recipes)/);
+  });
+});
+
+describe("fix round 1", () => {
+  const log = (body: object) => t.api("POST", "/api/log", { day: "2026-11-17", meal: "dinner", ...body });
+
+  describe("re-logging from the last snapshot when Culury can't be asked", () => {
+    it("Culury down, or the link removed: this person's last snapshot is used", async () => {
+      culuryKnows(t, { recipes: [culuryRecipe(7, "Turkey chili")] });
+      await link();
+      expect((await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1 })).status).toBe(200);
+      t.foodWeb.down = true;
+      const again = await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 2 });
+      expect(again.status).toBe(200);
+      expect(again.body.entry).toMatchObject({ name: "Turkey chili", sourceRef: "culury:7", source: "culury", nutrients: { calories: 1040 }, servings: [{ label: "1 serving", grams: 340 }] });
+      // an estimate isn't taken over a snapshot that has nutrition
+      expect((await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1, nutrients: { calories: 1 } })).status).toBe(400);
+      // never logged: still Culury's failure
+      expect((await log({ food: { kind: "culury", id: 9 }, unit: "serving", quantity: 1 })).status).toBe(502);
+      await t.api("DELETE", "/api/settings/culury");
+      expect((await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 0.5 })).body.entry.nutrients.calories).toBe(260);
+      expect((await log({ food: { kind: "culury", id: 9 }, unit: "serving", quantity: 1 })).status).toBe(400);
+    });
+
+    it("a snapshot without nutrition still takes an AI estimate (flagged)", async () => {
+      culuryKnows(t, { recipes: [culuryRecipe(8, "Grandma's stew", null)] });
+      await link();
+      await log({ food: { kind: "culury", id: 8 }, unit: "serving", quantity: 1 });
+      t.foodWeb.down = true;
+      const est = await log({ food: { kind: "culury", id: 8 }, unit: "serving", quantity: 1, nutrients: { calories: 400 } });
+      expect(est.status).toBe(200);
+      expect(est.body.entry).toMatchObject({ aiEstimated: true, nutrients: { calories: 400 } });
+    });
+
+    it("a recipe Culury no longer has is not logged from an old snapshot", async () => {
+      culuryKnows(t, { recipes: [culuryRecipe(7, "Turkey chili")] });
+      await link();
+      await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1 });
+      culuryKnows(t, { recipes: [] });
+      expect((await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1 })).status).toBe(404);
+    });
+  });
+
+  describe("answer size", () => {
+    const big = "x".repeat(600 * 1024);
+    it("a recipe over 512 KB is refused", async () => {
+      culuryKnows(t, { recipes: [{ ...culuryRecipe(7, "Turkey chili"), description: big } as any] });
+      await link();
+      const res = await t.api("GET", "/api/culury/recipes/7");
+      expect(res.status).toBe(502);
+      expect(res.body.error).toBe("Culury's answer was too large");
+    });
+
+    it("a plan over 512 KB is refused", async () => {
+      await link();
+      t.foodWeb.respond = () => ({ status: 200, json: [{ date: "2026-11-17", slot: "dinner", title: "Big", recipeId: 1, note: big }] });
+      const res = await t.api("GET", "/api/culury/plan?day=2026-11-17");
+      expect(res.body.errors).toEqual([{ source: "culury", message: "Culury's answer was too large" }]);
+    });
+
+    it("a list may be up to 1 MB, not more; only the first 8 are opened", async () => {
+      const many = Array.from({ length: 40 }, (_, i) => culuryRecipe(i + 1, `Chili ${i + 1}`));
+      culuryKnows(t, { recipes: many });
+      await link();
+      const res = await t.api("GET", "/api/foods/search?q=chili");
+      expect(res.body.groups.find((g: any) => g.source === "culury").foods).toHaveLength(8);
+      expect(culuryCalls(t).filter((c) => /\/api\/recipes\/\d+$/.test(c.url))).toHaveLength(8);
+
+      const padded = Array.from({ length: 3 }, (_, i) => ({ ...culuryRecipe(i + 1, `Chili ${i + 1}`), description: "y".repeat(250 * 1024) }));
+      culuryKnows(t, { recipes: padded });
+      expect((await t.api("GET", "/api/foods/search?q=chili")).body.errors).toEqual([]);
+      const huge = Array.from({ length: 5 }, (_, i) => ({ ...culuryRecipe(i + 1, `Chili ${i + 1}`), description: "y".repeat(250 * 1024) }));
+      culuryKnows(t, { recipes: huge });
+      expect((await t.api("GET", "/api/foods/search?q=chili")).body.errors).toEqual([{ source: "culury", message: "Culury's answer was too large" }]);
+    });
+  });
+
+  describe("host names are checked before each call", () => {
+    it("a name that resolves to a metadata / link-local address is never called", async () => {
+      for (const [host, addrs] of [
+        ["169.254.169.254.nip.io", ["169.254.169.254"]],
+        ["evil.example", ["fe80::1"]],
+        ["evil2.example", ["::ffff:169.254.169.254"]],
+        ["evil3.example", ["10.0.0.5", "100.100.100.200"]],
+      ] as const) {
+        fakeDns[host] = [...addrs];
+        await t.api("DELETE", "/api/settings/culury");
+        expect((await link(`http://${host}:4000`)).status).toBe(200);
+        const res = await t.api("POST", "/api/settings/culury/test");
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe("Culury's address isn't allowed");
+      }
+      expect(t.foodWeb.calls).toHaveLength(0);
+    });
+
+    it("rebinding: checked again on every call", async () => {
+      culuryKnows(t, { recipes: [culuryRecipe(7, "Turkey chili")] });
+      await link();
+      expect((await t.api("GET", "/api/culury/recipes/7")).status).toBe(200);
+      fakeDns["culury.lan"] = ["169.254.169.254"];
+      expect((await t.api("GET", "/api/culury/recipes/7")).status).toBe(502);
+      expect(culuryCalls(t)).toHaveLength(1);
+    });
+
+    it("LAN and private addresses stay allowed", async () => {
+      fakeDns["culury.lan"] = ["10.0.0.5", "fd12:3456::1"];
+      culuryKnows(t, { recipes: [culuryRecipe(7, "Turkey chili")] });
+      await link();
+      expect((await t.api("GET", "/api/culury/recipes/7")).status).toBe(200);
+      for (const url of ["http://192.168.1.20:4000", "http://10.0.0.5", "http://172.16.0.9", "http://100.64.0.1"]) expect((await link(url)).status).toBe(200);
+    });
+
+    it("a name that doesn't resolve can't be reached", async () => {
+      fakeDns["nowhere.lan"] = [];
+      await link("http://nowhere.lan");
+      expect((await t.api("POST", "/api/settings/culury/test")).body.error).toBe("Couldn't reach Culury");
+    });
+  });
+
+  it("while Culury is down, searches log a warning at most once per 10 minutes", async () => {
+    await link();
+    t.foodWeb.down = true;
+    t.clock.date = new Date("2030-01-01T12:00:00Z");
+    const culuryLines = async () => (await t.db.select().from(appLog).where(and(eq(appLog.source, "Culury")))).length;
+    for (let i = 0; i < 3; i++) expect((await t.api("GET", "/api/foods/search?q=chili")).body.errors.filter((e: any) => e.source === "culury")).toHaveLength(1);
+    expect(await culuryLines()).toBe(1);
+    t.clock.date = new Date("2030-01-01T12:09:00Z");
+    await t.api("GET", "/api/foods/search?q=chili");
+    expect(await culuryLines()).toBe(1);
+    t.clock.date = new Date("2030-01-01T12:11:00Z");
+    await t.api("GET", "/api/foods/search?q=chili");
+    expect(await culuryLines()).toBe(2);
+  });
+
+  it("Test connection is rate-limited", async () => {
+    const dataDir = mkdtempSync(path.join(tmpdir(), "bytesize-rl-"));
+    const app2 = buildApp({ db: t.db, jwtSecret: TEST_SECRET, rateLimit: { max: 3, windowMs: 60_000 }, foodFetch: (async () => { throw new Error("no"); }) as any, dataDir });
+    await app2.ready();
+    try {
+      const headers = { authorization: `Bearer ${t.getToken()}` };
+      const statuses = [];
+      for (let i = 0; i < 4; i++) statuses.push((await app2.inject({ method: "POST", url: "/api/settings/culury/test", headers })).statusCode);
+      expect(statuses).toEqual([400, 400, 400, 429]);
+    } finally {
+      await app2.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["About 1½ cups (340 g)", 340],
+    ["(1,200 g)", 1200],
+    ["2 cups (340 g / 12 oz)", 340],
+    ["1 slice (85.5g)", 85.5],
+    ["1 bowl", undefined],
+    ["1 cup (8 oz)", undefined],
+    [null, undefined],
+  ])("serving grams from %s", (text, grams) => {
+    expect(servingGrams(text)).toBe(grams);
   });
 });
