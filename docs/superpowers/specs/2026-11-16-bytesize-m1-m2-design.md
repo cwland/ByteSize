@@ -357,3 +357,42 @@ calories, protein and fiber (ring colours). Tapping a food opens a "Track food" 
 fiber), Serving row (whole number + fraction + unit picker), nutritional insights, full nutrition facts, big Track button.
 Liquids offer ml, fl oz, cups with fractions, tbsp, tsp; a drink known only in grams uses 1 g ≈ 1 ml, marked approximate.
 Saturated fat is tracked.
+
+## 11. Addendum 2026-11-17 — round 2b-2: week strip, AI services, food search (decided by Cory)
+
+Already shipped on main the same morning (small fixes from Cory's testing): Add Food list scrolls on its own; quick add
+✓ in dev, shown 2 s; log entries keep the food's photo; emoji from the name before the category; sheets scroll inside
+so corners stay rounded; changing the unit keeps the number; drinks measured in grams start in fl oz (metric: ml).
+
+**Why:** fewer taps to move between days, an AI setup a non-technical person can finish, and search that finds plain
+foods even when misspelled.
+
+**A. Week strip (Dashboard and Log).** Replaces the date with ‹ ›. Seven day buttons (weekday letter + date number),
+selected day filled, today marked, a dot under each day with at least one food entry. Scrolls sideways (wheel, trackpad,
+swipe) through earlier/later weeks; ‹ › at the ends move a week. Entering the Dashboard or Log always selects today.
+New per-account setting "Week starts on" (Settings › Profile), default Sunday, any day allowed. Dots come from a new
+read-only `GET /api/days/logged?from=&to=` (days with entries, the caller's only). Water-only days get no dot.
+- Approaches: (1) strip of weeks, scroll-snapped per week — chosen; (2) endless day list — hard to page by week;
+  (3) month calendar pop-up — more taps, not what Cory described.
+
+**B. AI services.** "Validate" replaces "Find models": checks the key and loads the model list in one call, saying
+"Key works · N models" or why not. Model becomes a dropdown: "Recommended" group on top, the rest A–Z; when no model is
+set the first recommended one is picked. Recommendation is by family, newest version first, so it keeps working as
+names change: Claude — Haiku (fast, reads photos, main pick), then Sonnet; OpenAI — newest "mini", then the newest
+flagship; Gemini — newest "Flash", then "Pro"; OpenRouter — the same families by provider prefix; Home AI — no
+recommendation (A–Z only). Each service collapses (▸/▾); saved services start collapsed, new ones open; collapsed shows
+name + model. Order is set by dragging a ⠿ handle (mouse or touch); the ↑↓ buttons go; arrow keys on a focused handle
+move it.
+- Approaches: (1) family rules — chosen; (2) a fixed list of model names — stale within months; (3) ask the AI to
+  pick — slow, circular.
+
+**C. Food search.** Typos forgiven for saved foods too (pg_trgm, like your own foods). Plain whole foods come first:
+USDA Foundation / SR Legacy results are asked for separately from Branded and shown as a "Basic foods" group above the
+branded groups; inside each group, names starting with the search words come first. When a search finds little and a
+close spelling is known from saved foods, show "Did you mean banana?" (tap re-searches).
+- Approaches: (1) ranking + separate basic-foods call — chosen; (2) seeding a fixed list of whole foods — stale, large;
+  (3) spell-check library — heavy, misses food words.
+
+**Builder's calls:** strip shows one week per screen width (scroll-snap); dot colour = primary; the week-start setting
+lives in user_settings (`week_start` 0–6); "Did you mean" only when fewer than 3 results; the recommendation lists at
+most 2 models per provider.
