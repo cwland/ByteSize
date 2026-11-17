@@ -27,6 +27,7 @@ import photoRoutes from "./routes/photos.js";
 import weightRoutes from "./routes/weight.js";
 import glp1Routes from "./routes/glp1.js";
 import trendRoutes from "./routes/trends.js";
+import culuryRoutes from "./routes/culury.js";
 import { scheduleUploadCleanup, setPhotoSecret } from "./lib/photos.js";
 
 declare module "fastify" {
@@ -132,6 +133,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(weightRoutes);
   app.register(glp1Routes);
   app.register(trendRoutes); // weekly trends, badges, vacations
+  app.register(culuryRoutes); // the person's Culury link: meal plan and recipes
   scheduleUploadCleanup(app);
   return app;
 }

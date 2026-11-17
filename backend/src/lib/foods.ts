@@ -5,6 +5,7 @@ import { and, asc, desc, eq, gte, inArray, ne, sql, type SQL } from "drizzle-orm
 import { z } from "zod";
 import type { Db } from "../db/index.js";
 import { foodCache, userFoods } from "../db/schema.js";
+import { culuryLink, culuryMessage, logCuluryFailure, searchCulury } from "./culury.js";
 import { AiError } from "./ai.js";
 import { logEvent } from "./appLog.js";
 import { normalizeBarcode } from "./barcode.js";
@@ -18,7 +19,7 @@ import { NUTRIENT_KEYS, withLiquidVolumes, type NutrientKey, type Nutrients, typ
 import { linkPhoto, photoForFood, photoUrl, signImageUrl } from "./photos.js";
 
 export type FoodResult = {
-  kind: "cache" | "user_food";
+  kind: "cache" | "user_food" | "culury";
   id: number;
   name: string;
   brand: string | null;
@@ -29,13 +30,13 @@ export type FoodResult = {
   aiFields: string[];
   imageUrl: string | null;
   override: boolean;
-  source: "off" | "usda" | "mine" | "ai";
+  source: "off" | "usda" | "mine" | "ai" | "culury";
   /** What kind of food it is: a plain food (cached or the person's own), a correction, a recipe or a quick meal. */
   foodKind: FoodKind;
 };
 export type FoodKind = "custom" | "override" | "recipe" | "quick_meal";
 export const COMPOUND_KINDS = ["recipe", "quick_meal"] as const;
-export type GroupSource = "mine" | "basic" | "cache" | "off" | "usda";
+export type GroupSource = "mine" | "culury" | "basic" | "cache" | "off" | "usda";
 export type SearchGroup = { source: GroupSource; label: string; foods: FoodResult[] };
 /** suggestion: a close spelling from saved food names ("Did you mean …?"), only when little was found. */
 export type SearchResult = { groups: SearchGroup[]; errors: { source: string; message: string }[]; suggestion?: string };
@@ -43,7 +44,7 @@ export type SearchResult = { groups: SearchGroup[]; errors: { source: string; me
 type CacheRow = typeof foodCache.$inferSelect;
 type UserFoodRow = typeof userFoods.$inferSelect;
 
-export const GROUP_LABELS: Record<GroupSource, string> = { mine: "My foods", basic: "Basic foods", cache: "Saved foods", off: "Open Food Facts", usda: "USDA" };
+export const GROUP_LABELS: Record<GroupSource, string> = { mine: "My foods", culury: "Culury", basic: "Basic foods", cache: "Saved foods", off: "Open Food Facts", usda: "USDA" };
 export const SOURCE_TIMEOUT_MS = 3000; // per outside source
 const CACHE_FRESH_MS = 30 * 24 * 60 * 60 * 1000;
 const NOT_A_BARCODE = "That doesn't look like a barcode";
@@ -266,6 +267,10 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
   ];
   if (key) outside.push({ source: "usda", run: usdaSearch(app.foodFetch, key, q, SOURCE_TIMEOUT_MS) });
   for (const o of outside) o.run.catch(() => {}); // handled below
+  // The person's own Culury recipes (only their own link), at the same time
+  const culury = await culuryLink(app, userId);
+  const culuryRun = culury ? searchCulury(app, culury, q) : null;
+  culuryRun?.catch(() => {}); // handled below
 
   const mine = await findMyFoods(db, userId, q, 10);
   // The person's own versions hide the cached ones they replace
@@ -285,12 +290,22 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
   // A saved USDA whole food is still a basic food, on every later search too
   const found: Record<GroupSource, FoodResult[]> = {
     mine: mine.map((f) => toResult(f, "user_food")),
+    culury: [],
     basic: cache.filter(isBasicRow).map((c) => toResult(c, "cache")),
     cache: cache.filter((c) => !isBasicRow(c)).map((c) => toResult(c, "cache")),
     off: [],
     usda: [],
   };
   const errors: SearchResult["errors"] = [];
+
+  if (culuryRun) {
+    try {
+      found.culury = await culuryRun;
+    } catch (err) {
+      errors.push({ source: "culury", message: culuryMessage(err) });
+      await logCuluryFailure(app, userId, "search", err);
+    }
+  }
 
   const settled = await Promise.allSettled(outside.map((o) => o.run));
   const now = app.now();
@@ -318,7 +333,7 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
 
   const lq = q.toLowerCase();
   const startsFirst = (foods: FoodResult[]) => [...foods].sort((a, b) => Number(b.name.toLowerCase().startsWith(lq)) - Number(a.name.toLowerCase().startsWith(lq)));
-  const groups = (["mine", "basic", "cache", "off", "usda"] as const)
+  const groups = (["mine", "culury", "basic", "cache", "off", "usda"] as const)
     .map((source): SearchGroup => ({ source, label: GROUP_LABELS[source], foods: startsFirst(found[source]) }))
     .filter((g) => g.foods.length);
   const total = groups.reduce((n, g) => n + g.foods.length, 0);
