@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { eq } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { twoUsers } from "./isolation.js";
@@ -261,5 +262,49 @@ describe("food log", () => {
     const fixed = (await t.api("POST", "/api/my-foods/override", { cacheId: cached.id, name: cached.name, brand: cached.brand, servings: cached.servings, nutrients: { ...cached.nutrients, calories: 999 } })).body.food;
     const recent = (await t.api("GET", "/api/foods/recent")).body.foods;
     expect(recent).toEqual([{ ...fixed, last: { servingIndex: 1, unit: "serving", quantity: 1, fraction: 0.5 } }]);
+  });
+
+  it("logs 1 cup of a drink known only in grams (≈ 2.366 × 100 g) and snapshots the approximate servings", async () => {
+    const fairlife = JSON.parse(readFileSync(new URL("./fixtures/off-product-fairlife.json", import.meta.url), "utf8")).product;
+    offKnows(t, { "0811620021470": fairlife });
+    const food = (await t.api("GET", "/api/foods/barcode/0811620021470")).body.food;
+    const res = await log(food, { unit: "cup", quantity: 1 });
+    expect(res.status).toBe(200);
+    // 236.588 ml ÷ 100 ml = 2.366: 50 kcal × 2.366 = 118, 5.4 g × 2.366 = 12.8, sat fat 1.25 × 2.366 = 3.0
+    expect(res.body.entry.nutrients).toEqual({ calories: 118, protein_g: 12.8, carbs_g: 5.9, fat_g: 4.5, saturated_fat_g: 3, sugar_g: 5.9, sodium_mg: 118.3 });
+    expect(res.body.entry.servings).toEqual([
+      { label: "100 g", grams: 100, ml: 100, approx: true },
+      { label: "1 cup", grams: 240, ml: 240, approx: true },
+    ]);
+    // Editing the entry re-reads the snapshot: 4 fl oz
+    const patched = await t.api("PATCH", `/api/log/${res.body.entry.id}`, { unit: "fl_oz", quantity: 4 });
+    expect(patched.body.entry.nutrients.calories).toBe(59);
+  });
+
+  it("recent and frequent for one meal only list foods logged at that meal", async () => {
+    const cached = await bar();
+    const mine = await myFood();
+    await log(cached, { servingIndex: 1 }, "2026-11-15", "snacks");
+    await log(mine, { quantity: 2 }, "2026-11-16", "breakfast");
+    await log(cached, { servingIndex: 1, fraction: 0.5 }, "2026-11-17", "snacks");
+    await log(mine, { quantity: 1 }, "2026-11-17", "lunch"); // newest toast, but at lunch
+
+    const ids = (foods: any[]) => foods.map((f: any) => `${f.kind}:${f.id}`);
+    const breakfast = (await t.api("GET", "/api/foods/recent?meal=breakfast")).body.foods;
+    expect(ids(breakfast)).toEqual([`user_food:${mine.id}`]);
+    expect(breakfast[0].last).toEqual({ servingIndex: 0, unit: "serving", quantity: 2, fraction: 1 }); // the breakfast portion
+    expect(ids((await t.api("GET", "/api/foods/recent?meal=snacks")).body.foods)).toEqual([`cache:${cached.id}`]);
+    expect((await t.api("GET", "/api/foods/recent?meal=dinner")).body.foods).toEqual([]);
+    expect(ids((await t.api("GET", "/api/foods/recent")).body.foods)).toEqual([`user_food:${mine.id}`, `cache:${cached.id}`]);
+
+    const freqSnacks = (await t.api("GET", "/api/foods/frequent?meal=snacks")).body.foods;
+    expect(ids(freqSnacks)).toEqual([`cache:${cached.id}`]);
+    expect(freqSnacks[0].last).toEqual({ servingIndex: 1, unit: "serving", quantity: 1, fraction: 0.5 });
+    expect(ids((await t.api("GET", "/api/foods/frequent?meal=lunch")).body.foods)).toEqual([`user_food:${mine.id}`]);
+
+    for (const path of ["/api/foods/recent?meal=brunch", "/api/foods/frequent?meal=", "/api/foods/recent?meal=Breakfast"]) {
+      const bad = await t.api("GET", path);
+      expect(bad.status, path).toBe(400);
+    }
   });
 });

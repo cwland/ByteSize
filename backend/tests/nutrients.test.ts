@@ -5,6 +5,7 @@ import {
   amountFactor,
   scaleNutrients,
   sumNutrients,
+  withLiquidVolumes,
   type Serving,
 } from "../src/lib/nutrients.js";
 
@@ -15,9 +16,9 @@ const bar: Serving[] = [
 const cup: Serving[] = [{ label: "1 cup", ml: 236.5882365, grams: 244 }];
 
 describe("NUTRIENT_KEYS", () => {
-  it("lists the 12 nutrient keys", () => {
+  it("lists the 13 nutrient keys (saturated fat after fat)", () => {
     expect(NUTRIENT_KEYS).toEqual([
-      "calories", "protein_g", "fiber_g", "carbs_g", "fat_g", "sugar_g", "added_sugar_g",
+      "calories", "protein_g", "fiber_g", "carbs_g", "fat_g", "saturated_fat_g", "sugar_g", "added_sugar_g",
       "sugar_alcohol_g", "sodium_mg", "potassium_mg", "magnesium_mg", "water_ml",
     ]);
   });
@@ -77,5 +78,60 @@ describe("sumNutrients", () => {
     for (const k of NUTRIENT_KEYS) {
       if (k !== "calories" && k !== "fiber_g") expect(out.unknownCount[k]).toBe(2);
     }
+  });
+});
+
+describe("withLiquidVolumes", () => {
+  const fairlife: Serving[] = [
+    { label: "100 g", grams: 100 },
+    { label: "1 cup", grams: 240 },
+  ];
+
+  it("a drink known only in grams gets ml = grams, marked approximate", () => {
+    expect(withLiquidVolumes(fairlife, "en:milks", "Fairlife 2% Reduced Fat Ultra-Filtered Milk")).toEqual([
+      { label: "100 g", grams: 100, ml: 100, approx: true },
+      { label: "1 cup", grams: 240, ml: 240, approx: true },
+    ]);
+    // the input isn't changed
+    expect(fairlife).toEqual([{ label: "100 g", grams: 100 }, { label: "1 cup", grams: 240 }]);
+  });
+
+  it("matches by name when the category says nothing, and whole words only", () => {
+    expect(withLiquidVolumes([{ label: "100 g", grams: 100 }], null, "Orange juice")[0]).toMatchObject({ ml: 100, approx: true });
+    expect(withLiquidVolumes([{ label: "100 g", grams: 100 }], "en:beverages", "Cold brew")[0]).toMatchObject({ ml: 100, approx: true });
+    expect(withLiquidVolumes([{ label: "100 g", grams: 100 }], null, "Chocolate milk")[0]).toMatchObject({ ml: 100, approx: true });
+    expect(withLiquidVolumes([{ label: "100 g", grams: 100 }], null, "Teriyaki steak")).toEqual([{ label: "100 g", grams: 100 }]);
+  });
+
+  it("cheese and other solids stay grams-only (Review Focus 4)", () => {
+    const cheese: Serving[] = [{ label: "100 g", grams: 100 }, { label: "1 slice", grams: 28 }];
+    expect(withLiquidVolumes(cheese, "en:cheeses", "Whole milk mozzarella cheese")).toEqual(cheese);
+    expect(withLiquidVolumes(cheese, null, "Cheese, cheddar")).toEqual(cheese);
+    expect(withLiquidVolumes(cheese, "en:chocolates", "Milk chocolate")).toEqual(cheese);
+    expect(withLiquidVolumes(cheese, "en:snacks", "Protein bar chocolate milk shake")).toEqual(cheese);
+    expect(withLiquidVolumes(cheese, "Fruits and Fruit Juices", "Apples, fuji, with skin, raw")).toEqual(cheese);
+    expect(withLiquidVolumes(cheese, "en:coffees", "Whole bean coffee")).toEqual(cheese);
+  });
+
+  it("a food with real ml is unchanged", () => {
+    const cola: Serving[] = [{ label: "100 ml", ml: 100 }, { label: "330 ml", ml: 330 }];
+    expect(withLiquidVolumes(cola, "en:sodas", "Cola")).toEqual(cola);
+    const both: Serving[] = [{ label: "1 cup", grams: 244, ml: 236.6 }, { label: "1 glass", grams: 300 }];
+    expect(withLiquidVolumes(both, "en:milks", "Milk")).toEqual(both);
+  });
+
+  it("only servings with grams get ml", () => {
+    expect(withLiquidVolumes([{ label: "100 g", grams: 100 }, { label: "1 bottle" }], "en:juices", "Juice")).toEqual([
+      { label: "100 g", grams: 100, ml: 100, approx: true },
+      { label: "1 bottle" },
+    ]);
+  });
+
+  it("amountFactor uses the approximate ml: 1 cup of Fairlife ≈ 2.366 × 100 g", () => {
+    const s = withLiquidVolumes(fairlife, "en:milks", "Fairlife milk");
+    expect(amountFactor(s, 0, "cup", 1)).toBeCloseTo(2.366, 3);
+    expect(amountFactor(s, 0, "fl_oz", 4)).toBeCloseTo(1.183, 3);
+    expect(amountFactor(s, 1, "serving", 1)).toBeCloseTo(2.4, 6);
+    expect(amountFactor(s, 0, "g", 50)).toBeCloseTo(0.5, 6);
   });
 });
