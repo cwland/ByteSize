@@ -11,6 +11,10 @@ import { normalizeUsername, publicUser } from "../lib/users.js";
 const password = z.string().min(8, "Password must be at least 8 characters").max(200);
 const email = z.string().trim().email("That doesn't look like an email address").max(200);
 
+// Postgres unique_violation (drizzle may wrap the driver's error in .cause)
+const isUniqueViolation = (err: unknown): boolean =>
+  !!err && typeof err === "object" && ((err as { code?: unknown }).code === "23505" || isUniqueViolation((err as { cause?: unknown }).cause));
+
 const adminRow = (u: typeof users.$inferSelect, lastSeenAt: Date | null) => ({
   ...publicUser(u),
   disabled: u.disabled,
@@ -54,10 +58,18 @@ export default async function adminUserRoutes(app: FastifyInstance) {
     const username = normalizeUsername(body.username);
     const [taken] = await db.select({ id: users.id }).from(users).where(eq(users.username, username));
     if (taken) throw new HttpError(409, "That username is taken");
-    const [u] = await db
-      .insert(users)
-      .values({ username, passwordHash: await hashPassword(body.password), displayName: body.displayName || null, email: body.email ?? null, isAdmin: body.isAdmin })
-      .returning();
+    const passwordHash = await hashPassword(body.password);
+    let u: typeof users.$inferSelect;
+    try {
+      [u] = await db
+        .insert(users)
+        .values({ username, passwordHash, displayName: body.displayName || null, email: body.email ?? null, isAdmin: body.isAdmin })
+        .returning();
+    } catch (err) {
+      // Someone else took the name between the check above and this insert
+      if (isUniqueViolation(err)) throw new HttpError(409, "That username is taken");
+      throw err;
+    }
     return { user: adminRow(u, null) };
   });
 
