@@ -9,7 +9,7 @@ const ICONS: Record<Page, JSX.Element> = {
 };
 
 // The bottom tab bar (phones and desktop alike), with the floating orange + in the middle
-export default function Navigation({ page }: { page: Page }) {
+export default function Navigation({ page, onAdd }: { page: Page; onAdd: () => void }) {
   const tab = (p: (typeof PAGES)[number]) => (
     <a
       key={p.id}
@@ -31,7 +31,7 @@ export default function Navigation({ page }: { page: Page }) {
           type="button"
           aria-label="Log food"
           title="Log food"
-          onClick={() => (window.location.hash = "#/log")}
+          onClick={onAdd}
           className="absolute -top-7 left-1/2 flex size-16 -translate-x-1/2 items-center justify-center rounded-full bg-primary text-on-primary shadow-lg shadow-black/40 ring-4 ring-page hover:bg-primary-pressed"
         >
           <Plus className="size-8" strokeWidth={2.75} />
