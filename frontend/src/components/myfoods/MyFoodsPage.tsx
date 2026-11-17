@@ -76,9 +76,9 @@ export default function MyFoodsPage() {
   const remove = async (f: FoodResult) => {
     setDeleting(null);
     try {
-      // The server deletes a food that was never logged or used, and hides (archives) one that was
-      const out = await api<{ archived?: boolean } | undefined>("DELETE", `/api/my-foods/${f.id}`);
-      setMsg({ ok: true, text: out?.archived ? "Hidden (it's been logged)" : "Removed" });
+      // The server deletes a food that was never logged or used ({ archived: false }) and hides one that was
+      const { archived } = await api<{ archived: boolean }>("DELETE", `/api/my-foods/${f.id}`);
+      setMsg({ ok: true, text: archived ? "Hidden (it's been logged)" : "Removed" });
       setReload((n) => n + 1);
     } catch (e) {
       setMsg(errorMsg(e));

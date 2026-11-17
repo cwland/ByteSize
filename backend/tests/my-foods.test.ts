@@ -45,7 +45,7 @@ describe("my foods", () => {
     expect(edited.status).toBe(200);
     expect(edited.body.food).toMatchObject({ id, brand: null, nutrients: { calories: 160, protein_g: 30, fiber_g: 1 } });
 
-    expect((await t.api("DELETE", `/api/my-foods/${id}`)).status).toBe(204);
+    expect(await t.api("DELETE", `/api/my-foods/${id}`)).toMatchObject({ status: 200, body: { archived: false } }); // never logged: deleted
     expect((await t.api("GET", "/api/my-foods")).body.foods).toEqual([]);
     expect((await t.api("GET", "/api/foods/search?q=protein")).body.groups).toEqual([]);
     expect((await t.api("PATCH", `/api/my-foods/${id}`, { name: "Back" })).status).toBe(404);

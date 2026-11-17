@@ -85,7 +85,8 @@ describe("My Foods", () => {
       "GET /api/my-foods": () => ({ foods }),
       "DELETE /api/my-foods/:id": (_b, path) => {
         foods = foods.filter((f) => !path.endsWith(`/${f.id}`));
-        return path.endsWith("/5") ? { status: 204 } : { archived: true };
+        // The server's answer: { archived: false } when deleted, { archived: true } when hidden
+        return { archived: !path.endsWith("/5") };
       },
     });
     const user = userEvent.setup();

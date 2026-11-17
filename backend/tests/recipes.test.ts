@@ -145,7 +145,7 @@ describe("recipes", () => {
   it("an archived ingredient keeps its saved values on Save and Recalculate", async () => {
     const { b, items } = await chiliItems();
     const chili = (await t.api("POST", "/api/my-foods/recipes", { name: "Chili", items, servings: 6, servingGrams: 350 })).body.food;
-    expect((await t.api("DELETE", `/api/my-foods/${b.id}`)).status).toBe(204); // used in a recipe: archived
+    expect(await t.api("DELETE", `/api/my-foods/${b.id}`)).toMatchObject({ status: 200, body: { archived: true } }); // used in a recipe: archived
     const got = (await t.api("GET", `/api/my-foods/${chili.id}`)).body.food;
     expect(got.items[0]).toMatchObject({ name: "Ground beef", available: false, nutrients: { calories: 3000 } });
     const re = await t.api("POST", `/api/my-foods/${chili.id}/recalculate`);
@@ -247,14 +247,21 @@ describe("my foods list and delete", () => {
     await t.api("POST", "/api/log", { day: DAY, meal: "lunch", food: { kind: "user_food", id: k.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
     const rows = async () => (await t.db.execute<{ id: number; archived: boolean }>(sql`select id, archived from user_foods order by id`)).rows;
 
-    for (const f of [o, k, used]) expect((await t.api("DELETE", `/api/my-foods/${f.id}`)).status).toBe(204);
+    const removed = [];
+    for (const f of [o, k, used]) removed.push(await t.api("DELETE", `/api/my-foods/${f.id}`));
+    // The app is told which: deleted (never logged or used) or archived (hidden)
+    expect(removed.map((r) => [r.status, r.body])).toEqual([
+      [200, { archived: false }],
+      [200, { archived: true }],
+      [200, { archived: true }],
+    ]);
     expect(await rows()).toEqual([
       { id: k.id, archived: true },
       { id: used.id, archived: true },
       { id: recipe.id, archived: false },
     ]);
     // A recipe never logged and not inside anything: gone, with its items
-    expect((await t.api("DELETE", `/api/my-foods/${recipe.id}`)).status).toBe(204);
+    expect(await t.api("DELETE", `/api/my-foods/${recipe.id}`)).toMatchObject({ status: 200, body: { archived: false } });
     expect((await rows()).map((r: any) => r.id)).toEqual([k.id, used.id]);
     expect((await t.db.execute(sql`select count(*)::int as n from recipe_items`)).rows[0]).toEqual({ n: 0 });
     expect((await t.api("DELETE", `/api/my-foods/${recipe.id}`)).status).toBe(404);

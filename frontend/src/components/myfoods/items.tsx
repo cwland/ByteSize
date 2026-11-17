@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { api } from "../../api";
 import { formatAmount } from "../../amounts";
+import { amountFactor } from "../../nutrition";
 import { useSession } from "../../session";
 import { NUTRIENT_KEYS, type FoodResult, type Item, type ItemView, type Nutrients, type Portion, type SearchResult } from "../../types";
 import { fmt } from "../../units";
@@ -43,10 +44,21 @@ export const itemBody = (i: EditItem): Item => ({ food: i.food, ...i.portion });
 // This item's amount, worked out live from the food's per-serving numbers ({} when it can't be measured)
 export const itemNutrients = (i: EditItem) => nutrientsFor({ servings: i.servings, nutrients: i.perServing }, i.portion);
 
-// The sum of the items; a nutrient any item doesn't know stays unknown (never a partial sum). No items: unknown.
+// This item's amount, unrounded ({} when it can't be measured): totals add these and round once, like the server
+function exactNutrients(i: EditItem): Nutrients {
+  try {
+    const f = amountFactor(i.servings, i.portion.servingIndex, i.portion.unit, i.portion.quantity) * i.portion.fraction;
+    return Object.fromEntries(Object.entries(i.perServing).filter(([, v]) => typeof v === "number").map(([k, v]) => [k, (v as number) * f]));
+  } catch {
+    return {};
+  }
+}
+
+// The exact sum of the items (rounded only when shown); a nutrient any item doesn't know stays unknown
+// (never a partial sum). No items: unknown.
 export function sumNutrients(items: EditItem[]): Nutrients {
   if (!items.length) return {};
-  const each = items.map(itemNutrients);
+  const each = items.map(exactNutrients);
   const out: Nutrients = {};
   for (const k of NUTRIENT_KEYS) if (each.every((n) => n[k] !== undefined)) out[k] = each.reduce((s, n) => s + (n[k] as number), 0);
   return out;

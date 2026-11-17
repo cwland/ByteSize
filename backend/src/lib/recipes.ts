@@ -388,7 +388,8 @@ export async function mealFromEntries(app: FastifyInstance, userId: number, b: z
 // ---------- deleting ----------
 
 /** Deletes a food never logged and not in a recipe or meal; otherwise archives (hides) it. */
-export async function removeMyFood(app: FastifyInstance, userId: number, foodId: number) {
+/** Deletes the food, or archives (hides) it when it was logged or is an item; says which. */
+export async function removeMyFood(app: FastifyInstance, userId: number, foodId: number): Promise<{ archived: boolean }> {
   const { db } = app;
   await ownFood(db, userId, foodId);
   const [logged] = await db
@@ -403,8 +404,10 @@ export async function removeMyFood(app: FastifyInstance, userId: number, foodId:
     .where(and(eq(userFoods.userId, userId), eq(recipeItems.foodKind, "user_food"), eq(recipeItems.foodId, foodId)))
     .limit(1);
   const mine = and(eq(userFoods.id, foodId), eq(userFoods.userId, userId));
-  if (logged || used) await db.update(userFoods).set({ archived: true, updatedAt: new Date() }).where(mine);
+  const archived = Boolean(logged || used);
+  if (archived) await db.update(userFoods).set({ archived: true, updatedAt: new Date() }).where(mine);
   else await db.delete(userFoods).where(mine);
+  return { archived };
 }
 
 // ---------- logging ----------

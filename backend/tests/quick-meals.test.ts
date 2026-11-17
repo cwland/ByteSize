@@ -103,7 +103,7 @@ describe("quick meals", () => {
   it("an item whose food was archived or deleted still logs from its snapshot", async () => {
     const { meal, tst, e } = await breakfast();
     await logMeal({ foodId: meal.id }); // used: archived, not deleted
-    expect((await t.api("DELETE", `/api/my-foods/${tst.id}`)).status).toBe(204);
+    expect(await t.api("DELETE", `/api/my-foods/${tst.id}`)).toMatchObject({ status: 200, body: { archived: true } });
     await t.db.delete(userFoods).where(eq(userFoods.id, e.id)); // gone altogether
     const r = await logMeal({ foodId: meal.id, day: "2026-11-18" });
     expect(r.status).toBe(200);

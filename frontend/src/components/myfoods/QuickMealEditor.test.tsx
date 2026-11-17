@@ -88,4 +88,12 @@ describe("Quick meal editor", () => {
     expect(server.writes()[0].method).toBe("PUT");
     expect(server.writes()[0].body.items[1]).toEqual({ food: { kind: "cache", id: 21 }, servingIndex: 0, unit: "serving", quantity: 2, fraction: 1 });
   });
+  it("totals add the exact amounts and round once, like the server (two half bananas are 105 cal, not 53 + 53)", async () => {
+    const half = { ...breakfastDetail.items[1], quantity: 0.5 };
+    fakeServer({ "GET /api/my-foods/:id": () => ({ food: { ...breakfastDetail, items: [half, half] } }) });
+    renderWithSession(<QuickMealEditor id={31} onDone={() => {}} onBack={() => {}} />);
+    await screen.findByRole("textbox", { name: "Name" });
+    expect(total("Calories")).toHaveTextContent("105");
+    expect(total("Protein")).toHaveTextContent("1.3 g"); // 0.65 + 0.65, not 0.7 + 0.7
+  });
 });

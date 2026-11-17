@@ -182,4 +182,27 @@ describe("Recipe editor", () => {
     await user.click(screen.getByRole("button", { name: "Save recipe" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("A recipe inside a recipe can't contain another recipe");
   });
+  it("Recalculate waits until changes are saved: an edited amount disables it, and putting it back enables it", async () => {
+    const server = fakeServer({ "GET /api/my-foods/:id": () => ({ food: chiliDetail }) });
+    renderWithSession(<RecipeEditor id={30} onDone={() => {}} onBack={() => {}} />);
+    const user = userEvent.setup();
+    await screen.findByRole("textbox", { name: "Name" });
+    const recalc = screen.getByRole("button", { name: "Recalculate" });
+    expect(recalc).toBeEnabled();
+    expect(screen.queryByText("Save your changes first")).toBeNull();
+
+    const items = screen.getByRole("list", { name: "Ingredients" });
+    await user.click(within(items).getByRole("button", { name: "1 cup" }));
+    await user.selectOptions(within(items).getByRole("combobox", { name: "Whole number" }), "2");
+    expect(recalc).toBeDisabled();
+    expect(screen.getByText("Save your changes first")).toBeInTheDocument();
+    await user.click(recalc);
+    expect(server.writes()).toEqual([]);
+
+    await user.selectOptions(within(items).getByRole("combobox", { name: "Whole number" }), "1");
+    expect(recalc).toBeEnabled();
+    // Other fields count too
+    await user.type(screen.getByRole("textbox", { name: "Notes" }), "!");
+    expect(recalc).toBeDisabled();
+  });
 });

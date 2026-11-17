@@ -5,7 +5,10 @@ import type { MyFood } from "../../types";
 import { Field } from "../ui/Field";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { field, label as labelClass, primaryButton, secondaryButton } from "../ui/styles";
-import { EditorHeader, FoodPicker, ItemList, Totals, addButton, divideNutrients, itemBody, itemFromFood, itemFromView, sumNutrients, useItems } from "./items";
+import { EditorHeader, FoodPicker, type EditItem, ItemList, Totals, addButton, divideNutrients, itemBody, itemFromFood, itemFromView, sumNutrients, useItems } from "./items";
+
+// Everything the person can change, to tell whether the form differs from what was loaded
+const formKey = (name: string, servings: string, weight: string, notes: string, items: EditItem[]) => JSON.stringify([name, servings, weight, notes, items.map(itemBody)]);
 
 // New or existing recipe: name, ingredients with amounts, number of servings, weight of one serving (optional),
 // notes, and live per-serving totals. Save stores the numbers; Recalculate re-reads the ingredients' foods.
@@ -19,6 +22,9 @@ export default function RecipeEditor({ id, onDone, onBack }: { id?: number; onDo
   const [picking, setPicking] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
+  // The form as loaded (or as last recalculated): Recalculate works on the saved recipe, so it waits
+  // until changes are saved rather than silently dropping them
+  const [loadedAs, setLoadedAs] = useState<string | null>(null);
 
   useEffect(() => {
     if (id === undefined) return;
@@ -30,7 +36,9 @@ export default function RecipeEditor({ id, onDone, onBack }: { id?: number; onDo
         setServings(String(food.recipeServings ?? 1));
         setWeight(food.servingGrams ? String(food.servingGrams) : "");
         setNotes(food.notes ?? "");
-        setItems((food.items ?? []).map(itemFromView));
+        const loadedItems = (food.items ?? []).map(itemFromView);
+        setItems(loadedItems);
+        setLoadedAs(formKey(food.name, String(food.recipeServings ?? 1), food.servingGrams ? String(food.servingGrams) : "", food.notes ?? "", loadedItems));
         setLoaded(true);
       },
       (e) => live && setMsg(errorMsg(e)),
@@ -38,6 +46,7 @@ export default function RecipeEditor({ id, onDone, onBack }: { id?: number; onDo
     return () => void (live = false);
   }, [id, setItems]);
 
+  const changed = loadedAs !== formKey(name, servings, weight, notes, items);
   const count = Number(servings);
   const perServing = divideNutrients(sumNutrients(items), servings.trim() && count > 0 ? count : 0);
 
@@ -45,7 +54,9 @@ export default function RecipeEditor({ id, onDone, onBack }: { id?: number; onDo
     setMsg(null);
     try {
       const { food } = await api<{ food: MyFood }>("POST", `/api/my-foods/${id}/recalculate`);
-      setItems((food.items ?? []).map(itemFromView));
+      const fresh = (food.items ?? []).map(itemFromView);
+      setItems(fresh);
+      setLoadedAs(formKey(name, servings, weight, notes, fresh));
       setMsg({ ok: true, text: "Recalculated" });
     } catch (e) {
       setMsg(errorMsg(e));
@@ -119,12 +130,14 @@ export default function RecipeEditor({ id, onDone, onBack }: { id?: number; onDo
               Save recipe
             </button>
             {id !== undefined && (
-              <button type="button" onClick={recalculate} className={`${secondaryButton} inline-flex items-center gap-1.5`}>
+              <button type="button" disabled={changed} onClick={recalculate} className={`${secondaryButton} inline-flex items-center gap-1.5`}>
                 <RefreshCw className="size-4" /> Recalculate
               </button>
             )}
           </div>
-          {id !== undefined && <p className="text-xs text-muted">Recalculate uses the ingredients' foods as they are now, in case their numbers changed.</p>}
+          {id !== undefined && (
+            <p className="text-xs text-muted">{changed ? "Save your changes first" : "Recalculate uses the ingredients' foods as they are now, in case their numbers changed."}</p>
+          )}
         </form>
       )}
       {picking && (

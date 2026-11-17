@@ -78,10 +78,10 @@ export default async function myFoodRoutes(app: FastifyInstance) {
     return { food: await updateMyFood(app, userId, id, foodFields.partial().parse(req.body ?? {})) };
   });
 
-  app.delete("/api/my-foods/:id", async (req, reply) => {
+  // { archived: false } = deleted; { archived: true } = hidden because it was logged or is in a recipe or meal
+  app.delete("/api/my-foods/:id", async (req) => {
     const userId = requireUser(req);
     const { id } = idParam.parse(req.params);
-    await removeMyFood(app, userId, id);
-    return reply.status(204).send();
+    return removeMyFood(app, userId, id);
   });
 }
