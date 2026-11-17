@@ -11,3 +11,15 @@ describe("docker compose", () => {
     expect(compose).toContain('"${PORT:-4100}:4100"');
   });
 });
+
+describe("docker image", () => {
+  const dockerfile = fs.readFileSync(new URL("../../Dockerfile", import.meta.url), "utf8");
+
+  it("image fixes data folder ownership before dropping to node", () => {
+    expect(dockerfile).not.toMatch(/^USER node$/m);
+    expect(dockerfile).toContain('ENTRYPOINT ["/app/docker-entrypoint.sh"]');
+    const script = fs.readFileSync(new URL("../docker-entrypoint.sh", import.meta.url), "utf8");
+    expect(script).toContain("chown -R node:node /app/data");
+    expect(script).toContain("setpriv");
+  });
+});

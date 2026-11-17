@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { asUser } from "./isolation.js";
+import { sql } from "drizzle-orm";
 
 let t: TestApp;
 beforeAll(async () => (t = await setupTestApp()));
@@ -39,6 +40,23 @@ describe("admin user management", () => {
     const dup = await t.api("POST", "/api/admin/users", { username: " sam ", password: "password123" });
     expect(dup.status).toBe(409);
     expect(dup.body.error).toBe("That username is taken");
+  });
+
+  it("a duplicate created by a race is still 409", async () => {
+    // Another request inserts "sam" after our "is it taken?" check but before our insert: a trigger
+    // slips that row in just ahead of ours, so only the unique constraint can catch it.
+    await t.db.execute(sql`create function race_sam() returns trigger language plpgsql as $$
+      begin insert into users (username, password_hash) values ('sam', 'other request'); return new; end $$`);
+    await t.db.execute(sql`create trigger race_sam before insert on users for each row
+      when (new.username = 'sam' and new.password_hash <> 'other request') execute function race_sam()`);
+    try {
+      const dup = await t.api("POST", "/api/admin/users", { username: "Sam", password: "password123" });
+      expect(dup.status).toBe(409);
+      expect(dup.body.error).toBe("That username is taken");
+    } finally {
+      await t.db.execute(sql`drop trigger race_sam on users`);
+      await t.db.execute(sql`drop function race_sam()`);
+    }
   });
 
   it("disabling a user cuts off their current token", async () => {
