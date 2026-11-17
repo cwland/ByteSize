@@ -1,12 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, asc, desc, eq, gte, inArray, isNotNull, lte, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lte, ne, or, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { foodCache, logEntries, userFoods, userSettings, users } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
 import { addDays, DAY, localDay, mealFor, MEALS, streak, suggestedFor, type Meal } from "../lib/days.js";
-import { toResult, type FoodResult } from "../lib/foods.js";
+import { loadFood, toResult, type FoodResult } from "../lib/foods.js";
+import { itemList, portionFields, quickMealParts } from "../lib/recipes.js";
 import { amountFactor, scaleNutrients, sumNutrients, UnitError, type Nutrients, type Serving, type Unit } from "../lib/nutrients.js";
 import { DEFAULT_MEAL_WINDOWS } from "./settings-me.js";
 import { targetsOn } from "./body-plans.js";
@@ -35,7 +36,6 @@ export type LogEntry = {
 };
 type Portion = { servingIndex: number; unit: Unit; quantity: number; fraction: number };
 
-const UNITS = ["serving", "g", "oz", "ml", "fl_oz", "cup", "tbsp", "tsp"] as const;
 const NOT_FOUND = "Entry not found";
 const RECENT_LIMIT = 30;
 const FREQUENT_LIMIT = 20;
@@ -45,12 +45,6 @@ const WATER_SERVINGS: Serving[] = [{ label: "1 ml", ml: 1 }];
 
 const id = z.number().int().positive().max(2147483647);
 const idParam = z.object({ id: z.coerce.number().int().positive().max(2147483647) });
-const portionFields = {
-  servingIndex: z.number().int().min(0).max(50),
-  unit: z.enum(UNITS, { error: "Choose a unit" }),
-  quantity: z.number().positive("Enter an amount above 0").max(100000),
-  fraction: z.number().gt(0, "The fraction must be above 0").max(1, "The fraction can't be above 1"),
-};
 const foodBody = z.object({
   day: DAY.optional(),
   meal: z.enum(MEALS).optional(),
@@ -60,6 +54,7 @@ const foodBody = z.object({
   quantity: portionFields.quantity,
   fraction: portionFields.fraction.default(1),
 });
+const mealLogBody = z.object({ day: DAY.optional(), meal: z.enum(MEALS).optional(), foodId: id, items: itemList.optional() });
 const waterBody = z.object({
   day: DAY.optional(),
   meal: z.literal("supplements", { error: "Water goes with supplements" }).default("supplements"),
@@ -112,21 +107,6 @@ async function todayFor(app: FastifyInstance, userId: number) {
   return localDay(await userTimezone(app.db, userId), app.now());
 }
 
-/** The food the person may log: any cached food, or one of their own active foods. */
-async function loadFood(db: Db, userId: number, ref: { kind: "cache" | "user_food"; id: number }): Promise<FoodResult> {
-  if (ref.kind === "cache") {
-    const [row] = await db.select().from(foodCache).where(eq(foodCache.id, ref.id));
-    if (row) return toResult(row, "cache");
-  } else {
-    const [row] = await db
-      .select()
-      .from(userFoods)
-      .where(and(eq(userFoods.id, ref.id), eq(userFoods.userId, userId), eq(userFoods.archived, false)));
-    if (row) return toResult(row, "user_food");
-  }
-  throw new HttpError(404, "Food not found");
-}
-
 const isWater = (r: Row) => r.source === "water";
 
 /** GET /api/day/:date: entries, totals (unknown counted for foods only), per-meal totals with suggestions, targets, streak. */
@@ -151,20 +131,26 @@ async function dayView(app: FastifyInstance, userId: number, day: string) {
   return { day, entries, totals: { ...sums, unknownCount }, meals, targets, exercise: { calories: 0 }, streak: await streak(app.db, userId, await todayFor(app, userId)) };
 }
 
-/** The newest entry for each food the person logged (water left out), newest first; only that meal's entries when given. */
+/**
+ * The newest entry for each food the person logged (water left out), newest first; only that meal's
+ * entries when given. Entries logged from a quick meal count as that meal (ref quick:<id>), once per
+ * logging (they share their created_at), not as their items.
+ */
 function lastPerFood(db: Db, userId: number, opts: { since?: string; meal?: Meal } = {}) {
   const { since, meal } = opts;
   const where = and(
     eq(logEntries.userId, userId),
-    isNotNull(logEntries.sourceRef),
+    or(isNotNull(logEntries.sourceRef), isNotNull(logEntries.groupRef)),
     since ? gte(logEntries.day, since) : undefined,
     meal ? eq(logEntries.meal, meal) : undefined
   );
+  const key = sql<string>`coalesce(${logEntries.groupRef}, ${logEntries.sourceRef})`;
+  const uses = sql<number>`count(distinct case when ${logEntries.groupRef} is null then ${logEntries.id}::text else ${logEntries.createdAt}::text end)::int`;
   const counts = db
-    .select({ ref: logEntries.sourceRef, uses: sql<number>`count(*)::int`.as("uses"), lastId: sql<number>`max(${logEntries.id})`.as("last_id") })
+    .select({ ref: key.as("ref"), uses: uses.as("uses"), lastId: sql<number>`max(${logEntries.id})`.as("last_id") })
     .from(logEntries)
     .where(where)
-    .groupBy(logEntries.sourceRef)
+    .groupBy(key)
     .as("c");
   return db
     .select({ ref: counts.ref, uses: counts.uses, entry: logEntries })
@@ -172,11 +158,13 @@ function lastPerFood(db: Db, userId: number, opts: { since?: string; meal?: Meal
     .innerJoin(logEntries, eq(logEntries.id, counts.lastId));
 }
 
-/** Resolves source refs to the current foods (archived or missing ones are skipped), each with its last portion. */
+const ONE_MEAL: Portion = { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 };
+
+/** Resolves source refs to the current foods (archived or missing ones are skipped), each with its last portion; quick:<id> = that quick meal, 1 meal. */
 async function resolveFoods(db: Db, userId: number, picks: { ref: string | null; entry: Row }[]) {
   const ids = (kind: string) => picks.map((p) => p.ref!.split(":")).filter(([k]) => k === kind).map(([, v]) => Number(v));
   const cacheIds = ids("cache");
-  const userIds = ids("user_food");
+  const userIds = [...ids("user_food"), ...ids("quick")];
   const cache = cacheIds.length ? await db.select().from(foodCache).where(inArray(foodCache.id, cacheIds)) : [];
   const mine = userIds.length
     ? await db
@@ -195,6 +183,7 @@ async function resolveFoods(db: Db, userId: number, picks: { ref: string | null;
   const found = new Map<string, FoodResult>([
     ...cache.map((r) => [`cache:${r.id}`, overrideOf.get(r.id) ?? toResult(r, "cache")] as const),
     ...mine.map((r) => [`user_food:${r.id}`, toResult(r, "user_food")] as const),
+    ...mine.filter((r) => r.kind === "quick_meal").map((r) => [`quick:${r.id}`, toResult(r, "user_food")] as const),
   ]);
   // In the order given (newest or most used first); a food reached twice (itself and via its database
   // original) appears once, at its first place
@@ -203,8 +192,15 @@ async function resolveFoods(db: Db, userId: number, picks: { ref: string | null;
     const food = found.get(ref!);
     if (!food || seen.has(`${food.kind}:${food.id}`)) return [];
     seen.add(`${food.kind}:${food.id}`);
-    return [{ ...food, last: { servingIndex: entry.servingIndex, unit: entry.unit as Unit, quantity: entry.quantity, fraction: entry.fraction } }];
+    const last = ref!.startsWith("quick:") ? ONE_MEAL : { servingIndex: entry.servingIndex, unit: entry.unit as Unit, quantity: entry.quantity, fraction: entry.fraction };
+    return [{ ...food, last }];
   });
+}
+
+/** The meal for this time of day, by the person's meal windows. */
+async function mealNow(db: Db, userId: number, timezone: string, now: Date): Promise<Meal> {
+  const [s] = await db.select({ mealWindows: userSettings.mealWindows }).from(userSettings).where(eq(userSettings.userId, userId));
+  return mealFor(timezone, now, s?.mealWindows ?? DEFAULT_MEAL_WINDOWS);
 }
 
 async function ownEntry(db: Db, userId: number, entryId: number): Promise<Row> {
@@ -276,11 +272,7 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     const b = foodBody.parse(raw);
     const food = await loadFood(db, userId, b.food);
     const nutrients = portionNutrients(food.nutrients, food.servings, b);
-    let meal = b.meal;
-    if (!meal) {
-      const [s] = await db.select({ mealWindows: userSettings.mealWindows }).from(userSettings).where(eq(userSettings.userId, userId));
-      meal = mealFor(timezone, now, s?.mealWindows ?? DEFAULT_MEAL_WINDOWS);
-    }
+    const meal = b.meal ?? (await mealNow(db, userId, timezone, now));
     const row = await db.transaction(async (tx) => {
       const [inserted] = await tx
         .insert(logEntries)
@@ -315,6 +307,54 @@ export default async function foodLogRoutes(app: FastifyInstance) {
       return inserted;
     });
     return { entry: toEntry(row) };
+  });
+
+  // A quick meal: one entry per item (or per adjusted item), each with its own snapshot, marked quick:<id>.
+  // An item whose food is archived or gone is logged from the meal's snapshot of it.
+  app.post("/api/log/meal", async (req) => {
+    const userId = requireUser(req);
+    const b = mealLogBody.parse(req.body ?? {});
+    const now = app.now();
+    const timezone = await userTimezone(db, userId);
+    const { meal: quick, parts } = await quickMealParts(db, userId, b.foodId, b.items);
+    const day = b.day ?? localDay(timezone, now);
+    const meal = b.meal ?? (await mealNow(db, userId, timezone, now));
+    const rows = await db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(logEntries)
+        .values(
+          parts.map(({ food, portion, nutrients }) => ({
+            userId,
+            day,
+            meal,
+            name: food.name,
+            brand: food.brand,
+            icon: food.icon,
+            imageUrl: food.imageUrl,
+            source: food.kind,
+            sourceRef: `${food.kind}:${food.id}`,
+            ...portion,
+            perServing: food.nutrients,
+            servings: food.servings,
+            nutrients,
+            aiEstimated: food.aiFields.length > 0,
+            groupRef: `quick:${quick.id}`,
+            createdAt: now,
+            updatedAt: now,
+          }))
+        )
+        .returning();
+      // Using the meal counts as using it, and each of the person's own foods in it
+      const used = [quick.id, ...parts.filter((p) => p.live && p.food.kind === "user_food").map((p) => p.food.id)];
+      for (const foodId of used) {
+        await tx
+          .update(userFoods)
+          .set({ useCount: sql`${userFoods.useCount} + 1`, lastUsedAt: now })
+          .where(and(eq(userFoods.id, foodId), eq(userFoods.userId, userId)));
+      }
+      return inserted.sort((x, y) => x.id - y.id);
+    });
+    return { entries: rows.map(toEntry) };
   });
 
   // A new portion, recomputed from the entry's own snapshot (never the food as it is now)
@@ -365,7 +405,8 @@ export default async function foodLogRoutes(app: FastifyInstance) {
       const byId = new Map(own.map((r) => [r.id, r]));
       const ordered = ids.map((i) => byId.get(i)!);
       if (b.copy) {
-        const copies = ordered.map(({ id: _id, createdAt: _c, updatedAt: _u, ...rest }) => ({ ...rest, day: b.day, meal: b.meal, createdAt: now, updatedAt: now }));
+        // A copy is its own use of each food, not of the quick meal it came from
+        const copies = ordered.map(({ id: _id, createdAt: _c, updatedAt: _u, ...rest }) => ({ ...rest, groupRef: null, day: b.day, meal: b.meal, createdAt: now, updatedAt: now }));
         const inserted = await tx.insert(logEntries).values(copies).returning();
         return inserted.sort((x, y) => x.id - y.id);
       }

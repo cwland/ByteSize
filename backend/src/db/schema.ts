@@ -193,7 +193,7 @@ export const userFoods = pgTable(
   {
     id: serial("id").primaryKey(),
     userId: userRef(),
-    kind: text("kind").notNull(), // custom, ai, override
+    kind: text("kind").notNull(), // custom, ai, override, recipe, quick_meal
     name: text("name").notNull(),
     brand: text("brand"),
     barcode: text("barcode"), // normalized; one active food per barcode per person
@@ -203,6 +203,8 @@ export const userFoods = pgTable(
     nutrients: jsonb("nutrients").$type<NutrientsJson>().notNull(),
     aiFields: text("ai_fields").array().notNull().default(sql`'{}'::text[]`), // nutrient keys the AI guessed
     notes: text("notes"),
+    recipeServings: doublePrecision("recipe_servings"), // recipes: how many servings the ingredients make (quick meals: 1)
+    servingGrams: doublePrecision("serving_grams"), // recipes: the weight of one serving, when known
     useCount: integer("use_count").notNull().default(0),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     archived: boolean("archived").notNull().default(false),
@@ -239,8 +241,42 @@ export const logEntries = pgTable(
     servings: jsonb("servings").$type<ServingJson[]>().notNull(),
     nutrients: jsonb("nutrients").$type<NutrientsJson>().notNull(), // for the amount logged
     aiEstimated: boolean("ai_estimated").notNull().default(false),
+    groupRef: text("group_ref"), // quick:<user_food id> when logged from a quick meal (one entry per item)
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("log_entries_user_day_idx").on(t.userId, t.day)]
+);
+
+/** What a recipe item remembers of its food at save time: used when the food is archived or gone. */
+export type RecipeItemSnapshot = {
+  name: string;
+  brand: string | null;
+  icon: string;
+  foodKind: string;
+  nutrients: NutrientsJson; // for the item's amount
+  perServing: NutrientsJson; // the food's, per its servings[0]
+  servings: ServingJson[];
+  aiFields: string[];
+};
+
+// The ingredients of a recipe, or the foods of a quick meal (both are user_foods). Reached only
+// through their recipe, so they belong to the recipe's owner.
+export const recipeItems = pgTable(
+  "recipe_items",
+  {
+    id: serial("id").primaryKey(),
+    recipeId: integer("recipe_id")
+      .notNull()
+      .references(() => userFoods.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    foodKind: text("food_kind").notNull(), // user_food, cache
+    foodId: integer("food_id").notNull(),
+    servingIndex: integer("serving_index").notNull().default(0),
+    unit: text("unit").notNull(),
+    quantity: doublePrecision("quantity").notNull(),
+    fraction: doublePrecision("fraction").notNull().default(1),
+    snapshot: jsonb("snapshot").$type<RecipeItemSnapshot>().notNull(),
+  },
+  (t) => [index("recipe_items_recipe_idx").on(t.recipeId, t.position), index("recipe_items_food_idx").on(t.foodKind, t.foodId)]
 );
