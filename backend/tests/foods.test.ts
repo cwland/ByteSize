@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
+import { readFileSync } from "node:fs";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { never, OFF_PRODUCT, OFF_SEARCH, offKnows, offProduct, USDA, usdaFood } from "./foodFakes.js";
 
@@ -210,5 +211,42 @@ describe("search", () => {
     }
     expect((await t.api("GET", "/api/foods/search")).status).toBe(400);
     expect(t.foodWeb.calls).toEqual([]);
+  });
+});
+
+describe("liquid measures", () => {
+  const fairlife = JSON.parse(readFileSync(new URL("./fixtures/off-product-fairlife.json", import.meta.url), "utf8")).product;
+  const FAIRLIFE = "0811620021470";
+  const approxServings = [
+    { label: "100 g", grams: 100, ml: 100, approx: true },
+    { label: "1 cup", grams: 240, ml: 240, approx: true },
+  ];
+
+  it("barcode and search results for a grams-only drink carry approximate ml; cheese doesn't", async () => {
+    const cheese = offProduct("0099999999993", "Mozzarella", 280, { categories_tags: ["en:cheeses"] });
+    offKnows(t, { [FAIRLIFE]: fairlife });
+    const hit = await barcode(FAIRLIFE);
+    expect(hit.body.food).toMatchObject({ name: fairlife.product_name, servings: approxServings, nutrients: { saturated_fat_g: 1.25 } });
+    // the cache keeps the source's servings; the ml is worked out when read
+    const [row] = (await t.db.execute<{ servings: unknown }>(sql`select servings from food_cache where barcode = ${FAIRLIFE}`)).rows;
+    expect(row.servings).toEqual([{ label: "100 g", grams: 100 }, { label: "1 cup", grams: 240 }]);
+
+    const web = t.foodWeb.respond;
+    t.foodWeb.respond = (url, init) => (url.startsWith(OFF_SEARCH) ? { status: 200, json: { hits: [fairlife, cheese] } } : web(url, init));
+    const s = await search("fairlife mozzarella");
+    const foods = s.body.groups.flatMap((g: any) => g.foods);
+    expect(foods.find((f: any) => f.name === fairlife.product_name).servings).toEqual(approxServings);
+    expect(foods.find((f: any) => f.name === "Mozzarella").servings).toEqual([{ label: "100 g", grams: 100 }, { label: "40 g", grams: 40 }]);
+  });
+
+  it("my own grams-only drink carries approximate ml, and saving it back keeps it grams-only", async () => {
+    const made = await t.api("POST", "/api/my-foods", { name: "Homemade kefir", servings: [{ label: "1 glass", grams: 250 }], nutrients: { calories: 150 } });
+    expect(made.body.food.servings).toEqual([{ label: "1 glass", grams: 250, ml: 250, approx: true }]);
+    // The web app sends the servings back as it got them: the estimate isn't stored as a real volume
+    const saved = await t.api("PATCH", `/api/my-foods/${made.body.food.id}`, { servings: made.body.food.servings });
+    expect(saved.status).toBe(200);
+    expect(saved.body.food.servings).toEqual([{ label: "1 glass", grams: 250, ml: 250, approx: true }]);
+    const [row] = (await t.db.execute<{ servings: unknown }>(sql`select servings from user_foods where id = ${made.body.food.id}`)).rows;
+    expect(row.servings).toEqual([{ label: "1 glass", grams: 250 }]);
   });
 });

@@ -8,6 +8,7 @@ const fixture = (name: string) => JSON.parse(readFileSync(new URL(`./fixtures/${
 const nutella = fixture("off-product-nutella.json");
 const cola = fixture("off-product-cola.json");
 const bar = fixture("off-product-nofiber.json");
+const fairlife = fixture("off-product-fairlife.json");
 
 // A fetch that answers from a table and records what it was asked
 function fakeFetch(answer: (url: string, init?: RequestInit) => { status: number; json: unknown } | Promise<never>) {
@@ -23,6 +24,13 @@ function fakeFetch(answer: (url: string, init?: RequestInit) => { status: number
 const never = () => new Promise<never>(() => {});
 
 describe("normalizeOff", () => {
+  it("maps saturated fat (saturated-fat_100g)", () => {
+    const f = normalizeOff(fairlife.product);
+    expect(f.nutrients).toEqual({ calories: 50, protein_g: 5.4, carbs_g: 2.5, fat_g: 1.9, saturated_fat_g: 1.25, sugar_g: 2.5, sodium_mg: 50 });
+    expect(f.servings).toEqual([{ label: "100 g", grams: 100 }, { label: "1 cup", grams: 240 }]);
+    expect(f.category).toBe("en:milks");
+  });
+
   it("a product per 100 g with a serving size", () => {
     expect(normalizeOff(nutella.product)).toEqual({
       source: "off",
@@ -35,7 +43,7 @@ describe("normalizeOff", () => {
         { label: "100 g", grams: 100 },
         { label: "15 g", grams: 15 },
       ],
-      nutrients: { calories: 539, protein_g: 6.3, fiber_g: 3.4, carbs_g: 57.5, fat_g: 30.9, sugar_g: 56.3, sodium_mg: 42.8 },
+      nutrients: { calories: 539, protein_g: 6.3, fiber_g: 3.4, carbs_g: 57.5, fat_g: 30.9, saturated_fat_g: 10.6, sugar_g: 56.3, sodium_mg: 42.8 },
       imageUrl: "https://images.openfoodfacts.org/images/products/301/762/401/0701/front_en.81.200.jpg",
       raw: nutella.product,
     });
