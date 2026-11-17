@@ -11,11 +11,15 @@ const halves = (n: number) => (Number.isInteger(n) ? String(n) : `${Math.floor(n
 const range = (r: Range) => `${fmt(r.min)}–${fmt(r.max)}`;
 
 // No plan is safe to follow (every one is under the calorie floor)
-export const noSafePlan = (plans: Plan[]) => plans.length > 0 && plans.every((p) => p.notRecommended && !p.recommended);
+// No safe way to lose weight: every weight-loss plan is under the floor (Maintenance doesn't count — it isn't a loss plan)
+export const noSafePlan = (plans: Plan[]) => {
+  const loss = plans.filter((p) => p.lbsPerWeek > 0);
+  return loss.length > 0 && loss.every((p) => p.notRecommended) && !plans.some((p) => p.recommended);
+};
 
 // Plan cards as a peeking carousel: on a phone each card is ~82% wide and centred, so the
 // neighbours show at both edges; swipe (scroll-snap), tap a dot or use the arrow keys. Opens
-// centred on the recommended plan. From 768 px wide all four sit side by side, no scrolling.
+// centred on the recommended plan. From 768 px wide they sit in a grid (all five side by side from 1024 px).
 export default function PlanPicker({ data, onSelected, onOwnTargets }: { data: PlansResponse; onSelected: (t: Targets) => void; onOwnTargets: () => void }) {
   const { user } = useSession();
   const start = Math.max(0, data.plans.findIndex((p) => p.recommended));
@@ -79,7 +83,7 @@ export default function PlanPicker({ data, onSelected, onOwnTargets }: { data: P
         </div>
       )}
       {/* Wide screens: break out of the phone-width column so four cards fit side by side */}
-      <div className="-mx-3 md:relative md:left-1/2 md:mx-0 md:w-[min(68rem,calc(100vw-2rem))] md:-translate-x-1/2">
+      <div className="-mx-3 md:relative md:left-1/2 md:mx-0 md:w-[min(76rem,calc(100vw-2rem))] md:-translate-x-1/2">
         <div
           ref={strip}
           role="region"
@@ -88,7 +92,7 @@ export default function PlanPicker({ data, onSelected, onOwnTargets }: { data: P
           tabIndex={0}
           onScroll={onScroll}
           onKeyDown={onKeyDown}
-          className="relative flex snap-x snap-mandatory gap-3 overflow-x-auto px-[9%] pt-1 pb-2 outline-none [scrollbar-width:none] focus-visible:ring-2 focus-visible:ring-action/40 md:grid md:grid-cols-4 md:overflow-visible md:px-0 [&::-webkit-scrollbar]:hidden"
+          className="relative flex snap-x snap-mandatory gap-3 overflow-x-auto px-[9%] pt-1 pb-2 outline-none [scrollbar-width:none] focus-visible:ring-2 focus-visible:ring-action/40 md:grid md:grid-cols-3 lg:grid-cols-5 md:overflow-visible md:px-0 [&::-webkit-scrollbar]:hidden"
         >
           {data.plans.map((p, i) => (
             <section
@@ -116,8 +120,14 @@ export default function PlanPicker({ data, onSelected, onOwnTargets }: { data: P
                 <li>Fiber {range(p.targets.fiber_g)} g</li>
               </ul>
               <ul className="flex flex-col gap-1">
-                <li className="font-semibold">{perWeek(p.lbsPerWeek)}</li>
-                <li className="text-subtle">{p.weeksToGoal === null ? "You're already at your goal" : `About ${p.weeksToGoal} weeks to reach your goal`}</li>
+                {p.lbsPerWeek === 0 ? (
+                  <li className="font-semibold">Hold your weight steady</li>
+                ) : (
+                  <>
+                    <li className="font-semibold">{perWeek(p.lbsPerWeek)}</li>
+                    <li className="text-subtle">{p.weeksToGoal === null ? "You're already at your goal" : `About ${p.weeksToGoal} weeks to reach your goal`}</li>
+                  </>
+                )}
               </ul>
               <button type="button" disabled={busy} onClick={() => select(p)} className={`${primaryButton} mt-auto self-start`}>
                 Select

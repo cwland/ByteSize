@@ -29,6 +29,9 @@ export const plansA = {
   current: null,
   explanation: "Steady keeps you at 1,987 calories, above your 1,617 floor, and loses about 1 lb a week.",
   plans: [
+    { id: "maintenance", name: "Maintenance", lbsPerWeek: 0, calories: 2487, weeksToGoal: null, recommended: false, notRecommended: false,
+      bestFor: "Reached your goal, taking a break, or a vacation week",
+      targets: { calories: r(2387, 2587), protein_g: r(144, 180), fiber_g: r(30, 35), water_ml: water } },
     { id: "relaxed", name: "Relaxed", lbsPerWeek: 0.5, calories: 2237, weeksToGoal: 92, recommended: false, notRecommended: false,
       bestFor: "Easing into a new dose, minimal side effects and strength gains",
       targets: { calories: r(2187, 2287), protein_g: r(144, 162), fiber_g: r(30, 35), water_ml: water } },
@@ -49,7 +52,10 @@ export const plansNoSafe = {
   floor: 1200,
   current: null,
   explanation: "Every plan here would put you under a safe calorie floor of 1,200. Set your targets with your care team, then enter them under Goals.",
-  plans: plansA.plans.map((p, i) => ({ ...p, calories: 1102 - i * 250, recommended: false, notRecommended: true })),
+  // As the server sends it: every weight-loss plan under the floor; Maintenance (no deficit) is safe but not recommended
+  plans: plansA.plans.map((p, i) =>
+    p.id === "maintenance" ? { ...p, calories: 1352, recommended: false, notRecommended: false } : { ...p, calories: 1102 - (i - 1) * 250, recommended: false, notRecommended: true },
+  ),
 };
 
 const meal = (calories = 0, over: Record<string, number | null> = {}) => ({ calories, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, suggested: null as number | null, ...over });

@@ -47,6 +47,7 @@ describe("body and plans", () => {
     expect(res.body.plans.find((p: any) => p.id === "steady").targets).toEqual(STEADY);
     expect(res.body.plans.every((p: any) => typeof p.bestFor === "string" && p.bestFor.length > 0)).toBe(true);
     expect(res.body.plans.map((p: any) => [p.id, p.calories, p.recommended, p.notRecommended])).toEqual([
+      ["maintenance", 2460, false, false],
       ["relaxed", 2210, false, false],
       ["steady", 1960, true, false],
       ["accelerated", 1710, false, false],
@@ -206,5 +207,14 @@ describe("personal settings", () => {
     const res = await t.api("PUT", "/api/body", A);
     expect(res.body.body).toMatchObject({ heightCm: A.heightCm, weightKg: A.weightKg, goalWeightKg: A.goalWeightKg });
     expect((await t.api("GET", "/api/body")).body.body).toMatchObject({ weightKg: A.weightKg, goalWeightKg: A.goalWeightKg });
+  });
+
+  it("Maintenance can be selected and sets its own targets", async () => {
+    expect((await t.api("PUT", "/api/body", A)).status).toBe(200);
+    const res = await t.api("POST", "/api/plans/select", { plan: "maintenance" });
+    expect(res.status).toBe(200);
+    expect(res.body.targets.plan).toBe("maintenance");
+    const tdee = (await t.api("GET", "/api/plans")).body.tdee;
+    expect(res.body.targets.calories).toEqual({ min: tdee - 100, max: tdee + 100 });
   });
 });

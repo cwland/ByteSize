@@ -57,6 +57,7 @@ describe("plan calculator", () => {
   it("defines activity multipliers and the four plans", () => {
     expect(ACTIVITY).toEqual({ sitting: 1.2, some: 1.3, most: 1.4, physical: 1.5 });
     expect(PLAN_DEFS.map((p) => [p.id, p.name, p.lbsPerWeek, p.deficit, p.protein, p.fiber])).toEqual([
+      ["maintenance", "Maintenance", 0, 0, [0.8, 1.0], { min: 30, max: 35 }],
       ["relaxed", "Relaxed", 0.5, 250, [0.8, 0.9], { min: 30, max: 35 }],
       ["steady", "Steady", 1, 500, [0.9, 1.0], { min: 30, max: 35 }],
       ["accelerated", "Accelerated", 1.5, 750, [0.95, 1.05], { min: 28, max: 32 }],
@@ -78,11 +79,11 @@ describe("plan calculator", () => {
     const r = buildPlans(CORY, today);
     expect(r.tdee).toBe(2487);
     expect(r.floor).toBe(1617);
-    expect(r.plans.map((p) => p.calories)).toEqual([2237, 1987, 1737, 1487]);
+    expect(r.plans.map((p) => p.calories)).toEqual([2487, 2237, 1987, 1737, 1487]);
     expect(r.recommended).toBe("steady");
-    expect(r.plans.map((p) => p.recommended)).toEqual([false, true, false, false]);
-    expect(r.plans.map((p) => p.notRecommended)).toEqual([false, false, false, true]);
-    expect(r.plans.map((p) => p.weeksToGoal)).toEqual([92, 46, 31, 23]);
+    expect(r.plans.map((p) => p.recommended)).toEqual([false, false, true, false, false]);
+    expect(r.plans.map((p) => p.notRecommended)).toEqual([false, false, false, false, true]);
+    expect(r.plans.map((p) => p.weeksToGoal)).toEqual([null, 92, 46, 31, 23]);
     const water = { min: 1893, max: 3785 };
     expect(byId(r, "relaxed").targets).toEqual({ calories: { min: 2187, max: 2287 }, protein_g: { min: 144, max: 162 }, fiber_g: { min: 30, max: 35 }, water_ml: water });
     expect(byId(r, "steady").targets).toEqual({ calories: { min: 1937, max: 2037 }, protein_g: { min: 162, max: 180 }, fiber_g: { min: 30, max: 35 }, water_ml: water });
@@ -99,12 +100,12 @@ describe("plan calculator", () => {
     const r = buildPlans(A, today);
     expect(r.tdee).toBe(2460);
     expect(r.floor).toBe(1599);
-    expect(r.plans.map((p) => p.id)).toEqual(["relaxed", "steady", "accelerated", "vigorous"]);
-    expect(r.plans.map((p) => p.calories)).toEqual([2210, 1960, 1710, 1460]);
-    expect(r.plans.map((p) => p.weeksToGoal)).toEqual([140, 70, 47, 35]);
+    expect(r.plans.map((p) => p.id)).toEqual(["maintenance", "relaxed", "steady", "accelerated", "vigorous"]);
+    expect(r.plans.map((p) => p.calories)).toEqual([2460, 2210, 1960, 1710, 1460]);
+    expect(r.plans.map((p) => p.weeksToGoal)).toEqual([null, 140, 70, 47, 35]);
     expect(r.recommended).toBe("steady");
-    expect(r.plans.map((p) => p.recommended)).toEqual([false, true, false, false]);
-    expect(r.plans.map((p) => p.notRecommended)).toEqual([false, false, false, true]);
+    expect(r.plans.map((p) => p.recommended)).toEqual([false, false, true, false, false]);
+    expect(r.plans.map((p) => p.notRecommended)).toEqual([false, false, false, false, true]);
   });
 
   it("body A: targets for the steady plan (thin wrapper agrees with the card)", () => {
@@ -129,13 +130,15 @@ describe("plan calculator", () => {
     const r = buildPlans(B, today);
     expect(r.tdee).toBe(1352);
     expect(r.floor).toBe(1200);
-    expect(r.plans.map((p) => p.calories)).toEqual([1102, 852, 602, 352]);
-    expect(r.plans.every((p) => p.notRecommended)).toBe(true);
+    expect(r.plans.map((p) => p.calories)).toEqual([1352, 1102, 852, 602, 352]);
+    // every weight-loss plan is under the floor; Maintenance (no deficit) isn't, but nothing is recommended
+    expect(r.plans.filter((p) => p.id !== "maintenance").every((p) => p.notRecommended)).toBe(true);
+    expect(r.plans.some((p) => p.recommended)).toBe(false);
     expect(r.plans.some((p) => p.recommended)).toBe(false);
     expect(r.recommended).toBeNull();
     // Every plan is not recommended: each keeps its own honest range
     expect(r.plans.map((p) => p.targets.calories)).toEqual([
-      { min: 1052, max: 1152 }, { min: 802, max: 902 }, { min: 552, max: 652 }, { min: 302, max: 402 },
+      { min: 1252, max: 1452 }, { min: 1052, max: 1152 }, { min: 802, max: 902 }, { min: 552, max: 652 }, { min: 302, max: 402 },
     ]);
     const text = planExplanation(r, B);
     expect(text).toBe(
@@ -175,17 +178,27 @@ describe("plan calculator", () => {
     expect(byId(d, "steady").targets.calories).toEqual({ min: 913, max: 1013 });
   });
 
-  it("goal at or above current weight: no recommendation and no weeks to goal", () => {
+  it("goal reached: Maintenance is recommended, no weeks to goal", () => {
     for (const goalWeightKg of [A.weightKg, A.weightKg + 5]) {
       const body = { ...A, goalWeightKg };
       const r = buildPlans(body, today);
-      expect(r.recommended).toBeNull();
+      expect(r.recommended).toBe("maintenance");
       expect(r.plans.every((p) => p.weeksToGoal === null)).toBe(true);
-      expect(r.plans.every((p) => !p.notRecommended && !p.recommended)).toBe(true);
+      expect(r.plans.every((p) => !p.notRecommended)).toBe(true);
+      expect(r.plans.filter((p) => p.recommended).map((p) => p.id)).toEqual(["maintenance"]);
       const text = planExplanation(r, body);
       expect(text).not.toContain("care team");
-      expect(text).toContain("Goals");
+      expect(text).toContain("Maintenance");
     }
+  });
+
+  it("Maintenance holds Cory at his daily burn, ±100, and isn't recommended while he's losing", () => {
+    const r = buildPlans(CORY, today);
+    const m = byId(r, "maintenance");
+    expect(m).toMatchObject({ name: "Maintenance", lbsPerWeek: 0, calories: 2487, weeksToGoal: null, recommended: false, notRecommended: false });
+    expect(m.targets).toEqual({ calories: { min: 2387, max: 2587 }, protein_g: { min: 144, max: 180 }, fiber_g: { min: 30, max: 35 }, water_ml: { min: 1893, max: 3785 } });
+    expect(m.bestFor).toMatch(/goal|break|vacation/i);
+    expect(r.recommended).toBe("steady");
   });
 
   it("on a GLP-1 the recommendation is never faster than accelerated", () => {
