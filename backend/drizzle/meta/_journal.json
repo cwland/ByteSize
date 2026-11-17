@@ -22,6 +22,13 @@
       "when": 1794897635673,
       "tag": "0002_double_precision",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794928011730,
+      "tag": "0003_birthdate_activity",
+      "breakpoints": true
     }
   ]
 }

@@ -2,16 +2,18 @@
 
 export type PlanId = "relaxed" | "steady" | "accelerated" | "vigorous";
 export type Range = { min: number; max: number };
-export type Activity = "sedentary" | "light" | "moderate" | "active" | "very";
+export type Activity = "sitting" | "some" | "most" | "physical";
+export const ACTIVITIES = ["sitting", "some", "most", "physical"] as const satisfies readonly Activity[];
 export type Body = {
   sex: "male" | "female";
-  birthYear: number;
+  birthDate: string; // YYYY-MM-DD
   heightCm: number;
   weightKg: number;
   goalWeightKg: number;
   activity: Activity;
   glp1: boolean;
 };
+export type PlanTargets = { calories: Range; protein_g: Range; fiber_g: Range; water_ml: Range };
 export type Plan = {
   id: PlanId;
   name: string;
@@ -20,41 +22,84 @@ export type Plan = {
   weeksToGoal: number | null;
   recommended: boolean;
   notRecommended: boolean;
+  bestFor: string;
+  targets: PlanTargets;
 };
 export type PlanResult = { tdee: number; floor: number; plans: Plan[]; recommended: PlanId | null };
-export type PlanTargets = { calories: Range; protein_g: Range; fiber_g: Range; water_ml: Range };
 
 const KG_PER_LB = 0.45359237;
 
+// "How active is your day, not counting workouts?" (design §10)
 export const ACTIVITY: Record<Activity, number> = {
-  sedentary: 1.2,
-  light: 1.375,
-  moderate: 1.55,
-  active: 1.725,
-  very: 1.9,
+  sitting: 1.2,
+  some: 1.3,
+  most: 1.4,
+  physical: 1.5,
 };
 
-export const PLAN_DEFS: readonly { id: PlanId; name: string; lbsPerWeek: number; deficit: number }[] = [
-  { id: "relaxed", name: "Relaxed", lbsPerWeek: 0.5, deficit: 250 },
-  { id: "steady", name: "Steady", lbsPerWeek: 1, deficit: 500 },
-  { id: "accelerated", name: "Accelerated", lbsPerWeek: 1.5, deficit: 750 },
-  { id: "vigorous", name: "Vigorous", lbsPerWeek: 2, deficit: 1000 },
+type PlanDef = {
+  id: PlanId;
+  name: string;
+  lbsPerWeek: number;
+  deficit: number;
+  /** g of protein per lb of goal weight: [low, high] */
+  protein: readonly [number, number];
+  fiber: Range;
+  bestFor: string;
+};
+
+export const PLAN_DEFS: readonly PlanDef[] = [
+  { id: "relaxed", name: "Relaxed", lbsPerWeek: 0.5, deficit: 250, protein: [0.8, 0.9], fiber: { min: 30, max: 35 },
+    bestFor: "Easing into a new dose, minimal side effects and strength gains" },
+  { id: "steady", name: "Steady", lbsPerWeek: 1, deficit: 500, protein: [0.9, 1.0], fiber: { min: 30, max: 35 },
+    bestFor: "The sweet spot: sustainable loss, high energy and no muscle loss" },
+  { id: "accelerated", name: "Accelerated", lbsPerWeek: 1.5, deficit: 750, protein: [0.95, 1.05], fiber: { min: 28, max: 32 },
+    bestFor: "Strong appetite suppression, when eating more feels forced" },
+  { id: "vigorous", name: "Vigorous", lbsPerWeek: 2, deficit: 1000, protein: [1.0, 1.1], fiber: { min: 25, max: 30 },
+    bestFor: "The fastest loss, and the hardest to sustain" },
 ];
+
+const CALORIE_SPREAD = 50;
+const WATER_ML: Range = { min: 1893, max: 3785 };
 
 /** On a GLP-1, never recommend a plan faster than this (design §9, 2026-11-16 23:20). */
 const GLP1_FASTEST: PlanId = "accelerated";
 
-/** Mifflin-St Jeor. Age is today's UTC year minus birth year. */
-export function bmr(body: Body, today: Date): number {
-  const age = today.getUTCFullYear() - body.birthYear;
-  return 10 * body.weightKg + 6.25 * body.heightCm - 5 * age + (body.sex === "male" ? 5 : -161);
+const ymd = (d: string) => d.split("-").map(Number) as [number, number, number];
+
+/**
+ * Exact age in whole years on `today` (both YYYY-MM-DD; `today` is the person's own local day).
+ * A Feb 29 birthday counts from Mar 1 in non-leap years.
+ */
+export function age(birthDate: string, today: string): number {
+  const [by, bm, bd] = ymd(birthDate);
+  const [ty, tm, td] = ymd(today);
+  const hadBirthday = tm > bm || (tm === bm && td >= bd);
+  return ty - by - (hadBirthday ? 0 : 1);
 }
 
-export function tdee(body: Body, today: Date): number {
+/** Mifflin-St Jeor, with the exact age on `today` (the person's local day). */
+export function bmr(body: Body, today: string): number {
+  return 10 * body.weightKg + 6.25 * body.heightCm - 5 * age(body.birthDate, today) + (body.sex === "male" ? 5 : -161);
+}
+
+export function tdee(body: Body, today: string): number {
   return Math.round(bmr(body, today) * ACTIVITY[body.activity]);
 }
 
-export function buildPlans(body: Body, today: Date): PlanResult {
+function planTargets(body: Body, def: PlanDef, calories: number, floor: number | null): PlanTargets {
+  const lbs = body.goalWeightKg / KG_PER_LB;
+  // floor null: a "Not recommended" plan keeps its own range, shown honestly
+  const min = floor === null ? calories - CALORIE_SPREAD : Math.max(calories - CALORIE_SPREAD, floor);
+  return {
+    calories: { min, max: Math.max(calories + CALORIE_SPREAD, min) },
+    protein_g: { min: Math.round(def.protein[0] * lbs), max: Math.round(def.protein[1] * lbs) },
+    fiber_g: { ...def.fiber },
+    water_ml: { ...WATER_ML },
+  };
+}
+
+export function buildPlans(body: Body, today: string): PlanResult {
   const t = tdee(body, today);
   const floor = Math.round(Math.max(1200, 0.65 * t));
   const losing = body.goalWeightKg < body.weightKg;
@@ -63,6 +108,7 @@ export function buildPlans(body: Body, today: Date): PlanResult {
 
   const plans: Plan[] = PLAN_DEFS.map((d) => {
     const calories = t - d.deficit;
+    const notRecommended = losing ? calories < floor : false;
     return {
       id: d.id,
       name: d.name,
@@ -70,7 +116,10 @@ export function buildPlans(body: Body, today: Date): PlanResult {
       calories,
       weeksToGoal: losing ? Math.ceil(lbsToLose / d.lbsPerWeek) : null,
       recommended: false,
-      notRecommended: losing ? calories < floor : false,
+      notRecommended,
+      bestFor: d.bestFor,
+      // Plans that aren't "Not recommended" never start below the safe floor
+      targets: planTargets(body, d, calories, notRecommended ? null : floor),
     };
   });
 
@@ -91,21 +140,9 @@ export function buildPlans(body: Body, today: Date): PlanResult {
   return { tdee: t, floor, plans, recommended };
 }
 
-function goalLbs(body: Body): number {
-  return body.goalWeightKg / KG_PER_LB;
-}
-
-// floor: the safe calorie floor (buildPlans().floor). The range never starts below it, even for a plan that was
-// chosen against advice; such a range is pulled up to the floor rather than left under it.
-export function targetsForPlan(body: Body, planCalories: number, floor = 0): PlanTargets {
-  const lbs = goalLbs(body);
-  const min = Math.max(planCalories - 150, floor);
-  return {
-    calories: { min, max: Math.max(planCalories + 150, min) },
-    protein_g: { min: Math.round(0.7 * lbs), max: Math.round(1.0 * lbs) },
-    fiber_g: { min: 25, max: 38 },
-    water_ml: { min: 1893, max: 3785 },
-  };
+/** Thin wrapper: the targets on a plan's card (what selecting it sets). */
+export function targetsForPlan(body: Body, today: string, plan: PlanId): PlanTargets {
+  return buildPlans(body, today).plans.find((p) => p.id === plan)!.targets;
 }
 
 const num = (n: number) => n.toLocaleString("en-US");
@@ -127,7 +164,7 @@ export function planExplanation(result: PlanResult, body: Body): string {
     return `Every plan here would put you under a safe calorie floor of ${num(result.floor)}. ` +
       "Set your targets with your care team, then enter them under Goals.";
   }
-  const protein = targetsForPlan(body, plan.calories).protein_g.min;
+  const protein = plan.targets.protein_g.min;
   const first = `${plan.name} keeps you at ${num(plan.calories)} calories, ${plan.calories > result.floor ? "above" : "right at"} your ${num(result.floor)} floor, ` +
     `and loses about ${lbsText(plan.lbsPerWeek)} lb a week.`;
   const second = body.glp1

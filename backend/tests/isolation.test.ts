@@ -58,7 +58,7 @@ describe("per-user isolation", () => {
   });
   it("a user can't see another's body, plans or targets", async () => {
     const { a, b } = await twoUsers(t);
-    const body = { sex: "female", birthYear: 1980, heightCm: 165, weightKg: 90, goalWeightKg: 70, activity: "light", glp1: false };
+    const body = { sex: "female", birthDate: "1980-03-04", heightCm: 165, weightKg: 90, goalWeightKg: 70, activity: "some", glp1: false };
     expect((await a.as("PUT", "/api/body", body)).status).toBe(200);
     expect((await a.as("POST", "/api/plans/select", { plan: "steady" })).status).toBe(200);
     const windows = { breakfast: "08:00", lunch: "12:00", snacks: "15:00", dinner: "19:00" };
@@ -71,7 +71,7 @@ describe("per-user isolation", () => {
     // ben's own changes don't touch anna's
     expect((await b.as("PUT", "/api/targets", { calories: { min: 1000, max: 1100 }, protein_g: { min: 1, max: 2 }, fiber_g: { min: 1, max: 2 }, water_ml: { min: 1, max: 2 } })).status).toBe(200);
     expect((await a.as("GET", "/api/targets")).body.targets.plan).toBe("steady");
-    expect((await a.as("GET", "/api/body")).body).toEqual({ body });
+    expect((await a.as("GET", "/api/body")).body).toEqual({ body: { ...body, needsReview: false } });
     expect((await a.as("GET", "/api/settings/me")).body).toEqual({ mealWindows: windows, waterButtonsMl: [300] });
   });
 
