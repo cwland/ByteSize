@@ -241,4 +241,25 @@ describe("food log", () => {
     expect(again.map((f: any) => `${f.kind}:${f.id}`)).toEqual([`cache:${cached.id}`, `user_food:${mine.id}`]);
     expect(again[0].last).toEqual({ servingIndex: 1, unit: "serving", quantity: 1, fraction: 1 });
   });
+
+  it("recent and frequent show my correction instead of the database version", async () => {
+    const cached = await bar();
+    await log(cached, { servingIndex: 1 }, "2026-11-15");
+    await log(cached, { servingIndex: 1 }, "2026-11-16");
+    const fixed = (await t.api("POST", "/api/my-foods/override", { cacheId: cached.id, name: cached.name, brand: cached.brand, servings: cached.servings, nutrients: { ...cached.nutrients, calories: 999 } })).body.food;
+    await log(fixed, { servingIndex: 1 }, "2026-11-17");
+    for (const path of ["/api/foods/recent", "/api/foods/frequent"]) {
+      const foods = (await t.api("GET", path)).body.foods;
+      expect(foods.map((f: any) => `${f.kind}:${f.id}`), path).toEqual([`user_food:${fixed.id}`]);
+      expect(foods[0].nutrients.calories, path).toBe(999);
+    }
+  });
+
+  it("an older entry of the database version still resolves to my correction", async () => {
+    const cached = await bar();
+    await log(cached, { servingIndex: 1, fraction: 0.5 }, "2026-11-16");
+    const fixed = (await t.api("POST", "/api/my-foods/override", { cacheId: cached.id, name: cached.name, brand: cached.brand, servings: cached.servings, nutrients: { ...cached.nutrients, calories: 999 } })).body.food;
+    const recent = (await t.api("GET", "/api/foods/recent")).body.foods;
+    expect(recent).toEqual([{ ...fixed, last: { servingIndex: 1, unit: "serving", quantity: 1, fraction: 0.5 } }]);
+  });
 });

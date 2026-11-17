@@ -12,7 +12,8 @@ import { Sheet } from "../ui/Sheet";
 import { field, primaryButton, secondaryButton } from "../ui/styles";
 
 type Group = { source: string; label: string; foods: FoodResult[] };
-type Found = { kind: "search"; groups: Group[]; errors: { source: string; message: string }[] } | { kind: "barcode"; code: string; food: FoodResult | null };
+type SourceError = { source: string; message: string };
+type Found = { kind: "search"; groups: Group[]; errors: SourceError[] } | { kind: "barcode"; code: string; food: FoodResult | null; errors?: SourceError[] };
 type View =
   | { k: "search" }
   | { k: "describe" }
@@ -62,6 +63,7 @@ export default function AddFoodSheet({ day, meal, onClose }: { day: string; meal
   const [frequent, setFrequent] = useState<RecentFood[]>([]);
   const [describe, setDescribe] = useState("");
   const [msg, setMsg] = useState<Msg>(null);
+  const [attempt, setAttempt] = useState(0); // "Try again" re-runs the lookup
 
   useEffect(() => {
     api<{ foods: RecentFood[] }>("GET", "/api/foods/recent").then((r) => setRecent(r.foods), () => {});
@@ -77,7 +79,7 @@ export default function AddFoodSheet({ day, meal, onClose }: { day: string; meal
     const t = setTimeout(async () => {
       try {
         const out: Found = code
-          ? { kind: "barcode", ...(await api<{ code: string; food: FoodResult | null }>("GET", `/api/foods/barcode/${code}`)) }
+          ? { kind: "barcode", ...(await api<{ code: string; food: FoodResult | null; errors?: SourceError[] }>("GET", `/api/foods/barcode/${code}`)) }
           : { kind: "search", ...(await api<{ groups: Group[]; errors: { source: string; message: string }[] }>("GET", `/api/foods/search?q=${encodeURIComponent(q)}`)) };
         if (live) {
           setFound(out);
@@ -91,7 +93,7 @@ export default function AddFoodSheet({ day, meal, onClose }: { day: string; meal
       live = false;
       clearTimeout(t);
     };
-  }, [query]);
+  }, [query, attempt]);
 
   const pick = (food: FoodResult, initial = defaultPortion(food.servings)) => setView({ k: "portion", food, initial });
   const edit = (food: FoodResult) =>
@@ -187,10 +189,29 @@ export default function AddFoodSheet({ day, meal, onClose }: { day: string; meal
           </ul>
         ) : (
           <div className="mt-4 flex flex-col items-start gap-2 px-2">
-            <p className="text-subtle">Nothing has barcode {found.code} yet.</p>
-            <button type="button" onClick={() => setView({ k: "form", mode: { kind: "create" }, draft: emptyDraft({ barcode: found.code }) })} className={primaryButton}>
-              Not found — create it
-            </button>
+            {found.errors?.length ? (
+              <>
+                {/* a source couldn't be checked, so "not found" isn't certain: creating now could hide the real product */}
+                <p className="text-subtle">
+                  Couldn't check {found.errors.map((e) => (e.source === "usda" ? "USDA" : "Open Food Facts")).join(" or ")} for barcode {found.code} just now.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setAttempt((n) => n + 1)} className={primaryButton}>
+                    Try again
+                  </button>
+                  <button type="button" onClick={() => setView({ k: "form", mode: { kind: "create" }, draft: emptyDraft({ barcode: found.code }) })} className={secondaryButton}>
+                    Create it anyway
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-subtle">Nothing has barcode {found.code} yet.</p>
+                <button type="button" onClick={() => setView({ k: "form", mode: { kind: "create" }, draft: emptyDraft({ barcode: found.code }) })} className={primaryButton}>
+                  Not found — create it
+                </button>
+              </>
+            )}
           </div>
         ))}
       {found?.kind === "search" && (

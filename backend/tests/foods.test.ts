@@ -82,12 +82,20 @@ describe("barcode lookup", () => {
     offKnows(t, {});
     const r = await barcode("4006381333931");
     expect(r.status).toBe(200);
-    expect(r.body).toEqual({ code: "4006381333931", food: null });
+    expect(r.body).toEqual({ code: "4006381333931", food: null, errors: [] });
     expect(t.foodWeb.calls.map((c) => c.url.startsWith(OFF_PRODUCT))).toEqual([true]); // no USDA key: OFF only
     expect(await foodLogs()).toEqual([]);
     const bad = await barcode("12ab");
     expect(bad.status).toBe(400);
     expect(bad.body.error).toBe("That doesn't look like a barcode");
+  });
+
+  it("a barcode that couldn't be checked says so instead of 'not found'", async () => {
+    t.foodWeb.down = true;
+    const r = await barcode("4006381333931");
+    expect(r.status).toBe(200);
+    expect(r.body.food).toBeNull();
+    expect(r.body.errors).toEqual([{ source: "off", message: expect.stringMatching(/Open Food Facts/) }]);
   });
 
   it("falls through to USDA when it has a key", async () => {

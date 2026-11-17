@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode, useEffect } from "react";
 
 // The day the app is showing (the ‹ date › switcher in the top bar). Days are "YYYY-MM-DD" in the
 // user's time zone; "today" starts and ends at midnight there.
@@ -34,10 +34,31 @@ const SelectedDayContext = createContext<SelectedDay | null>(null);
 
 export function SelectedDayProvider({ timeZone, children }: { timeZone: string; children: ReactNode }) {
   const [day, setDay] = useState(() => todayIn(timeZone));
+  // The local date as last seen. An app left open overnight (a phone in a pocket) must not keep
+  // logging to yesterday: when the date changes while you're on "today", follow it; a day you
+  // picked on purpose stays put.
+  const [currentToday, setCurrentToday] = useState(() => todayIn(timeZone));
+  useEffect(() => {
+    const check = () => {
+      const now = todayIn(timeZone);
+      setCurrentToday((was) => {
+        if (was !== now) setDay((d) => (d === was ? now : d));
+        return now;
+      });
+    };
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    const timer = window.setInterval(check, 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", check);
+      window.clearInterval(timer);
+    };
+  }, [timeZone]);
   const prev = useCallback(() => setDay((d) => addDays(d, -1)), []);
   const next = useCallback(() => setDay((d) => addDays(d, 1)), []);
   const today = useCallback(() => setDay(todayIn(timeZone)), [timeZone]);
-  const value = useMemo(() => ({ day, isToday: day === todayIn(timeZone), prev, next, today }), [day, timeZone, prev, next, today]);
+  const value = useMemo(() => ({ day, isToday: day === currentToday, prev, next, today }), [day, currentToday, prev, next, today]);
   return <SelectedDayContext.Provider value={value}>{children}</SelectedDayContext.Provider>;
 }
 

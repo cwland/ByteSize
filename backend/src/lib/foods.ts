@@ -143,7 +143,7 @@ const friendly = (source: "off" | "usda", err: unknown) => (err instanceof Sourc
 
 // ---------- barcode ----------
 
-export type BarcodeHit = { code: string; food: FoodResult | null; from: GroupSource | null };
+export type BarcodeHit = { code: string; food: FoodResult | null; from: GroupSource | null; errors: SearchResult["errors"] };
 
 /**
  * The waterfall: the person's own food with that barcode, a fresh cached food, Open Food Facts,
@@ -160,17 +160,19 @@ export async function lookupBarcode(app: FastifyInstance, userId: number, raw: s
     .from(userFoods)
     .where(and(eq(userFoods.userId, userId), eq(userFoods.barcode, code), eq(userFoods.archived, false)))
     .limit(1);
-  if (mine) return { code, food: toResult(mine, "user_food"), from: "mine" };
+  const errors: SearchResult["errors"] = []; // sources that couldn't be checked: "not found" isn't certain then
+  if (mine) return { code, food: toResult(mine, "user_food"), from: "mine", errors };
 
   const now = app.now();
   const [cached] = await db.select().from(foodCache).where(eq(foodCache.barcode, code)).orderBy(desc(foodCache.fetchedAt)).limit(1);
-  if (cached && cached.fetchedAt.getTime() >= now.getTime() - CACHE_FRESH_MS) return { code, food: toResult(cached, "cache"), from: "cache" };
+  if (cached && cached.fetchedAt.getTime() >= now.getTime() - CACHE_FRESH_MS) return { code, food: toResult(cached, "cache"), from: "cache", errors };
 
   let found: SourceFood | null = null;
   try {
     found = await offByBarcode(app.foodFetch, code, SOURCE_TIMEOUT_MS);
   } catch (err) {
     await logSourceFailure(app, userId, "off", "barcode lookup", err);
+    errors.push({ source: "off", message: friendly("off", err) });
   }
   if (!found) {
     const key = await usdaKey(app);
@@ -179,15 +181,16 @@ export async function lookupBarcode(app: FastifyInstance, userId: number, raw: s
         found = await usdaByBarcode(app.foodFetch, key, code, SOURCE_TIMEOUT_MS);
       } catch (err) {
         await logSourceFailure(app, userId, "usda", "barcode lookup", err);
+        errors.push({ source: "usda", message: friendly("usda", err) });
       }
     }
   }
   if (found) {
     const [row] = await upsertMany(db, [{ ...found, barcode: found.barcode ?? code }], now);
-    return { code, food: toResult(row, "cache"), from: found.source };
+    return { code, food: toResult(row, "cache"), from: found.source, errors };
   }
-  if (cached) return { code, food: toResult(cached, "cache"), from: "cache" };
-  return { code, food: null, from: null };
+  if (cached) return { code, food: toResult(cached, "cache"), from: "cache", errors };
+  return { code, food: null, from: null, errors };
 }
 
 // ---------- text matching ----------
@@ -223,7 +226,7 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
   // A typed barcode: the same answer as a scan
   if (DIGITS.test(q) && normalizeBarcode(q)) {
     const hit = await lookupBarcode(app, userId, q);
-    return { groups: hit.food && hit.from ? [{ source: hit.from, label: GROUP_LABELS[hit.from], foods: [hit.food] }] : [], errors: [] };
+    return { groups: hit.food && hit.from ? [{ source: hit.from, label: GROUP_LABELS[hit.from], foods: [hit.food] }] : [], errors: hit.errors };
   }
 
   const { db } = app;

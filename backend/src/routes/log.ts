@@ -173,10 +173,26 @@ async function resolveFoods(db: Db, userId: number, picks: { ref: string | null;
         .from(userFoods)
         .where(and(inArray(userFoods.id, userIds), eq(userFoods.userId, userId), eq(userFoods.archived, false)))
     : [];
-  const found = new Map<string, FoodResult>([...cache.map((r) => [`cache:${r.id}`, toResult(r, "cache")] as const), ...mine.map((r) => [`user_food:${r.id}`, toResult(r, "user_food")] as const)]);
+  // The person's own corrections of those database foods: a corrected food always shows as the correction
+  const overrides = cacheIds.length
+    ? await db
+        .select()
+        .from(userFoods)
+        .where(and(eq(userFoods.userId, userId), eq(userFoods.archived, false), inArray(userFoods.baseCacheId, cacheIds)))
+    : [];
+  const overrideOf = new Map(overrides.map((r) => [r.baseCacheId!, toResult(r, "user_food")] as const));
+  const found = new Map<string, FoodResult>([
+    ...cache.map((r) => [`cache:${r.id}`, overrideOf.get(r.id) ?? toResult(r, "cache")] as const),
+    ...mine.map((r) => [`user_food:${r.id}`, toResult(r, "user_food")] as const),
+  ]);
+  // In the order given (newest or most used first); a food reached twice (itself and via its database
+  // original) appears once, at its first place
+  const seen = new Set<string>();
   return picks.flatMap(({ ref, entry }) => {
     const food = found.get(ref!);
-    return food ? [{ ...food, last: { servingIndex: entry.servingIndex, unit: entry.unit as Unit, quantity: entry.quantity, fraction: entry.fraction } }] : [];
+    if (!food || seen.has(`${food.kind}:${food.id}`)) return [];
+    seen.add(`${food.kind}:${food.id}`);
+    return [{ ...food, last: { servingIndex: entry.servingIndex, unit: entry.unit as Unit, quantity: entry.quantity, fraction: entry.fraction } }];
   });
 }
 

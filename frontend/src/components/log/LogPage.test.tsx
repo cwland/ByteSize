@@ -112,4 +112,14 @@ describe("Log", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(server.writes()).toContainEqual(expect.objectContaining({ method: "PATCH", path: "/api/log/2", body: { servingIndex: 1, unit: "serving", quantity: 1, fraction: 1 } }));
   });
+
+  it("a food with unknown calories shows a question mark, not 0, in the row and the portion preview", async () => {
+    const mystery = entryJson({ id: 3, name: "Mystery soup", icon: "🍲", nutrients: { protein_g: 8 } });
+    show({ "GET /api/day/:date": () => ({ ...day, entries: [mystery] }) });
+    const row = await screen.findByRole("button", { name: /Mystery soup/ });
+    expect(within(row).getByLabelText("Calories unknown")).toHaveTextContent("?");
+    expect(within(row).queryByText("0")).not.toBeInTheDocument();
+    await userEvent.setup().click(row);
+    expect(screen.getByTestId("portion-preview")).toHaveTextContent("calories unknown");
+  });
 });

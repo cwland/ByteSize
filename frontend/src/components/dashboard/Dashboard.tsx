@@ -30,6 +30,7 @@ export default function Dashboard() {
   const t = data?.targets ?? null;
   const food = data?.totals.calories ?? 0;
   const unknown = data?.totals.unknownCount ?? {};
+  const [calWhy, setCalWhy] = useState(false);
   const water = (ml: number) => waterValue(ml, user.units);
   const wUnit = waterUnit(user.units);
   const waterLabel = (ml: number) => (user.units === "metric" ? `+${fmt(ml)} ml` : `+${water(ml)} oz`);
@@ -45,8 +46,19 @@ export default function Dashboard() {
             <div className="text-center">
               <p data-testid="food-calories" className="text-xl font-bold tabular">
                 {fmt(food)}
+                {(unknown.calories ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    aria-label="Why are calories uncertain?"
+                    onClick={() => setCalWhy((w) => !w)}
+                    className="ml-1 inline-flex size-5 items-center justify-center rounded-full bg-pressed align-top text-xs font-bold text-subtle"
+                  >
+                    ?
+                  </button>
+                )}
               </p>
               <p className="text-xs text-muted">Food</p>
+              {calWhy && <p className="mt-1 text-xs text-muted">{`${unknown.calories} ${unknown.calories === 1 ? "food" : "foods"} missing calories`}</p>}
             </div>
             <Gauge food={food} min={t.calories.min} max={t.calories.max} />
             <div className="text-center">
