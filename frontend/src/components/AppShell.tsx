@@ -1,5 +1,6 @@
 import Navigation from "./Navigation";
 import Placeholder from "./Placeholder";
+import SettingsPage from "./settings/SettingsPage";
 import { Logo } from "./ui/Logo";
 import { pageFromHash, useHash, type Page } from "../routes";
 import { initialsOf, useSession } from "../session";
@@ -26,7 +27,7 @@ export default function AppShell() {
           {page === "today" && <Placeholder title="Today" />}
           {page === "log" && <Placeholder title="Food log" />}
           {page === "foods" && <Placeholder title="My foods" />}
-          {page === "settings" && <Placeholder title="Settings" />}
+          {page === "settings" && <SettingsPage />}
         </main>
       </div>
     </div>
