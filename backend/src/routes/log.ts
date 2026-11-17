@@ -37,6 +37,7 @@ export type LogEntry = {
 type Portion = { servingIndex: number; unit: Unit; quantity: number; fraction: number };
 
 const NOT_FOUND = "Entry not found";
+const QUICK_MEAL_HERE = "Log a quick meal with its own items";
 const RECENT_LIMIT = 30;
 const FREQUENT_LIMIT = 20;
 const FREQUENT_DAYS = 60;
@@ -271,6 +272,8 @@ export default async function foodLogRoutes(app: FastifyInstance) {
 
     const b = foodBody.parse(raw);
     const food = await loadFood(db, userId, b.food);
+    // A quick meal is logged as one entry per item (POST /api/log/meal), never as one opaque entry
+    if (food.foodKind === "quick_meal") throw badRequest(QUICK_MEAL_HERE);
     const nutrients = portionNutrients(food.nutrients, food.servings, b);
     const meal = b.meal ?? (await mealNow(db, userId, timezone, now));
     const row = await db.transaction(async (tx) => {

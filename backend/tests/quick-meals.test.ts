@@ -212,3 +212,30 @@ describe("save as a meal", () => {
     expect((await t.db.execute(sql`select count(*)::int as n from user_foods`)).rows[0]).toEqual({ n: 0 });
   });
 });
+
+describe("quick meals are logged only through /api/log/meal", () => {
+  it("POST /api/log refuses a quick meal (it would be one opaque entry)", async () => {
+    const { meal } = await breakfast();
+    const r = await t.api("POST", "/api/log", { day: DAY, meal: "breakfast", food: { kind: "user_food", id: meal.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
+    expect(r).toMatchObject({ status: 400, body: { error: "Log a quick meal with its own items" } });
+    expect((await getDay()).entries).toEqual([]);
+    // a recipe is still logged as one food
+    const tst = await mine({ ...toast, name: "Rye" });
+    const recipe = (await t.api("POST", "/api/my-foods/recipes", { name: "Toast stack", items: [item(tst, { quantity: 2 })], servings: 1 })).body.food;
+    expect((await t.api("POST", "/api/log", { day: DAY, meal: "breakfast", food: { kind: "user_food", id: recipe.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 })).status).toBe(200);
+  });
+
+  it("save as a meal leaves out an entry its food can no longer measure", async () => {
+    const tst = await mine(toast);
+    const e = await mine(egg);
+    const log = (food: any, portion: Record<string, unknown>) =>
+      t.api("POST", "/api/log", { day: DAY, meal: "breakfast", food: { kind: food.kind, id: food.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1, ...portion });
+    const a = (await log(tst, { unit: "g", quantity: 60 })).body.entry;
+    const b = (await log(e, {})).body.entry;
+    await t.api("PATCH", `/api/my-foods/${tst.id}`, { servings: [{ label: "1 slice" }] }); // no weight any more
+    const r = await t.api("POST", "/api/my-foods/meals/from-entries", { name: "x", ids: [a.id, b.id] });
+    expect(r.status).toBe(200);
+    expect(r.body.leftOut).toEqual(["Toast"]);
+    expect(r.body.food.items.map((i: any) => i.name)).toEqual(["Egg"]);
+  });
+});

@@ -88,6 +88,17 @@ function factorOf(food: FoodResult, p: Portion): number {
   }
 }
 
+/** Whether the food can be measured in this amount; any error other than "can't measure" is thrown. */
+export function canMeasure(food: Pick<FoodResult, "servings">, p: Portion): boolean {
+  try {
+    amountFactor(food.servings, p.servingIndex, p.unit, p.quantity);
+    return true;
+  } catch (e) {
+    if (e instanceof UnitError) return false;
+    throw e;
+  }
+}
+
 /** Unrounded totals; a nutrient unknown on any part is unknown on the total (never 0). */
 function rawTotal(parts: { per: Nutrients; factor: number }[]): Nutrients {
   const out: Nutrients = {};
@@ -364,13 +375,7 @@ export async function mealFromEntries(app: FastifyInstance, userId: number, b: z
     const ref = r.source === "water" ? null : refOf(r.sourceRef);
     const food = ref ? live.get(refKey(ref)) : undefined;
     const portion: Portion = { servingIndex: r.servingIndex, unit: r.unit as Unit, quantity: r.quantity, fraction: r.fraction };
-    let measurable = true;
-    try {
-      if (food) factorOf(food, portion);
-    } catch {
-      measurable = false;
-    }
-    if (!ref || !food || food.foodKind === "quick_meal" || !measurable) {
+    if (!ref || !food || food.foodKind === "quick_meal" || !canMeasure(food, portion)) {
       leftOut.push(r.name);
       continue;
     }
