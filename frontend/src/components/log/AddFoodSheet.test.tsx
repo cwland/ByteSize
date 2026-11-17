@@ -6,6 +6,7 @@ import { SelectedDayProvider } from "../../selectedDay";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
 import { barFood, dayJson, entryJson, settingsMe } from "../../test/fixtures";
+import { breakfastDetail, breakfastMeal, chili } from "../../test/myFoodsFixtures";
 
 const myShake = { ...barFood, kind: "user_food", id: 5, name: "Peanut protein shake", brand: null, icon: "🥤", barcode: null, source: "mine" };
 const usdaPeanuts = { ...barFood, id: 77, name: "Peanuts, raw", brand: null, icon: "🥜", barcode: null, source: "usda", servings: [{ label: "100 g", grams: 100 }] };
@@ -384,5 +385,99 @@ describe("Add food, Weight Watchers style", () => {
     expect(within(sheet).getByRole("button", { name: /^Serving/ })).toHaveTextContent("≈ 3 tbsp");
     await user.selectOptions(within(sheet).getByRole("combobox", { name: "Unit" }), "g");
     expect(within(sheet).getByRole("button", { name: /^Serving/ })).toHaveTextContent("3 g");
+  });
+});
+
+describe("Add food: recipes, quick meals and My Foods", () => {
+  const recentMeal = { ...breakfastMeal, last: { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 } };
+  const withMine = { groups: [{ source: "mine", label: "My foods", foods: [chili, breakfastMeal, myShake] }], errors: [] };
+
+  afterEach(() => {
+    window.location.hash = "";
+  });
+
+  it("recipe and quick meal rows carry a Recipe or Meal tag; other foods don't", async () => {
+    open({ "GET /api/foods/search": () => withMine });
+    const user = userEvent.setup();
+    const sheet = await openSnacks(user);
+    await user.type(within(sheet).getByRole("searchbox", { name: "Search foods" }), "chi");
+    const recipe = await within(sheet).findByRole("button", { name: /^Chili/ });
+    expect(within(recipe).getByText("Recipe")).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: /^Usual breakfast/ })).toHaveTextContent("Meal");
+    const plain = within(sheet).getByRole("button", { name: /^Peanut protein shake/ });
+    expect(within(plain).queryByText("Recipe")).toBeNull();
+    expect(within(plain).queryByText("Meal")).toBeNull();
+  });
+
+  it("a recipe opens at 1 serving with no Edit food (recipes have their own editor)", async () => {
+    const server = open({ "GET /api/foods/search": () => withMine, "POST /api/log": (b) => ({ entry: { id: 3, ...b } }) });
+    const user = userEvent.setup();
+    const sheet = await openSnacks(user);
+    await user.type(within(sheet).getByRole("searchbox", { name: "Search foods" }), "chi");
+    await user.click(await within(sheet).findByRole("button", { name: /^Chili/ }));
+    expect(within(sheet).getByRole("button", { name: /^Serving/ })).toHaveTextContent("1 serving (350 g)");
+    expect(within(sheet).queryByRole("button", { name: "Edit food" })).toBeNull();
+    await user.click(within(sheet).getByRole("button", { name: "Track" }));
+    expect(server.writes().find((w) => w.path === "/api/log")!.body).toMatchObject({ food: { kind: "user_food", id: 30 }, servingIndex: 0, unit: "serving", quantity: 1 });
+  });
+
+  it("quick add of a meal logs it with POST /api/log/meal and shows a check", async () => {
+    const server = open({
+      "GET /api/foods/recent": () => ({ foods: [recentMeal] }),
+      "POST /api/log/meal": () => ({ entries: [] }),
+    });
+    const user = userEvent.setup();
+    const sheet = await openSnacks(user);
+    const recent = within(sheet).getByRole("region", { name: "Foods" });
+    const item = (await within(recent).findByRole("button", { name: /^Usual breakfast/ })).closest("li")!;
+    expect(item).toHaveTextContent("1 meal");
+    expect(item).toHaveTextContent("420 cal");
+    await user.click(within(item).getByRole("button", { name: "Quick add Usual breakfast" }));
+    expect(await within(item).findByRole("img", { name: "Added" })).toBeInTheDocument();
+    expect(server.writes().map((w) => [w.path, w.body])).toEqual([["/api/log/meal", { day: "2026-11-16", meal: "snacks", foodId: 31 }]]);
+  });
+
+  it("tapping a meal opens its items to adjust; Track sends the adjusted items", async () => {
+    const server = open({
+      "GET /api/foods/recent": () => ({ foods: [recentMeal] }),
+      "GET /api/my-foods/:id": () => ({ food: breakfastDetail }),
+      "POST /api/log/meal": () => ({ entries: [] }),
+    });
+    const user = userEvent.setup();
+    const sheet = await openSnacks(user);
+    await user.click(await within(sheet).findByRole("button", { name: /^Usual breakfast/ }));
+    expect(within(sheet).getByRole("heading", { name: "Track meal" })).toBeInTheDocument();
+    const items = await within(sheet).findByRole("list", { name: "Foods in this meal" });
+    expect(within(items).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(sheet).getByRole("region", { name: "Total" })).toHaveTextContent("325");
+    await user.click(within(items).getByRole("button", { name: "1 cup" }));
+    await user.selectOptions(within(items).getByRole("combobox", { name: "Fraction" }), "½");
+    expect(within(sheet).getByRole("region", { name: "Total" })).toHaveTextContent("435"); // 330 + 105
+    await user.click(within(sheet).getByRole("button", { name: "Track" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(server.writes().map((w) => [w.path, w.body])).toEqual([
+      [
+        "/api/log/meal",
+        {
+          day: "2026-11-16",
+          meal: "snacks",
+          foodId: 31,
+          items: [
+            { food: { kind: "cache", id: 20 }, servingIndex: 0, unit: "serving", quantity: 1.5, fraction: 1 },
+            { food: { kind: "cache", id: 21 }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 },
+          ],
+        },
+      ],
+    ]);
+  });
+
+  it("My Foods link goes to My Foods, remembering the Log to come back to", async () => {
+    window.location.hash = "#/log";
+    open();
+    const user = userEvent.setup();
+    const sheet = await openSnacks(user);
+    await user.click(within(sheet).getByRole("button", { name: "My Foods" }));
+    expect(window.location.hash).toBe("#/log/my-foods?from=/log");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
-// Hash routes: #/ Dashboard, #/log Log, #/goals Goals, #/settings[/<section>]
-// (My foods arrives in M2, inside Log)
+// Hash routes: #/ Dashboard, #/log Log (#/log/my-foods?from=<route> My Foods), #/goals Goals,
+// #/settings[/<section>]
 export type Page = "dashboard" | "log" | "goals" | "settings";
 
 export const PAGES: { id: Page; label: string; href: string }[] = [
@@ -30,3 +30,11 @@ export function useHash() {
   }, []);
   return hash;
 }
+
+// My Foods lives under the Log tab and remembers the route it was opened from, for Back
+export const isMyFoods = (hash = window.location.hash) => /^#\/log\/my-foods(\?|$)/.test(hash);
+export function myFoodsFrom(hash = window.location.hash): string {
+  const from = hash.match(/[?&]from=(.*)$/)?.[1] ?? "/log";
+  return from.startsWith("/") && !isMyFoods(`#${from}`) ? from : "/log";
+}
+export const myFoodsHref = (from = window.location.hash.replace(/^#/, "") || "/") => `#/log/my-foods?from=${isMyFoods(`#${from}`) ? myFoodsFrom() : from}`;

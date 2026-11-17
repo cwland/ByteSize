@@ -11,14 +11,17 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { Meal, SavedBody, Targets } from "../types";
 import SettingsPage from "./settings/SettingsPage";
-import { pageFromHash, useHash, type Page } from "../routes";
+import MyFoodsPage from "./myfoods/MyFoodsPage";
+import { isMyFoods, pageFromHash, useHash, type Page } from "../routes";
 import { useSession } from "../session";
 import { SelectedDayProvider, todayIn, useSelectedDay } from "../selectedDay";
 
 // The signed-in app: top bar (week strip on Dashboard and Log), the page for the address, and the bottom tab bar.
 // Mobile-first; on desktop the content stays a centered phone-width column.
 export default function AppShell() {
-  const page: Page = pageFromHash(useHash());
+  const hash = useHash();
+  const page: Page = pageFromHash(hash);
+  const myFoods = page === "log" && isMyFoods(hash); // My Foods sits under the Log tab
   const { user } = useSession();
   // First run after setup: no targets yet → the plan flow, full screen, before the tabs.
   // Saved details that need a review (the questions changed) → the same flow, asked once; "Not now" skips it.
@@ -47,10 +50,10 @@ export default function AppShell() {
     <SelectedDayProvider timeZone={user.timezone}>
       <div className="min-h-screen bg-page">
         <TodayOnEnter page={page} />
-        <TopBar days={page === "dashboard" || page === "log"} />
+        <TopBar days={page === "dashboard" || (page === "log" && !myFoods)} />
         <main className="mx-auto max-w-[560px] px-3 pt-2 pb-32">
           {page === "dashboard" && <Dashboard />}
-          {page === "log" && <LogPage />}
+          {page === "log" && (myFoods ? <MyFoodsPage /> : <LogPage />)}
           {page === "goals" && <GoalsPage />}
           {page === "settings" && <SettingsPage />}
         </main>

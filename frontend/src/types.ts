@@ -19,6 +19,8 @@ export type NutrientKey = (typeof NUTRIENT_KEYS)[number];
 // A missing key means unknown, never 0
 export type Nutrients = Partial<Record<NutrientKey, number>>;
 export type Serving = { label: string; grams?: number; ml?: number; approx?: true }; // approx: ml estimated from grams (1 g ≈ 1 ml)
+// What a food is to its owner. Database (cache) foods read as "custom"; only recipes and quick meals get a tag.
+export type FoodKind = "custom" | "override" | "recipe" | "quick_meal";
 export type FoodResult = {
   kind: "cache" | "user_food";
   id: number;
@@ -32,7 +34,25 @@ export type FoodResult = {
   imageUrl: string | null;
   override: boolean;
   source: "off" | "usda" | "mine" | "ai";
+  foodKind: FoodKind;
 };
+export type FoodRef = { kind: "cache" | "user_food"; id: number };
+// One ingredient of a recipe or food of a quick meal, as sent to the API
+export type Item = { food: FoodRef } & Portion;
+// …and as the API returns it: the food now (or its snapshot when archived or gone, available false)
+export type ItemView = Item & {
+  foodKind: FoodKind;
+  name: string;
+  brand: string | null;
+  icon: string;
+  imageUrl: string | null;
+  servings: Serving[];
+  perServing: Nutrients; // per servings[0]
+  nutrients: Nutrients; // this amount, as stored at the last Save or Recalculate
+  available: boolean;
+};
+// GET /api/my-foods/:id; items, recipeServings and servingGrams only for recipes and quick meals
+export type MyFood = FoodResult & { notes: string | null; items?: ItemView[]; recipeServings?: number | null; servingGrams?: number | null };
 export type Portion = { servingIndex: number; unit: Unit; quantity: number; fraction: number };
 export type RecentFood = FoodResult & { last: Portion };
 // Food search: groups in order (My foods, Basic foods, Saved foods, Open Food Facts, USDA); a close
