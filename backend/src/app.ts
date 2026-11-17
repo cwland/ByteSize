@@ -90,7 +90,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
       }
     }
     if (!req.url.startsWith("/api/") || PUBLIC_ROUTES.has(route)) return;
-    if (!req.routeOptions.url) return; // no such route: the 404 handler answers
+    // No such route (or only the web app's catch-all, which hands /api back to it): the 404 handler answers
+    if (!req.routeOptions.url || req.routeOptions.url === "/*") return;
     throw new HttpError(401, "Not logged in");
   });
 
