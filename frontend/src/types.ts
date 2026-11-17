@@ -6,6 +6,7 @@ export const NUTRIENT_KEYS = [
   "fiber_g",
   "carbs_g",
   "fat_g",
+  "saturated_fat_g",
   "sugar_g",
   "added_sugar_g",
   "sugar_alcohol_g",
@@ -17,7 +18,7 @@ export const NUTRIENT_KEYS = [
 export type NutrientKey = (typeof NUTRIENT_KEYS)[number];
 // A missing key means unknown, never 0
 export type Nutrients = Partial<Record<NutrientKey, number>>;
-export type Serving = { label: string; grams?: number; ml?: number };
+export type Serving = { label: string; grams?: number; ml?: number; approx?: true }; // approx: ml estimated from grams (1 g ≈ 1 ml)
 export type FoodResult = {
   kind: "cache" | "user_food";
   id: number;
