@@ -173,4 +173,57 @@ describe("AiSettings", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(server.writes().at(-1)?.body.services.map((s: any) => s.id)).toEqual(["s2", "s1"]);
   });
+
+  it("changing the service clears the model, so Validate picks a recommended one", async () => {
+    const server = fakeServer({
+      "GET /api/settings/ai": () => settings([svc({ provider: "openai", model: "gpt-5-mini" })]),
+      "POST /api/settings/ai/models": (b: any) =>
+        b.provider === "anthropic" ? { models: claudeModels, recommended: claudeRecommended } : { models: ["gpt-5", "gpt-5-mini"], recommended: ["gpt-5-mini", "gpt-5"] },
+      "PUT /api/settings/ai": (b: any) => settings(b.services.map((s: any) => svc(s))),
+    });
+    renderWithSession(<AiSettings />);
+    const row = await expand(/Main: OpenAI/);
+    await userEvent.click(within(row).getByRole("button", { name: "Validate" }));
+    await within(row).findByText("Key works · 2 models");
+    await userEvent.selectOptions(within(row).getByRole("combobox", { name: "Service" }), "anthropic");
+    // The OpenAI list and model are gone
+    expect(within(row).getByRole("textbox", { name: "Model" })).toHaveValue("");
+    expect(within(row).queryByRole("combobox", { name: "Model" })).not.toBeInTheDocument();
+    await userEvent.click(within(row).getByRole("button", { name: "Validate" }));
+    await within(row).findByText("Key works · 5 models");
+    expect(within(row).getByRole("combobox", { name: "Model" })).toHaveValue("claude-haiku-4-5");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(server.writes().at(-1)?.body.services[0]).toMatchObject({ provider: "anthropic", model: "claude-haiku-4-5" });
+  });
+
+  it("without a model list the model can be typed; after Validate it's a dropdown", async () => {
+    let listWorks = false;
+    const server = fakeServer({
+      "GET /api/settings/ai": () => settings([]),
+      "POST /api/settings/ai/models": () => (listWorks ? { models: ["llama3.2:3b", "qwen3:8b"], recommended: [] } : { status: 400, json: { error: "Couldn't reach your AI server" } }),
+      "PUT /api/settings/ai": (b: any) => settings(b.services.map((s: any, i: number) => svc({ ...s, id: `s${i + 1}` }))),
+    });
+    renderWithSession(<AiSettings />);
+    const row = await screen.findByRole("listitem", { name: /Main: OpenAI/ });
+    await userEvent.selectOptions(within(row).getByRole("combobox", { name: "Service" }), "local");
+    await userEvent.type(within(row).getByLabelText("Address"), "http://10.0.0.5:11434/v1");
+    // Before Validate: a text field
+    expect(within(row).queryByRole("combobox", { name: "Model" })).not.toBeInTheDocument();
+    // A failed Validate keeps the text field
+    await userEvent.click(within(row).getByRole("button", { name: "Validate" }));
+    expect(await within(row).findByRole("alert")).toHaveTextContent("Couldn't reach your AI server");
+    await userEvent.type(within(row).getByRole("textbox", { name: "Model" }), "llama3.2:3b");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(server.writes().at(-1)?.body.services[0]).toMatchObject({ provider: "local", model: "llama3.2:3b" });
+
+    // Once a list loads, Model is a dropdown (Home AI: no Recommended group)
+    listWorks = true;
+    const saved = await expand(/Main: Home AI/);
+    await userEvent.click(within(saved).getByRole("button", { name: "Validate" }));
+    await within(saved).findByText("Key works · 2 models");
+    expect(within(saved).queryByRole("textbox", { name: "Model" })).not.toBeInTheDocument();
+    const select = within(saved).getByRole("combobox", { name: "Model" });
+    expect(within(select).getAllByRole("group").map((g) => g.getAttribute("label"))).toEqual(["All models"]);
+    expect(select).toHaveValue("llama3.2:3b");
+  });
 });

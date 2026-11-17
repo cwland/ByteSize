@@ -3,7 +3,7 @@ import type { AiProvider } from "./ai.js";
 // Which models to suggest first in Settings › AI. Picked by family and version rather than a fixed
 // list of names, so it keeps working as providers release new models:
 //  - Claude: newest Haiku (fast, reads photos), then newest Sonnet
-//  - OpenAI: newest "...-mini", then the newest plain "gpt-N[.N]"
+//  - OpenAI: newest "gpt-N[.N][o]-mini" or "oN-mini" (never codex), then the newest plain "gpt-N[.N]"
 //  - Gemini: newest Flash (not lite/image/tts/live), then newest Pro
 //  - OpenRouter: the same rules on "anthropic/", "openai/" and "google/" names (main pick of each)
 //  - Home AI: nothing (the list is shown A–Z)
@@ -11,8 +11,8 @@ import type { AiProvider } from "./ai.js";
 
 const MAX = 2;
 
-// Never suggested: previews, experiments and models that aren't for chat
-const EXCLUDED = /(^|[-_/.:])(preview|exp|embed\w*|audio|tts|realtime|transcribe|image\w*|moderation|instruct)(?=$|[-_/.:\d])/i;
+// Never suggested: previews, experiments and models that aren't for chat (codex = coding models)
+const EXCLUDED = /(^|[-_/.:])(preview|exp|embed\w*|audio|tts|realtime|transcribe|image\w*|moderation|instruct|codex)(?=$|[-_/.:\d])/i;
 
 // A pin on the end of a name: a date (20251001 or 2025-08-07) or a revision (001)
 const PIN = /-(\d{8}|\d{4}-\d{2}-\d{2}|\d{3})$/;
@@ -46,7 +46,7 @@ const newest = (list: Parsed[], fits: (p: Parsed, t: string[]) => boolean) => li
 type Rule = (list: Parsed[]) => (string | undefined)[];
 const RULES: Record<"anthropic" | "openai" | "gemini", Rule> = {
   anthropic: (l) => [newest(l, (_p, t) => t.includes("haiku")), newest(l, (_p, t) => t.includes("sonnet"))],
-  openai: (l) => [newest(l, (p) => /-mini$/i.test(p.base)), newest(l, (p) => /^gpt-\d+(\.\d+)?$/i.test(p.base))],
+  openai: (l) => [newest(l, (p) => /^(gpt-\d+(\.\d+)?o?|o\d+)-mini$/i.test(p.base)), newest(l, (p) => /^gpt-\d+(\.\d+)?$/i.test(p.base))],
   gemini: (l) => [
     newest(l, (_p, t) => t.includes("flash") && !t.some((x) => ["lite", "image", "tts", "live"].includes(x))),
     newest(l, (_p, t) => t.includes("pro")),

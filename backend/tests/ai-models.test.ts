@@ -39,6 +39,9 @@ const openai = [
   "omni-moderation-latest",
   "gpt-3.5-turbo-instruct",
   "o4-mini",
+  "gpt-5.1-codex-mini",
+  "gpt-5.1-codex",
+  "codex-mini-latest",
 ];
 const gemini = [
   "gemini-2.0-flash",
@@ -73,6 +76,10 @@ describe("recommendModels", () => {
 
   it("OpenAI: newest mini, then newest bare flagship", () => {
     expect(recommendModels("openai", openai)).toEqual(["gpt-5-mini", "gpt-5.1"]);
+    // Coding models (codex) are never picked, even when their version is newer
+    expect(recommendModels("openai", ["gpt-5-mini", "gpt-5.1-codex-mini", "gpt-5.1", "o4-mini", "gpt-5.1-codex", "codex-mini-latest"])).toEqual(["gpt-5-mini", "gpt-5.1"]);
+    expect(recommendModels("openai", ["gpt-5-mini", "gpt-5.1-codex-mini", "gpt-5", "gpt-5.1-codex"])).toEqual(["gpt-5-mini", "gpt-5"]);
+    expect(recommendModels("openai", ["gpt-4o-mini", "gpt-4o-mini-tts", "gpt-4o"])).toEqual(["gpt-4o-mini"]);
     expect(recommendModels("openai", ["gpt-4o-mini", "gpt-4.1-mini", "gpt-4o-mini-tts", "gpt-4.1", "gpt-4o"])).toEqual(["gpt-4.1-mini", "gpt-4.1"]);
   });
 
@@ -97,6 +104,7 @@ describe("recommendModels", () => {
     ];
     expect(recommendModels("openrouter", list)).toEqual(["anthropic/claude-haiku-4.5", "openai/gpt-5-mini"]);
     expect(recommendModels("openrouter", ["openai/gpt-5", "google/gemini-2.5-pro", "google/gemini-2.5-flash", "mistralai/mistral-large"])).toEqual(["openai/gpt-5", "google/gemini-2.5-flash"]);
+    expect(recommendModels("openrouter", ["openai/gpt-5.1-codex-mini", "openai/gpt-5-mini", "openai/gpt-5.1-codex", "openai/codex-mini"])).toEqual(["openai/gpt-5-mini"]);
     expect(recommendModels("openrouter", ["meta-llama/llama-3.3-70b-instruct", "qwen/qwen3-32b"])).toEqual([]);
   });
 
@@ -110,7 +118,7 @@ describe("recommendModels", () => {
       expect(r.length).toBeLessThanOrEqual(2);
       for (const m of r) {
         expect(list).toContain(m);
-        expect(m).not.toMatch(/preview|exp|embed|audio|tts|realtime|transcribe|image|moderation|instruct/);
+        expect(m).not.toMatch(/preview|exp|embed|audio|tts|realtime|transcribe|image|moderation|instruct|codex/);
       }
     }
     expect(recommendModels("openai", [])).toEqual([]);

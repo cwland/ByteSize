@@ -219,7 +219,7 @@ function ServiceForm({
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
 
-  // Another service kind has other models
+  // Another service kind has other models (the model itself is cleared when the kind changes)
   const provider = useRef(d.provider);
   useEffect(() => {
     if (provider.current === d.provider) return;
@@ -295,7 +295,7 @@ function ServiceForm({
         <>
           <label className={`${label} mt-3`}>
             Service
-            <select aria-label="Service" value={d.provider} onChange={(e) => onChange({ provider: e.target.value as Provider })} className={field}>
+            <select aria-label="Service" value={d.provider} onChange={(e) => onChange({ provider: e.target.value as Provider, model: "" })} className={field}>
               {PROVIDERS.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -318,30 +318,35 @@ function ServiceForm({
               )}
             </p>
           )}
-          <label className={`${label} mt-3`}>
-            Model
-            <select aria-label="Model" value={d.model} onChange={(e) => onChange({ model: e.target.value })} className={field}>
-              {!d.model && <option value="">{models ? "Choose a model" : "Validate to load the models"}</option>}
-              {recommended.length > 0 && (
-                <optgroup label="Recommended">
-                  {recommended.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {rest.length > 0 && (
-                <optgroup label="All models">
-                  {rest.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-          </label>
+          {/* No list yet (before Validate, or it failed): type the model's name */}
+          {!models?.all.length ? (
+            <Field label="Model" value={d.model} placeholder="Validate to choose from a list, or type a name" onChange={(e) => onChange({ model: e.target.value })} />
+          ) : (
+            <label className={`${label} mt-3`}>
+              Model
+              <select aria-label="Model" value={d.model} onChange={(e) => onChange({ model: e.target.value })} className={field}>
+                {!d.model && <option value="">Choose a model</option>}
+                {recommended.length > 0 && (
+                  <optgroup label="Recommended">
+                    {recommended.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {rest.length > 0 && (
+                  <optgroup label="All models">
+                    {rest.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </label>
+          )}
           <div className="mt-3 flex flex-wrap gap-4 text-sm text-subtle">
             <span className="flex items-center gap-2">
               <Toggle label="Reads photos" checked={d.photos} onChange={(v) => onChange({ photos: v })} /> Reads photos
