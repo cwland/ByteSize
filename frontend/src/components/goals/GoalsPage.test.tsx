@@ -5,6 +5,7 @@ import GoalsPage from "./GoalsPage";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
 import { bodyA, plansA, steadyTargets } from "../../test/fixtures";
+import { weightJson } from "../../test/weightFixtures";
 
 describe("Goals", () => {
   it("Goals shows targets and saves edits", async () => {
@@ -45,7 +46,7 @@ describe("Goals", () => {
     const server = fakeServer({ "GET /api/targets": () => ({ targets: null }) });
     renderWithSession(<GoalsPage />);
     expect(await screen.findByRole("button", { name: "Pick a plan" })).toBeInTheDocument();
-    expect(server.sent[0].path).toMatch(/^\/api\/targets\?day=\d{4}-\d{2}-\d{2}$/);
+    expect(server.sent.find((s) => s.path.startsWith("/api/targets"))!.path).toMatch(/^\/api\/targets\?day=\d{4}-\d{2}-\d{2}$/);
   });
 
   it("Goals has Edit my details", async () => {
@@ -66,5 +67,18 @@ describe("Goals", () => {
     expect(server.writes().find((w) => w.path === "/api/body")!.body).toMatchObject({ birthDate: "1974-06-01", activity: "some" });
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(await screen.findByText("Steady plan")).toBeInTheDocument();
+  });
+
+  it("shows the weight section, whose re-plan hint opens the plan picker", async () => {
+    fakeServer({
+      "GET /api/targets": () => ({ targets: steadyTargets }),
+      "GET /api/weight": () => weightJson({ replanHint: true }),
+      "GET /api/body": () => ({ body: bodyA }),
+      "GET /api/plans": () => plansA,
+    });
+    renderWithSession(<GoalsPage />);
+    expect(await screen.findByText("Your weight has changed — check your plan")).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Check your plan" }));
+    expect(await screen.findByRole("heading", { name: "Choose your plan" })).toBeInTheDocument();
   });
 });

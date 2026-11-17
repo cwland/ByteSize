@@ -119,3 +119,16 @@ export type Day = {
 export type MealWindows = { breakfast: string; lunch: string; snacks: string; dinner: string };
 export type SettingsMe = { mealWindows: MealWindows; waterButtonsMl: number[]; weekStart: number /* 0 = Sunday … 6 = Saturday */ };
 export type Units = "imperial" | "metric";
+// GET /api/weight: kg, unrounded. trendKg is the smoothed weight; projection.kgPerWeek > 0 means losing.
+export type WeighIn = { day: string; weightKg: number; trendKg: number; note: string | null };
+export type WeightProjection = { status: "ok" | "not_enough" | "not_losing" | "reached"; date?: string; kgPerWeek?: number };
+export type Weight = {
+  weighIns: WeighIn[];
+  start: { day: string; weightKg: number } | null;
+  latest: { day: string; weightKg: number } | null;
+  trendKg: number | null;
+  goalKg: number | null;
+  lostKg: number | null;
+  projection: WeightProjection;
+  replanHint: boolean;
+};

@@ -9,6 +9,7 @@ import PlanFlow from "../plan/PlanFlow";
 import TargetsEditor from "./TargetsEditor";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { linkButton, primaryButton, secondaryButton } from "../ui/styles";
+import WeightSection from "../weight/WeightSection";
 
 type Mode = "view" | "plan" | "details" | "edit";
 const planName = (t: Targets) => (t.plan ? `${t.plan[0].toUpperCase()}${t.plan.slice(1)} plan` : "Your own targets");
@@ -78,6 +79,7 @@ export default function GoalsPage() {
           </button>
         </section>
       )}
+      <WeightSection onReplan={() => setMode("plan")} />
     </div>
   );
 }

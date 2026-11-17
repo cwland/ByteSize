@@ -7,6 +7,7 @@ import TopBar from "../TopBar";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
 import { barFood, dayJson, settingsMe } from "../../test/fixtures";
+import { weightJson } from "../../test/weightFixtures";
 
 const totals = { calories: 1138, protein_g: 97, fiber_g: 29, water_ml: 769, unknownCount: {} };
 
@@ -14,6 +15,7 @@ function show(day: object, over: Record<string, (b: any) => unknown> = {}) {
   const server = fakeServer({
     "GET /api/day/:date": () => day,
     "GET /api/settings/me": () => settingsMe,
+    "GET /api/weight": () => weightJson(),
     ...over,
   });
   renderWithSession(
@@ -27,6 +29,13 @@ function show(day: object, over: Record<string, (b: any) => unknown> = {}) {
 
 describe("Dashboard", () => {
   afterEach(() => void vi.useRealTimers());
+
+  it("has a Weight card with the latest weigh-in", async () => {
+    show(dayJson({ totals }));
+    const card = await screen.findByRole("region", { name: "Weight" });
+    expect(await within(card).findByText("221.4 lb")).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Weigh in" })).toBeInTheDocument();
+  });
 
   it("dashboard shows budget, food, left and rings from the day", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });

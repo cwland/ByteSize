@@ -13,6 +13,7 @@ import AddFoodSheet from "../log/AddFoodSheet";
 import { usePhotoInput } from "../log/PhotoPicker";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { primaryButton, secondaryButton } from "../ui/styles";
+import WeightCard from "../weight/WeightCard";
 
 // The selected day at a glance: calorie budget gauge, protein/fiber/water rings, water quick-add, streak
 export default function Dashboard() {
@@ -115,6 +116,7 @@ export default function Dashboard() {
         ))}
       </section>
       <Notice msg={msg} />
+      <WeightCard />
       {data && (
         <section aria-label="Streak" className="flex items-center gap-2 rounded-2xl bg-container px-4 py-3">
           <Flame className={`size-5 ${data.streak > 0 ? "text-action" : "text-inactive"}`} aria-hidden="true" />
