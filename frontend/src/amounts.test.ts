@@ -54,6 +54,9 @@ describe("formatAmount", () => {
 
   it("shows logged water in the person's units", () => {
     expect(formatAmount([], 0, "ml", 237, 1, "imperial")).toBe("8 fl oz");
+    // the shape the server actually saves for water entries
+    expect(formatAmount([{ label: "1 ml", ml: 1 }], 0, "ml", 237, 1, "imperial")).toBe("8 fl oz");
+    expect(formatAmount([{ label: "1 ml", ml: 1 }], 0, "ml", 473, 1, "metric")).toBe("473 ml");
     expect(formatAmount([], 0, "ml", 237, 1, "metric")).toBe("237 ml");
   });
 });
@@ -88,5 +91,14 @@ describe("unitChoices", () => {
     expect(f).toContainEqual({ value: "fl_oz", label: "≈ fl oz" });
     expect(f.slice(0, 4).map((u) => u.value)).toEqual(["s:0", "s:1", "g", "oz"]);
     expect(unitChoices(cheese).map((u) => u.value)).toEqual(["s:0", "s:1", "g", "oz"]);
+  });
+
+  it("reads fractional serving labels like USDA's '2/3 cup'", () => {
+    const cereal = [{ label: "100 g", grams: 100 }, { label: "2/3 cup", grams: 55 }];
+    expect(formatAmount(cereal, 1, "serving", 1, 1)).toBe("⅔ cup");
+    expect(formatAmount(cereal, 1, "serving", 1.5, 1)).toBe("1 cup");
+    expect(formatAmount(cereal, 1, "serving", 1, 1 / 3)).not.toMatch(/\//);
+    const nuts = [{ label: "100 g", grams: 100 }, { label: "1/4 cup", grams: 30 }];
+    expect(formatAmount(nuts, 1, "serving", 2, 1)).toBe("½ cup");
   });
 });

@@ -45,7 +45,9 @@ export const draftOf = (f: FoodResult & { category?: string }): FoodDraft => ({
 });
 
 type ServingRow = { label: string; grams: string; ml: string };
-const toRow = (s: Serving): ServingRow => ({ label: s.label, grams: s.grams === undefined ? "" : String(s.grams), ml: s.ml === undefined ? "" : String(s.ml) });
+// An estimated volume (approx: 1 g ≈ 1 ml, worked out by the server) is not shown as a measured one,
+// so saving the food never turns the guess into a "real" ml
+const toRow = (s: Serving): ServingRow => ({ label: s.label, grams: s.grams === undefined ? "" : String(s.grams), ml: s.ml === undefined || s.approx ? "" : String(s.ml) });
 const fromRow = (r: ServingRow): Serving => ({ label: r.label.trim(), ...(r.grams ? { grams: Number(r.grams) } : {}), ...(r.ml ? { ml: Number(r.ml) } : {}) });
 
 // Name, brand, barcode, servings and the 12 nutrients (blank = unknown). AI guesses are marked until edited.

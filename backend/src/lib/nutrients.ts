@@ -78,7 +78,7 @@ export function amountFactor(servings: Serving[], servingIndex: number, unit: Un
 /** Words that make a food a liquid (category or name; whole words, plural "s"/"es" allowed). */
 export const LIQUID_WORDS = ["milk", "juice", "drink", "beverage", "water", "coffee", "tea", "soda", "broth", "shake", "smoothie", "kefir", "oil", "syrup", "creamer"];
 /** Words that make it a solid even so ("milk chocolate", "cheese, whole milk", "coffee beans", "tuna in oil"), checked first. */
-const SOLID_WORDS = ["cheese", "milk chocolate", "bar", "powder", "cereal", "cookie", "cracker", "chip", "cake", "ice cream", "bean", "ground", "candy", "candie", "pudding", "tuna", "sardine", "fish", "chestnut"];
+const SOLID_WORDS = ["cheese", "milk chocolate", "bar", "powder", "cereal", "cookie", "cracker", "chip", "cake", "ice cream", "bean", "ground", "candy", "candie", "pudding", "tuna", "sardine", "fish", "chestnut", "mix", "mixes", "ricotta", "cottage", "oatmeal", "oats"];
 
 const wordsRe = (words: string[]) => new RegExp(`\\b(?:${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})(?:e?s)?\\b`);
 const LIQUID_RE = wordsRe(LIQUID_WORDS);

@@ -136,6 +136,24 @@ describe("Add food", () => {
     expect(within(sheet).getByRole("button", { name: "Create it anyway" })).toBeInTheDocument();
   });
 
+  it("correcting a drink keeps its estimated volumes estimated (no made-up ml is saved)", async () => {
+    const server = open({
+      "GET /api/foods/search": () => ({ groups: [{ source: "off", label: "Open Food Facts", foods: [fairlife] }], errors: [] }),
+      "POST /api/my-foods/override": (b) => ({ food: { ...fairlife, ...b, kind: "user_food", id: 9, override: true } }),
+    });
+    const user = userEvent.setup();
+    const sheet = await openSnacks(user);
+    await user.type(within(sheet).getByRole("searchbox", { name: "Search foods" }), "fairlife");
+    await user.click(await within(sheet).findByRole("button", { name: /^Fairlife 2% ultra-filtered milk/ }));
+    await user.click(within(sheet).getByRole("button", { name: "Edit food" }));
+    await user.click(within(sheet).getByRole("button", { name: "Save food" }));
+    const sent = server.writes().find((w) => w.path === "/api/my-foods/override")!;
+    expect(sent.body.servings).toEqual([
+      { label: "100 g", grams: 100 },
+      { label: "1 cup", grams: 240 },
+    ]);
+  });
+
   it("edit on a database food saves an override", async () => {
     const server = open({ "POST /api/my-foods/override": (b) => ({ food: { ...barFood, ...b, kind: "user_food", id: 9, override: true } }) });
     const user = userEvent.setup();

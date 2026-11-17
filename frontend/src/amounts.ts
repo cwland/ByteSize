@@ -64,7 +64,8 @@ const leadingNumber = (s: string): number | null => {
 };
 
 function servingText(label: string, q: number): string {
-  const m = label.trim().match(/^(\d+(?:\.\d+)?|\d+\/\d+|[¼⅓½⅔¾])\s*(.*)$/);
+  // fractions ("2/3 cup") must be tried before plain numbers, or "2/3" reads as 2 then "/3 cup"
+  const m = label.trim().match(/^(\d+\/\d+|\d+(?:\.\d+)?|[¼⅓½⅔¾])\s*(.*)$/);
   const n = (m && leadingNumber(m[1])) ?? 1;
   const rest = m ? m[2] : label.trim();
   const total = n * q;
@@ -80,8 +81,9 @@ function servingText(label: string, q: number): string {
 export function formatAmount(servings: Serving[], servingIndex: number, unit: Unit, quantity: number, fraction: number, units?: Units): string {
   const q = quantity * fraction;
   if (unit === "serving") return servingText(servings[servingIndex]?.label ?? "serving", q);
-  // logged water (no servings) in the person's units
-  if (unit === "ml" && units === "imperial" && servings.length === 0) return `${Math.round(q / ML_PER_FL_OZ)} fl oz`;
+  // logged water (saved with a single "1 ml" serving, or none) in the person's units
+  const isWater = servings.length === 0 || (servings.length === 1 && servings[0].label === "1 ml" && servings[0].ml === 1);
+  if (unit === "ml" && units === "imperial" && isWater) return `${Math.round(q / ML_PER_FL_OZ)} fl oz`;
   const approx = VOLUME.includes(unit) && servings[0]?.approx ? "≈ " : "";
   const amount = unit === "g" || unit === "ml" ? measureText(q) : countText(q);
   const word = unit === "cup" && q > 1.02 ? "cups" : UNIT_TEXT[unit];
