@@ -58,7 +58,9 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}, b
     }
     return { ok: r.status < 300, status: r.status, json: async () => r.json };
   };
-  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, ...opts });
+  // The app's clock: set clock.date to fix "now" (reset() clears it back to the real time)
+  const clock = { date: null as Date | null };
+  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, now: () => clock.date ?? new Date(), ...opts });
   if (beforeReady) await beforeReady(app);
   await app.ready();
   let token = "";
@@ -82,6 +84,7 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}, b
   // Empty every table (keeps the schema and the migration record)
   async function reset() {
     token = "";
+    clock.date = null;
     ai.calls.length = 0;
     ai.down = false;
     ai.respond = okReply;
@@ -114,6 +117,7 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}, b
     db,
     api,
     ai,
+    clock,
     reset,
     login,
     createUser,
