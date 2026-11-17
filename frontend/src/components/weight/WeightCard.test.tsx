@@ -37,7 +37,7 @@ describe("WeightCard", () => {
     vi.setSystemTime(new Date("2026-11-18T03:00:00Z")); // still Nov 17 in Boise
     let latest = 221.4 * KG;
     const server = fakeServer({
-      "GET /api/weight": () => weightJson({ latest: { day: "2026-11-17", weightKg: latest } }),
+      "GET /api/weight": () => weightJson({ weighIns: [], latest: { day: "2026-11-16", weightKg: latest } }),
       "PUT /api/weigh-ins/:day": (b, path) => {
         latest = b.weightKg;
         return { weighIn: { day: path.split("/").pop(), weightKg: b.weightKg, note: b.note ?? null } };
@@ -61,7 +61,7 @@ describe("WeightCard", () => {
 
   it("metric weigh-ins are sent as typed, and a weight out of range is caught before sending", async () => {
     const server = fakeServer({
-      "GET /api/weight": () => weightJson(),
+      "GET /api/weight": () => weightJson({ weighIns: [] }),
       "PUT /api/weigh-ins/:day": (b, path) => ({ weighIn: { day: path.split("/").pop(), weightKg: b.weightKg, note: null } }),
     });
     renderWithSession(<WeightCard />, { units: "metric" });
@@ -70,7 +70,7 @@ describe("WeightCard", () => {
     const input = screen.getByLabelText("Weight (kg)");
     await user.type(input, "5");
     await user.click(screen.getByRole("button", { name: "Save" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("Enter a weight between 20 and 500 kg");
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter a weight between 30 and 350 kg");
     expect(server.writes()).toHaveLength(0);
     await user.clear(input);
     await user.type(input, "100.2");

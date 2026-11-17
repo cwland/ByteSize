@@ -35,6 +35,7 @@ describe("WeightSection (Goals)", () => {
     [{ status: "not_losing", kgPerWeek: -0.2 }, "Not losing right now"],
     [{ status: "reached" }, "You've reached your goal"],
     [{ status: "ok", kgPerWeek: 0.5 }, "Losing 1.1 lb a week"],
+    [{ status: "ok", kgPerWeek: 0.01 }, "Losing slowly"],
   ])("projection %o reads %s", async (projection, text) => {
     fakeServer({ "GET /api/weight": () => weightJson({ projection, ...(projection.status === "ok" ? { goalKg: null } : {}) }) });
     renderWithSession(<WeightSection onReplan={() => {}} />);
@@ -119,5 +120,30 @@ describe("WeightSection (Goals)", () => {
     await user.click(within(screen.getByRole("alertdialog", { name: "Delete this weigh-in?" })).getByRole("button", { name: "Delete" }));
     expect(server.writes()[0]).toMatchObject({ method: "DELETE", path: "/api/weigh-ins/2026-10-25" });
     await vi.waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("lists the latest 7 weigh-ins, with Show all for the rest", async () => {
+    const more = [
+      { day: "2026-10-18", weightKg: 227 * KG, trendKg: 227 * KG, note: null },
+      { day: "2026-10-19", weightKg: 226.4 * KG, trendKg: 226.8 * KG, note: null },
+      ...sampleWeighIns,
+    ];
+    fakeServer({ "GET /api/weight": () => weightJson({ weighIns: more }) });
+    renderWithSession(<WeightSection onReplan={() => {}} />);
+    const list = await screen.findByRole("list", { name: "Weigh-ins" });
+    const rows = within(list).getAllByRole("button");
+    expect(rows).toHaveLength(7);
+    expect(rows[0]).toHaveAccessibleName("Edit Tue, Nov 17, 221.4 lb");
+    await userEvent.setup().click(screen.getByRole("button", { name: "Show all (9)" }));
+    expect(within(list).getAllByRole("button")).toHaveLength(9);
+    expect(within(list).getByRole("button", { name: "Edit Sun, Oct 18, 227 lb" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Show all/ })).not.toBeInTheDocument();
+  });
+
+  it("no weigh-ins in the range shows a short empty state", async () => {
+    fakeServer({ "GET /api/weight": () => weightJson({ weighIns: [] }) });
+    renderWithSession(<WeightSection onReplan={() => {}} />);
+    expect(await screen.findByText("No weigh-ins in this range")).toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 });

@@ -16,15 +16,15 @@ const c = (n: number) => n.toFixed(1);
 function summary(points: WeighIn[], goalKg: number | null, units: Units, from: string, to: string) {
   const w = (kg: number) => formatWeight(kg, units);
   const goal = goalKg !== null ? `, goal ${w(goalKg)}` : "";
-  if (points.length === 0) return `No weigh-ins from ${shortDay(from)} to ${shortDay(to)}${goal}`;
   const first = points[0];
   const last = points[points.length - 1];
   if (points.length === 1) return `Weight on ${shortDay(first.day)}: ${w(first.weightKg)}, trend ${w(first.trendKg)}${goal}`;
   return `Weight from ${shortDay(first.day)} to ${shortDay(last.day)}: ${w(first.weightKg)} to ${w(last.weightKg)}, trend ${w(last.trendKg)}${goal}`;
 }
 
-// Weight over time, hand-drawn: weigh-in dots, the smoothed trend, a dashed goal line, optional labelled
-// markers (dose changes) along the top. Values in the person's units. Tapping a dot selects that weigh-in.
+// Weight over time, hand-drawn: weigh-in dots, the smoothed trend, optional labelled markers (dose changes)
+// along the top. Zoomed to the weights so day-to-day swings show; the goal is a dashed line when it falls
+// inside, otherwise a label at the edge it lies beyond. Values in the person's units. Tapping a dot selects it.
 export default function WeightChart({
   weighIns,
   goalKg,
@@ -44,21 +44,25 @@ export default function WeightChart({
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(600);
+  const points = weighIns.filter((p) => p.day >= from && p.day <= to);
+  const drawn = points.length > 0;
+  // (re)attach when the chart appears: the empty state has no box to measure
   useEffect(() => {
     const el = box.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(([e]) => e.contentRect.width > 0 && setWidth(Math.round(e.contentRect.width)));
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [drawn]);
 
-  const points = weighIns.filter((p) => p.day >= from && p.day <= to);
   const v = (kg: number) => weightValue(kg, units);
 
-  // y: everything drawn (weights, trend, goal), padded to round steps
-  const values = [...points.flatMap((p) => [v(p.weightKg), v(p.trendKg)]), ...(goalKg !== null ? [v(goalKg)] : [])];
-  let lo = values.length ? Math.min(...values) : 0;
-  let hi = values.length ? Math.max(...values) : 1;
+  if (!drawn) return <p className="rounded-xl bg-pressed px-3 py-6 text-center text-sm text-subtle">No weigh-ins in this range</p>;
+
+  // y: the weights and the trend, padded to round steps (the goal can lie outside)
+  const values = points.flatMap((p) => [v(p.weightKg), v(p.trendKg)]);
+  let lo = Math.min(...values);
+  let hi = Math.max(...values);
   if (hi - lo < 2) {
     const mid = (hi + lo) / 2;
     lo = mid - 1;
@@ -82,6 +86,8 @@ export default function WeightChart({
   const anchor = (i: number) => (k === 0 ? "middle" : i === 0 ? "start" : i === k ? "end" : "middle");
 
   const trend = points.map((p, i) => `${i ? "L" : "M"}${c(x(p.day))} ${c(y(v(p.trendKg)))}`).join(" ");
+  const goalV = goalKg !== null ? v(goalKg) : null;
+  const goalEdge = goalV === null || (goalV >= yMin && goalV <= yMax) ? null : goalV < yMin ? "below" : "above";
   const shownMarkers = markers.filter((m) => m.day >= from && m.day <= to);
 
   return (
@@ -100,13 +106,27 @@ export default function WeightChart({
             {shortDay(d)}
           </text>
         ))}
-        {goalKg !== null && (
+        {goalV !== null && !goalEdge && (
           <g>
-            <line data-testid="goal-line" x1={PAD.left} x2={width - PAD.right} y1={c(y(v(goalKg)))} y2={c(y(v(goalKg)))} stroke="var(--color-success)" strokeWidth="1.5" strokeDasharray="6 4" />
-            <text x={width - PAD.right} y={c(y(v(goalKg)) - 5)} textAnchor="end" fontSize="11" fontWeight="600" fill="var(--color-success)">
-              {`Goal ${n1(v(goalKg))}`}
+            <line data-testid="goal-line" x1={PAD.left} x2={width - PAD.right} y1={c(y(goalV))} y2={c(y(goalV))} stroke="var(--color-success)" strokeWidth="1.5" strokeDasharray="6 4" />
+            <text x={width - PAD.right} y={c(y(goalV) - 5)} textAnchor="end" fontSize="11" fontWeight="600" fill="var(--color-success)">
+              {`Goal ${n1(goalV)}`}
             </text>
           </g>
+        )}
+        {/* On the left: a losing (or gaining) line has its latest dots at the right edge it would point to */}
+        {goalKg !== null && goalEdge && (
+          <text
+            data-testid="goal-edge"
+            x={PAD.left + 6}
+            y={goalEdge === "below" ? PAD.top + plotH - 6 : PAD.top + 12}
+            textAnchor="start"
+            fontSize="11"
+            fontWeight="600"
+            fill="var(--color-success)"
+          >
+            {`Goal ${formatWeight(goalKg, units)} ${goalEdge === "below" ? "↓" : "↑"}`}
+          </text>
         )}
         {shownMarkers.map((m) => (
           <g key={`${m.day}-${m.label}`} data-testid="marker">
@@ -117,7 +137,6 @@ export default function WeightChart({
           </g>
         ))}
         {points.length > 1 && <path data-testid="trend-path" d={trend} fill="none" stroke="var(--color-action)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
-        {points.length === 1 && <path data-testid="trend-path" d={trend} fill="none" />}
         {points.map((p) => (
           <g key={p.day} data-testid="weigh-in-dot" onClick={onSelect ? () => onSelect(p) : undefined} className={onSelect ? "cursor-pointer" : undefined}>
             <circle cx={c(x(p.day))} cy={c(y(v(p.weightKg)))} r="12" fill="transparent" />

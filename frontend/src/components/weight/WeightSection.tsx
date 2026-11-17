@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useSession } from "../../session";
 import { addDays, dayLabel, todayIn } from "../../selectedDay";
 import type { Units, Weight, WeighIn } from "../../types";
-import { formatWeight } from "../../units";
+import { formatWeight, weightValue } from "../../units";
 import { longDay, useWeight } from "../../weight";
 import { Notice } from "../ui/Notice";
 import { linkButton, primaryButton } from "../ui/styles";
@@ -16,28 +16,35 @@ const RANGES: { id: Range; label: string; days?: number }[] = [
   { id: "all", label: "All" },
 ];
 
+const LIST_LIMIT = 7;
+
 // The projection in words
 export function projectionText(w: Weight, units: Units) {
   const p = w.projection;
   if (p.status === "not_enough") return "Not enough weigh-ins yet";
   if (p.status === "not_losing") return "Not losing right now";
   if (p.status === "reached") return "You've reached your goal";
-  const rate = p.kgPerWeek !== undefined ? `Losing ${formatWeight(p.kgPerWeek, units)} a week` : "Losing";
+  // A rate that rounds to 0 in the person's units would read "Losing 0 lb a week"
+  const rate = p.kgPerWeek !== undefined && weightValue(p.kgPerWeek, units) > 0 ? `Losing ${formatWeight(p.kgPerWeek, units)} a week` : "Losing slowly";
   return p.date ? `${rate} — goal around ${longDay(p.date)}` : rate;
 }
 
 // Goals › Weight: start / now / goal, lost so far, the projection, the chart (1 month · 3 months · All)
-// and the weigh-ins in range, each tappable to edit or delete. markers: e.g. dose changes.
+// and the latest 7 weigh-ins in range (Show all for the rest), each tappable to edit or delete. markers: e.g. dose changes.
 export default function WeightSection({ onReplan, markers }: { onReplan: () => void; markers?: ChartMarker[] }) {
   const { user } = useSession();
   const today = todayIn(user.timezone);
   const [range, setRange] = useState<Range>("1m");
   const days = RANGES.find((r) => r.id === range)!.days;
-  const { data, error } = useWeight(days ? addDays(today, -days) : undefined, days ? today : undefined);
+  const rangeFrom = days ? addDays(today, -days) : undefined;
+  const { data, error } = useWeight(rangeFrom, days ? today : undefined);
   const [sheet, setSheet] = useState<{ edit?: WeighIn } | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const w = (kg: number) => formatWeight(kg, user.units);
 
-  const from = days ? addDays(today, -days) : (data?.start?.day ?? today);
+  const from = rangeFrom ?? data?.start?.day ?? today;
+  const newestFirst = data ? [...data.weighIns].reverse() : [];
+  const listed = showAll ? newestFirst : newestFirst.slice(0, LIST_LIMIT);
   const lost = data?.lostKg ?? null;
 
   return (
@@ -105,7 +112,7 @@ export default function WeightSection({ onReplan, markers }: { onReplan: () => v
           </div>
           {data.weighIns.length > 0 && (
             <ul aria-label="Weigh-ins" className="mt-2 divide-y divide-line">
-              {[...data.weighIns].reverse().map((p) => (
+              {listed.map((p) => (
                 <li key={p.day}>
                   <button
                     type="button"
@@ -120,6 +127,11 @@ export default function WeightSection({ onReplan, markers }: { onReplan: () => v
                 </li>
               ))}
             </ul>
+          )}
+          {listed.length < newestFirst.length && (
+            <button type="button" onClick={() => setShowAll(true)} className={`${linkButton} mt-2 text-sm`}>
+              {`Show all (${newestFirst.length})`}
+            </button>
           )}
         </>
       )}
