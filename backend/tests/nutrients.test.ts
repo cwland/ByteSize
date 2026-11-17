@@ -111,6 +111,11 @@ describe("withLiquidVolumes", () => {
     expect(withLiquidVolumes(cheese, "en:snacks", "Protein bar chocolate milk shake")).toEqual(cheese);
     expect(withLiquidVolumes(cheese, "Fruits and Fruit Juices", "Apples, fuji, with skin, raw")).toEqual(cheese);
     expect(withLiquidVolumes(cheese, "en:coffees", "Whole bean coffee")).toEqual(cheese);
+    // powders and soft cheeses that mention a drink: 1 g ≈ 1 ml would badly over-count them
+    expect(withLiquidVolumes(cheese, "en:beverages", "Hot chocolate drink mix")).toEqual(cheese);
+    expect(withLiquidVolumes(cheese, null, "Whole milk ricotta")).toEqual(cheese);
+    expect(withLiquidVolumes(cheese, null, "Instant oatmeal with milk")).toEqual(cheese);
+    expect(withLiquidVolumes(cheese, null, "Iced tea mix")).toEqual(cheese);
   });
 
   it("a food with real ml is unchanged", () => {
