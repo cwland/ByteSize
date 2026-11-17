@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import AppShell from "./AppShell";
 import { fakeServer } from "../test/fakeServer";
 import { renderWithSession } from "../test/renderWithSession";
+import { bodyA, plansA, steadyTargets } from "../test/fixtures";
 
 describe("AppShell day switcher", () => {
   afterEach(() => void vi.useRealTimers());
@@ -34,6 +35,54 @@ describe("AppShell first run", () => {
     renderWithSession(<AppShell />);
     expect(await screen.findByRole("heading", { name: "Tell us about yourself" })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Main" })).not.toBeInTheDocument();
+  });
+});
+
+describe("AppShell details review", () => {
+  it("details needing review are asked for before plans, and saving continues to the plans", async () => {
+    // A body saved before birthdates and the new activity levels (migrated: Jan 1 of the birth year, "moderate" → "most")
+    let body: Record<string, unknown> = { ...bodyA, birthDate: "1974-01-01", activity: "most", needsReview: true };
+    const server = fakeServer({
+      "GET /api/targets": () => ({ targets: steadyTargets }),
+      "GET /api/body": () => ({ body }),
+      "PUT /api/body": (b) => {
+        body = { ...b, needsReview: false };
+        return { body };
+      },
+      "GET /api/plans": () => (body.needsReview ? { status: 409, json: { error: "Check your details first" } } : plansA),
+    });
+    renderWithSession(<AppShell />);
+    expect(await screen.findByText("We've updated a couple of questions — check your details")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Tell us about yourself" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Main" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Birthdate")).toHaveValue("1974-01-01");
+    expect(screen.getByRole("radio", { name: /On your feet most of the day/ })).toHaveAttribute("aria-checked", "true");
+    expect(server.sent.some((s) => s.path === "/api/plans")).toBe(false);
+
+    const user = userEvent.setup();
+    const birth = screen.getByLabelText("Birthdate");
+    await user.clear(birth);
+    await user.type(birth, "1974-06-01");
+    await user.click(screen.getByRole("radio", { name: /On your feet some of the day/ }));
+    await user.click(screen.getByRole("button", { name: "See my plans" }));
+
+    expect(await screen.findByRole("heading", { name: "Choose your plan" })).toBeInTheDocument();
+    expect(screen.queryByText("We've updated a couple of questions — check your details")).not.toBeInTheDocument();
+    expect(server.writes().find((w) => w.path === "/api/body")!.body).toMatchObject({ birthDate: "1974-06-01", activity: "some" });
+    await user.click(screen.getByRole("button", { name: "Not now" }));
+    expect(await screen.findByRole("navigation", { name: "Main" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Tell us about yourself" })).not.toBeInTheDocument();
+  });
+
+  it("the review can be put off with Not now", async () => {
+    fakeServer({
+      "GET /api/targets": () => ({ targets: steadyTargets }),
+      "GET /api/body": () => ({ body: { ...bodyA, needsReview: true } }),
+    });
+    renderWithSession(<AppShell />);
+    await screen.findByText("We've updated a couple of questions — check your details");
+    await userEvent.setup().click(screen.getByRole("button", { name: "Not now" }));
+    expect(await screen.findByRole("navigation", { name: "Main" })).toBeInTheDocument();
   });
 });
 
