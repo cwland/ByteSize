@@ -201,6 +201,8 @@ const words = (q: string) => q.toLowerCase().split(/\s+/).filter(Boolean).slice(
 const allWords = (hay: SQL, q: string) => and(...words(q).map((w) => sql`${hay} ilike ${"%" + escapeLike(w) + "%"}`))!;
 const userHay = sql`lower(${userFoods.name} || ' ' || coalesce(${userFoods.brand}, ''))`;
 const cacheHay = sql`lower(${foodCache.name} || ' ' || coalesce(${foodCache.brand}, ''))`;
+/** A cached USDA whole food (Foundation / SR Legacy, as USDA's own record says): shown under "Basic foods". */
+const isBasicRow = (c: CacheRow) => c.source === "usda" && ["Foundation", "SR Legacy"].includes((c.raw as { dataType?: unknown } | null)?.dataType as string);
 const TYPO_MATCH = 0.45; // word_similarity at which a name counts as the search mistyped
 
 /** The person's active foods matching q: every word appears, or it's close (pg_trgm, forgives typos). */
@@ -234,7 +236,10 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
   const { db } = app;
   // Outside sources start at once (each with its own timeout) while the local lists are read
   const key = await usdaKey(app);
-  const outside: { source: "off" | "usda"; run: Promise<SourceFood[]> }[] = [{ source: "off", run: offSearch(app.foodFetch, q, SOURCE_TIMEOUT_MS) }];
+  // Each source gives its foods, plus an error when only part of it answered (USDA's two calls)
+  const outside: { source: "off" | "usda"; run: Promise<{ foods: SourceFood[]; error: Error | null }> }[] = [
+    { source: "off", run: offSearch(app.foodFetch, q, SOURCE_TIMEOUT_MS).then((foods) => ({ foods, error: null })) },
+  ];
   if (key) outside.push({ source: "usda", run: usdaSearch(app.foodFetch, key, q, SOURCE_TIMEOUT_MS) });
   for (const o of outside) o.run.catch(() => {}); // handled below
 
@@ -253,10 +258,11 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
   const myBarcodes = new Set(mine.map((f) => f.barcode).filter(Boolean));
   const myBases = new Set(mine.map((f) => f.baseCacheId).filter(Boolean));
   const shown = new Set(cache.map((c) => c.id));
+  // A saved USDA whole food is still a basic food, on every later search too
   const found: Record<GroupSource, FoodResult[]> = {
     mine: mine.map((f) => toResult(f, "user_food")),
-    basic: [],
-    cache: cache.map((c) => toResult(c, "cache")),
+    basic: cache.filter(isBasicRow).map((c) => toResult(c, "cache")),
+    cache: cache.filter((c) => !isBasicRow(c)).map((c) => toResult(c, "cache")),
     off: [],
     usda: [],
   };
@@ -267,18 +273,22 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
   for (const [i, o] of outside.entries()) {
     const s = settled[i];
     let rows: CacheRow[] = [];
-    try {
-      if (s.status === "rejected") throw s.reason;
-      rows = await upsertMany(db, s.value, now);
-    } catch (err) {
+    const fail = async (err: unknown) => {
       errors.push({ source: o.source, message: friendly(o.source, err) });
       await logSourceFailure(app, userId, o.source, "search", err);
+    };
+    try {
+      if (s.status === "rejected") throw s.reason;
+      rows = await upsertMany(db, s.value.foods, now);
+    } catch (err) {
+      await fail(err);
       continue;
     }
+    if (s.value.error) await fail(s.value.error); // part failed: what did come is still shown
     const fresh = rows.filter((r) => !shown.has(r.id) && !myBases.has(r.id) && !(r.barcode && myBarcodes.has(r.barcode)));
     fresh.forEach((r) => shown.add(r.id));
     // USDA's plain whole foods (Foundation / SR Legacy) get their own group; the rest are branded
-    const basicIds = new Set(s.value.filter((f) => f.basic).map((f) => f.sourceId));
+    const basicIds = new Set(s.value.foods.filter((f) => f.basic).map((f) => f.sourceId));
     for (const r of fresh) found[basicIds.has(r.sourceId) ? "basic" : o.source].push(toResult(r, "cache"));
   }
 
@@ -297,19 +307,34 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
 const SUGGEST_BELOW = 3; // "Did you mean" only when fewer foods than this were found
 const SUGGEST_MATCH = 0.5; // word_similarity a saved word needs to be offered
 
-/** One food word's singular form, roughly (berries → berry, tomatoes → tomato, bananas → banana). */
-const singular = (w: string) => (w.endsWith("ies") ? w.slice(0, -3) + "y" : w.endsWith("oes") ? w.slice(0, -2) : w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
+/** The search's own plural / singular forms: offering one of these isn't a spelling fix. */
+function formsOf(q: string): Set<string> {
+  const forms = new Set([q, q + "s", q + "es"]);
+  if (q.endsWith("y")) forms.add(q.slice(0, -1) + "ies");
+  if (q.endsWith("s")) forms.add(q.slice(0, -1));
+  if (q.endsWith("es")) forms.add(q.slice(0, -2));
+  if (q.endsWith("ies")) forms.add(q.slice(0, -3) + "y");
+  return forms;
+}
+
+/** A plain -s plural without its s (bananas → banana, carrots → carrot); any other word as it is. */
+const dropPlainS = (w: string) => (/[^eisu]s$/.test(w) ? w.slice(0, -1) : w);
 
 /**
  * A close spelling of a one-word search, drawn from the words of saved food names (the shared cache
- * and the person's own foods). Matches the search's number (a singular search gets a singular word),
- * and is never the search itself, a plural/singular of it, or a longer word it is already part of
- * ("apple" in "pineapple" is spelled right).
+ * and the person's own foods). Always a saved word as it is, except that a plain -s plural loses its
+ * s for a search that doesn't end in s ("bananna" → "banana"). Never the search itself or one of its
+ * plural / singular forms, and never a longer word the search is already part of ("apple" in
+ * "pineapple" is spelled right). A search that is itself (or in plural / singular) a saved word is
+ * spelled right: no suggestion ("pie" with "Pies" saved never gets "pineapple").
  */
 export async function suggestSpelling(db: Db, userId: number, q: string): Promise<string | undefined> {
   const lq = q.toLowerCase();
   if (/\s/.test(lq) || lq.length < 3) return undefined;
   const split = (col: SQL) => sql`regexp_split_to_table(lower(${col}), '[^[:alpha:]]+')`;
+  const forms = formsOf(lq);
+  const known = sql`w in (${sql.join([...forms].map((f) => sql`${f}`), sql`, `)})`;
+  // The search (or its plural / singular) found among saved words = spelled right: those rows sort first
   const { rows } = await db.execute<{ w: string }>(sql`
     with words as (
       select ${split(sql`${foodCache.name}`)} as w from ${foodCache}
@@ -317,13 +342,14 @@ export async function suggestSpelling(db: Db, userId: number, q: string): Promis
       select ${split(sql`${userFoods.name}`)} from ${userFoods} where ${userFoods.userId} = ${userId} and ${userFoods.archived} = false
     )
     select w from words
-    where length(w) >= 3 and w <> ${lq} and word_similarity(${lq}, w) >= ${SUGGEST_MATCH}
-    order by similarity(${lq}, w) desc, word_similarity(${lq}, w) desc, w
+    where ${known} or (length(w) >= 3 and word_similarity(${lq}, w) >= ${SUGGEST_MATCH})
+    order by ${known} desc, similarity(${lq}, w) desc, word_similarity(${lq}, w) desc, w
     limit 10`);
-  const base = singular(lq);
+  if (rows.some(({ w }) => forms.has(w))) return undefined;
+  const inside = [...forms].filter((f) => f.length >= 3 && f.length <= lq.length);
   for (const { w } of rows) {
-    const out = lq.endsWith("s") ? w : singular(w);
-    if (singular(out).includes(base)) continue; // the search itself, its plural/singular, or inside a longer word
+    const out = lq.endsWith("s") ? w : dropPlainS(w);
+    if (inside.some((f) => out.includes(f))) continue; // the search is already inside a longer word
     return out;
   }
   return undefined;

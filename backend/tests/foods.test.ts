@@ -259,11 +259,27 @@ describe("search forgives typos, puts basic foods first and suggests a spelling"
       ["usda", ["Banana chips"]],
     ]);
     expect(r.body.groups[0].foods[0]).toMatchObject({ kind: "cache", source: "usda" });
-    // Saved like any outside food: next time it's a saved food, still found (with a typo too)
+    // Saved like any outside food, and still a basic food on every later search (with a typo too)
     quietWeb();
-    const later = await search("bananna");
-    expect(later.body.groups.map((g: any) => g.source)).toEqual(["cache"]);
-    expect(later.body.groups[0].foods.map((f: any) => f.name)).toContain("Bananas, raw");
+    for (const q of ["banana", "bananna"]) {
+      const later = await search(q);
+      expect(later.body.groups.map((g: any) => g.source)).toEqual(["basic", "cache"]);
+      expect(later.body.groups[0].foods.map((f: any) => f.name)).toEqual(["Bananas, raw"]);
+      expect(later.body.groups[1].foods.map((f: any) => f.name)).not.toContain("Bananas, raw");
+    }
+  });
+
+  it("USDA branded failing still shows the basic foods, with the USDA error", async () => {
+    await t.api("PUT", "/api/admin/food-sources", { usdaApiKey: "usda-key" });
+    t.foodWeb.respond = (url, call) => {
+      if (url.startsWith(OFF_SEARCH)) return { status: 200, json: { hits: [] } };
+      if (url.startsWith(USDA)) return call.body.dataType.includes("Branded") ? { status: 500, json: {} } : usdaReply(call, [usdaFood(1105314, "Bananas, raw", 89)]);
+      return { status: 404, json: {} };
+    };
+    const r = await search("banana");
+    expect(shape(r.body)).toEqual([["basic", ["Bananas, raw"]]]);
+    expect(r.body.errors).toEqual([{ source: "usda", message: "USDA answered with an error (500)" }]);
+    expect((await foodLogs()).map((l) => l.source)).toEqual(["USDA"]);
   });
 
   it("inside each group, names starting with the search come first", async () => {
@@ -290,6 +306,12 @@ describe("search forgives typos, puts basic foods first and suggests a spelling"
     expect(r.body.suggestion).toBe("banana");
   });
 
+  it("a suggestion is a word from saved names (a plain -s plural may lose its s): never an invented one", async () => {
+    quietWeb();
+    await saved("Sandwiches, turkey", "1105320");
+    expect((await search("sandwhich")).body.suggestion).toBe("sandwiches");
+  });
+
   it("my own foods' words count too", async () => {
     quietWeb();
     await custom("Blueberry muffin");
@@ -306,6 +328,12 @@ describe("search forgives typos, puts basic foods first and suggests a spelling"
     expect((await search("apple")).body).not.toHaveProperty("suggestion"); // spelled right, just inside "pineapple"
     expect((await search("xylophone")).body).not.toHaveProperty("suggestion");
     expect((await search("bananna split")).body).not.toHaveProperty("suggestion");
+    // Only plural endings of the search itself: never a made-up singular ("cooky", "py")
+    await saved("Cookies, chocolate chip", "1105316");
+    await saved("Pies, apple", "1105317");
+    await saved("Smoothies, berry", "1105318");
+    await saved("Brownies", "1105319");
+    for (const q of ["cookie", "pie", "smoothie", "brownie", "cooky"]) expect((await search(q)).body.suggestion, q).toBeUndefined();
     // 3 foods found: enough, no suggestion
     t.foodWeb.respond = (url) =>
       url.startsWith(OFF_SEARCH) ? { status: 200, json: { hits: [offProduct("3000000000002", "Bananna bread", 300), offProduct("3000000000003", "Bananna cake", 300)] } } : { status: 200, json: { foods: [] } };

@@ -83,7 +83,8 @@ describe("usda clients", () => {
       const want: string[] = JSON.parse(String(init?.body)).dataType;
       return { status: 200, json: page([apple, yogurt, noEnergy].filter((x) => want.includes(x.dataType))) };
     });
-    const foods = await usdaSearch(f, "KEY123", "apple", 1000);
+    const { foods, error } = await usdaSearch(f, "KEY123", "apple", 1000);
+    expect(error).toBeNull();
     expect(foods.map((x) => [x.sourceId, x.basic])).toEqual([
       ["1750340", true],
       ["2346404", undefined],
@@ -101,8 +102,23 @@ describe("usda clients", () => {
 
   it("a food both calls return is kept once, as a basic food", async () => {
     const { f } = fakeFetch(() => ({ status: 200, json: page([apple]) }));
-    const foods = await usdaSearch(f, "KEY123", "apple", 1000);
+    const { foods } = await usdaSearch(f, "KEY123", "apple", 1000);
     expect(foods.map((x) => [x.sourceId, x.basic])).toEqual([["1750340", true]]);
+  });
+
+  it("one call failing keeps the other's foods and reports the failure; both failing is an error", async () => {
+    const failing = (bad: string) =>
+      fakeFetch((_url, init) => {
+        const want: string[] = JSON.parse(String(init?.body)).dataType;
+        return want.includes(bad) ? { status: 500, json: {} } : { status: 200, json: page([apple, yogurt].filter((x) => want.includes(x.dataType))) };
+      }).f;
+    const brandedDown = await usdaSearch(failing("Branded"), "KEY123", "apple", 1000);
+    expect(brandedDown.foods.map((x) => [x.sourceId, x.basic])).toEqual([["1750340", true]]);
+    expect(brandedDown.error).toBeInstanceOf(SourceError);
+    expect(brandedDown.error!.message).toBe("USDA answered with an error (500)");
+    const basicDown = await usdaSearch(failing("Foundation"), "KEY123", "apple", 1000);
+    expect(basicDown.foods.map((x) => x.sourceId)).toEqual(["2346404"]);
+    expect(basicDown.error).toBeInstanceOf(SourceError);
   });
 
   it("the two calls run at the same time", async () => {

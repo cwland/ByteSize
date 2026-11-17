@@ -100,16 +100,20 @@ const usable = (foods: any[]) =>
 /**
  * Text search: plain whole foods (Foundation / SR Legacy, marked basic) and Branded foods are asked
  * for separately, at the same time, so branded hits never crowd out the basic ones. Basic come first;
- * a food both calls return is kept once, as basic.
+ * a food both calls return is kept once, as basic. When one call fails, the other's foods are still
+ * returned, with the failure as `error`; when both fail, it throws.
  */
-export async function usdaSearch(fetchFn: FoodFetch, apiKey: string, q: string, timeoutMs: number): Promise<SourceFood[]> {
-  const [basicFoods, branded] = await Promise.all([
+export async function usdaSearch(fetchFn: FoodFetch, apiKey: string, q: string, timeoutMs: number): Promise<{ foods: SourceFood[]; error: Error | null }> {
+  const [basicCall, brandedCall] = await Promise.allSettled([
     search(fetchFn, apiKey, q, ["Foundation", "SR Legacy"], timeoutMs, 5),
     search(fetchFn, apiKey, q, ["Branded"], timeoutMs, 10),
   ]);
-  const basic = usable(basicFoods).map((f) => ({ ...f, basic: true as const }));
+  if (basicCall.status === "rejected" && brandedCall.status === "rejected") throw basicCall.reason;
+  const basic = basicCall.status === "fulfilled" ? usable(basicCall.value).map((f) => ({ ...f, basic: true as const })) : [];
   const seen = new Set(basic.map((f) => f.sourceId));
-  return [...basic, ...usable(branded).filter((f) => !seen.has(f.sourceId))];
+  const branded = brandedCall.status === "fulfilled" ? usable(brandedCall.value).filter((f) => !seen.has(f.sourceId)) : [];
+  const failed = basicCall.status === "rejected" ? basicCall.reason : brandedCall.status === "rejected" ? brandedCall.reason : null;
+  return { foods: [...basic, ...branded], error: failed };
 }
 
 export async function usdaByBarcode(fetchFn: FoodFetch, apiKey: string, code: string, timeoutMs: number): Promise<SourceFood | null> {
