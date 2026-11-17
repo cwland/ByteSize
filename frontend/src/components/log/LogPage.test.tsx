@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LogPage from "./LogPage";
@@ -42,6 +42,14 @@ function show(routes: Record<string, (b: any) => unknown> = {}) {
   );
   return server;
 }
+
+
+// "Today" is pinned: noon on Mon, Nov 16 in Denver (the fixtures' day), whatever the real date is
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-16T19:00:00Z"));
+});
+afterEach(() => vi.useRealTimers());
 
 describe("Log", () => {
   it("meal cards show entries with icons, portions and totals", async () => {

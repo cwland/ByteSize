@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LogPage from "./LogPage";
@@ -40,6 +40,14 @@ async function openSnacks(user: ReturnType<typeof userEvent.setup>) {
   await user.click(within(snacks).getByRole("button", { name: "Add Food" }));
   return screen.getByRole("dialog", { name: "Add food to Snacks" });
 }
+
+
+// "Today" is pinned: noon on Mon, Nov 16 in Denver (the fixtures' day), whatever the real date is
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-16T19:00:00Z"));
+});
+afterEach(() => vi.useRealTimers());
 
 describe("Add food", () => {
   it("add food: search groups appear in order and logging a result sends the right body", async () => {
