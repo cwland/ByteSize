@@ -3,7 +3,7 @@
 // answers are kept 24 h and an item's nutrition once fetched. FatSecret search hits are never kept; an item
 // is stored (as a food_cache row) only when the person opens it to log or star it.
 import type { FastifyInstance } from "fastify";
-import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import { appSettings, foodCache, logEntries, restaurantFavourites, restaurantSearches } from "../../db/schema.js";
 import { logEvent } from "../appLog.js";
 import { HttpError, badRequest, notFound } from "../errors.js";
@@ -28,11 +28,12 @@ export type RestaurantSearch = { items: RestaurantItem[]; lookupsLeft: number | 
 
 // Keyed by the app's database handle: route plugins get their own (encapsulated) Fastify instance,
 // but every one of them shares the root app's db object, so the whole app has one queue.
-type State = { queue: Promise<unknown>; lastAt: number | null; tokens: Map<string, FatSecretToken> };
+// inflight: item fetches under way ("source:id"), so two opens at once share one call
+type State = { queue: Promise<unknown>; lastAt: number | null; tokens: Map<string, FatSecretToken>; inflight: Map<string, Promise<unknown>> };
 const states = new WeakMap<object, State>();
 function state(app: FastifyInstance): State {
   let s = states.get(app.db);
-  if (!s) states.set(app.db, (s = { queue: Promise.resolve(), lastAt: null, tokens: new Map() }));
+  if (!s) states.set(app.db, (s = { queue: Promise.resolve(), lastAt: null, tokens: new Map(), inflight: new Map() }));
   return s;
 }
 
@@ -90,6 +91,23 @@ const outOfPoints = async (app: FastifyInstance) => {
   const left = await pointsLeft(app);
   return left !== null && left < 1;
 };
+
+/** A queued Spoonacular call; a 402 is recorded before the next queued call starts. */
+function spoonQueued<T>(app: FastifyInstance, fn: () => Promise<T>): Promise<T> {
+  return throttled(app, async () => {
+    try {
+      return await fn();
+    } catch (err) {
+      if (err instanceof SourceError && err.kind === "quota") await savePoints(app, 0);
+      throw err;
+    }
+  });
+}
+
+/** Checked again inside the queue: a call waiting behind one that got 402 never reaches Spoonacular. */
+async function stillHasPoints(app: FastifyInstance) {
+  if (await outOfPoints(app)) throw new SourceError("spoonacular", "Spoonacular's daily lookups are used up", "quota");
+}
 
 /** Logs a failed call (category food, no secrets: messages are ByteSize's own) and gives the message to show. */
 async function failed(app: FastifyInstance, userId: number | null, source: RestaurantSource, what: string, err: unknown): Promise<string> {
@@ -153,9 +171,10 @@ export async function searchRestaurants(app: FastifyInstance, userId: number, ra
     else {
       try {
         // Re-checked in the queue: the same search waiting behind another is answered from the cache
-        items = await throttled(app, async () => {
+        items = await spoonQueued(app, async () => {
           const again = await freshSearch(app, query);
           if (again) return again;
+          await stillHasPoints(app);
           const r = await spoon.search(q);
           if (r.quota) await savePoints(app, r.quota.left);
           const now = app.now();
@@ -194,16 +213,33 @@ export async function restaurantItem(app: FastifyInstance, userId: number, sourc
   const adapter = adapterFor(app, keys, source);
   if (!adapter) throw badRequest(NO_KEY_MESSAGE);
   if (source === "spoonacular" && (await outOfPoints(app))) throw new HttpError(503, QUOTA_MESSAGE);
-  let fetched;
-  try {
-    fetched = source === "spoonacular" ? await throttled(app, async () => ((await find())[0] ? null : adapter.item(sourceId))) : await adapter.item(sourceId);
-  } catch (err) {
-    throw new HttpError(503, await failed(app, userId, source, "item lookup", err));
+  // Two opens of the same item at once share one fetch (and one stored row)
+  const inflight = state(app).inflight;
+  const key = `${source}:${sourceId}`;
+  let pending = inflight.get(key) as Promise<void> | undefined;
+  if (!pending) {
+    pending = (async () => {
+      let fetched;
+      try {
+        fetched =
+          source === "spoonacular"
+            ? await spoonQueued(app, async () => {
+                if ((await find())[0]) return null;
+                await stillHasPoints(app);
+                return adapter.item(sourceId);
+              })
+            : await adapter.item(sourceId);
+      } catch (err) {
+        throw new HttpError(503, await failed(app, userId, source, "item lookup", err));
+      }
+      if (fetched) {
+        if (fetched.quota) await savePoints(app, fetched.quota.left);
+        await cacheUpsert(app.db, { ...fetched.food, source, sourceId }, app.now());
+      }
+    })().finally(() => inflight.delete(key));
+    inflight.set(key, pending);
   }
-  if (fetched) {
-    if (fetched.quota) await savePoints(app, fetched.quota.left);
-    await cacheUpsert(app.db, { ...fetched.food, source, sourceId }, app.now());
-  }
+  await pending;
   const [row] = await find();
   return { food: toResult(row, "cache"), lookupsLeft: await lookupsLeft(app, keys) };
 }
@@ -220,7 +256,7 @@ export async function testRestaurantSource(app: FastifyInstance, userId: number,
       await adapter.search("burger", 1);
       return { ok: true };
     }
-    const r = await throttled(app, () => adapter.search("burger", 1));
+    const r = await spoonQueued(app, () => adapter.search("burger", 1));
     if (r.quota) await savePoints(app, r.quota.left);
     return { ok: true, lookupsLeft: await lookupsLeft(app, keys) };
   } catch (err) {
@@ -280,4 +316,55 @@ export async function recentChains(app: FastifyInstance, userId: number, limit =
     .orderBy(desc(last))
     .limit(limit);
   return { chains: rows.map((r) => r.chain!) };
+}
+
+// ---------- cleanup (on start, then hourly; logged under "schedule") ----------
+
+const CLEANUP_EVERY_MS = 60 * 60 * 1000;
+
+/**
+ * Removes Spoonacular search answers older than 24 h, and FatSecret foods fetched more than 24 h ago
+ * that nobody starred, logged, used in a recipe or quick meal, or corrected (FatSecret's plan lists no
+ * storage permission). Spoonacular items are kept. Returns how many rows went.
+ */
+export async function cleanupRestaurants(app: FastifyInstance): Promise<{ foods: number; searches: number }> {
+  const cutoff = new Date(app.now().getTime() - SEARCH_FRESH_MS);
+  const searches = await app.db.delete(restaurantSearches).where(lt(restaurantSearches.fetchedAt, cutoff)).returning({ id: restaurantSearches.id });
+  const foods = await app.db
+    .delete(foodCache)
+    .where(
+      and(
+        eq(foodCache.source, "fatsecret"),
+        lt(foodCache.fetchedAt, cutoff),
+        sql`not exists (select 1 from restaurant_favourites f where f.cache_id = ${foodCache.id})`,
+        sql`not exists (select 1 from log_entries le where le.source_ref = 'cache:' || ${foodCache.id})`,
+        sql`not exists (select 1 from recipe_items ri where ri.food_kind = 'cache' and ri.food_id = ${foodCache.id})`,
+        sql`not exists (select 1 from user_foods uf where uf.base_cache_id = ${foodCache.id})`,
+      ),
+    )
+    .returning({ id: foodCache.id });
+  if (foods.length || searches.length) {
+    await logEvent(app.db, {
+      category: "schedule",
+      level: "info",
+      source: "Restaurant cleanup",
+      event: `Removed ${foods.length} unused FatSecret food${foods.length === 1 ? "" : "s"} and ${searches.length} old restaurant search${searches.length === 1 ? "" : "es"}`,
+      detail: "Kept 24 hours; starred, logged, recipe and corrected foods stay",
+    });
+  }
+  return { foods: foods.length, searches: searches.length };
+}
+
+export function scheduleRestaurantCleanup(app: FastifyInstance) {
+  const run = () =>
+    cleanupRestaurants(app).catch((err) =>
+      logEvent(app.db, { category: "schedule", level: "error", source: "Restaurant cleanup", event: "The restaurant cleanup failed", detail: (err as Error).message }),
+    );
+  let timer: NodeJS.Timeout | undefined;
+  app.addHook("onReady", async () => {
+    void run();
+    timer = setInterval(run, CLEANUP_EVERY_MS);
+    timer.unref();
+  });
+  app.addHook("onClose", async () => clearInterval(timer));
 }

@@ -130,4 +130,9 @@ describe("FatSecret adapter", () => {
     const noFood = fakeFetch(() => ({ status: 200, json: { error: { code: 106, message: "Invalid ID" } } }));
     expect(await setup(noFood).make().item("1").catch((e) => e.kind)).toBe("bad_data");
   });
+
+  it("drops hits whose id isn't a number", async () => {
+    const f = fakeFetch(() => ({ status: 200, json: { foods: { food: [{ ...fsHit(1, "Evil", "X", 1), food_id: "1; drop" }, fsHit(2, "Fine", "Y", 5)] } } }));
+    expect((await setup(f).make().search("abc")).items.map((i) => i.sourceId)).toEqual(["2"]);
+  });
 });

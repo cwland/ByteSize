@@ -109,4 +109,13 @@ describe("Spoonacular adapter", () => {
     expect(err.kind).toBe("down");
     expect(err.message).toMatch(/took too long/);
   });
+
+  it("drops hits whose id isn't a number and never builds an image address from one", async () => {
+    const junk = { ...spoonItem(1, "Evil", "X", 1), id: "../../etc", image: undefined };
+    const f = fakeFetch(() => ({ status: 200, json: { menuItems: [junk, spoonItem(2, "Fine", "Y", 5)] } }));
+    const r = await make(f).search("abc");
+    expect(r.items.map((i) => i.sourceId)).toEqual(["2"]);
+    const item = fakeFetch(() => ({ status: 200, json: { ...spoonItem(3, "Odd", "Z", 1), id: "3abc", image: undefined } }));
+    expect(await make(item).item("3").catch((e) => e.kind)).toBe("bad_data");
+  });
 });

@@ -8,7 +8,7 @@
 // addresses allowed in the account. Search hits are never stored (see index.ts).
 import type { Nutrients, Serving } from "../nutrients.js";
 import { num, requestJson, round, SourceError, type FoodFetch, type SourceFood } from "../foodSources/types.js";
-import type { MenuHit, RestaurantAdapter } from "./types.js";
+import { SOURCE_ID, type MenuHit, type RestaurantAdapter } from "./types.js";
 
 export const FATSECRET_TOKEN_URL = "https://oauth.fatsecret.com/connect/token";
 export const FATSECRET_API = "https://platform.fatsecret.com/rest/server.api";
@@ -61,7 +61,7 @@ export function normalizeFatSecret(food: any): SourceFood {
   const name = text(food?.food_name);
   const servings = list(food?.servings?.serving);
   const s = servings.find((x) => String(x?.is_default ?? "") === "1") ?? servings[0];
-  if (!name || food?.food_id === undefined || !s) throw badData();
+  if (!name || !SOURCE_ID.test(String(food?.food_id ?? "")) || !s) throw badData();
   const label = text(s.serving_description) ?? "1 serving";
   const amount = num(s.metric_serving_amount);
   const unit = String(s.metric_serving_unit ?? "").toLowerCase();
@@ -84,7 +84,7 @@ export function normalizeFatSecret(food: any): SourceFood {
 function hitOf(f: any): MenuHit | null {
   const name = text(f?.food_name);
   const brand = text(f?.brand_name);
-  if (!name || !brand || f?.food_type !== "Brand" || f?.food_id === undefined) return null;
+  if (!name || !brand || f?.food_type !== "Brand" || !SOURCE_ID.test(String(f?.food_id ?? ""))) return null;
   const m = /Calories:\s*([\d.]+)\s*kcal/i.exec(String(f?.food_description ?? ""));
   const calories = m ? num(m[1]) : undefined;
   return { source: "fatsecret", sourceId: String(f.food_id), chain: brand, name, calories: calories ?? null, imageUrl: null };

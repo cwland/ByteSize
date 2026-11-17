@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { asUser } from "./isolation.js";
+import { cleanupRestaurants } from "../src/lib/restaurants/index.js";
 import { fsCalls, fsFood, fsHit, NO_KEY_MESSAGE, QUOTA_MESSAGE, quota, restaurantWeb, setRestaurantKeys, spoonCalls, spoonItem, tokenCalls } from "./restaurantFakes.js";
 
 let t: TestApp;
@@ -325,5 +326,100 @@ describe("favourites and recent chains", () => {
     t.clock.date = new Date("2026-11-17T18:00:00Z");
     await t.api("POST", "/api/log", { day: "2026-11-17", meal: "dinner", food: { kind: "cache", id: baconId }, unit: "serving", quantity: 1 });
     expect((await t.api("GET", "/api/restaurants/recent-chains")).body).toEqual({ chains: ["Wendy's", "Chipotle"] });
+  });
+});
+
+describe("restaurant fix round 1", () => {
+  it("after a 402, searches already queued don't call Spoonacular", async () => {
+    t.clock.date = new Date("2026-11-17T15:00:00Z");
+    await setRestaurantKeys(t, { spoonacular: "spoon-key" });
+    restaurantWeb(t, { spoonSearch: () => ({ status: 402, json: {} }) });
+    const all = await Promise.all([search("chipotle"), search("taco bell"), search("wendys")]);
+    expect(spoonCalls(t)).toHaveLength(1);
+    for (const r of all) expect(r.body.errors).toEqual([{ source: "spoonacular", message: QUOTA_MESSAGE }]);
+  });
+
+  it("after a 402, item opens already queued don't call Spoonacular", async () => {
+    t.clock.date = new Date("2026-11-17T15:00:00Z");
+    await setRestaurantKeys(t, { spoonacular: "spoon-key" });
+    restaurantWeb(t, { spoonItem: () => ({ status: 402, json: {} }) });
+    const all = await Promise.all(["1", "2", "3"].map((id) => t.api("POST", "/api/restaurants/item", { source: "spoonacular", sourceId: id })));
+    expect(spoonCalls(t)).toHaveLength(1);
+    for (const r of all) expect(r).toMatchObject({ status: 503, body: { error: QUOTA_MESSAGE } });
+  });
+
+  it("two identical searches at once make one outside call", async () => {
+    await setRestaurantKeys(t, { spoonacular: "spoon-key" });
+    restaurantWeb(t, { spoonSearch: () => ({ status: 200, json: { menuItems: [bowl] }, headers: quota(40) }) });
+    const [a, b] = await Promise.all([search("chipotle bowl"), search("Chipotle  bowl")]);
+    expect(spoonCalls(t)).toHaveLength(1);
+    expect(a.body.items).toEqual(b.body.items);
+  });
+
+  it("two opens of the same item at once make one call (both sources)", async () => {
+    await setRestaurantKeys(t, { spoonacular: "spoon-key", fatsecret: FS });
+    restaurantWeb(t, { spoonItem: (id) => ({ status: 200, json: spoonItem(Number(id), "Bowl", "Chipotle", 655) }), fsGet: () => ({ status: 200, json: { food: burrito } }) });
+    const spoon = await Promise.all([1, 2].map(() => t.api("POST", "/api/restaurants/item", { source: "spoonacular", sourceId: "1001" })));
+    const fs = await Promise.all([1, 2].map(() => t.api("POST", "/api/restaurants/item", { source: "fatsecret", sourceId: "101" })));
+    expect(spoonCalls(t)).toHaveLength(1);
+    expect(fsCalls(t, "food.get.v2")).toHaveLength(1);
+    expect(spoon[0].body.food.id).toBe(spoon[1].body.food.id);
+    expect(fs[0].body.food.id).toBe(fs[1].body.food.id);
+    expect(await count("food_cache")).toBe(2);
+  });
+
+  it("search hits with a junk id are dropped", async () => {
+    await setRestaurantKeys(t, { spoonacular: "spoon-key", fatsecret: FS });
+    restaurantWeb(t, { spoonSearch: () => ({ status: 200, json: { menuItems: [bowl, { ...spoonItem(1, "Evil", "X", 1), id: "../../x" }] }, headers: quota(40) }) });
+    const r = await search("chipotle");
+    expect(r.body.items.map((i: any) => i.sourceId)).toEqual(["1001"]);
+  });
+
+  it("unstarring works with ?cacheId= and no body", async () => {
+    await setRestaurantKeys(t, { spoonacular: "spoon-key" });
+    restaurantWeb(t, { spoonItem: (id) => ({ status: 200, json: spoonItem(Number(id), "Bowl", "Chipotle", 655) }) });
+    const id = (await t.api("POST", "/api/restaurants/item", { source: "spoonacular", sourceId: "1" })).body.food.id;
+    await t.api("POST", "/api/restaurants/favourites", { cacheId: id });
+    const res = await t.app.inject({ method: "DELETE", url: `/api/restaurants/favourites?cacheId=${id}`, headers: { authorization: `Bearer ${t.getToken()}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ chains: [] });
+  });
+});
+
+describe("restaurant cleanup", () => {
+  const day = 24 * 60 * 60 * 1000;
+  async function fsRow(id: number, fetchedAt: Date) {
+    const [row] = (await t.db.execute<{ id: number }>(sql`insert into food_cache (source, source_id, name, brand, servings, nutrients, fetched_at) values ('fatsecret', ${String(id)}, ${"Item " + id}, 'Chipotle', '[{"label":"1 item"}]', '{"calories":100}', ${fetchedAt.toISOString()}) returning id`)).rows;
+    return row.id;
+  }
+
+  it("removes old FatSecret foods nobody starred, logged, used in a recipe or corrected; keeps the rest", async () => {
+    const now = new Date("2026-11-20T12:00:00Z");
+    const old = new Date(now.getTime() - day - 1000);
+    const userId = (await t.db.execute<{ id: number }>(sql`select id from users where username = 'cory'`)).rows[0].id;
+    const unused = await fsRow(1, old);
+    const recent = await fsRow(2, new Date(now.getTime() - day + 60_000));
+    const starred = await fsRow(3, old);
+    const logged = await fsRow(4, old);
+    const inRecipe = await fsRow(5, old);
+    const overridden = await fsRow(6, old);
+    await t.db.execute(sql`insert into food_cache (source, source_id, name, servings, nutrients, fetched_at) values ('spoonacular', '9', 'Spoon', '[]', '{}', ${old.toISOString()})`);
+    await t.db.execute(sql`insert into restaurant_favourites (user_id, cache_id, chain) values (${userId}, ${starred}, 'Chipotle')`);
+    await t.db.execute(sql`insert into log_entries (user_id, day, meal, name, icon, source, source_ref, unit, quantity, per_serving, servings, nutrients) values (${userId}, '2026-11-17', 'lunch', 'x', 'x', 'cache', ${"cache:" + logged}, 'serving', 1, '{}', '[]', '{}')`);
+    const [recipe] = (await t.db.execute<{ id: number }>(sql`insert into user_foods (user_id, kind, name, servings, nutrients) values (${userId}, 'recipe', 'R', '[]', '{}') returning id`)).rows;
+    await t.db.execute(sql`insert into recipe_items (recipe_id, position, food_kind, food_id, unit, quantity, snapshot) values (${recipe.id}, 0, 'cache', ${inRecipe}, 'serving', 1, '{}')`);
+    await t.db.execute(sql`insert into user_foods (user_id, kind, name, base_cache_id, servings, nutrients) values (${userId}, 'override', 'O', ${overridden}, '[]', '{}')`);
+    // searches: one stale, one fresh
+    await t.db.execute(sql`insert into restaurant_searches (source, query, results, fetched_at) values ('spoonacular', 'stale', '[]', ${old.toISOString()}), ('spoonacular', 'fresh', '[]', ${now.toISOString()})`);
+    t.clock.date = now;
+    await cleanupRestaurants(t.app);
+    const left = (await t.db.execute<{ id: number; source: string }>(sql`select id, source from food_cache order by id`)).rows;
+    const fsLeft = left.filter((r) => r.source === "fatsecret").map((r) => r.id);
+    expect(fsLeft).not.toContain(unused);
+    expect(fsLeft).toEqual(expect.arrayContaining([recent, starred, logged, inRecipe, overridden]));
+    expect(left.some((r) => r.source === "spoonacular")).toBe(true); // Spoonacular items are kept
+    expect((await t.db.execute<{ query: string }>(sql`select query from restaurant_searches`)).rows.map((r) => r.query)).toEqual(["fresh"]);
+    const log = await appLog();
+    expect(log.some((l) => l.category === "schedule" && l.source === "Restaurant cleanup")).toBe(true);
   });
 });

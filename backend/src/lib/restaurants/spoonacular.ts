@@ -5,7 +5,7 @@
 // Nutrition is for the whole item.
 import type { Nutrients, Serving } from "../nutrients.js";
 import { num, requestJson, round, SourceError, type FoodFetch, type SourceFood } from "../foodSources/types.js";
-import type { MenuHit, Quota, RestaurantAdapter } from "./types.js";
+import { SOURCE_ID, type MenuHit, type Quota, type RestaurantAdapter } from "./types.js";
 
 export const SPOONACULAR_BASE = "https://api.spoonacular.com/food/menuItems";
 const SEARCH_RESULTS = 10;
@@ -65,19 +65,22 @@ function imageOf(item: any): string | null {
   if (img && /^https:\/\//.test(img)) return img;
   // Get Menu Item Information sends only imageType; the documented image address is built from the id
   const type = text(item?.imageType);
-  return type && /^[a-z]+$/i.test(type) && item?.id !== undefined ? `https://img.spoonacular.com/menu-items/${Number(item.id)}-312x231.${type}` : null;
+  return type && /^[a-z]+$/i.test(type) && validId(item) ? `https://img.spoonacular.com/menu-items/${String(item.id)}-312x231.${type}` : null;
 }
+
+/** Ids are numbers; anything else is dropped (it would end up in URLs). */
+const validId = (item: any) => (typeof item?.id === "number" || typeof item?.id === "string") && SOURCE_ID.test(String(item.id));
 
 function hitOf(item: any): MenuHit | null {
   const name = text(item?.title);
-  if (!name || item?.id === undefined || item?.id === null) return null;
+  if (!name || !validId(item)) return null;
   const calories = nutrientsOf(item).calories;
   return { source: "spoonacular", sourceId: String(item.id), chain: text(item?.restaurantChain) ?? "Restaurant", name, calories: calories ?? null, imageUrl: imageOf(item) };
 }
 
 export function normalizeSpoonacular(item: any): SourceFood {
   const name = text(item?.title);
-  if (!name || item?.id === undefined || item?.id === null) throw new SourceError("spoonacular", "Spoonacular sent something unexpected", "bad_data");
+  if (!name || !validId(item)) throw new SourceError("spoonacular", "Spoonacular sent something unexpected", "bad_data");
   // One serving = the whole item; grams only when Spoonacular gives the item's weight in grams
   const s = item?.servings;
   const size = num(s?.size);
