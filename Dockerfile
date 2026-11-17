@@ -28,16 +28,18 @@ ENV NODE_ENV=production \
 WORKDIR /app
 COPY backend/package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force \
- # In the image the server tools run the compiled files: docker compose exec bytesize npm run reset-password -- <username>
+ # In the image the server tools run the compiled files: docker compose exec -u node bytesize npm run reset-password -- <username>
  && npm pkg set scripts.reset-password="node dist/cli/reset-password.js"
 COPY --from=api /src/backend/dist ./dist
 COPY backend/drizzle ./drizzle
 COPY --from=web /src/frontend/dist ./web
+COPY --chmod=755 backend/docker-entrypoint.sh ./docker-entrypoint.sh
 RUN mkdir -p /app/data && chown -R node:node /app/data
-USER node
+# No USER line: the entrypoint starts as root only to fix the data folder's owner, then runs the
+# server as node. Server tools run as node too: docker compose exec -u node bytesize npm run reset-password -- <username>
 VOLUME ["/app/data"]
 EXPOSE 4100
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:4100/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 # Database migrations run automatically when the server starts
-CMD ["node", "dist/index.js"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
