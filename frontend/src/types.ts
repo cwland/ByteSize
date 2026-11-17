@@ -55,7 +55,7 @@ export type LogEntry = {
   sourceRef: string | null;
 };
 export type Range = { min: number; max: number };
-export type PlanId = "relaxed" | "steady" | "accelerated" | "vigorous";
+export type PlanId = "maintenance" | "relaxed" | "steady" | "accelerated" | "vigorous";
 export type Targets = { calories: Range; protein_g: Range; fiber_g: Range; water_ml: Range; plan: PlanId | null; effectiveFrom: string };
 export type TargetRanges = Pick<Targets, "calories" | "protein_g" | "fiber_g" | "water_ml">;
 export type Plan = {

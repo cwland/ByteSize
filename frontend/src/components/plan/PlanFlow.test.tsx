@@ -63,6 +63,10 @@ describe("plan flow", () => {
     expect(within(vigorous).getByText("Eat 1,437–1,537 calories")).toBeInTheDocument();
     expect(within(vigorous).getByText("Fiber 25–30 g")).toBeInTheDocument();
     expect(within(screen.getByRole("group", { name: "Accelerated" })).getByText("Lose 1½ lb per week")).toBeInTheDocument();
+    const maintenance = screen.getByRole("group", { name: "Maintenance" });
+    expect(within(maintenance).getByText("Eat 2,387–2,587 calories")).toBeInTheDocument();
+    expect(within(maintenance).getByText("Hold your weight steady")).toBeInTheDocument();
+    expect(within(maintenance).queryByText(/per week|weeks to reach|already at your goal/)).not.toBeInTheDocument();
     expect(screen.getByText(plansA.explanation)).toBeInTheDocument();
 
     await userEvent.setup().click(within(steady).getByRole("button", { name: "Select" }));
@@ -98,8 +102,8 @@ describe("plan flow", () => {
       expect(card("Vigorous")).toHaveAttribute("data-current", "true");
       await user.keyboard("{ArrowRight}");
       expect(card("Vigorous")).toHaveAttribute("data-current", "true");
-      await user.keyboard("{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}");
-      expect(card("Relaxed")).toHaveAttribute("data-current", "true");
+      await user.keyboard("{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}");
+      expect(card("Maintenance")).toHaveAttribute("data-current", "true");
     } finally {
       delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
     }

@@ -11,7 +11,7 @@ import { ACTIVITIES, age, buildPlans, planExplanation, type Body, type PlanId, t
 
 export type Targets = PlanTargets & { plan: PlanId | null; effectiveFrom: string };
 
-const PLAN_IDS = ["relaxed", "steady", "accelerated", "vigorous"] as const;
+const PLAN_IDS = ["maintenance", "relaxed", "steady", "accelerated", "vigorous"] as const;
 const AI_EXPLAIN_MS = 8000;
 const NO_BODY = "Tell ByteSize about yourself first";
 const REVIEW = "Check your details first";

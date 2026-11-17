@@ -1,6 +1,6 @@
 // Weight-loss plan calculator (design §9). Pure: no I/O, no clock reads.
 
-export type PlanId = "relaxed" | "steady" | "accelerated" | "vigorous";
+export type PlanId = "maintenance" | "relaxed" | "steady" | "accelerated" | "vigorous";
 export type Range = { min: number; max: number };
 export type Activity = "sitting" | "some" | "most" | "physical";
 export const ACTIVITIES = ["sitting", "some", "most", "physical"] as const satisfies readonly Activity[];
@@ -46,9 +46,13 @@ type PlanDef = {
   protein: readonly [number, number];
   fiber: Range;
   bestFor: string;
+  /** calories either side of the plan's number (default CALORIE_SPREAD) */
+  spread?: number;
 };
 
 export const PLAN_DEFS: readonly PlanDef[] = [
+  { id: "maintenance", name: "Maintenance", lbsPerWeek: 0, deficit: 0, protein: [0.8, 1.0], fiber: { min: 30, max: 35 }, spread: 100,
+    bestFor: "Reached your goal, taking a break, or a vacation week" },
   { id: "relaxed", name: "Relaxed", lbsPerWeek: 0.5, deficit: 250, protein: [0.8, 0.9], fiber: { min: 30, max: 35 },
     bestFor: "Easing into a new dose, minimal side effects and strength gains" },
   { id: "steady", name: "Steady", lbsPerWeek: 1, deficit: 500, protein: [0.9, 1.0], fiber: { min: 30, max: 35 },
@@ -90,9 +94,10 @@ export function tdee(body: Body, today: string): number {
 function planTargets(body: Body, def: PlanDef, calories: number, floor: number | null): PlanTargets {
   const lbs = body.goalWeightKg / KG_PER_LB;
   // floor null: a "Not recommended" plan keeps its own range, shown honestly
-  const min = floor === null ? calories - CALORIE_SPREAD : Math.max(calories - CALORIE_SPREAD, floor);
+  const spread = def.spread ?? CALORIE_SPREAD;
+  const min = floor === null ? calories - spread : Math.max(calories - spread, floor);
   return {
-    calories: { min, max: Math.max(calories + CALORIE_SPREAD, min) },
+    calories: { min, max: Math.max(calories + spread, min) },
     protein_g: { min: Math.round(def.protein[0] * lbs), max: Math.round(def.protein[1] * lbs) },
     fiber_g: { ...def.fiber },
     water_ml: { ...WATER_ML },
@@ -114,7 +119,7 @@ export function buildPlans(body: Body, today: string): PlanResult {
       name: d.name,
       lbsPerWeek: d.lbsPerWeek,
       calories,
-      weeksToGoal: losing ? Math.ceil(lbsToLose / d.lbsPerWeek) : null,
+      weeksToGoal: losing && d.lbsPerWeek > 0 ? Math.ceil(lbsToLose / d.lbsPerWeek) : null,
       recommended: false,
       notRecommended,
       bestFor: d.bestFor,
@@ -134,8 +139,11 @@ export function buildPlans(body: Body, today: string): PlanResult {
       const order = PLAN_DEFS.map((d) => d.id);
       if (order.indexOf(recommended) > order.indexOf(GLP1_FASTEST)) recommended = GLP1_FASTEST;
     }
-    for (const p of plans) p.recommended = p.id === recommended;
+  } else {
+    // At or past the goal: hold steady
+    recommended = "maintenance";
   }
+  for (const p of plans) p.recommended = p.id === recommended;
 
   return { tdee: t, floor, plans, recommended };
 }
@@ -156,8 +164,9 @@ function lbsText(lbs: number): string {
 /** Deterministic explanation, used when AI is off. */
 export function planExplanation(result: PlanResult, body: Body): string {
   if (body.goalWeightKg >= body.weightKg) {
-    return "Your goal is at or above your current weight, so none of these weight-loss plans apply. " +
-      "Set your targets under Goals for now.";
+    const m = result.plans.find((p) => p.id === "maintenance")!;
+    return `You're at your goal. Maintenance holds you at about ${num(m.calories)} calories a day — ` +
+      `keep protein at ${m.targets.protein_g.min}–${m.targets.protein_g.max} g to hold on to muscle.`;
   }
   const plan = result.plans.find((p) => p.id === result.recommended);
   if (!plan) {
