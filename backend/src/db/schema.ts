@@ -120,11 +120,13 @@ const userRef = () =>
 export const userBody = pgTable("user_body", {
   userId: userRef().primaryKey(),
   sex: text("sex").$type<"male" | "female">().notNull(),
-  birthYear: integer("birth_year").notNull(),
+  birthDate: date("birth_date", { mode: "string" }).notNull(), // YYYY-MM-DD
+  // Saved before birthdates and the new activity levels (migration 0003): plans wait until they check their details
+  needsReview: boolean("needs_review").notNull().default(false),
   heightCm: doublePrecision("height_cm").notNull(),
   weightKg: doublePrecision("weight_kg").notNull(),
   goalWeightKg: doublePrecision("goal_weight_kg").notNull(),
-  activity: text("activity").$type<"sedentary" | "light" | "moderate" | "active" | "very">().notNull(),
+  activity: text("activity").$type<"sitting" | "some" | "most" | "physical">().notNull(),
   glp1: boolean("glp1").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
