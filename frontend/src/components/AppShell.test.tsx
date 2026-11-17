@@ -24,3 +24,15 @@ describe("AppShell day switcher", () => {
     expect(screen.getByRole("button", { name: "Go to today" })).toHaveTextContent("Mon, Nov 16");
   });
 });
+
+describe("AppShell first run", () => {
+  it("with no targets yet shows the plan flow before the tabs", async () => {
+    fakeServer({
+      "GET /api/targets": () => ({ targets: null }),
+      "GET /api/body": () => ({ body: null }),
+    });
+    renderWithSession(<AppShell />);
+    expect(await screen.findByRole("heading", { name: "Tell us about yourself" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Main" })).not.toBeInTheDocument();
+  });
+});
