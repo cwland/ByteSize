@@ -350,4 +350,19 @@ describe("Add food, Weight Watchers style", () => {
     await user.click(within(sheet).getByRole("button", { name: "Track" }));
     expect(server.writes().find((w) => w.path === "/api/log")!.body).toEqual({ day: "2026-11-16", meal: "snacks", food: { kind: "cache", id: 50 }, servingIndex: 0, unit: "cup", quantity: 1.5, fraction: 1 });
   });
+
+  it("changing the unit keeps the number: 3 cups → tbsp is 3 tbsp, not 48", async () => {
+    open({ "GET /api/foods/search": () => ({ groups: [{ source: "off", label: "Open Food Facts", foods: [fairlife] }], errors: [] }) });
+    const user = userEvent.setup();
+    const sheet = await openSnacks(user);
+    await user.type(within(sheet).getByRole("searchbox", { name: "Search foods" }), "fairlife");
+    await user.click(await within(sheet).findByRole("button", { name: /^Fairlife 2% ultra-filtered milk/ }));
+    await user.click(within(sheet).getByRole("button", { name: /^Serving/ }));
+    await user.selectOptions(within(sheet).getByRole("combobox", { name: "Unit" }), "≈ cup");
+    await user.selectOptions(within(sheet).getByRole("combobox", { name: "Whole number" }), "3");
+    await user.selectOptions(within(sheet).getByRole("combobox", { name: "Unit" }), "≈ tbsp");
+    expect(within(sheet).getByRole("button", { name: /^Serving/ })).toHaveTextContent("≈ 3 tbsp");
+    await user.selectOptions(within(sheet).getByRole("combobox", { name: "Unit" }), "g");
+    expect(within(sheet).getByRole("button", { name: /^Serving/ })).toHaveTextContent("3 g");
+  });
 });

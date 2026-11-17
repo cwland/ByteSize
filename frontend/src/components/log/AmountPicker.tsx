@@ -1,5 +1,4 @@
 import { FRACTION_CHOICES, exactFraction, splitWhole, unitChoices } from "../../amounts";
-import { amountFactor } from "../../nutrition";
 import type { Portion, Serving, Unit } from "../../types";
 
 const select = "w-full rounded-xl border border-line bg-page px-2 py-2.5 text-center text-lg font-semibold text-ink outline-none focus:border-action";
@@ -26,19 +25,8 @@ export default function AmountPicker({ servings, portion, onChange }: { servings
 
   const pickUnit = (v: string) => {
     const next: Pick<Portion, "servingIndex" | "unit"> = v.startsWith("s:") ? { servingIndex: Number(v.slice(2)), unit: "serving" } : { servingIndex: 0, unit: v as Unit };
-    // keep the same amount of food, in the new unit
-    let q = 1;
-    try {
-      const was = amountFactor(servings, portion.servingIndex, portion.unit, portion.quantity * portion.fraction);
-      q = was / amountFactor(servings, next.servingIndex, next.unit, 1);
-    } catch {
-      /* can't convert: start at 1 */
-    }
-    if (next.unit === "g" || next.unit === "ml") q = Math.max(1, Math.round(q));
-    else {
-      const s = splitWhole(q);
-      q = s.whole + exactFraction(s.fraction) || 1;
-    }
+    // the number stays; only the unit changes (3 cups → 3 tbsp)
+    const q = portion.quantity * portion.fraction || 1;
     onChange({ ...next, quantity: q, fraction: 1 });
   };
 

@@ -12,7 +12,23 @@ import { linkButton, primaryButton } from "../ui/styles";
 export type DetailFood = { name: string; brand?: string | null; icon: string; imageUrl?: string | null; servings: Serving[]; nutrients: Nutrients /* per servings[0] */ };
 
 // A sensible first portion: the food's own serving (e.g. "1 bar") rather than "100 g"
-export const defaultPortion = (servings: Serving[]): Portion => ({ servingIndex: servings.length > 1 ? 1 : 0, unit: "serving", quantity: 1, fraction: 1 });
+const ML_PER_FL_OZ = 29.5735;
+const GRAMS_ONLY = /^\s*[\d.]+\s*(g|grams?)\s*$/i; // "240 g": a serving that names no volume
+
+// Where a food starts: its own serving; a drink measured in grams starts in fl oz (or ml), same amount,
+// or a cup's worth when it's only known per 100 g
+export function defaultPortion(servings: Serving[], units: "imperial" | "metric" = "imperial"): Portion {
+  const base = servings[0];
+  const own = servings.length > 1 ? servings[1] : null;
+  if (base?.ml && (!own || GRAMS_ONLY.test(own.label))) {
+    const mlPerGram = base.grams ? base.ml / base.grams : 1;
+    const ml = own ? (own.ml ?? (own.grams ?? 0) * mlPerGram) || 240 : 240;
+    return units === "metric"
+      ? { servingIndex: 0, unit: "ml", quantity: Math.round(ml), fraction: 1 }
+      : { servingIndex: 0, unit: "fl_oz", quantity: Math.max(0.5, Math.round((ml / ML_PER_FL_OZ) * 2) / 2), fraction: 1 };
+  }
+  return { servingIndex: own ? 1 : 0, unit: "serving", quantity: 1, fraction: 1 };
+}
 
 // Nutrients for an amount ({} = unknown when the amount can't be measured)
 export function nutrientsFor(food: { servings: Serving[]; nutrients: Nutrients }, p: Portion): Nutrients {
