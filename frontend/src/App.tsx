@@ -53,7 +53,7 @@ export default function App() {
     return () => window.removeEventListener("bytesize:logout", onLogout);
   }, [check]);
 
-  // Every sign-in starts on Today
+  // Every sign-in starts on the Dashboard
   const signedIn = (token: string, user: User) => {
     setToken(token);
     if (window.location.hash !== "#/") window.location.hash = "#/";
@@ -65,7 +65,7 @@ export default function App() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-page p-6 text-center">
         <div role="status" className="rounded-2xl bg-container px-8 py-6">
-          <p className="text-lg font-semibold">Can't reach ByteSize right now</p>
+          <p className="text-lg font-bold">Can't reach ByteSize right now</p>
           <p className="mt-1 text-subtle">The server may be restarting. Trying again…</p>
         </div>
       </div>

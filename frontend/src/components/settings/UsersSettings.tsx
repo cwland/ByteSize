@@ -151,7 +151,7 @@ function AddPerson({ onAdded, onCancel }: { onAdded: (u: AdminUser) => void; onC
   }
 
   return (
-    <form onSubmit={submit} aria-label="Add person" className="mt-3 rounded-xl border border-line p-4">
+    <form onSubmit={submit} aria-label="Add person" className="mt-3 rounded-xl bg-page p-4">
       <Field label="Username" value={username} onChange={(e) => setUsername(e.target.value)} autoCapitalize="none" autoComplete="off" required />
       <Field label="Display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} autoComplete="off" />
       <Field label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" />

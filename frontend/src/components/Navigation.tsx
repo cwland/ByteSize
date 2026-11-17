@@ -1,30 +1,42 @@
-import { BookOpen, House, Settings, Utensils } from "lucide-react";
+import { House, NotebookPen, Plus, Settings, Target } from "lucide-react";
 import { PAGES, type Page } from "../routes";
 
 const ICONS: Record<Page, JSX.Element> = {
-  today: <House className="size-5" />,
-  log: <BookOpen className="size-5" />,
-  foods: <Utensils className="size-5" />,
-  settings: <Settings className="size-5" />,
+  dashboard: <House className="size-6" />,
+  log: <NotebookPen className="size-6" />,
+  goals: <Target className="size-6" />,
+  settings: <Settings className="size-6" />,
 };
 
-// One nav: a bottom bar on phones, a side rail on wider screens
+// The bottom tab bar (phones and desktop alike), with the floating orange + in the middle
 export default function Navigation({ page }: { page: Page }) {
+  const tab = (p: (typeof PAGES)[number]) => (
+    <a
+      key={p.id}
+      href={p.href}
+      aria-current={page === p.id ? "page" : undefined}
+      className={`flex flex-1 flex-col items-center justify-center gap-0.5 pt-2 pb-1.5 text-[11px] font-semibold ${page === p.id ? "text-action" : "text-muted hover:text-ink"}`}
+    >
+      {ICONS[p.id]}
+      <span>{p.label}</span>
+    </a>
+  );
   return (
-    <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 flex h-16 items-stretch justify-around border-t border-line bg-container sm:static sm:h-auto sm:w-48 sm:flex-col sm:justify-start sm:gap-1 sm:border-t-0 sm:border-r sm:p-3">
-      {PAGES.map((p) => (
-        <a
-          key={p.id}
-          href={p.href}
-          aria-current={page === p.id ? "page" : undefined}
-          className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-xs font-medium sm:flex-none sm:flex-row sm:justify-start sm:gap-3 sm:rounded-lg sm:px-3 sm:py-2 sm:text-sm ${
-            page === p.id ? "text-action sm:bg-pressed" : "text-subtle hover:text-ink sm:hover:bg-page"
-          }`}
+    <nav aria-label="Main" className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-line bg-container">
+      <div className="relative mx-auto flex max-w-[560px] items-stretch">
+        {PAGES.slice(0, 2).map(tab)}
+        <div className="w-20 shrink-0" aria-hidden="true" />
+        {PAGES.slice(2).map(tab)}
+        <button
+          type="button"
+          aria-label="Log food"
+          title="Log food"
+          onClick={() => (window.location.hash = "#/log")}
+          className="absolute -top-7 left-1/2 flex size-16 -translate-x-1/2 items-center justify-center rounded-full bg-primary text-on-primary shadow-lg shadow-black/40 ring-4 ring-page hover:bg-primary-pressed"
         >
-          {ICONS[p.id]}
-          <span>{p.label}</span>
-        </a>
-      ))}
+          <Plus className="size-8" strokeWidth={2.75} />
+        </button>
+      </div>
     </nav>
   );
 }
