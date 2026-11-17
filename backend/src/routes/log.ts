@@ -22,6 +22,7 @@ export type LogEntry = {
   name: string;
   brand: string | null;
   icon: string;
+  imageUrl: string | null;
   servingIndex: number;
   unit: Unit;
   quantity: number;
@@ -76,6 +77,7 @@ export function toEntry(r: Row): LogEntry {
     name: r.name,
     brand: r.brand,
     icon: r.icon,
+    imageUrl: r.imageUrl,
     servingIndex: r.servingIndex,
     unit: r.unit as Unit,
     quantity: r.quantity,
@@ -274,6 +276,7 @@ export default async function foodLogRoutes(app: FastifyInstance) {
           name: food.name,
           brand: food.brand,
           icon: food.icon,
+          imageUrl: food.imageUrl,
           source: food.kind,
           sourceRef: `${food.kind}:${food.id}`,
           servingIndex: b.servingIndex,

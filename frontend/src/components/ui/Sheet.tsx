@@ -18,9 +18,9 @@ export function Sheet({ label, heading = label, onClose, onBack, tall = false, t
         aria-modal="true"
         aria-label={label}
         onClick={(e) => e.stopPropagation()}
-        className={`pb-safe max-h-[92vh] ${tall ? "min-h-[92vh]" : ""} ${pinned ? "flex flex-col overflow-hidden" : "overflow-y-auto"} w-full max-w-[560px] rounded-t-3xl bg-container p-5 sm:rounded-3xl`}
+        className={`pb-safe max-h-[92vh] ${tall ? "min-h-[92vh]" : ""} flex flex-col overflow-hidden w-full max-w-[560px] rounded-t-3xl bg-container p-5 sm:rounded-3xl`}
       >
-        <div className="mb-4 flex items-center gap-2">
+        <div className="mb-4 flex shrink-0 items-center gap-2">
           {onBack && (
             <button type="button" onClick={onBack} className="rounded-full px-2 py-1 text-sm font-semibold text-link hover:bg-pressed">
               ‹ Back
@@ -31,16 +31,11 @@ export function Sheet({ label, heading = label, onClose, onBack, tall = false, t
             <X className="size-5" />
           </button>
         </div>
-        {pinned ? (
-          <>
-            <div className="shrink-0">{top}</div>
-            <div role="region" aria-label={bodyLabel} className="-mx-5 min-h-0 flex-1 overflow-y-auto px-5">
-              {children}
-            </div>
-          </>
-        ) : (
-          children
-        )}
+        {pinned && <div className="shrink-0">{top}</div>}
+        {/* Scrolling happens inside, so the panel's rounded corners stay rounded */}
+        <div role={pinned ? "region" : undefined} aria-label={pinned ? bodyLabel : undefined} data-sheet-body="" className="-mx-5 min-h-0 flex-1 overflow-y-auto px-5">
+          {children}
+        </div>
       </div>
     </div>
   );

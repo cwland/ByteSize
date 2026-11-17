@@ -19,4 +19,11 @@ describe("iconFor", () => {
     expect(iconFor("en:shrimps")).toBe("🦐");
     expect(iconFor("en:peanut-butters")).toBe("🥜");
   });
+  it("the name wins over a broad category (a banana filed under plant-based foods and beverages is 🍌, not 🥤)", () => {
+    expect(iconFor("Plant-based foods and beverages, Plant-based foods, Fruits based foods, Fruits, Bananas", "Banana")).toBe("🍌");
+    expect(iconFor("en:plant-based-foods-and-beverages", "Organic bananas")).toBe("🍌");
+  });
+  it("the category still decides when the name says nothing", () => {
+    expect(iconFor("en:cheeses", "Original")).toBe("🧀");
+  });
 });

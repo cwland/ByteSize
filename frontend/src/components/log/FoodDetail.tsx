@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import FoodPic from "./FoodPic";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { formatAmount } from "../../amounts";
 import { amountFactor, scaleNutrients } from "../../nutrition";
@@ -8,7 +9,7 @@ import AmountPicker from "./AmountPicker";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { linkButton, primaryButton } from "../ui/styles";
 
-export type DetailFood = { name: string; brand?: string | null; icon: string; servings: Serving[]; nutrients: Nutrients /* per servings[0] */ };
+export type DetailFood = { name: string; brand?: string | null; icon: string; imageUrl?: string | null; servings: Serving[]; nutrients: Nutrients /* per servings[0] */ };
 
 // A sensible first portion: the food's own serving (e.g. "1 bar") rather than "100 g"
 export const defaultPortion = (servings: Serving[]): Portion => ({ servingIndex: servings.length > 1 ? 1 : 0, unit: "serving", quantity: 1, fraction: 1 });
@@ -98,9 +99,7 @@ export default function FoodDetail({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-start gap-3">
-        <span aria-hidden="true" className="text-3xl">
-          {food.icon}
-        </span>
+        <FoodPic icon={food.icon} imageUrl={food.imageUrl} size="size-12" />
         <div className="min-w-0">
           <h3 className="text-xl font-bold">{food.name}</h3>
           {food.brand && <p className="text-sm text-subtle">{food.brand}</p>}

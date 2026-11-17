@@ -44,6 +44,7 @@ export type LogEntry = {
   name: string;
   brand: string | null;
   icon: string;
+  imageUrl: string | null;
   servingIndex: number;
   unit: Unit;
   quantity: number;

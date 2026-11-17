@@ -106,6 +106,7 @@ export function entryJson(over: Record<string, unknown> = {}) {
     name: "Toast",
     brand: null,
     icon: "🍞",
+    imageUrl: null,
     servingIndex: 0,
     unit: "serving",
     quantity: 1,

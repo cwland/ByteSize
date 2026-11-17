@@ -29,6 +29,13 @@
       "when": 1794928011730,
       "tag": "0003_birthdate_activity",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794932384675,
+      "tag": "0004_log_image",
+      "breakpoints": true
     }
   ]
 }

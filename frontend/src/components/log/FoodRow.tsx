@@ -2,15 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Plus } from "lucide-react";
 import type { Nutrients } from "../../types";
 import Pills from "./Pills";
+import FoodPic from "./FoodPic";
 
-export const ADDED_MS = 1200; // how long the ✓ shows before the + comes back
+export const ADDED_MS = 2000; // how long the ✓ shows before the + comes back
 
 // Quick add: every tap logs (two taps = two entries); each success shows ✓ for a moment, a failure says why
 export function useQuickAdd(add: () => Promise<void>) {
   const [checks, setChecks] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const live = useRef(true);
-  useEffect(() => () => void (live.current = false), []);
+  useEffect(() => {
+    live.current = true; // set again on mount: StrictMode (npm run dev) unmounts and remounts once
+    return () => void (live.current = false);
+  }, []);
   const run = async () => {
     setError(null);
     try {
@@ -67,13 +71,7 @@ export default function FoodRow({
     <li className="rounded-2xl bg-pressed">
       <div className="flex items-center gap-2 p-2">
         <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left">
-          {imageUrl ? (
-            <img src={imageUrl} alt="" aria-hidden="true" className="size-10 shrink-0 rounded-lg object-cover" />
-          ) : (
-            <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center text-2xl">
-              {icon}
-            </span>
-          )}
+          <FoodPic icon={icon} imageUrl={imageUrl} />
           <span className="min-w-0 flex-1">
             <span className="block truncate font-semibold">{name}</span>
             <span className="block truncate text-sm text-subtle">
