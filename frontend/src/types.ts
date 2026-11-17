@@ -87,5 +87,5 @@ export type Day = {
   streak: number;
 };
 export type MealWindows = { breakfast: string; lunch: string; snacks: string; dinner: string };
-export type SettingsMe = { mealWindows: MealWindows; waterButtonsMl: number[] };
+export type SettingsMe = { mealWindows: MealWindows; waterButtonsMl: number[]; weekStart: number /* 0 = Sunday … 6 = Saturday */ };
 export type Units = "imperial" | "metric";

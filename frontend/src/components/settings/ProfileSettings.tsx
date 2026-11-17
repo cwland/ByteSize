@@ -1,12 +1,14 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../../api";
+import { notifySettingsChanged } from "../../day";
+import type { SettingsMe } from "../../types";
 import { useSession, type User } from "../../session";
 import { THEMES, applyMode, applyTheme, useTheme, type ColorMode } from "../../themes";
 import { Card } from "../ui/Card";
 import { Choice, UNIT_OPTIONS } from "../ui/Choice";
 import { Field } from "../ui/Field";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { label, primaryButton } from "../ui/styles";
+import { field, label, primaryButton } from "../ui/styles";
 import { TimezoneSelect } from "../ui/TimezoneSelect";
 
 export default function ProfileSettings() {
@@ -18,7 +20,9 @@ export default function ProfileSettings() {
   );
 }
 
-// Name, email, units and time zone
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+// Name, email, units, time zone and the day weeks start on (that one lives in /api/settings/me)
 function AboutYou() {
   const { user, setUser } = useSession();
   const [displayName, setDisplayName] = useState(user.displayName ?? "");
@@ -27,6 +31,17 @@ function AboutYou() {
   const [timezone, setTimezone] = useState(user.timezone);
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
+  // The saved settings (null until loaded: nothing is sent for them before then)
+  const [settings, setSettings] = useState<SettingsMe | null>(null);
+  const [weekStart, setWeekStart] = useState(0);
+  useEffect(() => {
+    api<SettingsMe>("GET", "/api/settings/me")
+      .then((s) => {
+        setSettings(s);
+        setWeekStart(s.weekStart);
+      })
+      .catch(() => {});
+  }, []);
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -35,6 +50,11 @@ function AboutYou() {
     try {
       const r = await api<{ user: User }>("PATCH", "/api/profile", { displayName: displayName.trim() || null, email: email.trim() || null, units, timezone });
       setUser(r.user);
+      if (settings && weekStart !== settings.weekStart) {
+        const saved = await api<SettingsMe>("PUT", "/api/settings/me", { mealWindows: settings.mealWindows, waterButtonsMl: settings.waterButtonsMl, weekStart });
+        setSettings(saved);
+        notifySettingsChanged();
+      }
       setMsg({ ok: true, text: "Saved" });
     } catch (err) {
       setMsg(errorMsg(err));
@@ -55,6 +75,16 @@ function AboutYou() {
           </div>
         </div>
         <TimezoneSelect value={timezone} onChange={setTimezone} />
+        <label className={`${label} mt-4`}>
+          Week starts on
+          <select aria-label="Week starts on" value={weekStart} disabled={!settings} onChange={(e) => setWeekStart(Number(e.target.value))} className={field}>
+            {WEEKDAYS.map((name, i) => (
+              <option key={name} value={i}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
         <Notice msg={msg} />
         <button type="submit" disabled={busy} className={`${primaryButton} mt-5`}>
           Save

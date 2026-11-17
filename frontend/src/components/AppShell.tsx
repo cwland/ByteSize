@@ -7,7 +7,7 @@ import { useSettingsMe } from "../day";
 import Dashboard from "./dashboard/Dashboard";
 import GoalsPage from "./goals/GoalsPage";
 import PlanFlow from "./plan/PlanFlow";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { Meal, SavedBody, Targets } from "../types";
 import SettingsPage from "./settings/SettingsPage";
@@ -15,7 +15,7 @@ import { pageFromHash, useHash, type Page } from "../routes";
 import { useSession } from "../session";
 import { SelectedDayProvider, todayIn, useSelectedDay } from "../selectedDay";
 
-// The signed-in app: top bar (‹ day ›), the page for the address, and the bottom tab bar.
+// The signed-in app: top bar (week strip on Dashboard and Log), the page for the address, and the bottom tab bar.
 // Mobile-first; on desktop the content stays a centered phone-width column.
 export default function AppShell() {
   const page: Page = pageFromHash(useHash());
@@ -46,7 +46,8 @@ export default function AppShell() {
   return (
     <SelectedDayProvider timeZone={user.timezone}>
       <div className="min-h-screen bg-page">
-        <TopBar />
+        <TodayOnEnter page={page} />
+        <TopBar days={page === "dashboard" || page === "log"} />
         <main className="mx-auto max-w-[560px] px-3 pt-2 pb-32">
           {page === "dashboard" && <Dashboard />}
           {page === "log" && <LogPage />}
@@ -57,6 +58,17 @@ export default function AppShell() {
       </div>
     </SelectedDayProvider>
   );
+}
+
+// Entering the Dashboard or Log from another page always selects today
+function TodayOnEnter({ page }: { page: Page }) {
+  const { today } = useSelectedDay();
+  const was = useRef(page);
+  useEffect(() => {
+    if (page !== was.current && (page === "dashboard" || page === "log")) today();
+    was.current = page;
+  }, [page, today]);
+  return null;
 }
 
 // The bottom tab bar's floating +: Add food for the meal of the moment (meal windows) on the day shown

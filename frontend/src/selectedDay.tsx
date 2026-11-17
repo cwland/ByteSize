@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode, useEffect } from "react";
 
-// The day the app is showing (the ‹ date › switcher in the top bar). Days are "YYYY-MM-DD" in the
+// The day the app is showing (picked on the week strip in the top bar). Days are "YYYY-MM-DD" in the
 // user's time zone; "today" starts and ends at midnight there.
 
 export const todayIn = (timeZone: string, now = new Date()) => {
@@ -22,12 +22,22 @@ export const addDays = (day: string, n: number) => {
 export const dayLabel = (day: string) =>
   new Date(`${day}T00:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" });
 
+// The 7 days of the week holding `day`, starting on the most recent `weekStart` (0 = Sunday … 6 = Saturday)
+// on or before it: weekOf("2026-11-17", 1) -> ["2026-11-16" (Mon), …, "2026-11-22" (Sun)]
+export const weekOf = (day: string, weekStart: number) => {
+  const back = (new Date(`${day}T00:00:00Z`).getUTCDay() - weekStart + 7) % 7;
+  const first = addDays(day, -back);
+  return Array.from({ length: 7 }, (_, i) => addDays(first, i));
+};
+
 export interface SelectedDay {
   day: string;
   isToday: boolean;
+  todayDay: string; // today's date in the user's time zone
   prev: () => void;
   next: () => void;
   today: () => void;
+  select: (day: string) => void;
 }
 
 const SelectedDayContext = createContext<SelectedDay | null>(null);
@@ -58,7 +68,10 @@ export function SelectedDayProvider({ timeZone, children }: { timeZone: string; 
   const prev = useCallback(() => setDay((d) => addDays(d, -1)), []);
   const next = useCallback(() => setDay((d) => addDays(d, 1)), []);
   const today = useCallback(() => setDay(todayIn(timeZone)), [timeZone]);
-  const value = useMemo(() => ({ day, isToday: day === currentToday, prev, next, today }), [day, currentToday, prev, next, today]);
+  const value = useMemo(
+    () => ({ day, isToday: day === currentToday, todayDay: currentToday, prev, next, today, select: setDay }),
+    [day, currentToday, prev, next, today],
+  );
   return <SelectedDayContext.Provider value={value}>{children}</SelectedDayContext.Provider>;
 }
 
