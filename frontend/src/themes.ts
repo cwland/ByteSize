@@ -13,44 +13,47 @@ export interface Theme {
   name: string;
   description: string;
   colors: Record<string, string>; // --color-<name> (light mode)
+  dark?: Record<string, string>; // hand-picked dark mode colors (otherwise worked out from the light ones)
 }
 
 export const THEMES: Theme[] = [
   {
     id: "avocado",
     name: "Avocado",
-    description: "Avocado green on soft white, from the ByteSize logo",
-    colors: { page: "#f5f7f2", container: "#ffffff", line: "#e3e9dd", strong: "#cfd8c6", brand: "#5aa83c", "brand-subtle": "#eef8d6", success: "#1f9d55", "success-subtle": "#dcf5e5", error: "#d1433b", "error-subtle": "#fde2df", warning: "#f2a20c", pressed: "#eef5e6", active: "#ddedc9", primary: "#1f3a1c", "primary-pressed": "#142812", action: "#3f8a2a", link: "#3a7f24", ink: "#1c2419", subtle: "#48543f", muted: "#68745f", inactive: "#909a87" },
+    description: "Orange actions on near-black, with the avocado-green logo",
+    colors: { page: "#f4f4f6", container: "#ffffff", line: "#e6e6ea", strong: "#d2d2d8", brand: "#5aa83c", "brand-subtle": "#eef8d6", success: "#3fbf6a", "success-subtle": "#dcf5e5", error: "#e5534b", "error-subtle": "#fde2df", warning: "#f2a20c", pressed: "#ececf0", active: "#fbe3cb", primary: "#e8892b", "primary-pressed": "#d47a20", "on-primary": "#2b1503", action: "#e8892b", link: "#c06a12", ink: "#17171a", subtle: "#5c5c63", muted: "#76767d", inactive: "#a2a2a8" },
+    // Lose It!-style dark: near-black page, charcoal cards, orange actions
+    dark: { page: "#0d0d0f", container: "#1d1d21", line: "#2c2c31", strong: "#3b3b41", brand: "#5aa83c", "brand-subtle": "#24331d", success: "#3fbf6a", "success-subtle": "#1a3324", error: "#e5534b", "error-subtle": "#3a1f1e", warning: "#f2a20c", pressed: "#26262b", active: "#3a2a1a", primary: "#e8892b", "primary-pressed": "#f09a45", "on-primary": "#2b1503", action: "#e8892b", link: "#f0a050", ink: "#f2f2f2", subtle: "#a8a8ad", muted: "#8a8a90", inactive: "#66666c" },
   },
   {
     id: "fresh",
     name: "Fresh",
     description: "Fresh green on clean white, with dark slate",
-    colors: { page: "#f5f7f6", container: "#ffffff", line: "#e4e9e6", strong: "#cfd8d3", brand: "#20b35b", "brand-subtle": "#e3f6ea", success: "#1f9d55", "success-subtle": "#dcf5e5", error: "#d1433b", "error-subtle": "#fde2df", warning: "#f2a20c", pressed: "#eaf5ee", active: "#d5efdf", primary: "#1e2b33", "primary-pressed": "#121b21", action: "#138a45", link: "#11853f", ink: "#1a2329", subtle: "#46545c", muted: "#66747b", inactive: "#8f9ca2" },
+    colors: { page: "#f5f7f6", container: "#ffffff", line: "#e4e9e6", strong: "#cfd8d3", brand: "#20b35b", "brand-subtle": "#e3f6ea", success: "#1f9d55", "success-subtle": "#dcf5e5", error: "#d1433b", "error-subtle": "#fde2df", warning: "#f2a20c", pressed: "#eaf5ee", active: "#d5efdf", primary: "#1e2b33", "primary-pressed": "#121b21", "on-primary": "#ffffff", action: "#138a45", link: "#11853f", ink: "#1a2329", subtle: "#46545c", muted: "#66747b", inactive: "#8f9ca2" },
   },
   {
     id: "harbor",
     name: "Harbor",
     description: "Deep teal with a bright teal logo",
-    colors: { page: "#f4f7f7", container: "#ffffff", line: "#e3eaea", strong: "#cfd9d9", brand: "#14a3a0", "brand-subtle": "#e2f5f4", success: "#1f9d55", "success-subtle": "#dcf5e5", error: "#d1433b", "error-subtle": "#fde2df", warning: "#f2a20c", pressed: "#e8f4f4", active: "#d2eeee", primary: "#0d3b45", "primary-pressed": "#082a31", action: "#0b7a85", link: "#0b8fa0", ink: "#1b2629", subtle: "#47575b", muted: "#66777b", inactive: "#8fa0a3" },
+    colors: { page: "#f4f7f7", container: "#ffffff", line: "#e3eaea", strong: "#cfd9d9", brand: "#14a3a0", "brand-subtle": "#e2f5f4", success: "#1f9d55", "success-subtle": "#dcf5e5", error: "#d1433b", "error-subtle": "#fde2df", warning: "#f2a20c", pressed: "#e8f4f4", active: "#d2eeee", primary: "#0d3b45", "primary-pressed": "#082a31", "on-primary": "#ffffff", action: "#0b7a85", link: "#0b8fa0", ink: "#1b2629", subtle: "#47575b", muted: "#66777b", inactive: "#8fa0a3" },
   },
   {
     id: "terracotta-sage",
     name: "Terracotta & Sage",
     description: "Espresso brown, terracotta and a sage logo",
-    colors: { page: "#f8f5f2", container: "#ffffff", line: "#ece5de", strong: "#ddd2c7", brand: "#6f9f7c", "brand-subtle": "#e7f1ea", success: "#3f8f5a", "success-subtle": "#e0f1e5", error: "#c23b2e", "error-subtle": "#f9e0dc", warning: "#e09a1f", pressed: "#f5ece4", active: "#f0dfd1", primary: "#3e2a22", "primary-pressed": "#2b1d17", action: "#b4532a", link: "#c2410c", ink: "#2a211d", subtle: "#5b4d46", muted: "#7a6c64", inactive: "#a1948c" },
+    colors: { page: "#f8f5f2", container: "#ffffff", line: "#ece5de", strong: "#ddd2c7", brand: "#6f9f7c", "brand-subtle": "#e7f1ea", success: "#3f8f5a", "success-subtle": "#e0f1e5", error: "#c23b2e", "error-subtle": "#f9e0dc", warning: "#e09a1f", pressed: "#f5ece4", active: "#f0dfd1", primary: "#3e2a22", "primary-pressed": "#2b1d17", "on-primary": "#ffffff", action: "#b4532a", link: "#c2410c", ink: "#2a211d", subtle: "#5b4d46", muted: "#7a6c64", inactive: "#a1948c" },
   },
   {
     id: "slate-rose",
     name: "Slate & Rose",
     description: "Cool slate, rose pink and a rose logo",
-    colors: { page: "#f5f6f8", container: "#ffffff", line: "#e5e7ec", strong: "#d1d5dd", brand: "#f43f5e", "brand-subtle": "#ffe4e8", success: "#16a34a", "success-subtle": "#dcfce7", error: "#dc2626", "error-subtle": "#fee2e2", warning: "#f59e0b", pressed: "#f1f2f6", active: "#fde4ea", primary: "#2b2d42", "primary-pressed": "#1c1d2c", action: "#be185d", link: "#db2777", ink: "#1f2130", subtle: "#4b4f63", muted: "#6b7083", inactive: "#9a9eae" },
+    colors: { page: "#f5f6f8", container: "#ffffff", line: "#e5e7ec", strong: "#d1d5dd", brand: "#f43f5e", "brand-subtle": "#ffe4e8", success: "#16a34a", "success-subtle": "#dcfce7", error: "#dc2626", "error-subtle": "#fee2e2", warning: "#f59e0b", pressed: "#f1f2f6", active: "#fde4ea", primary: "#2b2d42", "primary-pressed": "#1c1d2c", "on-primary": "#ffffff", action: "#be185d", link: "#db2777", ink: "#1f2130", subtle: "#4b4f63", muted: "#6b7083", inactive: "#9a9eae" },
   },
   {
     id: "midnight-coral",
     name: "Midnight & Coral",
     description: "Midnight indigo, violet and a coral logo",
-    colors: { page: "#f5f6fa", container: "#ffffff", line: "#e6e8f0", strong: "#d3d7e3", brand: "#ff6b57", "brand-subtle": "#ffeae6", success: "#1a9e5c", "success-subtle": "#dcf6e7", error: "#d23c3c", "error-subtle": "#fde1e1", warning: "#f5a524", pressed: "#eef0fb", active: "#dfe3fb", primary: "#1e1b4b", "primary-pressed": "#13113a", action: "#4338ca", link: "#4f46e5", ink: "#1c1d29", subtle: "#4a4d61", muted: "#6b6f85", inactive: "#9295a8" },
+    colors: { page: "#f5f6fa", container: "#ffffff", line: "#e6e8f0", strong: "#d3d7e3", brand: "#ff6b57", "brand-subtle": "#ffeae6", success: "#1a9e5c", "success-subtle": "#dcf6e7", error: "#d23c3c", "error-subtle": "#fde1e1", warning: "#f5a524", pressed: "#eef0fb", active: "#dfe3fb", primary: "#1e1b4b", "primary-pressed": "#13113a", "on-primary": "#ffffff", action: "#4338ca", link: "#4f46e5", ink: "#1c1d29", subtle: "#4a4d61", muted: "#6b6f85", inactive: "#9295a8" },
   },
 ];
 
@@ -70,6 +73,7 @@ const mix = (a: string, b: string, amount: number) => {
 // Dark neutrals with a hint of the theme's accent; accents brightened so they read on dark cards
 export function darkColors(t: Theme): Record<string, string> {
   const c = t.colors;
+  if (t.dark) return { ...c, ...t.dark };
   const card = mix(c.action, "#151b1f", 0.06);
   return {
     ...c,
@@ -117,7 +121,9 @@ const write = (k: string, v: string) => {
 
 const isMode = (m: string | null | undefined): m is ColorMode => m === "light" || m === "dark" || m === "system";
 let current: Theme = themeById(read(STORE_KEY));
-let mode: ColorMode = isMode(read(MODE_KEY)) ? (read(MODE_KEY) as ColorMode) : "system";
+// Dark unless this browser remembers another choice (the account's choice is applied on sign-in)
+export const DEFAULT_MODE: ColorMode = "dark";
+let mode: ColorMode = isMode(read(MODE_KEY)) ? (read(MODE_KEY) as ColorMode) : DEFAULT_MODE;
 const listeners = new Set<() => void>();
 const systemDark = () => typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
 export const isDark = () => mode === "dark" || (mode === "system" && systemDark());
@@ -140,9 +146,9 @@ export function applyTheme(id: string | null | undefined) {
   paint();
 }
 
-/** Light, dark, or follow the device. */
+/** Light, dark, or follow the device (nothing chosen: dark). */
 export function applyMode(m: string | null | undefined) {
-  mode = isMode(m) ? m : "system";
+  mode = isMode(m) ? m : DEFAULT_MODE;
   write(MODE_KEY, mode);
   paint();
 }
