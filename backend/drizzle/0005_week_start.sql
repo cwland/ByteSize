@@ -1,0 +1,1 @@
+ALTER TABLE "user_settings" ADD COLUMN "week_start" integer DEFAULT 0 NOT NULL;

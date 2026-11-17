@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, asc, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lte, ne, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { foodCache, logEntries, userFoods, userSettings, users } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
@@ -67,6 +67,8 @@ const waterBody = z.object({
 });
 const patchBody = z.object(portionFields).partial();
 const mealQuery = z.object({ meal: z.enum(MEALS, { error: "Choose a meal" }).optional() });
+const MAX_LOGGED_DAYS = 62;
+const loggedQuery = z.object({ from: DAY, to: DAY });
 const moveBody = z.object({ ids: z.array(id).min(1, "Choose at least one entry").max(500), day: DAY, meal: z.enum(MEALS), copy: z.boolean().default(false) });
 
 export function toEntry(r: Row): LogEntry {
@@ -223,6 +225,19 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     const { date } = req.params as { date: string };
     const day = date === "today" ? await todayFor(app, userId) : DAY.parse(date);
     return dayView(app, userId, day);
+  });
+
+  // Days in a range with at least one food entry (water doesn't count): the dots under the week strip
+  app.get("/api/days/logged", async (req) => {
+    const userId = requireUser(req);
+    const { from, to } = loggedQuery.parse(req.query ?? {});
+    if (from > to || addDays(from, MAX_LOGGED_DAYS - 1) < to) throw badRequest(`Choose up to ${MAX_LOGGED_DAYS} days`);
+    const rows = await db
+      .selectDistinct({ day: logEntries.day })
+      .from(logEntries)
+      .where(and(eq(logEntries.userId, userId), gte(logEntries.day, from), lte(logEntries.day, to), ne(logEntries.source, "water")))
+      .orderBy(asc(logEntries.day));
+    return { days: rows.map((r) => r.day) };
   });
 
   app.post("/api/log", async (req) => {

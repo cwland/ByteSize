@@ -36,6 +36,13 @@
       "when": 1794932384675,
       "tag": "0004_log_image",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794934281219,
+      "tag": "0005_week_start",
+      "breakpoints": true
     }
   ]
 }
