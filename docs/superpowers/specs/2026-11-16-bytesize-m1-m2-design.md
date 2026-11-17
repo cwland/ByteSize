@@ -400,3 +400,101 @@ close spelling is known from saved foods, show "Did you mean banana?" (tap re-se
 **Builder's calls:** strip shows one week per screen width (scroll-snap); dot colour = primary; the week-start setting
 lives in user_settings (`week_start` 0–6); "Did you mean" only when fewer than 3 results; the recommendation lists at
 most 2 models per provider.
+
+## 12. Addendum 2026-11-17 — round 2b-3: photo upload, recipes, quick meals, My Foods (decided by Cory)
+
+**Why:** the fastest possible logging — read a label once instead of typing it, and log regular meals and home
+cooking in one tap. Recipes made in Culury will come through the later Culury link; ByteSize recipes cover the rest.
+
+**A. Photo (barcode or nutrition label)** — implements 6.6a.
+- Where: a camera button beside the barcode button in Add Food, and a **Photo** button on the Dashboard (opens Add
+  Food on the photo step for the smart-default meal). Uses a plain file input (`accept="image/*"`), so an iPhone
+  offers camera or library; no live scanner on web.
+- `POST /api/photos/analyze` (multipart: up to 2 images, field `mode` = `auto|barcode|label`) →
+  `{ barcode?: string, food?: FoodResult, draft?: FoodDraft, errors: SourceError[] }`.
+  1. Each image is normalised with sharp (auto-rotate, max 1600 px, JPEG) before anything else.
+  2. Barcode: decoded **on the server** (zxing-wasm; approaches: server decoder — chosen; browser
+     BarcodeDetector — no iPhone Safari support; AI reading digits — misreads digits). A found barcode goes
+     through the normal barcode lookup (6.4); found → `food`, the same as a typed barcode.
+  3. Label: when no barcode food was found (or mode = label), the image goes to the first AI service with
+     photos on (task "photo"), which returns name, brand, serving size (label + grams/ml) and nutrients per
+     serving as JSON. Result → `draft`, all fields marked AI-estimated, opened in the New food form for review.
+     Nothing is saved without the user tapping Save.
+  4. Barcode + label together: the draft carries the barcode, so the saved food is bound to it (custom, or an
+     override when the barcode is already in the cache) and future lookups return it.
+- No photo-capable AI service: label reading is hidden ("Add an AI service that reads photos to read labels"),
+  barcode decoding still works.
+- Images: limit 12 MB each upload; the normalised copy is kept per user under `data/app/uploads/<user_id>/`
+  and linked from the food it created (`user_foods.image_path`); served only to its owner. Unused uploads
+  (no food saved) are deleted after 24 h.
+
+**B. Recipes**
+- A recipe = name, ingredients (picked with the normal food search, each with an amount), **number of
+  servings**, **weight of one serving** (g; optional), notes. Example: chili, 6 servings of 350 g.
+- Per-serving nutrients = sum of ingredients ÷ servings, **stored on save** (recalculated only when edited or
+  "Recalculate" is tapped). Unknown ingredient nutrients make the recipe's total unknown for that nutrient.
+- Logging: servings = [{ "1 serving (350 g)", grams 350 }] (+ "100 g" base when the weight is known), so the
+  amount picker logs 1 serving and switching to g lets the person type 300 — nutrients update as they type.
+- Stored as `user_foods.kind = 'recipe'` + `recipe_items` (6.3).
+
+**C. Quick meals**
+- A named group of foods with amounts. Made from scratch in My Foods, or from a logged meal: "Save as a meal"
+  on the meal card (takes that meal's entries and portions).
+- Appears in Add Food search and Recently tracked as one row with total pills; quick add logs **one entry per
+  item** (each snapshotted, so each can be adjusted, moved or deleted); tapping opens it to adjust items first.
+- Stored as `user_foods.kind = 'quick_meal'` + `recipe_items` (servings count 1).
+
+**D. My Foods** (Settings-free screen, reached from the Log page and Add Food)
+- One searchable list of the person's custom foods, corrections (overrides), recipes and quick meals; filter
+  chips All · Foods · Recipes · Meals; sort Recent · Most used · A–Z; tap → edit; buttons New food, New recipe,
+  New quick meal; archive (hide) instead of delete when it has been logged.
+
+**Approaches (storage):** (1) one `user_foods` table with kinds + `recipe_items` — chosen (spec 6.3; search,
+recents and logging already work on `user_foods`); (2) separate recipes/meals tables — every search and log path
+would need a third source; (3) recipes as JSON inside user_foods — no per-ingredient queries, harder to edit.
+
+**Builder's calls:** ingredients can be any food (database, mine, another recipe one level deep — no recipe
+inside a recipe inside a recipe); a quick meal can't contain another quick meal; the per-serving weight is
+optional (without it, logging is by servings only); AI label reading uses the "photo" task with the
+existing failover.
+
+**Settled after the builder check (Claude's calls):**
+1. *Quick meal as one recent row.* `log_entries.group_ref` (text, nullable) — every entry logged from a quick meal
+   gets `quick:<id>`. Recently tracked shows the quick meal once (its last use, from `group_ref`) and does not
+   repeat its items for that use. "Same as yesterday" copies entries, so it shows the items.
+2. *Items and changing foods.* `recipe_items` keeps a live reference (`food_kind` 'user_food'|'cache', `food_id`)
+   plus a snapshot (name, the item's amount, its nutrients at save time). A recipe's stored per-serving numbers
+   never change by themselves; Edit → Save and "Recalculate" use the foods' current values, falling back to the
+   snapshot (with a note) for an item whose food is archived or gone. A quick meal logs each item from its
+   current food, or from the snapshot if the food is archived or gone. Removing a food from My Foods deletes it
+   when it was never logged and isn't in a recipe or meal; otherwise it is archived (hidden), as today.
+3. *Recipe math and servings.* `servings[0]` = "1 serving (350 g)" with grams 350 (or "1 serving" with no grams
+   when no serving weight is given); `nutrients` are per that serving. With a weight, the amount picker offers g
+   and oz as for any food; without one, servings only. A nutrient unknown on any ingredient is unknown on the
+   recipe (shown "?"/"—" like other foods). An ingredient amount that can't be measured (e.g. "2 slices" of a
+   food with no gram weight in a unit it lacks) is a form error: "Choose an amount this food can be measured in".
+   Quick meals store their item totals as `nutrients` too (servings [{ "1 meal" }]), recomputed on save.
+4. *Photos end to end.* `POST /api/photos/analyze` stores each normalised image and returns `photoId`s; a
+   `draft` carries `photoId` (and `barcode` when one decoded). `POST/PUT /api/my-foods` accept `photoId` and
+   link it (`user_foods.image_path`). `GET /api/photos/:id` serves an image to its owner only (404 otherwise);
+   user foods report `imageUrl` = that path, so search rows and log entries show it. Unlinked uploads are deleted
+   by an in-process cleanup (on start and hourly, logged under "schedule"). With two images in auto mode: the
+   decoder tries every image, the first barcode wins; images with no barcode go to the AI as the label. A
+   barcode whose food is found → that food (label image dropped); a barcode found nowhere → the draft carries the
+   barcode and the AI reads the other image (or the same one if only one was sent).
+5. *Quick meal items.* Each item stores its own amount and unit. Adjusting items before logging changes only that
+   log. "Save as a meal" builds items from each entry's food (`source_ref`) and its logged portion; water entries
+   and entries whose food can't be found are left out and listed ("Left out: …"). A quick meal may contain
+   recipes but not quick meals; a recipe may contain other recipes one level deep.
+6. *My Foods.* A routed page `#/log/my-foods` (no new nav tab): a "My Foods" button on the Log page and a link
+   in Add Food; Back returns where you came from. `GET /api/my-foods` gains `kind` (all|foods|recipes|meals)
+   and `sort` (recent|used|az).
+7. *Search and kinds.* Recipes and quick meals sit in the "My foods" group. `FoodResult` gains
+   `foodKind: 'custom'|'override'|'recipe'|'quick_meal'` (existing 'ai' rows read as 'custom'); rows show a small
+   "Recipe"/"Meal" tag and their stored total pills; kinds validated by zod.
+8. *Uploads.* 12 MB per image, 2 images, request cap 25 MB; register @fastify/multipart; zxing-wasm must run on
+   node:22-alpine in Docker (builder verifies; if it can't, fall back to another pure-JS decoder and record it).
+   Uploads live under the existing `./data/app` volume.
+9. *Smaller.* The Dashboard Photo button opens the file picker straight away (auto mode) and then Add Food on the
+   smart-default meal with the result. "Recalculate" is for when ingredient data changed; editing recalculates
+   anyway. Corrections (overrides) are edited with the existing override form.

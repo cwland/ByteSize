@@ -1,3 +1,4 @@
+import path from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import { ZodError } from "zod";
 import { eq } from "drizzle-orm";
@@ -22,6 +23,8 @@ import settingsMeRoutes from "./routes/settings-me.js";
 import foodRoutes from "./routes/foods.js";
 import myFoodRoutes from "./routes/my-foods.js";
 import foodLogRoutes from "./routes/log.js";
+import photoRoutes from "./routes/photos.js";
+import { scheduleUploadCleanup, setPhotoSecret } from "./lib/photos.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -30,6 +33,7 @@ declare module "fastify" {
     now: () => Date; // the clock (tests can set it)
     ai: AiService;
     foodFetch: typeof fetch; // Open Food Facts / USDA (tests swap in a fake food web)
+    dataDir: string; // where ByteSize keeps files (uploads/...)
   }
   interface FastifyRequest {
     auth?: { userId: number; sessionId: number; isAdmin: boolean };
@@ -45,6 +49,7 @@ const PUBLIC_ROUTES = new Set([
   "POST /api/auth/logout",
   "POST /api/passkeys/login/options",
   "POST /api/passkeys/login/verify",
+  "GET /api/photos/:id", // the owner's login or the URL's signature (an <img> can't send the token)
 ]);
 
 export interface AppOptions {
@@ -56,6 +61,7 @@ export interface AppOptions {
   aiFetch?: AiFetch; // tests swap in a fake AI
   aiTimeScale?: number; // tests shrink AI waits
   foodFetch?: typeof fetch; // tests swap in a fake food web
+  dataDir?: string; // default: DATA_DIR, else ./data/app (tests use a temp folder)
 }
 
 export function buildApp(opts: AppOptions): FastifyInstance {
@@ -65,6 +71,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.decorate("now", opts.now ?? (() => new Date()));
   app.decorate("ai", new AiService(opts.db, opts.jwtSecret, opts.aiFetch, opts.aiTimeScale ?? 1));
   app.decorate("foodFetch", opts.foodFetch ?? ((input: Parameters<typeof fetch>[0], init?: RequestInit) => fetch(input, init)));
+  setPhotoSecret(opts.jwtSecret);
+  app.decorate("dataDir", path.resolve(opts.dataDir ?? process.env.DATA_DIR ?? "data/app"));
 
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof ZodError) {
@@ -117,5 +125,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(foodRoutes);
   app.register(myFoodRoutes);
   app.register(foodLogRoutes);
+  app.register(photoRoutes); // registers multipart uploads for its own routes only
+  scheduleUploadCleanup(app);
   return app;
 }

@@ -1,27 +1,33 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Plus, ScanBarcode, Sparkles } from "lucide-react";
+import { BookOpen, Camera, ChevronDown, Plus, ScanBarcode, Sparkles } from "lucide-react";
 import { api } from "../../api";
 import { formatAmount } from "../../amounts";
 import { notifyDayChanged } from "../../day";
 import { MEALS, MEAL_NAMES } from "../../meals";
+import { isMyFoods, myFoodsHref } from "../../routes";
 import { addDays, dayLabel, todayIn } from "../../selectedDay";
 import { useSession } from "../../session";
-import type { Day, FoodResult, LogEntry, Meal, Nutrients, Portion, RecentFood, SearchResult } from "../../types";
+import type { Day, FoodResult, Item, LogEntry, Meal, Nutrients, PhotoDraft, PhotoMode, Portion, RecentFood, SearchResult, SourceError } from "../../types";
 import FoodForm, { draftOf, emptyDraft, type FoodDraft, type FoodFormMode } from "./FoodForm";
-import FoodDetail, { defaultPortion, nutrientsFor } from "./FoodDetail";
-import FoodRow, { QuickAddButton, useQuickAdd } from "./FoodRow";
+import FoodDetail, { defaultPortion, nutrientsFor, startingPortion } from "./FoodDetail";
+import FoodRow, { QuickAddButton, tagOf, useQuickAdd } from "./FoodRow";
+import { TrackMeal } from "../myfoods/QuickMealEditor";
 import Pills from "./Pills";
+import PhotoPicker, { MAX_PHOTOS, analyzePhotos, usePhotoInput } from "./PhotoPicker";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
 import { field, primaryButton, secondaryButton } from "../ui/styles";
 
-type SourceError = { source: string; message: string };
 type Found = ({ kind: "search" } & SearchResult) | { kind: "barcode"; code: string; food: FoodResult | null; errors?: SourceError[] };
 type View =
   | { k: "search" }
   | { k: "describe" }
-  | { k: "form"; mode: FoodFormMode; draft: FoodDraft; fillRef?: { kind: "cache" | "user_food"; id: number } }
-  | { k: "detail"; food: FoodResult; initial: Portion };
+  | { k: "photo"; files: File[]; mode: PhotoMode }
+  // photos: the photo(s) a label draft was read from, so a barcode photo can still be added
+  // barcodeFill: the barcode a barcode photo added to that draft found, merged into the form as it stands
+  | { k: "form"; mode: FoodFormMode; draft: FoodDraft; fillRef?: { kind: "cache" | "user_food"; id: number }; photos?: File[]; barcodeFill?: string }
+  | { k: "detail"; food: FoodResult; initial: Portion }
+  | { k: "meal"; food: FoodResult }; // a quick meal: adjust its foods, then Track
 
 // Digits, spaces and dashes only: someone typing a barcode. Lookup only at a barcode's length.
 const barcodeLike = (q: string) => /^[\d\s-]+$/.test(q);
@@ -109,12 +115,48 @@ function MealTitle({ meal, day, onPick }: { meal: Meal; day: string; onPick: (m:
   );
 }
 
+// A label draft from a photo as the New food form's draft: AI-estimated values, the photo to link on Save
+const photoDraft = (d: PhotoDraft): FoodDraft => ({ ...draftOf(d), photoId: d.photoId });
+
+// "Add a barcode photo" over a label draft that has no barcode: the barcode photo is sent alone (mode
+// barcode) and only the barcode it finds goes into the form, so the person's edits to the draft stay
+function AddBarcodePhoto({ onBarcode }: { onBarcode: (code: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<Msg>(null);
+  const photo = usePhotoInput(async (f) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await analyzePhotos([f], "barcode");
+      if (r.barcode) onBarcode(r.barcode);
+      else setMsg({ ok: false, text: "No barcode found in that photo" });
+    } catch (e) {
+      setMsg(errorMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  });
+  return (
+    <div className="mb-3 flex flex-col gap-2 rounded-2xl bg-pressed px-3 py-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        {photo.input}
+        <span className="flex-1 text-subtle">Has a barcode? Add its photo so scanning finds this food next time.</span>
+        <button type="button" disabled={busy} onClick={photo.open} className="rounded-full px-2 py-1 font-semibold text-link hover:bg-strong">
+          {busy ? "Reading your photo…" : "Add a barcode photo"}
+        </button>
+      </div>
+      <Notice msg={msg} />
+    </div>
+  );
+}
+
 // One sheet for finding a food (same as yesterday, recently tracked for this meal, search, barcode,
-// describe it, create) and tracking it. Quick add (+) logs as shown and keeps the sheet open.
-export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day: string; meal: Meal; onClose: () => void }) {
+// photo, describe it, create) and tracking it. Quick add (+) logs as shown and keeps the sheet open.
+// photo: a photo already chosen (Dashboard's Photo button) opens straight on the photo step with it.
+export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }: { day: string; meal: Meal; photo?: File; onClose: () => void }) {
   const units = useSession().user?.units ?? "imperial";
   const [meal, setMeal] = useState<Meal>(initialMeal);
-  const [view, setView] = useState<View>({ k: "search" });
+  const [view, setView] = useState<View>(() => (photo ? { k: "photo", files: [photo], mode: "auto" } : { k: "search" }));
   const [query, setQuery] = useState("");
   const [barcodeOpen, setBarcodeOpen] = useState(false);
   const [code, setCode] = useState("");
@@ -169,9 +211,9 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
     };
   }, [lookup, attempt]);
 
-  // The portion a food starts at: the last one used for this meal, else its own serving
-  const startPortion = (food: FoodResult) => recent.find((r) => r.kind === food.kind && r.id === food.id)?.last ?? defaultPortion(food.servings, units);
-  const pick = (food: FoodResult, initial = startPortion(food)) => setView({ k: "detail", food, initial });
+  // The portion a food starts at: the last one used for this meal, else its own serving (a recipe: 1 serving)
+  const startPortion = (food: FoodResult) => recent.find((r) => r.kind === food.kind && r.id === food.id)?.last ?? startingPortion(food, units);
+  const pick = (food: FoodResult, initial = startPortion(food)) => setView(food.foodKind === "quick_meal" ? { k: "meal", food } : { k: "detail", food, initial });
   const edit = (food: FoodResult) =>
     setView({
       k: "form",
@@ -183,14 +225,20 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
   const estimate = async () => {
     try {
       const out = await api<{ food: Omit<FoodResult, "id" | "kind"> & { category: string } }>("POST", "/api/ai/estimate", { text: describe });
-      setView({ k: "form", mode: { kind: "create" }, draft: draftOf({ ...out.food, kind: "user_food", id: 0 }) });
+      setView({ k: "form", mode: { kind: "create" }, draft: draftOf(out.food) });
       setMsg(null);
     } catch (e) {
       setMsg(errorMsg(e));
     }
   };
 
+  // A quick meal logs one entry per food (its items as saved, or as adjusted)
+  const logMeal = async (food: FoodResult, items?: Item[]) => {
+    await api("POST", "/api/log/meal", { day, meal, foodId: food.id, ...(items ? { items } : {}) });
+    notifyDayChanged();
+  };
   const log = async (food: FoodResult, p: Portion) => {
+    if (food.foodKind === "quick_meal") return logMeal(food);
     await api("POST", "/api/log", { day, meal, food: { kind: food.kind, id: food.id }, servingIndex: p.servingIndex, unit: p.unit, quantity: p.quantity, fraction: p.fraction });
     notifyDayChanged();
   };
@@ -209,9 +257,23 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
           food={view.food}
           initial={view.initial}
           submitLabel="Track"
-          onEditFood={() => edit(view.food)}
+          // recipes are changed in their own editor in My Foods
+          onEditFood={view.food.foodKind === "recipe" ? undefined : () => edit(view.food)}
           onSubmit={async (p) => {
             await log(view.food, p);
+            onClose();
+          }}
+        />
+      </Sheet>
+    );
+  }
+  if (view.k === "meal") {
+    return (
+      <Sheet tall label={label} heading="Track meal" onClose={onClose} onBack={back}>
+        <TrackMeal
+          id={view.food.id}
+          onTrack={async (items) => {
+            await logMeal(view.food, items);
             onClose();
           }}
         />
@@ -222,7 +284,22 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
     const heading = view.mode.kind === "override" ? "Correct this food" : view.mode.kind === "edit" ? "Edit food" : "New food";
     return (
       <Sheet tall label={label} heading={heading} onClose={onClose} onBack={back}>
-        <FoodForm mode={view.mode} draft={view.draft} fillRef={view.fillRef} onSaved={(f) => pick(f, defaultPortion(f.servings, units))} />
+        {view.photos && view.photos.length < MAX_PHOTOS && !view.draft.barcode && !view.barcodeFill && <AddBarcodePhoto onBarcode={(code) => setView({ ...view, barcodeFill: code })} />}
+        <FoodForm mode={view.mode} draft={view.draft} fillRef={view.fillRef} barcodeFill={view.barcodeFill} onSaved={(f) => pick(f, defaultPortion(f.servings, units))} />
+      </Sheet>
+    );
+  }
+  if (view.k === "photo") {
+    return (
+      <Sheet tall label={label} heading="Photo" onClose={onClose} onBack={back}>
+        <PhotoPicker
+          files={view.files}
+          mode={view.mode}
+          onSend={(files, mode) => setView({ k: "photo", files, mode })}
+          onFood={(food) => pick(food)}
+          onDraft={(d, files) => setView({ k: "form", mode: { kind: "create" }, draft: photoDraft(d), photos: files })}
+          onCreate={(barcode) => setView({ k: "form", mode: { kind: "create" }, draft: emptyDraft({ barcode }) })}
+        />
       </Sheet>
     );
   }
@@ -248,6 +325,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
       imageUrl={f.imageUrl}
       amount={amountOf(f.servings, p)}
       brand={f.brand}
+      tag={tagOf(f.foodKind)}
       nutrients={nutrientsFor(f, p)}
       onOpen={() => pick(f, p)}
       onQuickAdd={() => log(f, p)}
@@ -275,6 +353,15 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
         >
           <ScanBarcode aria-hidden="true" className="size-5" />
         </button>
+        <button
+          type="button"
+          aria-label="Photo"
+          title="Photo of a barcode or nutrition label"
+          onClick={() => setView({ k: "photo", files: [], mode: "auto" })}
+          className="flex size-11 shrink-0 items-center justify-center rounded-full border border-line text-ink hover:bg-pressed"
+        >
+          <Camera aria-hidden="true" className="size-5" />
+        </button>
       </div>
       {barcodeOpen && (
         <input
@@ -288,12 +375,22 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
           className={`${field} mt-2 tabular`}
         />
       )}
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" onClick={() => setView({ k: "describe" })} className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}>
           <Sparkles className="size-4" /> Describe it
         </button>
         <button type="button" onClick={() => setView({ k: "form", mode: { kind: "create" }, draft: emptyDraft() })} className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}>
           <Plus className="size-4" /> Create food
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onClose();
+            if (!isMyFoods()) window.location.hash = myFoodsHref();
+          }}
+          className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}
+        >
+          <BookOpen className="size-4" /> My Foods
         </button>
       </div>
       <Notice msg={msg} />

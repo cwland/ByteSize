@@ -1,5 +1,5 @@
-// A small set of choices as one pill switch (units, light/dark)
-export function Choice<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
+// A small set of choices as one pill switch (units, light/dark). value null: none chosen
+export function Choice<T extends string>({ label, value, options, onChange }: { label: string; value: T | null; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
   return (
     <div role="radiogroup" aria-label={label} className="grid w-full grid-flow-col auto-cols-fr rounded-full bg-page p-1">
       {options.map((o) => (

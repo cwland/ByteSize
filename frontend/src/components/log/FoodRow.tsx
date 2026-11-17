@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Plus } from "lucide-react";
-import type { Nutrients } from "../../types";
+import type { FoodKind, Nutrients } from "../../types";
 import Pills from "./Pills";
 import FoodPic from "./FoodPic";
+
+// The small tag on a recipe or quick meal row (database and own foods have none)
+export const tagOf = (k: FoodKind | undefined) => (k === "recipe" ? "Recipe" : k === "quick_meal" ? "Meal" : null);
+
+export function Tag({ text }: { text: string }) {
+  return <span className="shrink-0 rounded-full bg-active px-1.5 py-px text-[10px] font-bold text-action">{text}</span>;
+}
 
 export const ADDED_MS = 2000; // how long the ✓ shows before the + comes back
 
@@ -53,6 +60,7 @@ export default function FoodRow({
   imageUrl,
   amount,
   brand,
+  tag,
   nutrients,
   onOpen,
   onQuickAdd,
@@ -62,6 +70,7 @@ export default function FoodRow({
   imageUrl?: string | null;
   amount: string;
   brand?: string | null;
+  tag?: string | null;
   nutrients: Nutrients;
   onOpen: () => void;
   onQuickAdd: () => Promise<void>;
@@ -73,7 +82,10 @@ export default function FoodRow({
         <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left">
           <FoodPic icon={icon} imageUrl={imageUrl} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate font-semibold">{name}</span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate font-semibold">{name}</span>
+              {tag && <Tag text={tag} />}
+            </span>
             <span className="block truncate text-sm text-subtle">
               <span>{amount}</span>
               {brand && <span>{` · ${brand}`}</span>}

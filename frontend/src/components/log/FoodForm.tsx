@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Plus, Sparkles, Trash2 } from "lucide-react";
 import { api } from "../../api";
 import { NUTRIENT_KEYS, type FoodResult, type NutrientKey, type Nutrients, type Serving } from "../../types";
@@ -14,6 +14,8 @@ export type FoodDraft = {
   nutrients: Nutrients;
   aiFields: string[];
   category?: string;
+  imageUrl?: string | null; // the food's photo, shown at the top
+  photoId?: string; // a just-uploaded photo (label read by AI): linked to the food on Save
 };
 // create: a new custom food · edit: one of mine · override: my correction of a database food
 export type FoodFormMode = { kind: "create" } | { kind: "edit"; id: number } | { kind: "override"; cacheId: number };
@@ -34,13 +36,15 @@ export const NUTRIENT_LABELS: Record<NutrientKey, string> = {
   water_ml: "Water (ml)",
 };
 export const emptyDraft = (over: Partial<FoodDraft> = {}): FoodDraft => ({ name: "", brand: null, barcode: null, servings: [{ label: "1 serving" }], nutrients: {}, aiFields: [], ...over });
-export const draftOf = (f: FoodResult & { category?: string }): FoodDraft => ({
+// Any food-shaped thing: a found food, an AI estimate or a photo draft (those have no id, kind or foodKind)
+export const draftOf = (f: Pick<FoodResult, "name" | "brand" | "barcode" | "servings" | "nutrients" | "aiFields" | "imageUrl"> & { category?: string }): FoodDraft => ({
   name: f.name,
   brand: f.brand,
   barcode: f.barcode,
   servings: f.servings,
   nutrients: f.nutrients,
   aiFields: f.aiFields,
+  imageUrl: f.imageUrl,
   ...(f.category ? { category: f.category } : {}),
 });
 
@@ -51,10 +55,26 @@ const toRow = (s: Serving): ServingRow => ({ label: s.label, grams: s.grams === 
 const fromRow = (r: ServingRow): Serving => ({ label: r.label.trim(), ...(r.grams ? { grams: Number(r.grams) } : {}), ...(r.ml ? { ml: Number(r.ml) } : {}) });
 
 // Name, brand, barcode, servings and the 12 nutrients (blank = unknown). AI guesses are marked until edited.
-export default function FoodForm({ mode, draft, fillRef, onSaved }: { mode: FoodFormMode; draft: FoodDraft; fillRef?: { kind: "cache" | "user_food"; id: number }; onSaved: (f: FoodResult) => void }) {
+// barcodeFill: a barcode found later (a barcode photo added to a label draft) goes into the Barcode field; nothing else changes
+export default function FoodForm({
+  mode,
+  draft,
+  fillRef,
+  barcodeFill,
+  onSaved,
+}: {
+  mode: FoodFormMode;
+  draft: FoodDraft;
+  fillRef?: { kind: "cache" | "user_food"; id: number };
+  barcodeFill?: string;
+  onSaved: (f: FoodResult) => void;
+}) {
   const [name, setName] = useState(draft.name);
   const [brand, setBrand] = useState(draft.brand ?? "");
   const [barcode, setBarcode] = useState(draft.barcode ?? "");
+  useEffect(() => {
+    if (barcodeFill) setBarcode(barcodeFill);
+  }, [barcodeFill]);
   const [servings, setServings] = useState<ServingRow[]>(() => (draft.servings.length ? draft.servings : [{ label: "1 serving" }]).map(toRow));
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, draft.nutrients[k] === undefined ? "" : String(draft.nutrients[k])])));
   const [ai, setAi] = useState(() => new Set(draft.aiFields));
@@ -95,7 +115,7 @@ export default function FoodForm({ mode, draft, fillRef, onSaved }: { mode: Food
       let out: { food: FoodResult };
       if (mode.kind === "override") out = await api("POST", "/api/my-foods/override", { cacheId: mode.cacheId, ...common });
       else {
-        const body = { ...common, barcode: barcode.trim() || null, aiFields: [...ai].filter((k) => values[k] !== ""), ...(draft.category ? { category: draft.category } : {}) };
+        const body = { ...common, barcode: barcode.trim() || null, aiFields: [...ai].filter((k) => values[k] !== ""), ...(draft.category ? { category: draft.category } : {}), ...(draft.photoId ? { photoId: draft.photoId } : {}) };
         out = mode.kind === "edit" ? await api("PATCH", `/api/my-foods/${mode.id}`, body) : await api("POST", "/api/my-foods", body);
       }
       onSaved(out.food);
@@ -107,6 +127,7 @@ export default function FoodForm({ mode, draft, fillRef, onSaved }: { mode: Food
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
+      {draft.imageUrl && <img src={draft.imageUrl} alt="Food photo" className="max-h-48 self-start rounded-xl object-contain" />}
       {mode.kind === "override" && <p className="text-sm text-subtle">Saved as your version of this food. Searching or typing its barcode finds yours from now on.</p>}
       {ai.size > 0 && <p className="text-sm text-subtle">Values marked AI estimate are guesses. Check them against the label if you can.</p>}
       <Field label="Name" value={name} onChange={(e) => setName(e.target.value)} />

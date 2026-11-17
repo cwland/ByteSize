@@ -6,7 +6,7 @@ import { SelectedDayProvider } from "../../selectedDay";
 import TopBar from "../TopBar";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
-import { dayJson, settingsMe } from "../../test/fixtures";
+import { barFood, dayJson, settingsMe } from "../../test/fixtures";
 
 const totals = { calories: 1138, protein_g: 97, fiber_g: 29, water_ml: 769, unknownCount: {} };
 
@@ -86,6 +86,28 @@ describe("Dashboard", () => {
     await user.click(await screen.findByRole("button", { name: "+8 oz" }));
     expect(server.writes()).toContainEqual(expect.objectContaining({ method: "POST", path: "/api/log", body: { day: "2026-11-15", meal: "supplements", water_ml: 237 } }));
     expect(await screen.findByText("34 / 64 fl oz")).toBeInTheDocument();
+  });
+
+  it("Photo opens the file picker straight away, then Add Food on the meal of the moment with the result", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-16T19:00:00Z")); // noon in Boise: lunch
+    const server = show(dayJson({ totals }), {
+      "GET /api/foods/recent": () => ({ foods: [] }),
+      "POST /api/photos/analyze": () => ({ photoIds: ["p1"], barcode: "0012345678905", food: barFood, errors: [], labelReading: true }),
+    });
+    const user = userEvent.setup();
+    await screen.findByRole("region", { name: "Budget" });
+    const input = screen.getByLabelText("Photo file");
+    const click = vi.spyOn(input, "click");
+    await user.click(screen.getByRole("button", { name: "Photo" }));
+    expect(click).toHaveBeenCalled(); // no step in between: the picker opens
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await user.upload(input, new File([new Uint8Array([0xff, 0xd8])], "bar.jpg", { type: "image/jpeg" }));
+    const sheet = await screen.findByRole("dialog", { name: "Add food to Lunch" });
+    expect(await within(sheet).findByRole("heading", { name: "Track food" })).toBeInTheDocument();
+    const sent = server.writes().find((w) => w.path === "/api/photos/analyze")!;
+    expect(sent.body.get("mode")).toBe("auto");
+    expect(sent.body.getAll("images")).toHaveLength(1);
   });
 
   it("no targets → pick a plan button", async () => {

@@ -1,7 +1,7 @@
 // Foods: the barcode waterfall, grouped search, the food cache, a person's own foods
 // (custom foods and overrides of cached foods) and AI drafts.
 import type { FastifyInstance } from "fastify";
-import { and, asc, desc, eq, gte, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, ne, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/index.js";
 import { foodCache, userFoods } from "../db/schema.js";
@@ -15,6 +15,7 @@ import { usdaKey } from "./foodSources/settings.js";
 import { SourceError, type SourceFood } from "./foodSources/types.js";
 import { usdaByBarcode, usdaSearch } from "./foodSources/usda.js";
 import { NUTRIENT_KEYS, withLiquidVolumes, type NutrientKey, type Nutrients, type Serving } from "./nutrients.js";
+import { linkPhoto, photoForFood, photoUrl, signImageUrl } from "./photos.js";
 
 export type FoodResult = {
   kind: "cache" | "user_food";
@@ -29,7 +30,11 @@ export type FoodResult = {
   imageUrl: string | null;
   override: boolean;
   source: "off" | "usda" | "mine" | "ai";
+  /** What kind of food it is: a plain food (cached or the person's own), a correction, a recipe or a quick meal. */
+  foodKind: FoodKind;
 };
+export type FoodKind = "custom" | "override" | "recipe" | "quick_meal";
+export const COMPOUND_KINDS = ["recipe", "quick_meal"] as const;
 export type GroupSource = "mine" | "basic" | "cache" | "off" | "usda";
 export type SearchGroup = { source: GroupSource; label: string; foods: FoodResult[] };
 /** suggestion: a close spelling from saved food names ("Did you mean …?"), only when little was found. */
@@ -68,15 +73,18 @@ export function toResult(row: CacheRow | UserFoodRow, kind: "cache" | "user_food
   const base = { kind, id: row.id, name: row.name, brand: row.brand, icon: iconFor(row.category, row.name), barcode: row.barcode, servings: withLiquidVolumes(row.servings as Serving[], row.category, row.name), nutrients };
   if (kind === "cache") {
     const c = row as CacheRow;
-    return { ...base, aiFields: [], imageUrl: c.imageUrl, override: false, source: c.source === "usda" ? "usda" : "off" };
+    return { ...base, aiFields: [], imageUrl: signImageUrl(c.imageUrl), override: false, source: c.source === "usda" ? "usda" : "off", foodKind: "custom" };
   }
   const u = row as UserFoodRow;
   const aiFields = presentAiFields(u.aiFields, nutrients);
   const keys = Object.keys(nutrients);
   // Every value is an untouched AI guess → "ai"; anything the person typed or corrected → "mine"
   const allAi = keys.length > 0 && aiFields.length === keys.length;
-  return { ...base, aiFields, imageUrl: null, override: u.kind === "override", source: allAi ? "ai" : "mine" };
+  return { ...base, aiFields, imageUrl: u.imagePath ? signImageUrl(photoUrl(u.imagePath)) : null, override: u.kind === "override", source: allAi ? "ai" : "mine", foodKind: foodKindOf(u.kind) };
 }
+
+/** A stored user_foods.kind as FoodResult.foodKind (an AI estimate the person saved is one of their own foods). */
+export const foodKindOf = (kind: string): FoodKind => (kind === "override" || kind === "recipe" || kind === "quick_meal" ? kind : "custom");
 
 // ---------- cache ----------
 
@@ -205,17 +213,33 @@ const cacheHay = sql`lower(${foodCache.name} || ' ' || coalesce(${foodCache.bran
 const isBasicRow = (c: CacheRow) => c.source === "usda" && ["Foundation", "SR Legacy"].includes((c.raw as { dataType?: unknown } | null)?.dataType as string);
 const TYPO_MATCH = 0.45; // word_similarity at which a name counts as the search mistyped
 
-/** The person's active foods matching q: every word appears, or it's close (pg_trgm, forgives typos). */
-export async function findMyFoods(db: Db, userId: number, q: string | null, limit: number): Promise<UserFoodRow[]> {
-  const mine = and(eq(userFoods.userId, userId), eq(userFoods.archived, false));
-  if (!q) return db.select().from(userFoods).where(mine).orderBy(asc(sql`lower(${userFoods.name})`), asc(userFoods.id)).limit(limit);
+export const MY_FOOD_KINDS = ["all", "foods", "recipes", "meals"] as const;
+export const MY_FOOD_SORTS = ["recent", "used", "az"] as const;
+export type MyFoodsOptions = { kind?: (typeof MY_FOOD_KINDS)[number]; sort?: (typeof MY_FOOD_SORTS)[number] };
+const KIND_FILTER = { foods: ["custom", "ai", "override"], recipes: ["recipe"], meals: ["quick_meal"] } as const;
+
+/**
+ * The person's active foods matching q: every word appears, or it's close (pg_trgm, forgives typos).
+ * kind narrows to plain foods, recipes or quick meals; sort: recent (last used, else made), used (most
+ * logged), az. Without a sort: best match first for a search, else A–Z.
+ */
+export async function findMyFoods(db: Db, userId: number, q: string | null, limit: number, opts: MyFoodsOptions = {}): Promise<UserFoodRow[]> {
+  const kind = opts.kind && opts.kind !== "all" ? inArray(userFoods.kind, [...KIND_FILTER[opts.kind]]) : undefined;
+  const mine = and(eq(userFoods.userId, userId), eq(userFoods.archived, false), kind);
+  const az = [asc(sql`lower(${userFoods.name})`), asc(userFoods.id)];
+  const sorted = {
+    az,
+    used: [desc(userFoods.useCount), sql`${userFoods.lastUsedAt} desc nulls last`, ...az],
+    recent: [desc(sql`coalesce(${userFoods.lastUsedAt}, ${userFoods.createdAt})`), desc(userFoods.id)],
+  };
+  if (!q) return db.select().from(userFoods).where(mine).orderBy(...sorted[opts.sort ?? "az"]).limit(limit);
   const lq = q.toLowerCase();
   const similarity = sql`word_similarity(${lq}, ${userHay})`;
   return db
     .select()
     .from(userFoods)
     .where(and(mine, sql`(${allWords(userHay, q)} or ${similarity} >= ${TYPO_MATCH})`))
-    .orderBy(desc(similarity), desc(userFoods.useCount), asc(userFoods.name))
+    .orderBy(...(opts.sort ? sorted[opts.sort] : [desc(similarity), desc(userFoods.useCount), asc(userFoods.name)]))
     .limit(limit);
 }
 
@@ -378,6 +402,7 @@ export const foodFields = z.object({
   nutrients: nutrientsSchema,
   category: z.string().trim().max(100).nullable().optional(),
   aiFields: z.array(z.enum(NUTRIENT_KEYS)).max(NUTRIENT_KEYS.length).optional(),
+  photoId: z.string().max(40).optional(), // an upload from /api/photos/analyze: the food's photo from now on
 });
 export type FoodFields = z.infer<typeof foodFields>;
 export const overrideFields = z.object({
@@ -425,6 +450,7 @@ export async function createMyFood(app: FastifyInstance, userId: number, body: F
   const barcode = barcodeField(body.barcode) ?? null;
   if (await barcodeTaken(app.db, userId, barcode)) throw new HttpError(409, DUP_BARCODE);
   const nutrients = cleanNutrients(body.nutrients);
+  const imagePath = body.photoId ? await photoForFood(app, userId, body.photoId, null) : null;
   const [row] = await guardUnique(() =>
     app.db
       .insert(userFoods)
@@ -438,13 +464,15 @@ export async function createMyFood(app: FastifyInstance, userId: number, body: F
         servings: body.servings,
         nutrients,
         aiFields: presentAiFields(body.aiFields ?? [], nutrients),
+        imagePath,
       })
       .returning()
   );
+  if (body.photoId) await linkPhoto(app, userId, body.photoId);
   return toResult(row, "user_food");
 }
 
-async function ownFood(db: Db, userId: number, id: number) {
+export async function ownFood(db: Db, userId: number, id: number) {
   const [row] = await db
     .select()
     .from(userFoods)
@@ -455,9 +483,11 @@ async function ownFood(db: Db, userId: number, id: number) {
 
 export async function updateMyFood(app: FastifyInstance, userId: number, id: number, body: Partial<FoodFields>): Promise<FoodResult> {
   const row = await ownFood(app.db, userId, id);
+  if ((COMPOUND_KINDS as readonly string[]).includes(row.kind)) throw badRequest("Edit recipes and quick meals in their own editor");
   const barcode = barcodeField(body.barcode);
   if (barcode !== undefined && (await barcodeTaken(app.db, userId, barcode, id))) throw new HttpError(409, DUP_BARCODE);
   const nutrients = body.nutrients ? cleanNutrients(body.nutrients) : (row.nutrients as Nutrients);
+  const imagePath = body.photoId ? await photoForFood(app, userId, body.photoId, row.imagePath) : undefined;
   // Values the person changed are theirs now, not the AI's (unless the caller says which are AI)
   const old = row.nutrients as Nutrients;
   const aiFields = body.aiFields ?? row.aiFields.filter((k) => old[k as NutrientKey] === nutrients[k as NutrientKey]);
@@ -472,21 +502,14 @@ export async function updateMyFood(app: FastifyInstance, userId: number, id: num
         ...(body.servings !== undefined ? { servings: body.servings } : {}),
         nutrients,
         aiFields: presentAiFields(aiFields, nutrients),
+        ...(imagePath !== undefined ? { imagePath } : {}),
         updatedAt: new Date(),
       })
       .where(and(eq(userFoods.id, id), eq(userFoods.userId, userId)))
       .returning()
   );
+  if (body.photoId) await linkPhoto(app, userId, body.photoId);
   return toResult(updated, "user_food");
-}
-
-export async function archiveMyFood(app: FastifyInstance, userId: number, id: number) {
-  const rows = await app.db
-    .update(userFoods)
-    .set({ archived: true, updatedAt: new Date() })
-    .where(and(eq(userFoods.id, id), eq(userFoods.userId, userId), eq(userFoods.archived, false)))
-    .returning({ id: userFoods.id });
-  if (!rows.length) throw new HttpError(404, "Food not found");
 }
 
 /**
@@ -520,6 +543,21 @@ export async function overrideFood(app: FastifyInstance, userId: number, body: z
     ? await db.update(userFoods).set({ ...values, updatedAt: new Date() }).where(eq(userFoods.id, existing.id)).returning()
     : await guardUnique(() => db.insert(userFoods).values({ userId, ...values }).returning());
   return toResult(row, "user_food");
+}
+
+/** A food the person may log or use as an ingredient: any cached food, or one of their own active foods. */
+export async function loadFood(db: Db, userId: number, ref: { kind: "cache" | "user_food"; id: number }): Promise<FoodResult> {
+  if (ref.kind === "cache") {
+    const [row] = await db.select().from(foodCache).where(eq(foodCache.id, ref.id));
+    if (row) return toResult(row, "cache");
+  } else {
+    const [row] = await db
+      .select()
+      .from(userFoods)
+      .where(and(eq(userFoods.id, ref.id), eq(userFoods.userId, userId), eq(userFoods.archived, false)));
+    if (row) return toResult(row, "user_food");
+  }
+  throw new HttpError(404, "Food not found");
 }
 
 // ---------- AI ----------
@@ -561,7 +599,7 @@ const aiFood = z.object({
   nutrients: z.record(z.string(), z.unknown()),
 });
 
-export type AiDraft = Omit<FoodResult, "id" | "kind"> & { category: string };
+export type AiDraft = Omit<FoodResult, "id" | "kind" | "foodKind"> & { category: string };
 
 export async function estimateFood(app: FastifyInstance, userId: number, text: string): Promise<AiDraft> {
   await aiReady(app);
@@ -570,12 +608,19 @@ export async function estimateFood(app: FastifyInstance, userId: number, text: s
     userId,
     `Estimate this food: ${JSON.stringify(text)}\n\nAnswer as JSON: {"name": string, "brand": string | null, "category": string, "servings": [{"label": string, "grams"?: number, "ml"?: number}], "nutrients": {<key>: number}}. servings[0] is the usual US serving and the nutrients are for it.`
   );
-  const parsed = aiFood.safeParse(json);
-  const nutrients = parsed.success ? cleanNutrients(parsed.data.nutrients) : {};
-  if (!parsed.success || !Object.keys(nutrients).length) {
+  const draft = aiDraft(json);
+  if (!draft) {
     await logEvent(app.db, { category: "ai", level: "warning", source: "AI estimate", event: "The AI's food estimate couldn't be used", detail: JSON.stringify(json).slice(0, 600), userId });
     throw new HttpError(502, "The AI's answer didn't look like a food. Try again, or describe it differently.");
   }
+  return draft;
+}
+
+/** An AI answer as a draft food (every value AI-estimated); null when it isn't a food with at least one nutrient. */
+export function aiDraft(json: unknown): AiDraft | null {
+  const parsed = aiFood.safeParse(json);
+  const nutrients = parsed.success ? cleanNutrients(parsed.data.nutrients) : {};
+  if (!parsed.success || !Object.keys(nutrients).length) return null;
   const f = parsed.data;
   const category = f.category || "";
   return {

@@ -14,7 +14,7 @@ afterAll(async () => t.close());
 const shake = { name: "Morning protein shake", brand: "Fairlife", servings: [{ label: "1 bottle", ml: 340 }], nutrients: { calories: 150, protein_g: 30 } };
 
 describe("my foods", () => {
-  it("custom foods: create, find by a word from the middle of the name, edit, archive", async () => {
+  it("custom foods: create, find by a word from the middle of the name, edit, remove", async () => {
     const made = await t.api("POST", "/api/my-foods", shake);
     expect(made.status).toBe(200);
     expect(made.body.food).toEqual({
@@ -30,6 +30,7 @@ describe("my foods", () => {
       imageUrl: null,
       override: false,
       source: "mine",
+      foodKind: "custom",
     });
     const id = made.body.food.id;
 
@@ -44,7 +45,7 @@ describe("my foods", () => {
     expect(edited.status).toBe(200);
     expect(edited.body.food).toMatchObject({ id, brand: null, nutrients: { calories: 160, protein_g: 30, fiber_g: 1 } });
 
-    expect((await t.api("DELETE", `/api/my-foods/${id}`)).status).toBe(204);
+    expect(await t.api("DELETE", `/api/my-foods/${id}`)).toMatchObject({ status: 200, body: { archived: false } }); // never logged: deleted
     expect((await t.api("GET", "/api/my-foods")).body.foods).toEqual([]);
     expect((await t.api("GET", "/api/foods/search?q=protein")).body.groups).toEqual([]);
     expect((await t.api("PATCH", `/api/my-foods/${id}`, { name: "Back" })).status).toBe(404);
@@ -82,7 +83,7 @@ describe("my foods", () => {
     offKnows(t, { "0012345678905": offProduct("0012345678905", "Crunchy bar", 400) });
     const cached = (await t.api("GET", "/api/foods/barcode/012345678905")).body.food;
     const o = await t.api("POST", "/api/my-foods/override", { cacheId: cached.id, name: "Crunchy bar (real)", servings: [{ label: "1 bar", grams: 45 }] });
-    expect(o.body.food).toMatchObject({ kind: "user_food", override: true, name: "Crunchy bar (real)", brand: "Acme", barcode: "0012345678905", icon: "🍿", servings: [{ label: "1 bar", grams: 45 }], nutrients: cached.nutrients });
+    expect(o.body.food).toMatchObject({ kind: "user_food", override: true, foodKind: "override", name: "Crunchy bar (real)", brand: "Acme", barcode: "0012345678905", icon: "🍿", servings: [{ label: "1 bar", grams: 45 }], nutrients: cached.nutrients });
     expect((await t.api("GET", "/api/my-foods")).body.foods.map((f: any) => f.id)).toEqual([o.body.food.id]);
     expect((await t.api("POST", "/api/my-foods/override", { cacheId: 999999 })).status).toBe(404);
   });
@@ -121,7 +122,7 @@ describe("AI estimate", () => {
     // Saved as is it stays "ai"; once a value is edited, it's the person's and that value isn't flagged
     const d = r.body.food;
     const saved = await t.api("POST", "/api/my-foods", { name: d.name, brand: d.brand, barcode: null, servings: d.servings, nutrients: d.nutrients, category: d.category, aiFields: d.aiFields });
-    expect(saved.body.food).toMatchObject({ source: "ai", aiFields: r.body.food.aiFields });
+    expect(saved.body.food).toMatchObject({ source: "ai", aiFields: r.body.food.aiFields, foodKind: "custom" }); // an AI estimate is one of my foods
     const edited = await t.api("PATCH", `/api/my-foods/${saved.body.food.id}`, { nutrients: { ...burrito.nutrients, calories: 700 } });
     expect(edited.body.food.source).toBe("mine");
     expect(edited.body.food.aiFields).toEqual(["protein_g", "fiber_g", "carbs_g", "fat_g", "sodium_mg"]);

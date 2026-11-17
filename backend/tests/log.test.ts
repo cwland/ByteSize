@@ -241,7 +241,7 @@ describe("food log", () => {
     await log(mine, { quantity: 2 }, "2026-11-16");
     await log(mine, { quantity: 1 }, "2026-11-17");
     await t.api("POST", "/api/log", { day: DAY, meal: "supplements", water_ml: 237 });
-    expect((await t.api("DELETE", `/api/my-foods/${gone.id}`)).status).toBe(204); // archived: skipped
+    expect(await t.api("DELETE", `/api/my-foods/${gone.id}`)).toMatchObject({ status: 200, body: { archived: true } }); // archived: skipped
 
     const recent = (await t.api("GET", "/api/foods/recent")).body.foods;
     expect(recent.map((f: any) => `${f.kind}:${f.id}`)).toEqual([`user_food:${mine.id}`, `cache:${cached.id}`]);

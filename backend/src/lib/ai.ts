@@ -4,6 +4,7 @@ import { appSettings } from "../db/schema.js";
 import { decryptSecret, encryptSecret } from "./secrets.js";
 import { HttpError } from "./errors.js";
 import { logEvent } from "./appLog.js";
+import { NUTRIENT_KEYS } from "./nutrients.js";
 
 // AI services for ByteSize (describing food, reading meal photos and labels...). Settings live in
 // app_settings under "ai" (the API key encrypted, and never sent back to the app). Five kinds of provider:
@@ -599,3 +600,17 @@ export function parseJsonReply(text: string): unknown {
   }
   return null;
 }
+
+// Reading a nutrition label from a photo (task "photo"): what it says, not a guess
+export const LABEL_SYSTEM = [
+  "You read Nutrition Facts labels from photos of food packages sold in the United States.",
+  "Copy the values exactly as printed on the label, for one serving as the label states it. Do not estimate or invent values.",
+  `Nutrient keys: ${NUTRIENT_KEYS.join(", ")}. Units: calories in kcal, *_g in grams, *_mg in milligrams, water_ml in millilitres.`,
+  "Leave out every key the label doesn't show. A label value of 0 is 0; a value that isn't on the label is left out, never 0.",
+  "Values are plain numbers only (no units, no ranges, no strings). Answer with JSON only.",
+].join("\n");
+export const LABEL_ASK =
+  `Read the nutrition facts label in the photo. If another photo shows the front of the package, use it for the name and brand.\n\n` +
+  `Answer as JSON: {"name": string, "brand": string | null, "category": string, "servings": [{"label": string, "grams"?: number, "ml"?: number}], "nutrients": {<key>: number}}. ` +
+  `name is the product name when a photo shows it, otherwise a short plain name for what the label is for (e.g. "Wheat crackers"). servings[0] is the label's serving size (its household measure as the label, e.g. "2 crackers", with its grams or ml) and the nutrients are for it. ` +
+  `If there is no nutrition label in the photos, answer {"nutrients": {}}.`;

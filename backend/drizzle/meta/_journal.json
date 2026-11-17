@@ -43,6 +43,20 @@
       "when": 1794934281219,
       "tag": "0005_week_start",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794939095590,
+      "tag": "0006_photos",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794940845751,
+      "tag": "0007_recipes",
+      "breakpoints": true
     }
   ]
 }
