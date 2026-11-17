@@ -79,24 +79,41 @@ export function normalizeUsda(food: any): SourceFood {
   };
 }
 
-async function search(fetchFn: FoodFetch, apiKey: string, query: string, dataType: string[], timeoutMs: number): Promise<any[]> {
+async function search(fetchFn: FoodFetch, apiKey: string, query: string, dataType: string[], timeoutMs: number, pageSize = 10): Promise<any[]> {
   const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(apiKey)}`;
   const init: RequestInit = {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ query, pageSize: 10, dataType }),
+    body: JSON.stringify({ query, pageSize, dataType }),
   };
   const { status, json } = await requestJson(fetchFn, "usda", url, init, timeoutMs);
   if (status < 200 || status >= 300) throw sourceStatusError("usda", status);
   return Array.isArray(json?.foods) ? json.foods : [];
 }
 
-export async function usdaSearch(fetchFn: FoodFetch, apiKey: string, q: string, timeoutMs: number): Promise<SourceFood[]> {
-  const foods = await search(fetchFn, apiKey, q, ["Foundation", "SR Legacy", "Branded"], timeoutMs);
-  return foods
+const usable = (foods: any[]) =>
+  foods
     .filter((f) => text(f?.description))
     .map(normalizeUsda)
     .filter((f) => f.nutrients.calories !== undefined);
+
+/**
+ * Text search: plain whole foods (Foundation / SR Legacy, marked basic) and Branded foods are asked
+ * for separately, at the same time, so branded hits never crowd out the basic ones. Basic come first;
+ * a food both calls return is kept once, as basic. When one call fails, the other's foods are still
+ * returned, with the failure as `error`; when both fail, it throws.
+ */
+export async function usdaSearch(fetchFn: FoodFetch, apiKey: string, q: string, timeoutMs: number): Promise<{ foods: SourceFood[]; error: Error | null }> {
+  const [basicCall, brandedCall] = await Promise.allSettled([
+    search(fetchFn, apiKey, q, ["Foundation", "SR Legacy"], timeoutMs, 5),
+    search(fetchFn, apiKey, q, ["Branded"], timeoutMs, 10),
+  ]);
+  if (basicCall.status === "rejected" && brandedCall.status === "rejected") throw basicCall.reason;
+  const basic = basicCall.status === "fulfilled" ? usable(basicCall.value).map((f) => ({ ...f, basic: true as const })) : [];
+  const seen = new Set(basic.map((f) => f.sourceId));
+  const branded = brandedCall.status === "fulfilled" ? usable(brandedCall.value).filter((f) => !seen.has(f.sourceId)) : [];
+  const failed = basicCall.status === "rejected" ? basicCall.reason : brandedCall.status === "rejected" ? brandedCall.reason : null;
+  return { foods: [...basic, ...branded], error: failed };
 }
 
 export async function usdaByBarcode(fetchFn: FoodFetch, apiKey: string, code: string, timeoutMs: number): Promise<SourceFood | null> {

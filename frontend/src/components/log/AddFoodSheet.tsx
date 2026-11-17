@@ -6,7 +6,7 @@ import { notifyDayChanged } from "../../day";
 import { MEALS, MEAL_NAMES } from "../../meals";
 import { addDays, dayLabel, todayIn } from "../../selectedDay";
 import { useSession } from "../../session";
-import type { Day, FoodResult, LogEntry, Meal, Nutrients, Portion, RecentFood } from "../../types";
+import type { Day, FoodResult, LogEntry, Meal, Nutrients, Portion, RecentFood, SearchResult } from "../../types";
 import FoodForm, { draftOf, emptyDraft, type FoodDraft, type FoodFormMode } from "./FoodForm";
 import FoodDetail, { defaultPortion, nutrientsFor } from "./FoodDetail";
 import FoodRow, { QuickAddButton, useQuickAdd } from "./FoodRow";
@@ -15,9 +15,8 @@ import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
 import { field, primaryButton, secondaryButton } from "../ui/styles";
 
-type Group = { source: string; label: string; foods: FoodResult[] };
 type SourceError = { source: string; message: string };
-type Found = { kind: "search"; groups: Group[]; errors: SourceError[] } | { kind: "barcode"; code: string; food: FoodResult | null; errors?: SourceError[] };
+type Found = ({ kind: "search" } & SearchResult) | { kind: "barcode"; code: string; food: FoodResult | null; errors?: SourceError[] };
 type View =
   | { k: "search" }
   | { k: "describe" }
@@ -155,7 +154,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
       try {
         const out: Found = code
           ? { kind: "barcode", ...(await api<{ code: string; food: FoodResult | null; errors?: SourceError[] }>("GET", `/api/foods/barcode/${code}`)) }
-          : { kind: "search", ...(await api<{ groups: Group[]; errors: { source: string; message: string }[] }>("GET", `/api/foods/search?q=${encodeURIComponent(q)}`)) };
+          : { kind: "search", ...(await api<SearchResult>("GET", `/api/foods/search?q=${encodeURIComponent(q)}`)) };
         if (live) {
           setFound(out);
           setMsg(null);
@@ -346,6 +345,13 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
         ))}
       {found?.kind === "search" && (
         <>
+          {found.suggestion && (
+            <p className="mt-3 px-1">
+              <button type="button" onClick={() => setQuery(found.suggestion!)} className="rounded-full px-2 py-1 text-sm font-semibold text-link hover:bg-pressed">
+                Did you mean {found.suggestion}?
+              </button>
+            </p>
+          )}
           {found.groups.map((g) => (
             <section key={g.source} className="mt-3">
               <h3 className="px-1 text-xs font-bold tracking-wide text-muted uppercase">{g.label}</h3>

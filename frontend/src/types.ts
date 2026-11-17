@@ -35,6 +35,10 @@ export type FoodResult = {
 };
 export type Portion = { servingIndex: number; unit: Unit; quantity: number; fraction: number };
 export type RecentFood = FoodResult & { last: Portion };
+// Food search: groups in order (My foods, Basic foods, Saved foods, Open Food Facts, USDA); a close
+// spelling ("Did you mean …?") comes only when little was found
+export type SearchGroup = { source: string; label: string; foods: FoodResult[] };
+export type SearchResult = { groups: SearchGroup[]; errors: { source: string; message: string }[]; suggestion?: string };
 export type Meal = "breakfast" | "lunch" | "dinner" | "snacks" | "supplements";
 export type Unit = "serving" | "g" | "oz" | "ml" | "fl_oz" | "cup" | "tbsp" | "tsp";
 export type LogEntry = {
