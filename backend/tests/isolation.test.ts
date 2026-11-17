@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { twoUsers } from "./isolation.js";
 import { softPasskey } from "./softPasskey.js";
+import { aiSettings, offKnows, offProduct } from "./foodFakes.js";
 
 // Every route that reads or changes a person's data gets a case here (M2 adds foods, logs, targets...)
 let t: TestApp;
@@ -72,5 +73,34 @@ describe("per-user isolation", () => {
     expect((await a.as("GET", "/api/targets")).body.targets.plan).toBe("steady");
     expect((await a.as("GET", "/api/body")).body).toEqual({ body });
     expect((await a.as("GET", "/api/settings/me")).body).toEqual({ mealWindows: windows, waterButtonsMl: [300] });
+  });
+
+  it("a user can't see, edit or archive another user's foods or overrides, and lookups never return them", async () => {
+    const { a, b } = await twoUsers(t);
+    await t.api("PUT", "/api/settings/ai", aiSettings); // so fill-gaps gets past "set up AI"
+    offKnows(t, { "0012345678905": offProduct("0012345678905", "Crunchy bar", 400) });
+    const cached = (await a.as("GET", "/api/foods/barcode/012345678905")).body.food;
+    const override = (await a.as("POST", "/api/my-foods/override", { cacheId: cached.id, name: "Anna's bar", nutrients: { calories: 1 } })).body.food;
+    const custom = (await a.as("POST", "/api/my-foods", { name: "Anna's secret smoothie", barcode: "4006381333931", servings: [{ label: "1 cup", ml: 240 }], nutrients: { calories: 200 } })).body.food;
+    expect(override.override).toBe(true);
+
+    expect((await b.as("GET", "/api/my-foods")).body.foods).toEqual([]);
+    expect((await b.as("GET", "/api/my-foods?q=smoothie")).body.foods).toEqual([]);
+    for (const id of [override.id, custom.id]) {
+      expect((await b.as("PATCH", `/api/my-foods/${id}`, { name: "Mine now" })).status).toBe(404);
+      expect((await b.as("DELETE", `/api/my-foods/${id}`)).status).toBe(404);
+      expect((await b.as("POST", "/api/ai/fill-gaps", { food: { kind: "user_food", id } })).status).toBe(404);
+    }
+    // Lookups: ben gets the shared cache row, never anna's correction or custom food
+    expect((await b.as("GET", "/api/foods/barcode/0012345678905")).body.food).toMatchObject({ kind: "cache", id: cached.id, name: "Crunchy bar" });
+    expect((await b.as("GET", "/api/foods/barcode/4006381333931")).body.food).toBeNull();
+    const s1 = (await b.as("GET", "/api/foods/search?q=smoothie")).body;
+    const s2 = (await b.as("GET", "/api/foods/search?q=bar")).body;
+    const seen = [...s1.groups, ...s2.groups].flatMap((g: any) => g.foods.map((f: any) => `${f.kind}:${f.id}`));
+    expect(seen).not.toContain(`user_food:${override.id}`);
+    expect(seen).not.toContain(`user_food:${custom.id}`);
+    expect((await b.as("GET", "/api/foods/search?q=0012345678905")).body.groups).toMatchObject([{ source: "cache", foods: [{ id: cached.id }] }]);
+    // ...and anna's are untouched
+    expect((await a.as("GET", "/api/my-foods")).body.foods.map((f: any) => f.name).sort()).toEqual(["Anna's bar", "Anna's secret smoothie"]);
   });
 });

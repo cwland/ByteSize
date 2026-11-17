@@ -19,6 +19,8 @@ import logRoutes from "./routes/logs.js";
 import foodSourceRoutes from "./routes/food-sources.js";
 import bodyPlanRoutes from "./routes/body-plans.js";
 import settingsMeRoutes from "./routes/settings-me.js";
+import foodRoutes from "./routes/foods.js";
+import myFoodRoutes from "./routes/my-foods.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -111,5 +113,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(foodSourceRoutes);
   app.register(bodyPlanRoutes);
   app.register(settingsMeRoutes);
+  app.register(foodRoutes);
+  app.register(myFoodRoutes);
   return app;
 }
