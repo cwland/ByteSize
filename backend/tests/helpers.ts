@@ -3,6 +3,8 @@ import { sql } from "drizzle-orm";
 import { createDb } from "../src/db/index.js";
 import { runMigrations } from "../src/db/migrate.js";
 import { buildApp, type AppOptions } from "../src/app.js";
+import { resetLoginLockouts } from "../src/routes/auth.js";
+import { resetSessionTouches } from "../src/lib/sessions.js";
 
 // Tests use their own database so they never touch real data.
 // Create it once with: createdb bytesize_test (docker-compose.dev.yml does this for you)
@@ -17,7 +19,7 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}) {
   await db.execute(sql`drop schema if exists drizzle cascade`);
   await db.execute(sql`create schema public`);
   await runMigrations(db);
-  const app = buildApp({ db, jwtSecret: TEST_SECRET, ...opts });
+  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, ...opts });
   await app.ready();
   let token = "";
 
@@ -43,6 +45,15 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}) {
     const rows = await db.execute<{ tablename: string }>(sql`select tablename from pg_tables where schemaname = 'public'`);
     const names = rows.rows.map((r) => `"${r.tablename}"`);
     if (names.length) await db.execute(sql.raw(`truncate ${names.join(", ")} restart identity cascade`));
+    resetLoginLockouts();
+    resetSessionTouches();
+  }
+
+  // First-run setup as the admin "cory"; signs in as them
+  async function login() {
+    const res = await api("POST", "/api/auth/setup", { username: "cory", password: "password123", email: "cory@example.com" });
+    token = res.body.token;
+    return res.body.user;
   }
 
   return {
@@ -50,6 +61,7 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}) {
     db,
     api,
     reset,
+    login,
     setToken: (t: string) => (token = t),
     getToken: () => token,
     close: async () => {

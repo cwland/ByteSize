@@ -1,8 +1,14 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { ZodError } from "zod";
+import { eq } from "drizzle-orm";
 import type { Db } from "./db/index.js";
+import { users } from "./db/schema.js";
 import { HttpError } from "./lib/errors.js";
+import { verifyToken } from "./lib/auth.js";
+import { sessionForToken } from "./lib/sessions.js";
+import { DEFAULT_RATE_LIMIT, rateLimits, securityHeaders, type RateLimitOptions } from "./lib/security.js";
 import healthRoutes from "./routes/health.js";
+import authRoutes from "./routes/auth.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -10,13 +16,28 @@ declare module "fastify" {
     jwtSecret: string;
     now: () => Date; // the clock (tests can set it)
   }
+  interface FastifyRequest {
+    auth?: { userId: number; sessionId: number; isAdmin: boolean };
+  }
 }
+
+// Open to anyone: everything else under /api needs a signed-in user
+const PUBLIC_ROUTES = new Set([
+  "GET /api/health",
+  "GET /api/auth/status",
+  "POST /api/auth/setup",
+  "POST /api/auth/login",
+  "POST /api/auth/logout",
+  "POST /api/passkeys/login/options",
+  "POST /api/passkeys/login/verify",
+]);
 
 export interface AppOptions {
   db: Db;
   jwtSecret: string;
   logger?: boolean;
   now?: () => Date;
+  rateLimit?: RateLimitOptions | false; // tests turn it off
 }
 
 export function buildApp(opts: AppOptions): FastifyInstance {
@@ -37,6 +58,31 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
   app.setNotFoundHandler((req, reply) => reply.status(404).send({ error: `Not found: ${req.method} ${req.url.split("?")[0]}` }));
 
+  securityHeaders(app);
+  rateLimits(app, opts.rateLimit ?? DEFAULT_RATE_LIMIT);
+
+  // Who is calling: a login token whose user is still allowed in and whose device is still signed in
+  app.addHook("onRequest", async (req) => {
+    const route = `${req.method} ${req.routeOptions.url ?? req.url}`;
+    const header = req.headers.authorization;
+    if (header?.startsWith("Bearer ")) {
+      const claims = verifyToken(header.slice(7), opts.jwtSecret);
+      if (claims) {
+        const [user] = await opts.db.select({ tv: users.tokenVersion, isAdmin: users.isAdmin, disabled: users.disabled }).from(users).where(eq(users.id, claims.userId));
+        // A turned-off account, or a token from before "sign out everywhere" / a password change, stops at once
+        const session = user && !user.disabled && user.tv === claims.tokenVersion ? await sessionForToken(opts.db, req, header.slice(7), claims, app.now()) : null;
+        if (session) {
+          req.auth = { userId: claims.userId, sessionId: session.id, isAdmin: user.isAdmin };
+          return;
+        }
+      }
+    }
+    if (!req.url.startsWith("/api/") || PUBLIC_ROUTES.has(route)) return;
+    if (!req.routeOptions.url) return; // no such route: the 404 handler answers
+    throw new HttpError(401, "Not logged in");
+  });
+
   app.register(healthRoutes);
+  app.register(authRoutes);
   return app;
 }
