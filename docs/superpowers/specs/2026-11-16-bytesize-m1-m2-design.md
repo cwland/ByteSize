@@ -540,3 +540,46 @@ neither counts nor resets); set on Goals.
 (2) 7-day moving average — jumps when a day drops out, poor with gaps; (3) raw line — misleading.
 **Builder's calls:** charts are hand-drawn SVG (no chart library); badges computed server-side on read and stored
 on first earn; all new tables carry user_id and are isolation-tested; weights stored in kg, shown in the person's units.
+
+## 14. Addendum 2026-11-17 — round 2c: Culury link and restaurant menus (decided by Cory)
+
+**Why:** log what was actually cooked (planned in Culury) and what was eaten out (mostly big chains) without
+typing nutrition by hand.
+
+**A. Culury link** — implements 6.5; nothing changes in Culury.
+- Settings › Integrations (per person): Culury address + a read-only Culury API key (sent as `X-API-Key`, stored
+  encrypted in `user_settings.culury_url` / `culury_key_enc`), "Test connection" (calls `GET {culury}/api/plan`
+  for today), Remove.
+- Add Food gets a **Meal plan** button (only when linked): `GET {culury}/api/plan?from=day−3&to=day+4`, grouped by
+  day, the selected day's matching meal first; notes without a recipe ("Leftovers") are shown but not loggable.
+- Culury recipes appear as a "Culury" group in food search (`GET {culury}/api/recipes?q=`), after My foods.
+- A Culury recipe becomes a loggable food: nutrients per serving from its `nutrition` (calories, fat,
+  saturatedFat, carbs, fiber, sugar, addedSugar, protein, sodium mg); servings [{ "1 serving", grams from
+  `servingSize` when it contains "(NNN g)" }]; logging snapshots it (source `culury`, source_ref
+  `culury:<recipeId>`), so it shows in Recently tracked. No nutrition in Culury → offer "Estimate with AI"
+  (flagged AI-estimated) before logging. `nutrition.outdated` shows a small "may be out of date" note.
+- Culury unreachable or key refused → the button/group shows a plain message; logging everything else still works.
+  3 s timeout like other sources. The server makes the calls (the key never reaches the browser).
+
+**B. Restaurants (big US chains)** — data from Spoonacular's menu-items API with the admin's own free key
+(Nutritionix no longer gives personal keys; MenuStat's public data is historical). Free plan: 50 points/day then
+refused (HTTP 402), 1 request/second, backlink required.
+- Settings › Food sources (admin): Spoonacular key (encrypted, like the USDA key), Test.
+- Add Food gets a **Restaurants** tab (only when a key is set; otherwise a line saying how to add one): type a
+  chain and/or item ("chipotle chicken bowl"); results grouped by chain with calories; recent chains as chips;
+  star an item to keep it under Favourites for that chain.
+- To live within 50 points: search only on Enter/after an 800 ms pause and ≥ 3 letters; at most 1 call/second
+  (server-side queue); search results kept 24 h (same query → no call); an item's nutrition is fetched once and
+  kept. Only items the person searched or logged are stored (as `food_cache` rows, source `spoonacular`); no bulk
+  copying. Today's remaining lookups are shown ("38 lookups left today") from the API's quota headers; when
+  refused: "Today's restaurant lookups are used up. They reset at midnight UTC — or use Describe it."
+- A small "Restaurant data from spoonacular.com" link sits on the tab (their backlink rule).
+- The restaurant source sits behind an adapter interface (search, item) so another provider can replace it.
+
+**Approaches (restaurants):** (1) Spoonacular adapter with a personal key — chosen (explicit chain-menu coverage,
+self-serve key); (2) FatSecret Basic — free and roomier, but restaurant coverage unstated; kept as the fallback
+adapter if Spoonacular disappoints; (3) bundled MenuStat — no key, but data years old.
+**Builder's calls:** restaurant items use the same Track food sheet and amount picker as other foods (per item,
+with grams when the API gives a serving weight); favourites are a per-user table; Culury recipes are not copied
+into My Foods (always read live, snapshotted when logged); the builder reads Spoonacular's endpoint docs before
+coding and records the exact endpoints and point costs used.
