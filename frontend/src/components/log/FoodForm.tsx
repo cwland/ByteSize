@@ -24,6 +24,7 @@ export const NUTRIENT_LABELS: Record<NutrientKey, string> = {
   fiber_g: "Fiber (g)",
   carbs_g: "Carbs (g)",
   fat_g: "Fat (g)",
+  saturated_fat_g: "Saturated fat (g)",
   sugar_g: "Sugar (g)",
   added_sugar_g: "Added sugar (g)",
   sugar_alcohol_g: "Sugar alcohol (g)",
