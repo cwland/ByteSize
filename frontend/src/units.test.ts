@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cmToFtIn, flOzToMl, formatWater, formatWeight, inToCm, kgToLb, lbToKg, mlToFlOz } from "./units";
+import { cmToFtIn, flOzToMl, formatWater, formatWeight, inToCm, kgToLb, lbToKg, mlToFlOz, weightToKg, weightUnit, weightValue } from "./units";
 
 describe("units", () => {
   it("round trips height: 5 ft 10 in is 177.8 cm", () => {
@@ -23,5 +23,14 @@ describe("units", () => {
     expect(formatWeight(113.3980925, "metric")).toBe("113.4 kg");
     expect(formatWater(1893, "imperial")).toBe("64 fl oz");
     expect(formatWater(1893, "metric")).toBe("1,893 ml");
+  });
+
+  it("weight as a number in the person's units (lb to 1 decimal) and back to kg", () => {
+    expect(weightValue(100.4253, "imperial")).toBe(221.4);
+    expect(weightValue(100.4253, "metric")).toBe(100.4);
+    expect(weightUnit("imperial")).toBe("lb");
+    expect(weightUnit("metric")).toBe("kg");
+    expect(weightToKg(221.4, "imperial")).toBeCloseTo(221.4 * 0.45359237, 12);
+    expect(weightToKg(100.2, "metric")).toBe(100.2);
   });
 });

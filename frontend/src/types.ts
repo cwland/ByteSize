@@ -119,3 +119,40 @@ export type Day = {
 export type MealWindows = { breakfast: string; lunch: string; snacks: string; dinner: string };
 export type SettingsMe = { mealWindows: MealWindows; waterButtonsMl: number[]; weekStart: number /* 0 = Sunday … 6 = Saturday */ };
 export type Units = "imperial" | "metric";
+// GET /api/weight: kg, unrounded. trendKg is the smoothed weight; projection.kgPerWeek > 0 means losing.
+export type WeighIn = { day: string; weightKg: number; trendKg: number; note: string | null };
+export type WeightProjection = { status: "ok" | "not_enough" | "not_losing" | "reached"; date?: string; kgPerWeek?: number };
+export type Weight = {
+  weighIns: WeighIn[];
+  start: { day: string; weightKg: number } | null;
+  latest: { day: string; weightKg: number } | null;
+  trendKg: number | null;
+  goalKg: number | null;
+  lostKg: number | null;
+  projection: WeightProjection;
+  replanHint: boolean;
+};
+// GLP-1 (M3 §13 B): weekly shots, injection sites in rotation order, side-effect levels 1 mild … 3 strong
+export const SITES = ["abdomen_left", "abdomen_right", "thigh_left", "thigh_right", "arm_left", "arm_right"] as const;
+export type Site = (typeof SITES)[number];
+export const SIDE_EFFECTS = ["nausea", "low_appetite", "fatigue", "constipation", "diarrhea", "heartburn", "headache"] as const;
+export type SideEffect = (typeof SIDE_EFFECTS)[number];
+export type Glp1Settings = { medication: string; doseMg: number; injectionWeekday: number /* 0 = Sunday */ };
+export type Shot = { day: string; medication: string; doseMg: number; site: Site; note: string | null };
+export type Glp1View = {
+  settings: Glp1Settings | null;
+  lastShot: Shot | null;
+  nextDue: string | null;
+  status: "none" | "upcoming" | "due" | "overdue";
+  overdueDays: number;
+  suggestedSite: Site;
+  shots: Shot[]; // newest first
+  doseHistory: { day: string; doseMg: number; medication: string }[]; // oldest first; the first shot and every change
+};
+export type SideEffectDay = { day: string; effects: Partial<Record<SideEffect, 1 | 2 | 3>>; note: string | null };
+export type AfterInjection = { enough: boolean; days: { offset: number; avgCalories: number | null; avgProtein: number | null; daysCounted: number }[] };
+// M3 weekly trends, badges, vacation mode (GET /api/trends/weekly, /api/badges, /api/vacations)
+export type TrendKey = "calories" | "protein_g" | "fiber_g" | "water_ml";
+export type WeekTrend = { start: string; end: string; daysLogged: number; avg: Record<TrendKey, number | null>; status: Record<TrendKey, "below" | "in" | "above" | null>; weightChangeKg: number | null };
+export type Badge = { id: string; earnedOn: string | null; seen: boolean };
+export type Vacation = { id: number; from: string; to: string };

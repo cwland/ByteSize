@@ -12,7 +12,8 @@ import { api } from "../api";
 import type { Meal, SavedBody, Targets } from "../types";
 import SettingsPage from "./settings/SettingsPage";
 import MyFoodsPage from "./myfoods/MyFoodsPage";
-import { isMyFoods, pageFromHash, useHash, type Page } from "../routes";
+import Glp1Page from "./glp1/Glp1Page";
+import { isGlp1, isMyFoods, pageFromHash, useHash, type Page } from "../routes";
 import { useSession } from "../session";
 import { SelectedDayProvider, todayIn, useSelectedDay } from "../selectedDay";
 
@@ -50,9 +51,9 @@ export default function AppShell() {
     <SelectedDayProvider timeZone={user.timezone}>
       <div className="min-h-screen bg-page">
         <TodayOnEnter page={page} />
-        <TopBar days={page === "dashboard" || (page === "log" && !myFoods)} />
+        <TopBar days={(page === "dashboard" && !isGlp1(hash)) || (page === "log" && !myFoods)} />
         <main className="mx-auto max-w-[560px] px-3 pt-2 pb-32">
-          {page === "dashboard" && <Dashboard />}
+          {page === "dashboard" && (isGlp1(hash) ? <Glp1Page /> : <Dashboard />)}
           {page === "log" && (myFoods ? <MyFoodsPage /> : <LogPage />)}
           {page === "goals" && <GoalsPage />}
           {page === "settings" && <SettingsPage />}

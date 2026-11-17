@@ -205,4 +205,96 @@ describe("per-user isolation", () => {
     expect((await b.as("GET", `/api/photos/${id}`)).status).toBe(404);
     expect((await b.as("GET", "/api/my-foods")).body.foods.map((f: any) => f.imageUrl)).toEqual([null]);
   });
+  it("a user can't read, replace or delete another user's weigh-ins, and theirs never move the other's body weight", async () => {
+    const { a, b } = await twoUsers(t);
+    t.clock.date = new Date("2026-11-18T05:30:00Z"); // Nov 17 in Boise
+    const body = { sex: "female", birthDate: "1980-03-04", heightCm: 165, weightKg: 90, goalWeightKg: 70, activity: "some", glp1: false };
+    await a.as("PUT", "/api/body", body);
+    await a.as("POST", "/api/plans/select", { plan: "steady" });
+    expect((await a.as("PUT", "/api/weigh-ins/2026-11-10", { weightKg: 89, note: "anna's" })).status).toBe(200);
+    expect((await a.as("PUT", "/api/weigh-ins/2026-11-17", { weightKg: 85 })).status).toBe(200);
+
+    expect((await b.as("GET", "/api/weight")).body).toMatchObject({ weighIns: [], start: null, latest: null, trendKg: null, lostKg: null, replanHint: false });
+    expect((await b.as("DELETE", "/api/weigh-ins/2026-11-17")).status).toBe(404);
+    await b.as("PUT", "/api/body", { ...body, weightKg: 120 }); // his own weigh-in today (120)
+    // ben's weigh-in on the same day is his own and only moves his body weight
+    expect((await b.as("PUT", "/api/weigh-ins/2026-11-17", { weightKg: 118 })).status).toBe(200);
+    expect((await b.as("GET", "/api/body")).body.body.weightKg).toBe(118);
+    expect((await b.as("GET", "/api/weight")).body.weighIns).toEqual([{ day: "2026-11-17", weightKg: 118, trendKg: 118, note: null }]);
+
+    const annas = (await a.as("GET", "/api/weight")).body;
+    expect(annas.weighIns.map((w: any) => [w.day, w.weightKg, w.note])).toEqual([["2026-11-10", 89, "anna's"], ["2026-11-17", 85, null]]);
+    expect(annas.replanHint).toBe(true); // 90 → 85, her own plan weight
+    expect((await a.as("GET", "/api/body")).body.body.weightKg).toBe(85);
+  });
+
+  it("a user can't see, change or count another user's GLP-1 settings, shots or side effects", async () => {
+    t.clock.date = new Date("2026-11-17T19:00:00Z");
+    const { a, b } = await twoUsers(t);
+    const effects = { day: "2026-11-16", effects: { nausea: 2 }, note: "Anna's note" };
+    expect((await a.as("PUT", "/api/glp1/settings", { medication: "Mounjaro", doseMg: 2.5, injectionWeekday: 5 })).status).toBe(200);
+    for (const day of ["2026-11-03", "2026-11-10"]) expect((await a.as("PUT", `/api/glp1/shots/${day}`, { site: "thigh_left", note: "Anna's shot" })).status).toBe(200);
+    expect((await a.as("PUT", "/api/side-effects/2026-11-16", { effects: effects.effects, note: effects.note })).status).toBe(200);
+    const toast = (await a.as("POST", "/api/my-foods", { name: "Anna's toast", servings: [{ label: "1 slice", grams: 30 }], nutrients: { calories: 80, protein_g: 3 } })).body.food;
+    expect((await a.as("POST", "/api/log", { day: "2026-11-10", meal: "lunch", food: { kind: "user_food", id: toast.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 })).status).toBe(200);
+    const annas = (await a.as("GET", "/api/glp1")).body;
+
+    // ben sees none of it
+    expect((await b.as("GET", "/api/glp1")).body).toEqual({ settings: null, lastShot: null, nextDue: null, status: "none", overdueDays: 0, suggestedSite: "abdomen_left", shots: [], doseHistory: [] });
+    expect((await b.as("GET", "/api/side-effects?from=2026-11-01&to=2026-11-17")).body).toEqual({ days: [] });
+    const bensAfter = (await b.as("GET", "/api/glp1/after-injection")).body;
+    expect(bensAfter.enough).toBe(false);
+    expect(bensAfter.days.every((d: any) => d.daysCounted === 0)).toBe(true);
+    // ...can't delete hers, and his own changes on the same days don't touch hers
+    expect((await b.as("DELETE", "/api/glp1/shots/2026-11-10")).status).toBe(404);
+    expect((await b.as("PUT", "/api/glp1/settings", { medication: "Ozempic", doseMg: 1, injectionWeekday: 1 })).status).toBe(200);
+    expect((await b.as("PUT", "/api/glp1/shots/2026-11-10", { site: "arm_right", doseMg: 2 })).status).toBe(200);
+    expect((await b.as("PUT", "/api/side-effects/2026-11-16", { effects: { headache: 1 } })).status).toBe(200);
+    expect((await b.as("PUT", "/api/side-effects/2026-11-16", { effects: {} })).body).toEqual({ sideEffect: null });
+    expect((await b.as("GET", "/api/glp1")).body.shots).toMatchObject([{ day: "2026-11-10", site: "arm_right", doseMg: 2, medication: "Ozempic" }]);
+    // ...and anna's are untouched
+    expect((await a.as("GET", "/api/glp1")).body).toEqual(annas);
+    expect(annas.settings).toEqual({ medication: "Mounjaro", doseMg: 2.5, injectionWeekday: 5 });
+    expect((await a.as("GET", "/api/side-effects?from=2026-11-01&to=2026-11-17")).body).toEqual({ days: [effects] });
+    const annasAfter = (await a.as("GET", "/api/glp1/after-injection")).body;
+    expect(annasAfter.enough).toBe(true);
+    expect(annasAfter.days[0]).toEqual({ offset: 0, avgCalories: 80, avgProtein: 3, daysCounted: 1 });
+  });
+
+
+  it("a user's trends, badges and vacations never include another user's weigh-ins, shots, food or vacations", async () => {
+    const { a, b } = await twoUsers(t);
+    const { glp1Shots, weighIns } = await import("../src/db/schema.js");
+    t.clock.date = new Date("2026-11-17T19:00:00Z");
+    await t.db.insert(weighIns).values([
+      { userId: a.id, day: "2026-11-01", weightKg: 100 },
+      { userId: a.id, day: "2026-11-10", weightKg: 90 },
+    ]);
+    for (const day of ["2026-10-20", "2026-10-27", "2026-11-03", "2026-11-10"]) await t.db.insert(glp1Shots).values({ userId: a.id, day, medication: "Zepbound", doseMg: 2.5, site: "arm_left" });
+    const food = (await a.as("POST", "/api/my-foods", { name: "Anna's toast", servings: [{ label: "1 slice", grams: 30 }], nutrients: { calories: 80 } })).body.food;
+    for (const day of ["2026-11-14", "2026-11-17"]) await a.as("POST", "/api/log", { day, meal: "breakfast", food: { kind: "user_food", id: food.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
+    const vacation = (await a.as("POST", "/api/vacations", { from: "2026-11-15", to: "2026-11-16" })).body.vacation;
+    const annas = (await a.as("GET", "/api/badges")).body;
+    expect(annas.new).toEqual(["first_weigh_in", "lost_5", "lost_10", "shots_on_time_4"]);
+    expect((await a.as("GET", "/api/day/today")).body.streak).toBe(2);
+
+    // ben sees nothing of anna's
+    const bens = (await b.as("GET", "/api/badges")).body;
+    expect(bens.new).toEqual([]);
+    expect(bens.badges.every((x: any) => x.earnedOn === null)).toBe(true);
+    expect((await b.as("GET", "/api/vacations")).body).toEqual({ vacations: [] });
+    const [week] = (await b.as("GET", "/api/trends/weekly?weeks=1")).body.weeks;
+    expect(week).toMatchObject({ daysLogged: 0, weightChangeKg: null, avg: { calories: null } });
+    // ...can't remove anna's vacation or mark her badges seen, and her vacation doesn't help his streak
+    expect((await b.as("DELETE", `/api/vacations/${vacation.id}`)).status).toBe(404);
+    expect((await b.as("POST", "/api/badges/seen", { ids: ["first_weigh_in"] })).body).toEqual({ seen: [] });
+    const bensFood = (await b.as("POST", "/api/my-foods", { name: "Ben's egg", servings: [{ label: "1 egg", grams: 50 }], nutrients: { calories: 70 } })).body.food;
+    for (const day of ["2026-11-14", "2026-11-17"]) await b.as("POST", "/api/log", { day, meal: "breakfast", food: { kind: "user_food", id: bensFood.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
+    expect((await b.as("GET", "/api/day/today")).body.streak).toBe(1);
+
+    // ...and anna's are untouched
+    expect((await a.as("GET", "/api/vacations")).body.vacations).toEqual([vacation]);
+    expect((await a.as("GET", "/api/badges")).body).toEqual(annas);
+    expect((await a.as("GET", "/api/trends/weekly?weeks=1")).body.weeks[0]).toMatchObject({ daysLogged: 1, avg: { calories: 80 } });
+  });
 });

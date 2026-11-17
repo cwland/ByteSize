@@ -1,5 +1,7 @@
 // Weight-loss plan calculator (design §9). Pure: no I/O, no clock reads.
 
+import { KG_PER_LB } from "./weight.js";
+
 export type PlanId = "maintenance" | "relaxed" | "steady" | "accelerated" | "vigorous";
 export type Range = { min: number; max: number };
 export type Activity = "sitting" | "some" | "most" | "physical";
@@ -26,8 +28,6 @@ export type Plan = {
   targets: PlanTargets;
 };
 export type PlanResult = { tdee: number; floor: number; plans: Plan[]; recommended: PlanId | null };
-
-const KG_PER_LB = 0.45359237;
 
 // "How active is your day, not counting workouts?" (design §10)
 export const ACTIVITY: Record<Activity, number> = {

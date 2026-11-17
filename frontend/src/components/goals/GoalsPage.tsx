@@ -3,29 +3,46 @@ import { Target } from "lucide-react";
 import { api } from "../../api";
 import { useSession } from "../../session";
 import { todayIn } from "../../selectedDay";
-import type { Targets } from "../../types";
+import type { Glp1View, Targets } from "../../types";
 import { fmt, waterUnit, waterValue } from "../../units";
 import PlanFlow from "../plan/PlanFlow";
 import TargetsEditor from "./TargetsEditor";
+import WeeklyTrends from "./WeeklyTrends";
+import Badges from "./Badges";
+import VacationMode from "./VacationMode";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { linkButton, primaryButton, secondaryButton } from "../ui/styles";
+import WeightSection from "../weight/WeightSection";
+import type { ChartMarker } from "../weight/WeightChart";
+import { mg } from "../glp1/glp1";
 
 type Mode = "view" | "plan" | "details" | "edit";
 const planName = (t: Targets) => (t.plan ? `${t.plan[0].toUpperCase()}${t.plan.slice(1)} plan` : "Your own targets");
 
-// Goals: today's plan and target ranges, with Change plan and Edit targets.
+// Goals: today's plan and target ranges (Change plan, Edit targets), then weight (with GLP-1 dose markers),
+// weekly trends, badges, vacation mode and the GLP-1 link.
 // "#/goals/plan" opens the plan picker straight away (the Dashboard's "Pick a plan").
 export default function GoalsPage() {
   const { user } = useSession();
   const [targets, setTargets] = useState<Targets | null | undefined>(undefined);
   const [mode, setMode] = useState<Mode>(() => (window.location.hash.startsWith("#/goals/plan") ? "plan" : "view"));
   const [msg, setMsg] = useState<Msg>(null);
+  const [doseMarkers, setDoseMarkers] = useState<ChartMarker[]>([]);
 
   useEffect(() => {
     api<{ targets: Targets | null }>("GET", `/api/targets?day=${todayIn(user.timezone)}`)
       .then((r) => setTargets(r.targets))
       .catch((e) => setMsg(errorMsg(e)));
   }, [user.timezone]);
+
+  // Each dose on the weight chart, from the starting dose on (GLP-1 set up only; failing: no markers)
+  useEffect(() => {
+    let live = true;
+    api<Glp1View>("GET", "/api/glp1")
+      .then((v) => live && v.settings && setDoseMarkers(v.doseHistory.map((d) => ({ day: d.day, label: mg(d.doseMg), name: `dose ${mg(d.doseMg)}` }))))
+      .catch(() => {});
+    return () => void (live = false);
+  }, []);
 
   const saved = (t: Targets) => {
     setTargets(t);
@@ -78,6 +95,11 @@ export default function GoalsPage() {
           </button>
         </section>
       )}
+      <WeightSection onReplan={() => setMode("plan")} markers={doseMarkers} />
+      <WeeklyTrends />
+      <Badges />
+      <VacationMode />
+      <a href="#/glp1?from=/goals" className={`${secondaryButton} text-center`}>GLP-1 shots</a>
     </div>
   );
 }

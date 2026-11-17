@@ -6,6 +6,7 @@ import { useSession } from "../../session";
 import { fmt, waterUnit, waterValue } from "../../units";
 import Gauge from "./Gauge";
 import Ring from "./Ring";
+import NewBadge from "./NewBadge";
 import { useState } from "react";
 import { mealFor } from "../../meals";
 import type { Meal } from "../../types";
@@ -13,6 +14,8 @@ import AddFoodSheet from "../log/AddFoodSheet";
 import { usePhotoInput } from "../log/PhotoPicker";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { primaryButton, secondaryButton } from "../ui/styles";
+import WeightCard from "../weight/WeightCard";
+import Glp1Card from "../glp1/Glp1Card";
 
 // The selected day at a glance: calorie budget gauge, protein/fiber/water rings, water quick-add, streak
 export default function Dashboard() {
@@ -46,6 +49,7 @@ export default function Dashboard() {
     <div className="flex flex-col gap-3">
       <h1 className="sr-only">Dashboard</h1>
       {error && <Notice msg={{ ok: false, text: error }} />}
+      <NewBadge />
       <section aria-label="Budget" className="rounded-2xl bg-container p-5">
         <h2 className="text-lg font-bold">{t ? `Budget: ${fmt(t.calories.min)}–${fmt(t.calories.max)} cals` : "Budget"}</h2>
         {t ? (
@@ -115,6 +119,8 @@ export default function Dashboard() {
         ))}
       </section>
       <Notice msg={msg} />
+      <Glp1Card />
+      <WeightCard />
       {data && (
         <section aria-label="Streak" className="flex items-center gap-2 rounded-2xl bg-container px-4 py-3">
           <Flame className={`size-5 ${data.streak > 0 ? "text-action" : "text-inactive"}`} aria-hidden="true" />
