@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+/* Color tokens: the default theme (Avocado, light). Themes and dark mode (src/themes.ts) replace
+   them at runtime. Every color in the app comes from these, so a restyle changes tokens, not code. */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --color-page: #f5f7f2;
+  --color-container: #ffffff;
+  --color-line: #e3e9dd;
+  --color-strong: #cfd8c6;
+  --color-brand: #5aa83c;
+  --color-brand-subtle: #eef8d6;
+  --color-success: #1f9d55;
+  --color-success-subtle: #dcf5e5;
+  --color-error: #d1433b;
+  --color-error-subtle: #fde2df;
+  --color-warning: #f2a20c;
+  --color-pressed: #eef5e6;
+  --color-active: #ddedc9;
+  --color-primary: #1f3a1c;
+  --color-primary-pressed: #142812;
+  --color-action: #3f8a2a;
+  --color-link: #3a7f24;
+  --color-ink: #1c2419;
+  --color-subtle: #48543f;
+  --color-muted: #68745f;
+  --color-inactive: #909a87;
+}
+
+@layer base {
+  html,
+  body {
+    background: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  button {
+    cursor: pointer;
+  }
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
