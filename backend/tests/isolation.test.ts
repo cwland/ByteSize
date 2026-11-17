@@ -205,4 +205,36 @@ describe("per-user isolation", () => {
     expect((await b.as("GET", `/api/photos/${id}`)).status).toBe(404);
     expect((await b.as("GET", "/api/my-foods")).body.foods.map((f: any) => f.imageUrl)).toEqual([null]);
   });
+  it("a user can't see, change or count another user's GLP-1 settings, shots or side effects", async () => {
+    t.clock.date = new Date("2026-11-17T19:00:00Z");
+    const { a, b } = await twoUsers(t);
+    const effects = { day: "2026-11-16", effects: { nausea: 2 }, note: "Anna's note" };
+    expect((await a.as("PUT", "/api/glp1/settings", { medication: "Mounjaro", doseMg: 2.5, injectionWeekday: 5 })).status).toBe(200);
+    for (const day of ["2026-11-03", "2026-11-10"]) expect((await a.as("PUT", `/api/glp1/shots/${day}`, { site: "thigh_left", note: "Anna's shot" })).status).toBe(200);
+    expect((await a.as("PUT", "/api/side-effects/2026-11-16", { effects: effects.effects, note: effects.note })).status).toBe(200);
+    const toast = (await a.as("POST", "/api/my-foods", { name: "Anna's toast", servings: [{ label: "1 slice", grams: 30 }], nutrients: { calories: 80, protein_g: 3 } })).body.food;
+    expect((await a.as("POST", "/api/log", { day: "2026-11-10", meal: "lunch", food: { kind: "user_food", id: toast.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 })).status).toBe(200);
+    const annas = (await a.as("GET", "/api/glp1")).body;
+
+    // ben sees none of it
+    expect((await b.as("GET", "/api/glp1")).body).toEqual({ settings: null, lastShot: null, nextDue: null, status: "none", overdueDays: 0, suggestedSite: "abdomen_left", shots: [], doseHistory: [] });
+    expect((await b.as("GET", "/api/side-effects?from=2026-11-01&to=2026-11-17")).body).toEqual({ days: [] });
+    const bensAfter = (await b.as("GET", "/api/glp1/after-injection")).body;
+    expect(bensAfter.enough).toBe(false);
+    expect(bensAfter.days.every((d: any) => d.daysCounted === 0)).toBe(true);
+    // ...can't delete hers, and his own changes on the same days don't touch hers
+    expect((await b.as("DELETE", "/api/glp1/shots/2026-11-10")).status).toBe(404);
+    expect((await b.as("PUT", "/api/glp1/settings", { medication: "Ozempic", doseMg: 1, injectionWeekday: 1 })).status).toBe(200);
+    expect((await b.as("PUT", "/api/glp1/shots/2026-11-10", { site: "arm_right", doseMg: 2 })).status).toBe(200);
+    expect((await b.as("PUT", "/api/side-effects/2026-11-16", { effects: { headache: 1 } })).status).toBe(200);
+    expect((await b.as("PUT", "/api/side-effects/2026-11-16", { effects: {} })).body).toEqual({ sideEffect: null });
+    expect((await b.as("GET", "/api/glp1")).body.shots).toMatchObject([{ day: "2026-11-10", site: "arm_right", doseMg: 2, medication: "Ozempic" }]);
+    // ...and anna's are untouched
+    expect((await a.as("GET", "/api/glp1")).body).toEqual(annas);
+    expect(annas.settings).toEqual({ medication: "Mounjaro", doseMg: 2.5, injectionWeekday: 5 });
+    expect((await a.as("GET", "/api/side-effects?from=2026-11-01&to=2026-11-17")).body).toEqual({ days: [effects] });
+    const annasAfter = (await a.as("GET", "/api/glp1/after-injection")).body;
+    expect(annasAfter.enough).toBe(true);
+    expect(annasAfter.days[0]).toEqual({ offset: 0, avgCalories: 80, avgProtein: 3, daysCounted: 1 });
+  });
 });
