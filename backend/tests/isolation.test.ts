@@ -4,6 +4,7 @@ import { twoUsers } from "./isolation.js";
 import { softPasskey } from "./softPasskey.js";
 import { aiSettings, offKnows, offProduct } from "./foodFakes.js";
 import { labelPhoto, photoUpload } from "./photoFakes.js";
+import { restaurantWeb, setRestaurantKeys, spoonItem } from "./restaurantFakes.js";
 
 // Every route that reads or changes a person's data gets a case here (M2 adds foods, logs, targets...)
 let t: TestApp;
@@ -296,5 +297,19 @@ describe("per-user isolation", () => {
     expect((await a.as("GET", "/api/vacations")).body.vacations).toEqual([vacation]);
     expect((await a.as("GET", "/api/badges")).body).toEqual(annas);
     expect((await a.as("GET", "/api/trends/weekly?weeks=1")).body.weeks[0]).toMatchObject({ daysLogged: 1, avg: { calories: 80 } });
+  });
+
+  it("a user's restaurant favourites and recent chains are their own", async () => {
+    await setRestaurantKeys(t, { spoonacular: "spoon-key" });
+    restaurantWeb(t, { spoonItem: (id) => ({ status: 200, json: spoonItem(Number(id), "Chicken Bowl", "Chipotle", 655) }) });
+    const { a, b } = await twoUsers(t);
+    const food = (await a.as("POST", "/api/restaurants/item", { source: "spoonacular", sourceId: "1" })).body.food;
+    expect((await a.as("POST", "/api/restaurants/favourites", { cacheId: food.id })).status).toBe(200);
+    expect((await a.as("POST", "/api/log", { day: "2026-11-17", meal: "lunch", food: { kind: "cache", id: food.id }, unit: "serving", quantity: 1 })).status).toBe(200);
+    expect((await b.as("GET", "/api/restaurants/favourites")).body).toEqual({ chains: [] });
+    expect((await b.as("GET", "/api/restaurants/recent-chains")).body).toEqual({ chains: [] });
+    expect((await b.as("DELETE", "/api/restaurants/favourites", { cacheId: food.id })).status).toBe(404);
+    expect((await a.as("GET", "/api/restaurants/favourites")).body.chains.map((c: any) => c.chain)).toEqual(["Chipotle"]);
+    expect((await a.as("GET", "/api/restaurants/recent-chains")).body).toEqual({ chains: ["Chipotle"] });
   });
 });

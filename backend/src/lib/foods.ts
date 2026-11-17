@@ -29,7 +29,7 @@ export type FoodResult = {
   aiFields: string[];
   imageUrl: string | null;
   override: boolean;
-  source: "off" | "usda" | "mine" | "ai";
+  source: "off" | "usda" | "spoonacular" | "fatsecret" | "mine" | "ai";
   /** What kind of food it is: a plain food (cached or the person's own), a correction, a recipe or a quick meal. */
   foodKind: FoodKind;
 };
@@ -63,6 +63,9 @@ export function cleanNutrients(v: unknown): Nutrients {
   return out;
 }
 
+// food_cache.source values shown as themselves (restaurant rows: brand = the chain)
+const CACHE_SOURCES = new Set(["off", "usda", "spoonacular", "fatsecret"]);
+
 /** AI-flagged keys that are actually present, in the standard order. */
 const presentAiFields = (aiFields: readonly string[], nutrients: Nutrients) => NUTRIENT_KEYS.filter((k) => aiFields.includes(k) && nutrients[k] !== undefined);
 
@@ -73,7 +76,7 @@ export function toResult(row: CacheRow | UserFoodRow, kind: "cache" | "user_food
   const base = { kind, id: row.id, name: row.name, brand: row.brand, icon: iconFor(row.category, row.name), barcode: row.barcode, servings: withLiquidVolumes(row.servings as Serving[], row.category, row.name), nutrients };
   if (kind === "cache") {
     const c = row as CacheRow;
-    return { ...base, aiFields: [], imageUrl: signImageUrl(c.imageUrl), override: false, source: c.source === "usda" ? "usda" : "off", foodKind: "custom" };
+    return { ...base, aiFields: [], imageUrl: signImageUrl(c.imageUrl), override: false, source: CACHE_SOURCES.has(c.source) ? (c.source as FoodResult["source"]) : "off", foodKind: "custom" };
   }
   const u = row as UserFoodRow;
   const aiFields = presentAiFields(u.aiFields, nutrients);
@@ -196,7 +199,7 @@ export async function lookupBarcode(app: FastifyInstance, userId: number, raw: s
   }
   if (found) {
     const [row] = await upsertMany(db, [{ ...found, barcode: found.barcode ?? code }], now);
-    return { code, food: toResult(row, "cache"), from: found.source, errors };
+    return { code, food: toResult(row, "cache"), from: found.source as "off" | "usda", errors };
   }
   if (cached) return { code, food: toResult(cached, "cache"), from: "cache", errors };
   return { code, food: null, from: null, errors };

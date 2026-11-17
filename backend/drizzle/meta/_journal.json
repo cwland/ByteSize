@@ -64,6 +64,13 @@
       "when": 1794945447146,
       "tag": "0008_m3",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794955811947,
+      "tag": "0009_restaurants",
+      "breakpoints": true
     }
   ]
 }
