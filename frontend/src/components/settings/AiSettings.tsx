@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { api } from "../../api";
 import { Card } from "../ui/Card";
-import { Field } from "../ui/Field";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Toggle } from "../ui/Toggle";
 import { field, label, linkButton, primaryButton, secondaryButton } from "../ui/styles";
 
 type Provider = "openai" | "anthropic" | "gemini" | "openrouter" | "local";
-const PROVIDERS: { id: Provider; name: string }[] = [
-  { id: "openai", name: "OpenAI" },
-  { id: "anthropic", name: "Claude" },
-  { id: "gemini", name: "Gemini" },
-  { id: "openrouter", name: "OpenRouter" },
-  { id: "local", name: "Home AI (Ollama, LM Studio…)" },
+// label: shown in the Provider list; name: the service's default name; hint/keyUrl: where its key comes from
+const PROVIDERS: { id: Provider; name: string; label: string; hint: string; keyUrl?: string }[] = [
+  { id: "openai", name: "OpenAI", label: "OpenAI", hint: "API key from platform.openai.com", keyUrl: "https://platform.openai.com/api-keys" },
+  { id: "anthropic", name: "Claude", label: "Anthropic (Claude)", hint: "API key from console.anthropic.com", keyUrl: "https://console.anthropic.com/settings/keys" },
+  { id: "gemini", name: "Gemini", label: "Google Gemini", hint: "API key from Google AI Studio", keyUrl: "https://aistudio.google.com/apikey" },
+  { id: "openrouter", name: "OpenRouter", label: "OpenRouter", hint: "One key for many models, from openrouter.ai", keyUrl: "https://openrouter.ai/settings/keys" },
+  { id: "local", name: "Home AI", label: "Home AI (Ollama, LM Studio…)", hint: "Ollama, LM Studio, LocalAI, vLLM… on your own network. Nothing leaves your network." },
 ];
 
 // A service as GET /api/settings/ai sends it: the key itself never comes back, only hasKey
@@ -34,11 +35,12 @@ interface Summary {
 }
 // On screen: apiKey "" = keep the saved key (or none); removeKey = delete it
 // open: shown in full (saved services start folded to name + model, new ones open)
-type Draft = Omit<SavedService, "id"> & { id?: string; key: number; apiKey: string; removeKey: boolean; open: boolean };
+// checked: Validate (or Test) passed since the service, key or address last changed; saved ones count as checked
+type Draft = Omit<SavedService, "id"> & { id?: string; key: number; apiKey: string; removeKey: boolean; open: boolean; checked: boolean };
 
 let nextKey = 1;
-const draftOf = (s: SavedService): Draft => ({ ...s, key: nextKey++, apiKey: "", removeKey: false, open: false });
-const blank = (): Draft => ({ key: nextKey++, name: "", provider: "openai", model: "", baseUrl: null, quick: true, photos: true, hasKey: false, apiKeyUnreadable: false, apiKey: "", removeKey: false, open: true });
+const draftOf = (s: SavedService): Draft => ({ ...s, key: nextKey++, apiKey: "", removeKey: false, open: false, checked: true });
+const blank = (): Draft => ({ key: nextKey++, name: "", provider: "openai", model: "", baseUrl: null, quick: true, photos: true, hasKey: false, apiKeyUnreadable: false, apiKey: "", removeKey: false, open: true, checked: false });
 
 // The list with one item moved from one place to another
 const moved = <T,>(list: T[], from: number, to: number) => {
@@ -80,7 +82,11 @@ export default function AiSettings() {
   }, []);
   useEffect(() => void load(), [load]);
 
-  const change = (key: number, patch: Partial<Draft>) => setServices((list) => list!.map((d) => (d.key === key ? { ...d, ...patch } : d)));
+  // A new service, key or address has to be validated again before Save
+  const change = (key: number, patch: Partial<Draft>) => {
+    const recheck = ("provider" in patch || "apiKey" in patch || "baseUrl" in patch) && !("checked" in patch);
+    setServices((list) => list!.map((d) => (d.key === key ? { ...d, ...patch, ...(recheck ? { checked: false } : {}) } : d)));
+  };
 
   // Order: drag a service by its ⠿ handle (mouse or touch), or arrow keys on the focused handle.
   // While dragging, the list shows where it would land; letting go keeps that order.
@@ -149,6 +155,7 @@ export default function AiSettings() {
     }
   }
 
+  const allChecked = !!services?.every((d) => d.checked);
   if (!services || !shown) return <Card title="AI services">{msg ? <Notice msg={msg} /> : <p className="text-muted">Loading…</p>}</Card>;
   return (
     <Card title="AI services" description="Used to look up foods and read meal photos and nutrition labels. If one service is down, the next one is used.">
@@ -156,7 +163,8 @@ export default function AiSettings() {
         <Toggle label="Use AI" checked={enabled} onChange={setEnabled} />
         <span>{enabled ? "AI is on" : "AI is off. Your services are kept for when you turn it back on."}</span>
       </div>
-      <ol ref={listRef} className="mt-4 flex flex-col gap-4">
+      <p className="mt-4 text-sm text-subtle">Tried from the top. If one is down or doesn't answer in time, the next one is asked. Drag ⠿ (or use the arrow keys) to change the order.</p>
+      <ol ref={listRef} className="mt-3 flex flex-col gap-3">
         {shown.map((d, i) => (
           <ServiceForm
             key={d.key}
@@ -176,11 +184,15 @@ export default function AiSettings() {
           />
         ))}
       </ol>
-      <button type="button" onClick={() => setServices((l) => [...l!, blank()])} className={`${linkButton} mt-3`}>
-        Add a backup service
+      <button type="button" onClick={() => setServices((l) => [...l!, blank()])} className="mt-3 font-semibold text-link hover:underline">
+        + Add a backup AI service
       </button>
+      <p className="mt-5 rounded-lg bg-page px-3 py-2 text-sm text-subtle">
+        Sent to the AI: only what a task needs, such as a food you described or a photo of a meal or label. Never passwords, keys or anything from your account. For private use, put a home AI (Ollama, LM Studio) first.
+      </p>
       <Notice msg={msg} />
-      <button type="button" onClick={save} disabled={busy} className={`${primaryButton} mt-5 block`}>
+      {!allChecked && <p className="mt-4 text-sm text-muted">Validate each new or changed service before saving.</p>}
+      <button type="button" onClick={save} disabled={busy || !allChecked} className={`${primaryButton} mt-5 block`}>
         Save
       </button>
     </Card>
@@ -218,6 +230,7 @@ function ServiceForm({
   const [models, setModels] = useState<{ all: string[]; recommended: string[] } | null>(null);
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
+  const [showKey, setShowKey] = useState(false);
 
   // Another service kind has other models (the model itself is cleared when the kind changes)
   const provider = useRef(d.provider);
@@ -235,7 +248,7 @@ function ServiceForm({
       const r = await api<{ models: string[]; recommended: string[] }>("POST", "/api/settings/ai/models", wire(d));
       setModels({ all: r.models, recommended: r.recommended ?? [] });
       setMsg({ ok: true, text: `Key works · ${r.models.length} models` });
-      if (!d.model.trim() && r.recommended?.[0]) onChange({ model: r.recommended[0] });
+      onChange({ checked: true, ...(!d.model.trim() && r.recommended?.[0] ? { model: r.recommended[0] } : {}) });
     } catch (e) {
       setMsg(errorMsg(e));
     } finally {
@@ -249,6 +262,7 @@ function ServiceForm({
     try {
       const r = await api<{ message: string }>("POST", "/api/settings/ai/test", wire(d));
       setMsg({ ok: true, text: r.message });
+      onChange({ checked: true });
     } catch (e) {
       setMsg(errorMsg(e));
     } finally {
@@ -262,69 +276,145 @@ function ServiceForm({
     .filter((m) => !recommended.includes(m))
     .sort((a, b) => a.localeCompare(b));
 
-  const keyHint = d.removeKey ? "The saved key will be removed when you save." : d.apiKeyUnreadable ? "The saved key can't be read (the server's secret changed). Enter it again." : d.hasKey ? "A key is saved. Leave this empty to keep it." : "";
+  const info = PROVIDERS.find((p) => p.id === d.provider)!;
+  const keyHint = d.removeKey ? "The saved key will be removed when you save." : d.apiKeyUnreadable ? "The saved key can't be read (the server's secret changed). Paste it again." : d.hasKey ? "A key is saved. Leave this empty to keep it." : "";
+  const sub = "text-sm font-medium text-subtle";
   return (
-    <li aria-label={`${place}: ${title}`} className={`rounded-xl bg-page p-4 ${dragging ? "opacity-70 shadow-lg ring-2 ring-primary" : ""}`}>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          data-handle={d.key}
-          aria-label={`Drag to reorder ${place}: ${title}`}
-          title="Drag to change the order (or use the arrow keys)"
-          {...handle}
-          className="cursor-grab touch-none select-none rounded px-1 text-lg leading-none text-subtle hover:bg-pressed active:cursor-grabbing"
-        >
-          ⠿
-        </button>
-        <button type="button" aria-expanded={d.open} onClick={() => onChange({ open: !d.open })} className="flex min-w-0 flex-1 items-baseline gap-2 text-left">
-          <span aria-hidden="true" className="text-subtle">
-            {d.open ? "▾" : "▸"}
-          </span>
-          <span className="font-semibold">
-            {place}: {title}
-          </span>
-          {!d.open && <span className="truncate text-sm text-muted">· {d.model || "No model yet"}</span>}
-        </button>
-        {count > 1 && (
-          <button type="button" onClick={onRemove} className={`${linkButton} text-sm`}>
-            Remove
-          </button>
-        )}
+    <li
+      aria-label={`${place}: ${title}`}
+      className={`relative rounded-xl border bg-container p-4 pl-9 ${dragging ? "z-10 border-action shadow-lg" : "border-line"}`}
+    >
+      {/* Left edge: drag handle, and under it show / hide */}
+      <button
+        type="button"
+        data-handle={d.key}
+        aria-label={`Drag to reorder ${place}: ${title}`}
+        title="Drag to change the order (or use the arrow keys)"
+        {...handle}
+        className="absolute top-4 left-1.5 flex h-8 w-6 cursor-grab touch-none items-center justify-center rounded text-lg leading-none text-muted select-none hover:text-ink active:cursor-grabbing"
+      >
+        ⠿
+      </button>
+      <button
+        type="button"
+        aria-expanded={d.open}
+        aria-label={d.open ? `Hide ${title} settings` : `Show ${title} settings`}
+        title={d.open ? `Hide ${title} settings` : `Show ${title} settings`}
+        onClick={() => onChange({ open: !d.open })}
+        className="absolute top-12 left-1.5 flex size-6 items-center justify-center rounded text-subtle hover:bg-page hover:text-ink"
+      >
+        {d.open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+      </button>
+
+      {/* Number · name (edit in place) · its place in the list */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-on-primary">{index + 1}</span>
+        <input
+          aria-label="Service name"
+          value={d.name}
+          placeholder={info.name}
+          onChange={(e) => onChange({ name: e.target.value })}
+          className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-1 text-lg font-semibold text-ink outline-none placeholder:text-ink hover:border-line focus:border-action"
+        />
+        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${index === 0 ? "bg-pressed text-link" : "bg-page text-subtle"}`}>
+          {index === 0 ? "Asked first" : `Backup ${index}`}
+        </span>
       </div>
+
+      {!d.open && (
+        <p className="mt-1 truncate pl-9 text-sm text-subtle">
+          {info.label}
+          {d.model ? ` · ${d.model}` : " · no model yet"}
+          {d.provider === "local" && d.baseUrl ? ` · ${d.baseUrl}` : ""}
+        </p>
+      )}
+
       {d.open && (
-        <>
-          <label className={`${label} mt-3`}>
-            Service
+        <div className="mt-3 grid gap-3">
+          <label className={sub}>
+            Provider
             <select aria-label="Service" value={d.provider} onChange={(e) => onChange({ provider: e.target.value as Provider, model: "" })} className={field}>
               {PROVIDERS.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  {p.label}
                 </option>
               ))}
             </select>
-          </label>
-          <Field label="Name" value={d.name} placeholder={PROVIDERS.find((p) => p.id === d.provider)!.name} onChange={(e) => onChange({ name: e.target.value })} />
-          {(d.provider === "local" || d.baseUrl) && (
-            <Field label="Address" value={d.baseUrl ?? ""} placeholder="http://192.168.1.20:11434/v1" onChange={(e) => onChange({ baseUrl: e.target.value })} />
-          )}
-          <Field label="API key" type="password" autoComplete="off" value={d.apiKey} placeholder={d.hasKey && !d.removeKey ? "••••••••" : ""} onChange={(e) => onChange({ apiKey: e.target.value, removeKey: false })} />
-          {keyHint && (
-            <p className="mt-1 text-xs text-muted">
-              {keyHint}{" "}
-              {d.hasKey && !d.removeKey && (
-                <button type="button" onClick={() => onChange({ removeKey: true, apiKey: "" })} className={linkButton}>
-                  Remove key
-                </button>
+            <span className="mt-1 block font-normal">
+              {info.hint}
+              {info.keyUrl && (
+                <>
+                  {" · "}
+                  <a href={info.keyUrl} target="_blank" rel="noreferrer" className="text-link hover:underline">
+                    Get a key
+                  </a>
+                </>
               )}
-            </p>
+            </span>
+          </label>
+
+          {(d.provider === "local" || d.baseUrl) && (
+            <label className={sub}>
+              Server address
+              <input aria-label="Address" placeholder="http://192.168.1.20:11434/v1" value={d.baseUrl ?? ""} onChange={(e) => onChange({ baseUrl: e.target.value })} className={field} />
+            </label>
           )}
+
+          {/* The key, with show / hide, and Validate right beside it */}
+          <div role="group" aria-label="API key and Validate">
+            <label htmlFor={`ai-key-${d.key}`} className={sub}>
+              API key {d.provider === "local" && <span className="font-normal">(optional)</span>}
+            </label>
+            <div className="mt-1 flex items-center gap-2">
+              <div className="relative flex-1">
+                <input
+                  id={`ai-key-${d.key}`}
+                  aria-label="API key"
+                  type={showKey ? "text" : "password"}
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={d.apiKey}
+                  placeholder={d.hasKey && !d.removeKey ? "••••••••" : d.provider === "local" ? "Only if your server needs one" : "Paste your API key"}
+                  onChange={(e) => onChange({ apiKey: e.target.value, removeKey: false })}
+                  className={`${field} mt-0 pr-11 font-mono`}
+                />
+                <button
+                  type="button"
+                  aria-label={showKey ? "Hide key" : "Show key"}
+                  title={showKey ? "Hide key" : "Show key"}
+                  aria-pressed={showKey}
+                  onClick={() => setShowKey((v) => !v)}
+                  className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-subtle hover:text-ink"
+                >
+                  {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
+              <button type="button" onClick={validate} disabled={busy} className={`${secondaryButton} shrink-0 py-2 text-sm`}>
+                {busy ? "Checking…" : "Validate"}
+              </button>
+            </div>
+            {keyHint && (
+              <p className={`mt-1 text-xs ${d.apiKeyUnreadable ? "text-error" : "text-muted"}`}>
+                {keyHint}{" "}
+                {d.hasKey && !d.removeKey && (
+                  <button type="button" onClick={() => onChange({ removeKey: true, apiKey: "" })} className={linkButton}>
+                    Remove key
+                  </button>
+                )}
+              </p>
+            )}
+          </div>
+
           {/* No list yet (before Validate, or it failed): type the model's name */}
           {!models?.all.length ? (
-            <Field label="Model" value={d.model} placeholder="Validate to choose from a list, or type a name" onChange={(e) => onChange({ model: e.target.value })} />
-          ) : (
-            <label className={`${label} mt-3`}>
+            <label className={sub}>
               Model
-              <select aria-label="Model" value={d.model} onChange={(e) => onChange({ model: e.target.value })} className={field}>
+              <input aria-label="Model" value={d.model} placeholder="Validate to choose from a list, or type a name" onChange={(e) => onChange({ model: e.target.value })} className={`${field} font-mono`} />
+            </label>
+          ) : (
+            <label className={sub}>
+              Model
+              <select aria-label="Model" value={d.model} onChange={(e) => onChange({ model: e.target.value })} className={`${field} font-mono`}>
                 {!d.model && <option value="">Choose a model</option>}
                 {recommended.length > 0 && (
                   <optgroup label="Recommended">
@@ -347,24 +437,41 @@ function ServiceForm({
               </select>
             </label>
           )}
-          <div className="mt-3 flex flex-wrap gap-4 text-sm text-subtle">
-            <span className="flex items-center gap-2">
-              <Toggle label="Reads photos" checked={d.photos} onChange={(v) => onChange({ photos: v })} /> Reads photos
-            </span>
-            <span className="flex items-center gap-2">
-              <Toggle label="Quick jobs" checked={d.quick} onChange={(v) => onChange({ quick: v })} /> Quick jobs
-            </span>
-          </div>
+
+          {/* A cheap, fast model for the small jobs; a photo-reading one for meal photos and labels */}
+          <fieldset className="flex flex-col gap-2 text-sm">
+            <legend className="mb-1 font-medium text-subtle">Use it for</legend>
+            <label className="flex items-start gap-2">
+              <input type="checkbox" aria-label="Quick jobs" checked={d.quick} onChange={(e) => onChange({ quick: e.target.checked })} className="mt-0.5 size-4 accent-[var(--color-action)]" />
+              <span>
+                Quick jobs <span className="text-subtle">(describing a food, filling in missing nutrients). Untick on a big, expensive model if a cheaper one is set up.</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2">
+              <input type="checkbox" aria-label="Reads photos" checked={d.photos} onChange={(e) => onChange({ photos: e.target.checked })} className="mt-0.5 size-4 accent-[var(--color-action)]" />
+              <span>
+                Can read photos <span className="text-subtle">(meal photos and nutrition labels). Tick only if this model takes pictures — most hosted ones do; for home models, ones like qwen3-vl or gemma3.</span>
+              </span>
+            </label>
+          </fieldset>
+
           <Notice msg={msg} />
-          <div className="mt-3 flex gap-2">
-            <button type="button" onClick={validate} disabled={busy} className={`${secondaryButton} py-1.5 text-sm`}>
-              Validate
-            </button>
-            <button type="button" onClick={test} disabled={busy} className={`${secondaryButton} py-1.5 text-sm`}>
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" onClick={test} disabled={busy} className={`${secondaryButton} py-2 text-sm`}>
               Test
             </button>
+            {count > 1 && (
+              <button type="button" onClick={onRemove} className="ml-auto text-sm text-error hover:underline">
+                Remove
+              </button>
+            )}
           </div>
-        </>
+        </div>
+      )}
+      {!d.open && msg && (
+        <div className="mt-2 pl-9">
+          <Notice msg={msg} />
+        </div>
       )}
     </li>
   );

@@ -101,15 +101,20 @@ describe("AiSettings", () => {
     renderWithSession(<AiSettings />);
     const main = await screen.findByRole("listitem", { name: /Main: Claude/ });
     const backup = screen.getByRole("listitem", { name: /Backup 1: OpenAI backup/ });
-    expect(within(main).getByRole("button", { expanded: false })).toHaveTextContent(/Main: Claude.*claude-haiku-4-5/);
-    expect(within(backup).getByRole("button", { expanded: false })).toHaveTextContent(/OpenAI backup.*gpt-5-mini/);
+    // Collapsed: number, name, place, and a summary line
+    expect(within(main).getByRole("textbox", { name: "Service name" })).toHaveAttribute("placeholder", "Claude");
+    expect(within(main).getByText("Asked first")).toBeInTheDocument();
+    expect(within(main).getByText("Anthropic (Claude) · claude-haiku-4-5")).toBeInTheDocument();
+    expect(within(backup).getByRole("textbox", { name: "Service name" })).toHaveValue("OpenAI backup");
+    expect(within(backup).getByText("Backup 1")).toBeInTheDocument();
+    expect(within(backup).getByText("OpenAI · gpt-5-mini")).toBeInTheDocument();
     expect(within(main).queryByLabelText("API key")).not.toBeInTheDocument();
 
     await userEvent.click(within(main).getByRole("button", { expanded: false }));
     expect(within(main).getByLabelText("API key")).toBeInTheDocument();
     expect(within(main).getByRole("button", { expanded: true })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Add a backup service" }));
+    await userEvent.click(screen.getByRole("button", { name: "+ Add a backup AI service" }));
     const added = screen.getByRole("listitem", { name: /Backup 2/ });
     expect(within(added).getByRole("button", { expanded: true })).toBeInTheDocument();
     expect(within(added).getByLabelText("API key")).toBeInTheDocument();
@@ -201,6 +206,7 @@ describe("AiSettings", () => {
     const server = fakeServer({
       "GET /api/settings/ai": () => settings([]),
       "POST /api/settings/ai/models": () => (listWorks ? { models: ["llama3.2:3b", "qwen3:8b"], recommended: [] } : { status: 400, json: { error: "Couldn't reach your AI server" } }),
+      "POST /api/settings/ai/test": () => ({ message: "Home AI answered" }),
       "PUT /api/settings/ai": (b: any) => settings(b.services.map((s: any, i: number) => svc({ ...s, id: `s${i + 1}` }))),
     });
     renderWithSession(<AiSettings />);
@@ -213,6 +219,9 @@ describe("AiSettings", () => {
     await userEvent.click(within(row).getByRole("button", { name: "Validate" }));
     expect(await within(row).findByRole("alert")).toHaveTextContent("Couldn't reach your AI server");
     await userEvent.type(within(row).getByRole("textbox", { name: "Model" }), "llama3.2:3b");
+    // No model list, but a passing Test proves it works, so it can be saved
+    await userEvent.click(within(row).getByRole("button", { name: "Test" }));
+    await within(row).findByText("Home AI answered");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(server.writes().at(-1)?.body.services[0]).toMatchObject({ provider: "local", model: "llama3.2:3b" });
 
@@ -225,5 +234,71 @@ describe("AiSettings", () => {
     const select = within(saved).getByRole("combobox", { name: "Model" });
     expect(within(select).getAllByRole("group").map((g) => g.getAttribute("label"))).toEqual(["All models"]);
     expect(select).toHaveValue("llama3.2:3b");
+  });
+
+  it("Validate sits right next to the API key", async () => {
+    fakeServer({ "GET /api/settings/ai": () => settings([svc()]) });
+    renderWithSession(<AiSettings />);
+    const row = await expand(/Main: Claude/);
+    const keyRow = within(row).getByRole("group", { name: "API key and Validate" });
+    expect(within(keyRow).getByLabelText("API key")).toBeInTheDocument();
+    expect(within(keyRow).getByRole("button", { name: "Validate" })).toBeInTheDocument();
+  });
+
+  it("Save waits until a new or changed service is validated", async () => {
+    const server = fakeServer({
+      "GET /api/settings/ai": () => settings([svc()]),
+      "POST /api/settings/ai/models": () => ({ models: claudeModels, recommended: claudeRecommended }),
+      "PUT /api/settings/ai": (b: any) => settings(b.services.map((s: any, i: number) => svc({ ...s, id: `s${i + 1}` }))),
+    });
+    renderWithSession(<AiSettings />);
+    const save = await screen.findByRole("button", { name: "Save" });
+    expect(save).toBeEnabled(); // saved services were checked when they were saved
+
+    // A changed key needs Validate again
+    const row = await expand(/Main: Claude/);
+    await userEvent.type(within(row).getByLabelText("API key"), "sk-new");
+    expect(save).toBeDisabled();
+    expect(screen.getByText("Validate each new or changed service before saving.")).toBeInTheDocument();
+    await userEvent.click(within(row).getByRole("button", { name: "Validate" }));
+    await within(row).findByText("Key works · 5 models");
+    expect(save).toBeEnabled();
+
+    // A new backup service needs Validate too
+    await userEvent.click(screen.getByRole("button", { name: "+ Add a backup AI service" }));
+    expect(save).toBeDisabled();
+    const backup = screen.getByRole("listitem", { name: /Backup 1/ });
+    await userEvent.type(within(backup).getByLabelText("API key"), "sk-2");
+    await userEvent.click(within(backup).getByRole("button", { name: "Validate" }));
+    await within(backup).findByText("Key works · 5 models");
+    expect(save).toBeEnabled();
+    await userEvent.click(save);
+    expect(server.writes().at(-1)).toMatchObject({ method: "PUT", path: "/api/settings/ai" });
+  });
+
+  it("a failed Validate keeps Save off", async () => {
+    fakeServer({
+      "GET /api/settings/ai": () => settings([svc()]),
+      "POST /api/settings/ai/models": () => ({ status: 400, json: { error: "Claude said the API key isn't valid" } }),
+    });
+    renderWithSession(<AiSettings />);
+    const row = await expand(/Main: Claude/);
+    await userEvent.type(within(row).getByLabelText("API key"), "sk-bad");
+    await userEvent.click(within(row).getByRole("button", { name: "Validate" }));
+    await within(row).findByRole("alert");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("the eye button shows and hides the key being typed", async () => {
+    fakeServer({ "GET /api/settings/ai": () => settings([svc()]) });
+    renderWithSession(<AiSettings />);
+    const row = await expand(/Main: Claude/);
+    const key = within(row).getByLabelText("API key");
+    await userEvent.type(key, "sk-abc");
+    expect(key).toHaveAttribute("type", "password");
+    await userEvent.click(within(row).getByRole("button", { name: "Show key" }));
+    expect(key).toHaveAttribute("type", "text");
+    await userEvent.click(within(row).getByRole("button", { name: "Hide key" }));
+    expect(key).toHaveAttribute("type", "password");
   });
 });
