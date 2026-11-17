@@ -174,7 +174,7 @@ export const foodCache = pgTable(
   "food_cache",
   {
     id: serial("id").primaryKey(),
-    source: text("source").notNull(), // off, usda
+    source: text("source").notNull(), // off, usda, spoonacular, fatsecret
     sourceId: text("source_id").notNull(),
     barcode: text("barcode"), // normalized (EAN-13)
     name: text("name").notNull(),
@@ -375,4 +375,33 @@ export const vacations = pgTable(
     toDay: date("to_day", { mode: "string" }).notNull(),
   },
   (t) => [index("vacations_user_from_idx").on(t.userId, t.fromDay)]
+);
+
+// Restaurant menu items a person starred (food_cache rows from Spoonacular or FatSecret), kept under their chain
+export const restaurantFavourites = pgTable(
+  "restaurant_favourites",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    cacheId: integer("cache_id")
+      .notNull()
+      .references(() => foodCache.id, { onDelete: "cascade" }),
+    chain: text("chain").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("restaurant_favourites_user_cache_idx").on(t.userId, t.cacheId)]
+);
+
+// Restaurant search answers kept 24 h (Spoonacular only), shared by everyone: not anyone's own data.
+// query is lowercased with single spaces.
+export const restaurantSearches = pgTable(
+  "restaurant_searches",
+  {
+    id: serial("id").primaryKey(),
+    source: text("source").notNull(),
+    query: text("query").notNull(),
+    results: jsonb("results").notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("restaurant_searches_source_query_idx").on(t.source, t.query)]
 );

@@ -11,6 +11,7 @@ import { resetLoginLockouts } from "../src/routes/auth.js";
 import { resetSessionTouches } from "../src/lib/sessions.js";
 import { resetPasskeyChallenges } from "../src/routes/passkeys.js";
 import type { AiFetch } from "../src/lib/ai.js";
+import { resetRestaurantState } from "../src/lib/restaurants/index.js";
 
 // Tests use their own database so they never touch real data.
 // Create it once with: createdb bytesize_test (docker-compose.dev.yml does this for you)
@@ -67,11 +68,13 @@ export async function setupTestApp(
     return { ok: r.status < 300, status: r.status, json: async () => r.json };
   };
   // Fake food web (Open Food Facts, USDA): records calls; answer with foodWeb.respond(url, init) ->
-  // { status, json } (or a promise, e.g. one that never settles, for a hanging source). down = unreachable.
-  const notFoundReply = () => ({ status: 404, json: { status: 0, status_verbose: "not found" } });
+  // { status, json, headers?, text? } (or a promise, e.g. one that never settles, for a hanging source); text
+  // replaces the JSON body (e.g. something that isn't JSON). down = unreachable.
+  type FoodReply = { status: number; json?: unknown; headers?: Record<string, string>; text?: string };
+  const notFoundReply = (): FoodReply => ({ status: 404, json: { status: 0, status_verbose: "not found" } });
   const foodWeb = {
     calls: [] as { url: string; method: string; headers: Record<string, string>; body: any }[],
-    respond: notFoundReply as (url: string, init: { method: string; headers: Record<string, string>; body: any }) => { status: number; json: unknown } | Promise<{ status: number; json: unknown }>,
+    respond: notFoundReply as (url: string, init: { method: string; headers: Record<string, string>; body: any }) => FoodReply | Promise<FoodReply>,
     down: false,
   };
   const foodFetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
@@ -97,13 +100,19 @@ export async function setupTestApp(
           }),
         ])
       : reply);
-    return new Response(JSON.stringify(r.json), { status: r.status, headers: { "content-type": "application/json" } });
+    return new Response(r.text ?? JSON.stringify(r.json), { status: r.status, headers: { "content-type": "application/json", ...r.headers } });
   }) as typeof fetch;
   // The app's clock: set clock.date to fix "now" (reset() clears it back to the real time)
   const clock = { date: null as Date | null };
+  // Waits the app asks for (the restaurant queue): recorded, never slept; with a fixed clock, the clock moves on instead
+  const sleeps: number[] = [];
+  const sleep = async (ms: number) => {
+    sleeps.push(ms);
+    if (clock.date) clock.date = new Date(clock.date.getTime() + ms);
+  };
   // Files (uploads) go to a temp folder, removed on close
   const dataDir = mkdtempSync(path.join(tmpdir(), "bytesize-test-"));
-  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, foodFetch, now: () => clock.date ?? new Date(), dataDir, ...opts });
+  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, foodFetch, now: () => clock.date ?? new Date(), sleep, dataDir, ...opts });
   if (beforeReady) await beforeReady(app);
   await app.ready();
   let token = "";
@@ -134,6 +143,8 @@ export async function setupTestApp(
     foodWeb.calls.length = 0;
     foodWeb.down = false;
     foodWeb.respond = notFoundReply;
+    sleeps.length = 0;
+    resetRestaurantState(app);
     const rows = await db.execute<{ tablename: string }>(sql`select tablename from pg_tables where schemaname = 'public'`);
     const names = rows.rows.map((r) => `"${r.tablename}"`);
     if (names.length) await db.execute(sql.raw(`truncate ${names.join(", ")} restart identity cascade`));
@@ -166,6 +177,7 @@ export async function setupTestApp(
     ai,
     foodWeb,
     clock,
+    sleeps,
     reset,
     login,
     createUser,

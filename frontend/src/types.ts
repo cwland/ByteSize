@@ -33,7 +33,7 @@ export type FoodResult = {
   aiFields: string[];
   imageUrl: string | null;
   override: boolean;
-  source: "off" | "usda" | "mine" | "ai" | "culury";
+  source: "off" | "usda" | "mine" | "ai" | "culury" | RestaurantSource;
   foodKind: FoodKind;
 };
 // POST /api/photos/analyze (multipart: images 1–2, mode). A barcode found in the photo is looked up
@@ -161,3 +161,9 @@ export type Vacation = { id: number; from: string; to: string };
 export type CuluryLink = { url: string | null; hasKey: boolean };
 export type CuluryPlan = { linked: boolean; days: { day: string; items: { slot: string; title: string; recipeId: number | null; servings: number | null; note: string | null }[] }[]; errors: SourceError[] };
 export type CuluryRecipe = { food: FoodResult; hasNutrition: boolean; outdated: boolean };
+// Restaurants (§14 B): lookupsLeft is Spoonacular points left today (null: not set up / not known yet)
+export type RestaurantSource = "spoonacular" | "fatsecret";
+export type RestaurantStatus = { sources: RestaurantSource[]; lookupsLeft: number | null };
+export type MenuHit = { source: RestaurantSource; sourceId: string; chain: string; name: string; calories: number | null; cacheId: number | null; imageUrl: string | null };
+export type MenuSearch = { items: MenuHit[]; lookupsLeft: number | null; errors: { source: RestaurantSource; message: string }[] };
+export type RestaurantFavourites = { chains: { chain: string; foods: FoodResult[] }[] };

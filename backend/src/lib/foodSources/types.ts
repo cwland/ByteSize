@@ -1,8 +1,12 @@
 import type { Nutrients, Serving } from "../nutrients.js";
 
 // A food as an outside source describes it, already in ByteSize's shape (nutrients for servings[0]).
+export type SourceName = "off" | "usda" | "spoonacular" | "fatsecret";
+/** quota: out of today's lookups; down: unreachable, slow or erroring; bad_key: credentials refused; bad_data: an unusable answer. */
+export type SourceErrorKind = "quota" | "down" | "bad_key" | "bad_data";
+
 export type SourceFood = {
-  source: "off" | "usda";
+  source: SourceName;
   sourceId: string;
   barcode: string | null;
   name: string;
@@ -18,13 +22,15 @@ export type SourceFood = {
 
 export type FoodFetch = typeof fetch;
 
-const LABEL = { off: "Open Food Facts", usda: "USDA" } as const;
+export const SOURCE_NAMES: Record<SourceName, string> = { off: "Open Food Facts", usda: "USDA", spoonacular: "Spoonacular", fatsecret: "FatSecret" };
+const LABEL = SOURCE_NAMES;
 
 /** A source that didn't answer usefully. The message is safe to show (never contains a key or URL). */
 export class SourceError extends Error {
   constructor(
-    public source: "off" | "usda",
+    public source: SourceName,
     message: string,
+    public kind: SourceErrorKind = "down",
   ) {
     super(message);
     this.name = "SourceError";
@@ -33,15 +39,15 @@ export class SourceError extends Error {
 
 /**
  * Calls a source with a hard timeout (aborts the request, and gives up even if the fetch
- * ignores the abort). Returns the status and parsed JSON (null when the body isn't JSON).
+ * ignores the abort). Returns the status, headers and parsed JSON (null when the body isn't JSON).
  */
 export async function requestJson(
   fetchFn: FoodFetch,
-  source: "off" | "usda",
+  source: SourceName,
   url: string,
   init: RequestInit,
   timeoutMs: number,
-): Promise<{ status: number; json: any }> {
+): Promise<{ status: number; json: any; headers: Headers }> {
   const ctrl = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timedOut = new Promise<never>((_, reject) => {
@@ -63,7 +69,7 @@ export async function requestJson(
     } catch {
       // not JSON
     }
-    return { status: res.status, json };
+    return { status: res.status, json, headers: res.headers };
   })();
   try {
     return await Promise.race([call, timedOut]);
@@ -73,7 +79,7 @@ export async function requestJson(
   }
 }
 
-export const sourceStatusError = (source: "off" | "usda", status: number) => new SourceError(source, `${LABEL[source]} answered with an error (${status})`);
+export const sourceStatusError = (source: SourceName, status: number) => new SourceError(source, `${LABEL[source]} answered with an error (${status})`);
 
 /** A finite, non-negative number (OFF sometimes sends numeric strings), else undefined. */
 export function num(v: unknown): number | undefined {

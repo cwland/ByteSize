@@ -28,6 +28,8 @@ import weightRoutes from "./routes/weight.js";
 import glp1Routes from "./routes/glp1.js";
 import trendRoutes from "./routes/trends.js";
 import culuryRoutes from "./routes/culury.js";
+import restaurantRoutes from "./routes/restaurants.js";
+import { scheduleRestaurantCleanup } from "./lib/restaurants/index.js";
 import { scheduleUploadCleanup, setPhotoSecret } from "./lib/photos.js";
 
 declare module "fastify" {
@@ -38,6 +40,7 @@ declare module "fastify" {
     ai: AiService;
     foodFetch: typeof fetch; // Open Food Facts / USDA (tests swap in a fake food web)
     dataDir: string; // where ByteSize keeps files (uploads/...)
+    sleep: (ms: number) => Promise<void>; // waits (the restaurant queue); tests record instead of waiting
   }
   interface FastifyRequest {
     auth?: { userId: number; sessionId: number; isAdmin: boolean };
@@ -66,6 +69,7 @@ export interface AppOptions {
   aiTimeScale?: number; // tests shrink AI waits
   foodFetch?: typeof fetch; // tests swap in a fake food web
   dataDir?: string; // default: DATA_DIR, else ./data/app (tests use a temp folder)
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export function buildApp(opts: AppOptions): FastifyInstance {
@@ -75,6 +79,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.decorate("now", opts.now ?? (() => new Date()));
   app.decorate("ai", new AiService(opts.db, opts.jwtSecret, opts.aiFetch, opts.aiTimeScale ?? 1));
   app.decorate("foodFetch", opts.foodFetch ?? ((input: Parameters<typeof fetch>[0], init?: RequestInit) => fetch(input, init)));
+  app.decorate("sleep", opts.sleep ?? ((ms: number) => new Promise<void>((res) => setTimeout(res, ms))));
   setPhotoSecret(opts.jwtSecret);
   app.decorate("dataDir", path.resolve(opts.dataDir ?? process.env.DATA_DIR ?? "data/app"));
 
@@ -134,6 +139,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(glp1Routes);
   app.register(trendRoutes); // weekly trends, badges, vacations
   app.register(culuryRoutes); // the person's Culury link: meal plan and recipes
+  app.register(restaurantRoutes); // restaurant menus (Spoonacular, FatSecret)
   scheduleUploadCleanup(app);
+  scheduleRestaurantCleanup(app); // FatSecret foods nobody kept, restaurant searches past 24 h
   return app;
 }

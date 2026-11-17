@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, CalendarDays, Camera, ChevronDown, Plus, ScanBarcode, Sparkles } from "lucide-react";
+import { BookOpen, CalendarDays, Camera, ChevronDown, Plus, ScanBarcode, Sparkles, Utensils } from "lucide-react";
 import { ApiError, api } from "../../api";
 import { formatAmount } from "../../amounts";
 import { notifyDayChanged } from "../../day";
@@ -7,7 +7,7 @@ import { MEALS, MEAL_NAMES } from "../../meals";
 import { isMyFoods, myFoodsHref } from "../../routes";
 import { addDays, dayLabel, todayIn } from "../../selectedDay";
 import { useSession } from "../../session";
-import type { CuluryLink, CuluryRecipe, Day, FoodResult, Item, LogEntry, Meal, Nutrients, PhotoDraft, PhotoMode, Portion, RecentFood, SearchResult, SourceError } from "../../types";
+import type { CuluryLink, CuluryRecipe, Day, FoodResult, Item, LogEntry, Meal, Nutrients, PhotoDraft, PhotoMode, Portion, RecentFood, RestaurantStatus, SearchResult, SourceError } from "../../types";
 import FoodForm, { draftOf, emptyDraft, type FoodDraft, type FoodFormMode } from "./FoodForm";
 import FoodDetail, { defaultPortion, nutrientsFor, startingPortion } from "./FoodDetail";
 import FoodRow, { QuickAddButton, tagOf, useQuickAdd } from "./FoodRow";
@@ -15,6 +15,7 @@ import { TrackMeal } from "../myfoods/QuickMealEditor";
 import Pills from "./Pills";
 import MealPlanView from "./MealPlanView";
 import CuluryTrack from "./CuluryTrack";
+import RestaurantsView, { newRestaurantsMemo } from "./RestaurantsView";
 import PhotoPicker, { MAX_PHOTOS, analyzePhotos, usePhotoInput } from "./PhotoPicker";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
@@ -27,8 +28,10 @@ type View =
   | { k: "photo"; files: File[]; mode: PhotoMode }
   // photos: the photo(s) a label draft was read from, so a barcode photo can still be added
   // barcodeFill: the barcode a barcode photo added to that draft found, merged into the form as it stands
-  | { k: "form"; mode: FoodFormMode; draft: FoodDraft; fillRef?: { kind: "cache" | "user_food"; id: number }; photos?: File[]; barcodeFill?: string }
-  | { k: "detail"; food: FoodResult; initial: Portion }
+  // from: where Back goes (a restaurant item's Track food and Edit food go back to Restaurants)
+  | { k: "form"; mode: FoodFormMode; draft: FoodDraft; fillRef?: { kind: "cache" | "user_food"; id: number }; photos?: File[]; barcodeFill?: string; from?: "restaurants" }
+  | { k: "detail"; food: FoodResult; initial: Portion; from?: "restaurants" }
+  | { k: "restaurants" }
   | { k: "meal"; food: FoodResult } // a quick meal: adjust its foods, then Track
   | { k: "plan" } // Culury's meal plan
   | { k: "culury"; recipe: CuluryRecipe; from: CuluryFrom; initial: Portion; stale?: boolean }; // a Culury recipe, read live
@@ -160,7 +163,8 @@ function AddBarcodePhoto({ onBarcode }: { onBarcode: (code: string) => void }) {
 // photo, describe it, create) and tracking it. Quick add (+) logs as shown and keeps the sheet open.
 // photo: a photo already chosen (Dashboard's Photo button) opens straight on the photo step with it.
 export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }: { day: string; meal: Meal; photo?: File; onClose: () => void }) {
-  const units = useSession().user?.units ?? "imperial";
+  const { user } = useSession();
+  const units = user?.units ?? "imperial";
   const [meal, setMeal] = useState<Meal>(initialMeal);
   const [view, setView] = useState<View>(() => (photo ? { k: "photo", files: [photo], mode: "auto" } : { k: "search" }));
   const [query, setQuery] = useState("");
@@ -181,6 +185,11 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
   useEffect(() => {
     api<CuluryLink>("GET", "/api/settings/culury").then((l) => setCulury(!!l.url && l.hasKey), () => {});
   }, []);
+
+  const [restaurants, setRestaurants] = useState<RestaurantStatus | null>(null);
+  const restaurantsMemo = useRef(newRestaurantsMemo());
+
+  useEffect(() => void api<RestaurantStatus>("GET", "/api/restaurants/status").then(setRestaurants, () => {}), []);
 
   useEffect(() => {
     let live = true;
@@ -254,12 +263,13 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
       setOpening(null);
     }
   };
-  const pick = (food: FoodResult, initial = startPortion(food)) => {
+  const pick = (food: FoodResult, initial = startPortion(food), from?: "restaurants") => {
     if (food.kind === "culury") return void openRow(food).catch((e) => setMsg(errorMsg(e)));
-    setView(food.foodKind === "quick_meal" ? { k: "meal", food } : { k: "detail", food, initial });
+    setView(food.foodKind === "quick_meal" ? { k: "meal", food } : { k: "detail", food, initial, from });
   };
-  const edit = (food: FoodResult) =>
+  const edit = (food: FoodResult, from?: "restaurants") =>
     setView({
+      from,
       k: "form",
       mode: food.kind === "cache" ? { kind: "override", cacheId: food.id } : { kind: "edit", id: food.id },
       draft: draftOf(food),
@@ -293,7 +303,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
   };
 
   const label = `Add food to ${MEAL_NAMES[meal]}`;
-  const back = () => setView({ k: "search" });
+  const back = () => setView((view.k === "detail" || view.k === "form") && view.from ? { k: view.from } : { k: "search" });
 
   if (view.k === "detail") {
     return (
@@ -303,7 +313,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
           initial={view.initial}
           submitLabel="Track"
           // recipes are changed in their own editor in My Foods
-          onEditFood={view.food.foodKind === "recipe" ? undefined : () => edit(view.food)}
+          onEditFood={view.food.foodKind === "recipe" ? undefined : () => edit(view.food, view.from)}
           onSubmit={async (p) => {
             await log(view.food, p);
             onClose();
@@ -334,6 +344,11 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
       </Sheet>
     );
   }
+  if (view.k === "restaurants" && restaurants) {
+    return (
+      <RestaurantsView label={label} onClose={onClose} onBack={back} status={restaurants} memo={restaurantsMemo.current} onDescribe={() => setView({ k: "describe" })} onPick={(food) => pick(food, undefined, "restaurants")} />
+    );
+  }
   if (view.k === "meal") {
     return (
       <Sheet tall label={label} heading="Track meal" onClose={onClose} onBack={back}>
@@ -352,7 +367,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
     return (
       <Sheet tall label={label} heading={heading} onClose={onClose} onBack={back}>
         {view.photos && view.photos.length < MAX_PHOTOS && !view.draft.barcode && !view.barcodeFill && <AddBarcodePhoto onBarcode={(code) => setView({ ...view, barcodeFill: code })} />}
-        <FoodForm mode={view.mode} draft={view.draft} fillRef={view.fillRef} barcodeFill={view.barcodeFill} onSaved={(f) => pick(f, defaultPortion(f.servings, units))} />
+        <FoodForm mode={view.mode} draft={view.draft} fillRef={view.fillRef} barcodeFill={view.barcodeFill} onSaved={(f) => pick(f, defaultPortion(f.servings, units), view.from)} />
       </Sheet>
     );
   }
@@ -467,7 +482,15 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
             <CalendarDays className="size-4" /> Meal plan
           </button>
         )}
+        {!!restaurants?.sources.length && (
+          <button type="button" onClick={() => setView({ k: "restaurants" })} className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}>
+            <Utensils className="size-4" /> Restaurants
+          </button>
+        )}
       </div>
+      {restaurants?.sources.length === 0 && (
+        <p className="mt-2 px-1 text-xs text-muted">{user?.isAdmin ? "Add a restaurant data key in Settings › Food sources to search restaurant menus." : "Ask an admin to add a restaurant data key to search restaurant menus."}</p>
+      )}
       <Notice msg={msg} />
         </>
       }

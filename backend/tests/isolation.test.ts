@@ -5,6 +5,7 @@ import { softPasskey } from "./softPasskey.js";
 import { aiSettings, offKnows, offProduct } from "./foodFakes.js";
 import { labelPhoto, photoUpload } from "./photoFakes.js";
 import { CULURY, culuryCalls, culuryKnows, culuryRecipe, fakeDns } from "./culuryFakes.js";
+import { restaurantWeb, setRestaurantKeys, spoonItem } from "./restaurantFakes.js";
 
 // Every route that reads or changes a person's data gets a case here (M2 adds foods, logs, targets...)
 let t: TestApp;
@@ -337,5 +338,19 @@ describe("per-user isolation", () => {
     await b.as("DELETE", "/api/settings/culury");
     expect((await b.as("POST", "/api/log", { day: "2026-11-17", meal: "dinner", food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1 })).status).toBe(400);
     expect((await b.as("GET", "/api/day/2026-11-17")).body.entries).toEqual([]);
+  });
+
+  it("a user's restaurant favourites and recent chains are their own", async () => {
+    await setRestaurantKeys(t, { spoonacular: "spoon-key" });
+    restaurantWeb(t, { spoonItem: (id) => ({ status: 200, json: spoonItem(Number(id), "Chicken Bowl", "Chipotle", 655) }) });
+    const { a, b } = await twoUsers(t);
+    const food = (await a.as("POST", "/api/restaurants/item", { source: "spoonacular", sourceId: "1" })).body.food;
+    expect((await a.as("POST", "/api/restaurants/favourites", { cacheId: food.id })).status).toBe(200);
+    expect((await a.as("POST", "/api/log", { day: "2026-11-17", meal: "lunch", food: { kind: "cache", id: food.id }, unit: "serving", quantity: 1 })).status).toBe(200);
+    expect((await b.as("GET", "/api/restaurants/favourites")).body).toEqual({ chains: [] });
+    expect((await b.as("GET", "/api/restaurants/recent-chains")).body).toEqual({ chains: [] });
+    expect((await b.as("DELETE", "/api/restaurants/favourites", { cacheId: food.id })).status).toBe(404);
+    expect((await a.as("GET", "/api/restaurants/favourites")).body.chains.map((c: any) => c.chain)).toEqual(["Chipotle"]);
+    expect((await a.as("GET", "/api/restaurants/recent-chains")).body).toEqual({ chains: ["Chipotle"] });
   });
 });
