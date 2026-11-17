@@ -111,7 +111,7 @@ export default function LogPage() {
       {editing && (
         <Sheet label="Edit portion" heading="Edit entry" onClose={() => setEditing(null)}>
           <FoodDetail
-            food={{ name: editing.name, brand: editing.brand, icon: editing.icon, servings: editing.servings, nutrients: perServing(editing) }}
+            food={{ name: editing.name, brand: editing.brand, icon: editing.icon, imageUrl: editing.imageUrl, servings: editing.servings, nutrients: perServing(editing) }}
             initial={{ servingIndex: editing.servingIndex, unit: editing.unit, quantity: editing.quantity, fraction: editing.fraction }}
             submitLabel="Save"
             onSubmit={async (p) => {

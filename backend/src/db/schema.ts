@@ -226,6 +226,7 @@ export const logEntries = pgTable(
     name: text("name").notNull(),
     brand: text("brand"),
     icon: text("icon").notNull(),
+    imageUrl: text("image_url"), // the food's photo when it had one (snapshot, like the name)
     source: text("source").notNull(), // cache, user_food, water
     sourceRef: text("source_ref"),
     servingIndex: integer("serving_index").notNull().default(0),

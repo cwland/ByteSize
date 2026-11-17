@@ -66,7 +66,7 @@ function match(text: string | null | undefined): string | null {
   return null;
 }
 
-/** Emoji by category keyword, then by name keyword, then "🍽️". */
+/** Emoji by name keyword (most specific), then by category keyword, then "🍽️". */
 export function iconFor(category: string | null | undefined, name?: string): string {
-  return match(category) ?? match(name) ?? DEFAULT_ICON;
+  return match(name) ?? match(category) ?? DEFAULT_ICON;
 }

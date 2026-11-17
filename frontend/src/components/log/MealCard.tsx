@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import FoodPic from "./FoodPic";
 import { Check, Plus } from "lucide-react";
 import { MEAL_NAMES } from "../../meals";
 import { formatAmount } from "../../amounts";
@@ -37,9 +38,7 @@ function EntryRow({ entry, units, selecting, selected, onOpen, onLongPress }: { 
             {selected && <Check className="size-3.5" strokeWidth={3} />}
           </span>
         )}
-        <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center text-2xl">
-          {entry.icon}
-        </span>
+        <FoodPic icon={entry.icon} imageUrl={entry.imageUrl} size="size-9" />
         <span className="min-w-0 flex-1">
           <span className="block truncate font-semibold">{entry.name}</span>
           <span className="block truncate text-sm text-subtle">{formatAmount(entry.servings, entry.servingIndex, entry.unit, entry.quantity, entry.fraction, units)}</span>

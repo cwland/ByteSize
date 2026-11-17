@@ -46,6 +46,7 @@ describe("food log", () => {
       name: "Crunchy bar",
       brand: "Acme",
       icon: food.icon,
+      imageUrl: null,
       servingIndex: 1,
       unit: "serving",
       quantity: 1,
@@ -100,6 +101,18 @@ describe("food log", () => {
     expect((await getDay()).entries).toEqual([]);
     expect((await t.api("DELETE", `/api/log/${entry.id}`)).status).toBe(404);
     expect((await t.api("PATCH", `/api/log/${entry.id}`, { fraction: 1 })).status).toBe(404);
+  });
+
+  it("an entry keeps the food's photo, so the log shows what search showed (copies keep it too)", async () => {
+    offKnows(t, { "0099999999999": offProduct("0099999999999", "Banana", 89, { categories_tags: ["en:plant-based-foods-and-beverages"], image_front_small_url: "https://images.example/banana.jpg" }) });
+    const food = (await t.api("GET", "/api/foods/barcode/0099999999999")).body.food;
+    expect(food.imageUrl).toBe("https://images.example/banana.jpg");
+    const entry = (await log(food)).body.entry;
+    expect(entry.imageUrl).toBe("https://images.example/banana.jpg");
+    expect(entry.icon).toBe("🍌");
+    const copied = await t.api("POST", "/api/log/move", { ids: [entry.id], day: "2026-11-18", meal: "lunch", copy: true });
+    expect(copied.body.entries[0].imageUrl).toBe("https://images.example/banana.jpg");
+    expect((await getDay()).entries[0].imageUrl).toBe("https://images.example/banana.jpg");
   });
 
   it("move and copy entries to another day and meal", async () => {
@@ -189,6 +202,7 @@ describe("food log", () => {
       name: "Water",
       brand: null,
       icon: "💧",
+      imageUrl: null,
       servingIndex: 0,
       unit: "ml",
       quantity: 237,

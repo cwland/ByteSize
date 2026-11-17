@@ -64,6 +64,18 @@ describe("Log", () => {
     expect(within(screen.getByRole("region", { name: "Snacks" })).getByRole("button", { name: "Add Food" })).toBeInTheDocument();
   });
 
+  it("an entry with a photo shows the photo in the log row and the edit sheet, like search did", async () => {
+    const banana = entryJson({ name: "Banana", icon: "🍌", imageUrl: "https://images.example/banana.jpg" });
+    const user = userEvent.setup();
+    show({ "GET /api/day/:date": () => ({ ...bothInBreakfast, entries: [banana] }) });
+    const row = await screen.findByRole("button", { name: /Banana/ });
+    expect(row.querySelector("img")).toHaveAttribute("src", "https://images.example/banana.jpg");
+    expect(within(row).queryByText("🍌")).not.toBeInTheDocument();
+    await user.click(row);
+    const sheet = await screen.findByRole("dialog");
+    expect(sheet.querySelector("img")).toHaveAttribute("src", "https://images.example/banana.jpg");
+  });
+
   it("meal card rows show amount first and pills", async () => {
     show();
     const breakfast = await screen.findByRole("region", { name: "Breakfast" });
