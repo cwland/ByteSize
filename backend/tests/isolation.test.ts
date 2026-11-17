@@ -103,4 +103,30 @@ describe("per-user isolation", () => {
     // ...and anna's are untouched
     expect((await a.as("GET", "/api/my-foods")).body.foods.map((f: any) => f.name).sort()).toEqual(["Anna's bar", "Anna's secret smoothie"]);
   });
+  it("a user can't read, edit, delete, move or copy another user's entries, or log another user's custom food", async () => {
+    const { a, b } = await twoUsers(t);
+    const day = "2026-11-17";
+    const food = (await a.as("POST", "/api/my-foods", { name: "Anna's toast", servings: [{ label: "1 slice", grams: 30 }], nutrients: { calories: 80 } })).body.food;
+    const logBody = { day, meal: "breakfast", food: { kind: "user_food", id: food.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 };
+    const entry = (await a.as("POST", "/api/log", logBody)).body.entry;
+    const water = (await a.as("POST", "/api/log", { day, meal: "supplements", water_ml: 237 })).body.entry;
+
+    // ben can't log anna's food, and sees none of her day, recents or frequents
+    expect((await b.as("POST", "/api/log", logBody)).status).toBe(404);
+    const bensDay = (await b.as("GET", `/api/day/${day}`)).body;
+    expect(bensDay.entries).toEqual([]);
+    expect(bensDay.totals.calories).toBe(0);
+    expect(bensDay.streak).toBe(0);
+    expect((await b.as("GET", "/api/foods/recent")).body.foods).toEqual([]);
+    expect((await b.as("GET", "/api/foods/frequent")).body.foods).toEqual([]);
+    for (const id of [entry.id, water.id]) {
+      expect((await b.as("PATCH", `/api/log/${id}`, { servingIndex: 0, unit: "serving", quantity: 3, fraction: 1 })).status).toBe(404);
+      expect((await b.as("DELETE", `/api/log/${id}`)).status).toBe(404);
+      for (const copy of [false, true]) expect((await b.as("POST", "/api/log/move", { ids: [id], day: "2026-11-18", meal: "dinner", copy })).status).toBe(404);
+    }
+    expect((await b.as("GET", "/api/day/2026-11-18")).body.entries).toEqual([]);
+    // ...and anna's entries are untouched
+    expect((await a.as("GET", `/api/day/${day}`)).body.entries).toEqual([entry, water]);
+    expect((await a.as("GET", "/api/day/2026-11-18")).body.entries).toEqual([]);
+  });
 });
