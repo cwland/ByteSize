@@ -6,6 +6,7 @@ import { buildApp, type AppOptions } from "../src/app.js";
 import { resetLoginLockouts } from "../src/routes/auth.js";
 import { resetSessionTouches } from "../src/lib/sessions.js";
 import { resetPasskeyChallenges } from "../src/routes/passkeys.js";
+import type { AiFetch } from "../src/lib/ai.js";
 
 // Tests use their own database so they never touch real data.
 // Create it once with: createdb bytesize_test (docker-compose.dev.yml does this for you)
@@ -20,7 +21,42 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}) {
   await db.execute(sql`drop schema if exists drizzle cascade`);
   await db.execute(sql`create schema public`);
   await runMigrations(db);
-  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, ...opts });
+  // Fake AI: records calls; answer with ai.respond(url, body, headers) -> { status, json }, or a
+  // streamed reply: { status, sse: ["data: {...}", ...], gapMs?: pause between pieces, hang?: stop
+  // sending after the pieces without closing }. down = unreachable.
+  type Streamed = { status: number; sse: string[]; gapMs?: number; hang?: boolean };
+  const okReply = () => ({ status: 200, json: { choices: [{ message: { content: '{"ok": true}' } }] } });
+  const ai = {
+    calls: [] as { url: string; method: string; headers: Record<string, string>; body: any }[],
+    // (may return a promise, e.g. one that never settles to act like a server that hangs)
+    respond: okReply as (url: string, body: any, headers: Record<string, string>) => { status: number; json: unknown } | Streamed | Promise<{ status: number; json: unknown } | Streamed>,
+    down: false,
+  };
+  const aiFetch: AiFetch = async (url, init) => {
+    if (ai.down) throw new Error("ECONNREFUSED");
+    const body = init.body ? JSON.parse(init.body) : undefined;
+    ai.calls.push({ url, method: init.method, headers: init.headers, body });
+    const r = await ai.respond(url, body, init.headers);
+    if ("sse" in r) {
+      const enc = new TextEncoder();
+      const pieces = r.sse;
+      const stream = new ReadableStream<Uint8Array>({
+        async start(c) {
+          init.signal?.addEventListener("abort", () => c.error(new Error("aborted")));
+          for (const p of pieces) {
+            if (init.signal?.aborted) return;
+            if (r.gapMs) await new Promise((res) => setTimeout(res, r.gapMs));
+            if (init.signal?.aborted) return;
+            c.enqueue(enc.encode(p + "\n\n"));
+          }
+          if (!r.hang) c.close();
+        },
+      });
+      return { ok: r.status < 300, status: r.status, json: async () => ({}), body: stream };
+    }
+    return { ok: r.status < 300, status: r.status, json: async () => r.json };
+  };
+  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, ...opts });
   await app.ready();
   let token = "";
 
@@ -43,6 +79,9 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}) {
   // Empty every table (keeps the schema and the migration record)
   async function reset() {
     token = "";
+    ai.calls.length = 0;
+    ai.down = false;
+    ai.respond = okReply;
     const rows = await db.execute<{ tablename: string }>(sql`select tablename from pg_tables where schemaname = 'public'`);
     const names = rows.rows.map((r) => `"${r.tablename}"`);
     if (names.length) await db.execute(sql.raw(`truncate ${names.join(", ")} restart identity cascade`));
@@ -71,6 +110,7 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}) {
     app,
     db,
     api,
+    ai,
     reset,
     login,
     createUser,
