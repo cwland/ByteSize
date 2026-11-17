@@ -16,6 +16,7 @@ import { AiService, type AiFetch } from "./lib/ai.js";
 import { logEvent } from "./lib/appLog.js";
 import aiSettingsRoutes from "./routes/settings-ai.js";
 import logRoutes from "./routes/logs.js";
+import foodSourceRoutes from "./routes/food-sources.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -23,6 +24,7 @@ declare module "fastify" {
     jwtSecret: string;
     now: () => Date; // the clock (tests can set it)
     ai: AiService;
+    foodFetch: typeof fetch; // Open Food Facts / USDA (tests swap in a fake food web)
   }
   interface FastifyRequest {
     auth?: { userId: number; sessionId: number; isAdmin: boolean };
@@ -48,6 +50,7 @@ export interface AppOptions {
   rateLimit?: RateLimitOptions | false; // tests turn it off
   aiFetch?: AiFetch; // tests swap in a fake AI
   aiTimeScale?: number; // tests shrink AI waits
+  foodFetch?: typeof fetch; // tests swap in a fake food web
 }
 
 export function buildApp(opts: AppOptions): FastifyInstance {
@@ -56,6 +59,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.decorate("jwtSecret", opts.jwtSecret);
   app.decorate("now", opts.now ?? (() => new Date()));
   app.decorate("ai", new AiService(opts.db, opts.jwtSecret, opts.aiFetch, opts.aiTimeScale ?? 1));
+  app.decorate("foodFetch", opts.foodFetch ?? ((input: Parameters<typeof fetch>[0], init?: RequestInit) => fetch(input, init)));
 
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof ZodError) {
@@ -102,5 +106,6 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(passkeyRoutes);
   app.register(aiSettingsRoutes);
   app.register(logRoutes);
+  app.register(foodSourceRoutes);
   return app;
 }

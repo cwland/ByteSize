@@ -58,7 +58,40 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}, b
     }
     return { ok: r.status < 300, status: r.status, json: async () => r.json };
   };
-  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, ...opts });
+  // Fake food web (Open Food Facts, USDA): records calls; answer with foodWeb.respond(url, init) ->
+  // { status, json } (or a promise, e.g. one that never settles, for a hanging source). down = unreachable.
+  const notFoundReply = () => ({ status: 404, json: { status: 0, status_verbose: "not found" } });
+  const foodWeb = {
+    calls: [] as { url: string; method: string; headers: Record<string, string>; body: any }[],
+    respond: notFoundReply as (url: string, init: { method: string; headers: Record<string, string>; body: any }) => { status: number; json: unknown } | Promise<{ status: number; json: unknown }>,
+    down: false,
+  };
+  const foodFetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (foodWeb.down) throw new TypeError("fetch failed");
+    const headers = Object.fromEntries(new Headers(init?.headers).entries());
+    const raw = typeof init?.body === "string" ? init.body : undefined;
+    let body: any = raw;
+    try {
+      body = raw ? JSON.parse(raw) : undefined;
+    } catch {
+      // not JSON
+    }
+    const call = { url, method: init?.method ?? "GET", headers, body };
+    foodWeb.calls.push(call);
+    const reply = foodWeb.respond(url, call);
+    const r = await (init?.signal
+      ? Promise.race([
+          reply,
+          new Promise<never>((_, reject) => {
+            if (init.signal!.aborted) reject(new Error("aborted"));
+            init.signal!.addEventListener("abort", () => reject(new Error("aborted")));
+          }),
+        ])
+      : reply);
+    return new Response(JSON.stringify(r.json), { status: r.status, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, foodFetch, ...opts });
   if (beforeReady) await beforeReady(app);
   await app.ready();
   let token = "";
@@ -85,6 +118,9 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}, b
     ai.calls.length = 0;
     ai.down = false;
     ai.respond = okReply;
+    foodWeb.calls.length = 0;
+    foodWeb.down = false;
+    foodWeb.respond = notFoundReply;
     const rows = await db.execute<{ tablename: string }>(sql`select tablename from pg_tables where schemaname = 'public'`);
     const names = rows.rows.map((r) => `"${r.tablename}"`);
     if (names.length) await db.execute(sql.raw(`truncate ${names.join(", ")} restart identity cascade`));
@@ -114,6 +150,7 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}, b
     db,
     api,
     ai,
+    foodWeb,
     reset,
     login,
     createUser,
