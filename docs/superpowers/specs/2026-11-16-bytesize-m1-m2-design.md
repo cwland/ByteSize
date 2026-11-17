@@ -583,3 +583,12 @@ adapter if Spoonacular disappoints; (3) bundled MenuStat — no key, but data ye
 with grams when the API gives a serving weight); favourites are a per-user table; Culury recipes are not copied
 into My Foods (always read live, snapshotted when logged); the builder reads Spoonacular's endpoint docs before
 coding and records the exact endpoints and point costs used.
+
+**§14 update (Cory, same day): build both restaurant sources.** FatSecret (Basic plan: free, 5,000 calls/day, US
+data, attribution required) is a second adapter. Order: Spoonacular first; FatSecret is used when Spoonacular has
+no key, is out of points (402), fails, or returns nothing for the search. Each result carries its source; the tab
+shows the credit for whichever sources are configured ("Restaurant data from spoonacular.com" / "Powered by
+FatSecret"). FatSecret results are not kept beyond the request except items the person logs or stars (its free
+plan lists no storage permission); Spoonacular search results may be kept 24 h. Settings › Food sources gets
+FatSecret credentials (client ID + secret, encrypted) with Test. The Restaurants tab appears when either source is
+configured. Builder's call: one person's favourites and recent chains work across both sources.
