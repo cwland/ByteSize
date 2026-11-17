@@ -79,24 +79,37 @@ export function normalizeUsda(food: any): SourceFood {
   };
 }
 
-async function search(fetchFn: FoodFetch, apiKey: string, query: string, dataType: string[], timeoutMs: number): Promise<any[]> {
+async function search(fetchFn: FoodFetch, apiKey: string, query: string, dataType: string[], timeoutMs: number, pageSize = 10): Promise<any[]> {
   const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(apiKey)}`;
   const init: RequestInit = {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ query, pageSize: 10, dataType }),
+    body: JSON.stringify({ query, pageSize, dataType }),
   };
   const { status, json } = await requestJson(fetchFn, "usda", url, init, timeoutMs);
   if (status < 200 || status >= 300) throw sourceStatusError("usda", status);
   return Array.isArray(json?.foods) ? json.foods : [];
 }
 
-export async function usdaSearch(fetchFn: FoodFetch, apiKey: string, q: string, timeoutMs: number): Promise<SourceFood[]> {
-  const foods = await search(fetchFn, apiKey, q, ["Foundation", "SR Legacy", "Branded"], timeoutMs);
-  return foods
+const usable = (foods: any[]) =>
+  foods
     .filter((f) => text(f?.description))
     .map(normalizeUsda)
     .filter((f) => f.nutrients.calories !== undefined);
+
+/**
+ * Text search: plain whole foods (Foundation / SR Legacy, marked basic) and Branded foods are asked
+ * for separately, at the same time, so branded hits never crowd out the basic ones. Basic come first;
+ * a food both calls return is kept once, as basic.
+ */
+export async function usdaSearch(fetchFn: FoodFetch, apiKey: string, q: string, timeoutMs: number): Promise<SourceFood[]> {
+  const [basicFoods, branded] = await Promise.all([
+    search(fetchFn, apiKey, q, ["Foundation", "SR Legacy"], timeoutMs, 5),
+    search(fetchFn, apiKey, q, ["Branded"], timeoutMs, 10),
+  ]);
+  const basic = usable(basicFoods).map((f) => ({ ...f, basic: true as const }));
+  const seen = new Set(basic.map((f) => f.sourceId));
+  return [...basic, ...usable(branded).filter((f) => !seen.has(f.sourceId))];
 }
 
 export async function usdaByBarcode(fetchFn: FoodFetch, apiKey: string, code: string, timeoutMs: number): Promise<SourceFood | null> {

@@ -34,6 +34,15 @@ export function usdaFood(fdcId: number, description: string, kcal: number, gtinU
   };
 }
 
+/**
+ * A USDA search answer holding only the hits of the data types that request asked for, like the
+ * real API (search asks for Foundation/SR Legacy and Branded in separate calls).
+ */
+export function usdaReply(call: { body: any }, foods: ReturnType<typeof usdaFood>[]) {
+  const want: string[] = call.body?.dataType ?? [];
+  return { status: 200, json: { foods: foods.filter((f) => want.includes(f.dataType)) } };
+}
+
 /** OFF knows these products by barcode (EAN-13); everything else is "not found". */
 export function offKnows(t: TestApp, products: Record<string, ReturnType<typeof offProduct>>) {
   t.foodWeb.respond = (url) => {

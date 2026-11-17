@@ -2,7 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import { readFileSync } from "node:fs";
 import { setupTestApp, type TestApp } from "./helpers.js";
-import { never, OFF_PRODUCT, OFF_SEARCH, offKnows, offProduct, USDA, usdaFood } from "./foodFakes.js";
+import { never, OFF_PRODUCT, OFF_SEARCH, offKnows, offProduct, USDA, usdaFood, usdaReply } from "./foodFakes.js";
+import { cacheUpsert } from "../src/lib/foods.js";
 
 let t: TestApp;
 beforeAll(async () => (t = await setupTestApp()));
@@ -138,16 +139,16 @@ describe("search", () => {
   const custom = (name: string, extra: object = {}) =>
     t.api("POST", "/api/my-foods", { name, servings: [{ label: "1 bowl", grams: 250 }], nutrients: { calories: 300, protein_g: 20 }, ...extra });
 
-  it("search returns my foods first, then cache, OFF and USDA", async () => {
+  it("search returns my foods first, then basic foods, cache, OFF and USDA (branded)", async () => {
     await t.api("PUT", "/api/admin/food-sources", { usdaApiKey: "usda-key" });
     const mine = await custom("Greek yogurt bowl");
     // Something already in the cache (looked up by barcode earlier)
     offKnows(t, { "3000000000001": offProduct("3000000000001", "Greek yogurt plain", 60) });
     const cached = await barcode("3000000000001");
     t.foodWeb.calls.length = 0;
-    t.foodWeb.respond = (url) => {
+    t.foodWeb.respond = (url, call) => {
       if (url.startsWith(OFF_SEARCH)) return { status: 200, json: { hits: [offProduct("3000000000002", "Greek yogurt honey", 110), offProduct("3000000000003", "", 50)] } };
-      if (url.startsWith(USDA)) return { status: 200, json: { foods: [usdaFood(99, "Yogurt, Greek, plain, nonfat", 59)] } };
+      if (url.startsWith(USDA)) return usdaReply(call, [usdaFood(99, "Yogurt, Greek, plain, nonfat", 59), usdaFood(98, "Greek yogurt, vanilla", 90, "036632035676")]);
       return { status: 404, json: {} };
     };
     const r = await search("  greek yogurt ");
@@ -155,19 +156,24 @@ describe("search", () => {
     expect(r.body.errors).toEqual([]);
     expect(r.body.groups.map((g: any) => [g.source, g.label, g.foods.map((f: any) => f.name)])).toEqual([
       ["mine", "My foods", ["Greek yogurt bowl"]],
+      ["basic", "Basic foods", ["Yogurt, Greek, plain, nonfat"]],
       ["cache", "Saved foods", ["Greek yogurt plain"]],
       ["off", "Open Food Facts", ["Greek yogurt honey"]],
-      ["usda", "USDA", ["Yogurt, Greek, plain, nonfat"]],
+      ["usda", "USDA", ["Greek yogurt, vanilla"]],
     ]);
-    const [m, c, off, usda] = r.body.groups;
+    const [m, basic, c, off, usda] = r.body.groups;
     expect(m.foods[0]).toMatchObject({ kind: "user_food", id: mine.body.food.id, source: "mine" });
+    expect(basic.foods[0]).toMatchObject({ kind: "cache", source: "usda", id: expect.any(Number), icon: "🥛" });
     expect(c.foods[0]).toMatchObject({ kind: "cache", id: cached.body.food.id, source: "off" });
     expect(off.foods[0]).toMatchObject({ kind: "cache", source: "off", id: expect.any(Number) });
     expect(usda.foods[0]).toMatchObject({ kind: "cache", source: "usda", id: expect.any(Number), icon: "🥛" });
     expect(t.foodWeb.calls.find((c) => c.url.startsWith(OFF_SEARCH))!.url).toContain("q=greek%20yogurt");
-    expect(t.foodWeb.calls.find((c) => c.url.startsWith(USDA))!.body).toMatchObject({ query: "greek yogurt" });
+    expect(t.foodWeb.calls.filter((c) => c.url.startsWith(USDA)).map((c) => [c.body.query, c.body.dataType])).toEqual([
+      ["greek yogurt", ["Foundation", "SR Legacy"]],
+      ["greek yogurt", ["Branded"]],
+    ]);
     // What the sources found is now saved, so it can be logged by id
-    expect((await t.db.execute(sql`select count(*)::int as n from food_cache`)).rows[0]).toEqual({ n: 3 });
+    expect((await t.db.execute(sql`select count(*)::int as n from food_cache`)).rows[0]).toEqual({ n: 4 });
     // Searching again shows them once, under Saved foods
     const again = await search("greek yogurt");
     const names = again.body.groups.flatMap((g: any) => g.foods.map((f: any) => f.name));
@@ -211,6 +217,101 @@ describe("search", () => {
     }
     expect((await t.api("GET", "/api/foods/search")).status).toBe(400);
     expect(t.foodWeb.calls).toEqual([]);
+  });
+});
+
+describe("search forgives typos, puts basic foods first and suggests a spelling", () => {
+  // A food already saved in the cache (as an earlier search or scan would have left it)
+  const saved = (name: string, sourceId: string, source: "off" | "usda" = "usda") =>
+    cacheUpsert(t.db, { source, sourceId, barcode: null, name, brand: null, category: null, servings: [{ label: "100 g", grams: 100 }], nutrients: { calories: 89 }, imageUrl: null, raw: null });
+  const custom = (name: string) => t.api("POST", "/api/my-foods", { name, servings: [{ label: "1 bowl", grams: 250 }], nutrients: { calories: 300 } });
+  const quietWeb = () => (t.foodWeb.respond = (url) => (url.startsWith(OFF_SEARCH) ? { status: 200, json: { hits: [] } } : { status: 200, json: { foods: [] } }));
+  const shape = (body: any) => body.groups.map((g: any) => [g.source, g.foods.map((f: any) => f.name)]);
+
+  it("a saved food is found with a typo, like my own foods", async () => {
+    quietWeb();
+    await saved("Bananas, raw", "1105314");
+    await saved("Raw cashews", "2");
+    const r = await search("bananna");
+    expect(r.status).toBe(200);
+    expect(shape(r.body)).toEqual([["cache", ["Bananas, raw"]]]);
+  });
+
+  it("USDA Foundation / SR Legacy hits come as Basic foods, before Saved foods and Open Food Facts", async () => {
+    await t.api("PUT", "/api/admin/food-sources", { usdaApiKey: "usda-key" });
+    await saved("Banana smoothie", "3000000000009", "off");
+    t.foodWeb.respond = (url, call) => {
+      if (url.startsWith(OFF_SEARCH)) return { status: 200, json: { hits: [offProduct("3000000000002", "Banana bread", 300)] } };
+      if (url.startsWith(USDA)) return usdaReply(call, [usdaFood(1105314, "Bananas, raw", 89), usdaFood(7, "Banana chips", 520, "036632035676")]);
+      return { status: 404, json: {} };
+    };
+    const r = await search("banana");
+    expect(r.body.groups.map((g: any) => [g.source, g.label])).toEqual([
+      ["basic", "Basic foods"],
+      ["cache", "Saved foods"],
+      ["off", "Open Food Facts"],
+      ["usda", "USDA"],
+    ]);
+    expect(shape(r.body)).toEqual([
+      ["basic", ["Bananas, raw"]],
+      ["cache", ["Banana smoothie"]],
+      ["off", ["Banana bread"]],
+      ["usda", ["Banana chips"]],
+    ]);
+    expect(r.body.groups[0].foods[0]).toMatchObject({ kind: "cache", source: "usda" });
+    // Saved like any outside food: next time it's a saved food, still found (with a typo too)
+    quietWeb();
+    const later = await search("bananna");
+    expect(later.body.groups.map((g: any) => g.source)).toEqual(["cache"]);
+    expect(later.body.groups[0].foods.map((f: any) => f.name)).toContain("Bananas, raw");
+  });
+
+  it("inside each group, names starting with the search come first", async () => {
+    await t.api("PUT", "/api/admin/food-sources", { usdaApiKey: "usda-key" });
+    await custom("Apple banana mix");
+    await custom("Banana split");
+    t.foodWeb.respond = (url, call) => {
+      if (url.startsWith(OFF_SEARCH)) return { status: 200, json: { hits: [offProduct("3000000000002", "Dried banana slices", 300), offProduct("3000000000003", "Banana bread", 300)] } };
+      if (url.startsWith(USDA)) return usdaReply(call, [usdaFood(1, "Plantain or banana, cooked", 120), usdaFood(2, "Bananas, raw", 89), usdaFood(3, "Organic banana chips", 520, "036632035676"), usdaFood(4, "Banana chips", 520, "036632035677")]);
+      return { status: 404, json: {} };
+    };
+    expect(shape((await search("banana")).body)).toEqual([
+      ["mine", ["Banana split", "Apple banana mix"]],
+      ["basic", ["Bananas, raw", "Plantain or banana, cooked"]],
+      ["off", ["Banana bread", "Dried banana slices"]],
+      ["usda", ["Banana chips", "Organic banana chips"]],
+    ]);
+  });
+
+  it("few results and a close saved spelling: Did you mean (the closest word, as typed: one banana)", async () => {
+    quietWeb();
+    await saved("Bananas, raw", "1105314");
+    const r = await search("bananna");
+    expect(r.body.suggestion).toBe("banana");
+  });
+
+  it("my own foods' words count too", async () => {
+    quietWeb();
+    await custom("Blueberry muffin");
+    expect((await search("bluebery")).body.suggestion).toBe("blueberry");
+  });
+
+  it("no Did you mean when the spelling is right, nothing is close, there are 3+ foods, or there are several words", async () => {
+    quietWeb();
+    await saved("Bananas, raw", "1105314");
+    await saved("Pineapple, raw", "1105315");
+    expect((await search("banana")).body).not.toHaveProperty("suggestion");
+    expect((await search("bananas")).body).not.toHaveProperty("suggestion");
+    expect((await search("Bananas")).body).not.toHaveProperty("suggestion");
+    expect((await search("apple")).body).not.toHaveProperty("suggestion"); // spelled right, just inside "pineapple"
+    expect((await search("xylophone")).body).not.toHaveProperty("suggestion");
+    expect((await search("bananna split")).body).not.toHaveProperty("suggestion");
+    // 3 foods found: enough, no suggestion
+    t.foodWeb.respond = (url) =>
+      url.startsWith(OFF_SEARCH) ? { status: 200, json: { hits: [offProduct("3000000000002", "Bananna bread", 300), offProduct("3000000000003", "Bananna cake", 300)] } } : { status: 200, json: { foods: [] } };
+    const r = await search("bananna");
+    expect(r.body.groups.flatMap((g: any) => g.foods)).toHaveLength(3);
+    expect(r.body).not.toHaveProperty("suggestion");
   });
 });
 

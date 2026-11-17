@@ -30,14 +30,15 @@ export type FoodResult = {
   override: boolean;
   source: "off" | "usda" | "mine" | "ai";
 };
-export type GroupSource = "mine" | "cache" | "off" | "usda";
+export type GroupSource = "mine" | "basic" | "cache" | "off" | "usda";
 export type SearchGroup = { source: GroupSource; label: string; foods: FoodResult[] };
-export type SearchResult = { groups: SearchGroup[]; errors: { source: string; message: string }[] };
+/** suggestion: a close spelling from saved food names ("Did you mean …?"), only when little was found. */
+export type SearchResult = { groups: SearchGroup[]; errors: { source: string; message: string }[]; suggestion?: string };
 
 type CacheRow = typeof foodCache.$inferSelect;
 type UserFoodRow = typeof userFoods.$inferSelect;
 
-export const GROUP_LABELS: Record<GroupSource, string> = { mine: "My foods", cache: "Saved foods", off: "Open Food Facts", usda: "USDA" };
+export const GROUP_LABELS: Record<GroupSource, string> = { mine: "My foods", basic: "Basic foods", cache: "Saved foods", off: "Open Food Facts", usda: "USDA" };
 export const SOURCE_TIMEOUT_MS = 3000; // per outside source
 const CACHE_FRESH_MS = 30 * 24 * 60 * 60 * 1000;
 const NOT_A_BARCODE = "That doesn't look like a barcode";
@@ -200,6 +201,7 @@ const words = (q: string) => q.toLowerCase().split(/\s+/).filter(Boolean).slice(
 const allWords = (hay: SQL, q: string) => and(...words(q).map((w) => sql`${hay} ilike ${"%" + escapeLike(w) + "%"}`))!;
 const userHay = sql`lower(${userFoods.name} || ' ' || coalesce(${userFoods.brand}, ''))`;
 const cacheHay = sql`lower(${foodCache.name} || ' ' || coalesce(${foodCache.brand}, ''))`;
+const TYPO_MATCH = 0.45; // word_similarity at which a name counts as the search mistyped
 
 /** The person's active foods matching q: every word appears, or it's close (pg_trgm, forgives typos). */
 export async function findMyFoods(db: Db, userId: number, q: string | null, limit: number): Promise<UserFoodRow[]> {
@@ -210,7 +212,7 @@ export async function findMyFoods(db: Db, userId: number, q: string | null, limi
   return db
     .select()
     .from(userFoods)
-    .where(and(mine, sql`(${allWords(userHay, q)} or ${similarity} >= 0.45)`))
+    .where(and(mine, sql`(${allWords(userHay, q)} or ${similarity} >= ${TYPO_MATCH})`))
     .orderBy(desc(similarity), desc(userFoods.useCount), asc(userFoods.name))
     .limit(limit);
 }
@@ -239,20 +241,25 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
   const mine = await findMyFoods(db, userId, q, 10);
   // The person's own versions hide the cached ones they replace
   const notMine = sql`not exists (select 1 from ${userFoods} uf where uf.user_id = ${userId} and uf.archived = false and (uf.base_cache_id = ${foodCache.id} or uf.barcode = ${foodCache.barcode}))`;
+  // Every word appears, or it's close (pg_trgm, forgives typos), like the person's own foods
+  const similarity = sql`word_similarity(${q.toLowerCase()}, ${cacheHay})`;
   const cache = await db
     .select()
     .from(foodCache)
-    .where(and(allWords(cacheHay, q), notMine))
-    .orderBy(desc(sql`${foodCache.name} ilike ${escapeLike(q) + "%"}`), desc(foodCache.fetchedAt))
+    .where(and(sql`(${allWords(cacheHay, q)} or ${similarity} >= ${TYPO_MATCH})`, notMine))
+    .orderBy(desc(sql`${foodCache.name} ilike ${escapeLike(q) + "%"}`), desc(similarity), desc(foodCache.fetchedAt))
     .limit(10);
 
   const myBarcodes = new Set(mine.map((f) => f.barcode).filter(Boolean));
   const myBases = new Set(mine.map((f) => f.baseCacheId).filter(Boolean));
   const shown = new Set(cache.map((c) => c.id));
-  const groups: SearchGroup[] = [
-    { source: "mine", label: GROUP_LABELS.mine, foods: mine.map((f) => toResult(f, "user_food")) },
-    { source: "cache", label: GROUP_LABELS.cache, foods: cache.map((c) => toResult(c, "cache")) },
-  ];
+  const found: Record<GroupSource, FoodResult[]> = {
+    mine: mine.map((f) => toResult(f, "user_food")),
+    basic: [],
+    cache: cache.map((c) => toResult(c, "cache")),
+    off: [],
+    usda: [],
+  };
   const errors: SearchResult["errors"] = [];
 
   const settled = await Promise.allSettled(outside.map((o) => o.run));
@@ -270,9 +277,56 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
     }
     const fresh = rows.filter((r) => !shown.has(r.id) && !myBases.has(r.id) && !(r.barcode && myBarcodes.has(r.barcode)));
     fresh.forEach((r) => shown.add(r.id));
-    groups.push({ source: o.source, label: GROUP_LABELS[o.source], foods: fresh.map((r) => toResult(r, "cache")) });
+    // USDA's plain whole foods (Foundation / SR Legacy) get their own group; the rest are branded
+    const basicIds = new Set(s.value.filter((f) => f.basic).map((f) => f.sourceId));
+    for (const r of fresh) found[basicIds.has(r.sourceId) ? "basic" : o.source].push(toResult(r, "cache"));
   }
-  return { groups: groups.filter((g) => g.foods.length), errors };
+
+  const lq = q.toLowerCase();
+  const startsFirst = (foods: FoodResult[]) => [...foods].sort((a, b) => Number(b.name.toLowerCase().startsWith(lq)) - Number(a.name.toLowerCase().startsWith(lq)));
+  const groups = (["mine", "basic", "cache", "off", "usda"] as const)
+    .map((source): SearchGroup => ({ source, label: GROUP_LABELS[source], foods: startsFirst(found[source]) }))
+    .filter((g) => g.foods.length);
+  const total = groups.reduce((n, g) => n + g.foods.length, 0);
+  const suggestion = total < SUGGEST_BELOW ? await suggestSpelling(db, userId, q) : undefined;
+  return { groups, errors, ...(suggestion ? { suggestion } : {}) };
+}
+
+// ---------- did you mean ----------
+
+const SUGGEST_BELOW = 3; // "Did you mean" only when fewer foods than this were found
+const SUGGEST_MATCH = 0.5; // word_similarity a saved word needs to be offered
+
+/** One food word's singular form, roughly (berries → berry, tomatoes → tomato, bananas → banana). */
+const singular = (w: string) => (w.endsWith("ies") ? w.slice(0, -3) + "y" : w.endsWith("oes") ? w.slice(0, -2) : w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
+
+/**
+ * A close spelling of a one-word search, drawn from the words of saved food names (the shared cache
+ * and the person's own foods). Matches the search's number (a singular search gets a singular word),
+ * and is never the search itself, a plural/singular of it, or a longer word it is already part of
+ * ("apple" in "pineapple" is spelled right).
+ */
+export async function suggestSpelling(db: Db, userId: number, q: string): Promise<string | undefined> {
+  const lq = q.toLowerCase();
+  if (/\s/.test(lq) || lq.length < 3) return undefined;
+  const split = (col: SQL) => sql`regexp_split_to_table(lower(${col}), '[^[:alpha:]]+')`;
+  const { rows } = await db.execute<{ w: string }>(sql`
+    with words as (
+      select ${split(sql`${foodCache.name}`)} as w from ${foodCache}
+      union
+      select ${split(sql`${userFoods.name}`)} from ${userFoods} where ${userFoods.userId} = ${userId} and ${userFoods.archived} = false
+    )
+    select w from words
+    where length(w) >= 3 and w <> ${lq} and word_similarity(${lq}, w) >= ${SUGGEST_MATCH}
+    order by similarity(${lq}, w) desc, word_similarity(${lq}, w) desc, w
+    limit 10`);
+  const base = singular(lq);
+  for (const { w } of rows) {
+    const out = lq.endsWith("s") ? w : singular(w);
+    if (singular(out).includes(base)) continue; // the search itself, its plural/singular, or inside a longer word
+    return out;
+  }
+  return undefined;
 }
 
 // ---------- my foods ----------

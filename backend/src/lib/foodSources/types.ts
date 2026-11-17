@@ -12,6 +12,8 @@ export type SourceFood = {
   nutrients: Nutrients;
   imageUrl: string | null;
   raw: unknown;
+  /** A plain whole food (USDA Foundation / SR Legacy), shown under "Basic foods". */
+  basic?: true;
 };
 
 export type FoodFetch = typeof fetch;

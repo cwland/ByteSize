@@ -100,6 +100,9 @@ describe("per-user isolation", () => {
     expect(seen).not.toContain(`user_food:${override.id}`);
     expect(seen).not.toContain(`user_food:${custom.id}`);
     expect((await b.as("GET", "/api/foods/search?q=0012345678905")).body.groups).toMatchObject([{ source: "cache", foods: [{ id: cached.id }] }]);
+    // "Did you mean" draws on anna's own food names for anna only
+    expect((await a.as("GET", "/api/foods/search?q=smoothy")).body.suggestion).toBe("smoothie");
+    expect((await b.as("GET", "/api/foods/search?q=smoothy")).body).not.toHaveProperty("suggestion");
     // ...and anna's are untouched
     expect((await a.as("GET", "/api/my-foods")).body.foods.map((f: any) => f.name).sort()).toEqual(["Anna's bar", "Anna's secret smoothie"]);
   });
