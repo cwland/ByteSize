@@ -5,7 +5,7 @@ import LogPage from "./LogPage";
 import { SelectedDayProvider } from "../../selectedDay";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
-import { dayJson, entryJson, mealTotals, settingsMe } from "../../test/fixtures";
+import { culuryOff, dayJson, entryJson, mealTotals, settingsMe } from "../../test/fixtures";
 
 const toast = entryJson();
 const bar = entryJson({
@@ -34,7 +34,7 @@ const day = dayJson({
 const bothInBreakfast = { ...day, entries: [toast, { ...bar, meal: "breakfast" }] };
 
 function show(routes: Record<string, (b: any) => unknown> = {}) {
-  const server = fakeServer({ "GET /api/day/:date": () => bothInBreakfast, "GET /api/settings/me": () => settingsMe, ...routes });
+  const server = fakeServer({ ...culuryOff, "GET /api/day/:date": () => bothInBreakfast, "GET /api/settings/me": () => settingsMe, ...routes });
   renderWithSession(
     <SelectedDayProvider timeZone="America/Boise">
       <LogPage />

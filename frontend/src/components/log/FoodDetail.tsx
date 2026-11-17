@@ -30,9 +30,12 @@ export function defaultPortion(servings: Serving[], units: "imperial" | "metric"
   return { servingIndex: own ? 1 : 0, unit: "serving", quantity: 1, fraction: 1 };
 }
 
-// Where a food from search starts: a recipe or quick meal at 1 serving (not its "100 g"), anything else as above
-export const startingPortion = (food: { servings: Serving[]; foodKind?: string }, units: "imperial" | "metric" = "imperial"): Portion =>
-  food.foodKind === "recipe" || food.foodKind === "quick_meal" ? { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 } : defaultPortion(food.servings, units);
+// Where a food from search starts: a recipe, quick meal or restaurant item at 1 serving (a recipe's "100 g", a
+// restaurant drink's ml must not turn into 8 fl oz), anything else as above
+export const startingPortion = (food: { servings: Serving[]; foodKind?: string; source?: string }, units: "imperial" | "metric" = "imperial"): Portion =>
+  food.foodKind === "recipe" || food.foodKind === "quick_meal" || food.source === "spoonacular" || food.source === "fatsecret"
+    ? { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 }
+    : defaultPortion(food.servings, units);
 
 // Nutrients for an amount ({} = unknown when the amount can't be measured)
 export function nutrientsFor(food: { servings: Serving[]; nutrients: Nutrients }, p: Portion): Nutrients {

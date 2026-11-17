@@ -25,3 +25,30 @@ export async function setUsdaKey(app: FastifyInstance, key: string | null) {
     .values({ key: KEY, value })
     .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
 }
+
+// Restaurant sources: the Spoonacular key and FatSecret client id + secret, all encrypted like the USDA key.
+type KeyField = "usdaApiKey" | "spoonacularApiKey" | "fatsecretClientId" | "fatsecretClientSecret";
+export type SourceKeys = Partial<Record<KeyField, string | null>>;
+export type RestaurantKeys = { spoonacular: string | null; fatsecret: { clientId: string; clientSecret: string } | null };
+
+/** The restaurant credentials that are set (FatSecret only counts with both its id and secret). */
+export async function restaurantKeys(app: FastifyInstance): Promise<RestaurantKeys> {
+  const s = (await stored(app)) as Stored & SourceKeys;
+  const open = (enc: string | null | undefined) => (enc ? decryptSecret(enc, app.jwtSecret) : null);
+  const clientId = open(s.fatsecretClientId);
+  const clientSecret = open(s.fatsecretClientSecret);
+  return { spoonacular: open(s.spoonacularApiKey), fatsecret: clientId && clientSecret ? { clientId, clientSecret } : null };
+}
+
+/** Sets the keys given (null or blank removes one; a key left out is kept). */
+export async function setSourceKeys(app: FastifyInstance, keys: SourceKeys) {
+  const value: Record<string, unknown> = { ...(await stored(app)) };
+  for (const [field, key] of Object.entries(keys)) {
+    if (key === undefined) continue;
+    value[field] = key ? encryptSecret(key, app.jwtSecret) : null;
+  }
+  await app.db
+    .insert(appSettings)
+    .values({ key: KEY, value })
+    .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
+}

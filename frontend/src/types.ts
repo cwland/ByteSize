@@ -22,7 +22,7 @@ export type Serving = { label: string; grams?: number; ml?: number; approx?: tru
 // What a food is to its owner. Database (cache) foods read as "custom"; only recipes and quick meals get a tag.
 export type FoodKind = "custom" | "override" | "recipe" | "quick_meal";
 export type FoodResult = {
-  kind: "cache" | "user_food";
+  kind: "cache" | "user_food" | "culury"; // culury: a recipe read live from the person's Culury (id = its recipe id)
   id: number;
   name: string;
   brand: string | null;
@@ -33,7 +33,7 @@ export type FoodResult = {
   aiFields: string[];
   imageUrl: string | null;
   override: boolean;
-  source: "off" | "usda" | "mine" | "ai";
+  source: "off" | "usda" | "mine" | "ai" | "culury" | RestaurantSource;
   foodKind: FoodKind;
 };
 // POST /api/photos/analyze (multipart: images 1–2, mode). A barcode found in the photo is looked up
@@ -156,3 +156,14 @@ export type TrendKey = "calories" | "protein_g" | "fiber_g" | "water_ml";
 export type WeekTrend = { start: string; end: string; daysLogged: number; avg: Record<TrendKey, number | null>; status: Record<TrendKey, "below" | "in" | "above" | null>; weightChangeKg: number | null };
 export type Badge = { id: string; earnedOn: string | null; seen: boolean };
 export type Vacation = { id: number; from: string; to: string };
+// Culury link (§14 A): GET/PUT/DELETE /api/settings/culury (the key never comes back), GET /api/culury/plan
+// (selected day first; recipeId null = a note, not loggable), GET /api/culury/recipes/:id
+export type CuluryLink = { url: string | null; hasKey: boolean };
+export type CuluryPlan = { linked: boolean; days: { day: string; items: { slot: string; title: string; recipeId: number | null; servings: number | null; note: string | null }[] }[]; errors: SourceError[] };
+export type CuluryRecipe = { food: FoodResult; hasNutrition: boolean; outdated: boolean };
+// Restaurants (§14 B): lookupsLeft is Spoonacular points left today (null: not set up / not known yet)
+export type RestaurantSource = "spoonacular" | "fatsecret";
+export type RestaurantStatus = { sources: RestaurantSource[]; lookupsLeft: number | null };
+export type MenuHit = { source: RestaurantSource; sourceId: string; chain: string; name: string; calories: number | null; cacheId: number | null; imageUrl: string | null };
+export type MenuSearch = { items: MenuHit[]; lookupsLeft: number | null; errors: { source: RestaurantSource; message: string }[] };
+export type RestaurantFavourites = { chains: { chain: string; foods: FoodResult[] }[] };

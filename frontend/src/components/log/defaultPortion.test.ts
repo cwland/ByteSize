@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultPortion } from "./FoodDetail";
+import { defaultPortion, startingPortion } from "./FoodDetail";
 
 const milkBase = { label: "100 g", grams: 100, ml: 100, approx: true as const };
 
@@ -18,5 +18,18 @@ describe("defaultPortion", () => {
   });
   it("solid foods keep their own serving", () => {
     expect(defaultPortion([{ label: "100 g", grams: 100 }, { label: "1 bar", grams: 40 }], "imperial")).toEqual({ servingIndex: 1, unit: "serving", quantity: 1, fraction: 1 });
+  });
+});
+
+describe("startingPortion", () => {
+  const shake = [{ label: "1 shake", grams: 400, ml: 400 }];
+  it("a restaurant item starts at 1 × its whole item, even when its serving has ml (a drink)", () => {
+    for (const source of ["spoonacular", "fatsecret"]) {
+      expect(startingPortion({ servings: shake, source }, "imperial")).toEqual({ servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
+      expect(startingPortion({ servings: [{ label: "100 g", grams: 100, ml: 100, approx: true }, { label: "1 coffee", grams: 350 }], source }, "metric")).toEqual({ servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
+    }
+  });
+  it("other sources still start a drink at a cup's worth", () => {
+    expect(startingPortion({ servings: shake, source: "usda" }, "imperial")).toEqual({ servingIndex: 0, unit: "fl_oz", quantity: 8, fraction: 1 });
   });
 });

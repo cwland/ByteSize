@@ -64,6 +64,7 @@ export default function FoodRow({
   nutrients,
   onOpen,
   onQuickAdd,
+  busy = false,
 }: {
   name: string;
   icon: string;
@@ -74,12 +75,13 @@ export default function FoodRow({
   nutrients: Nutrients;
   onOpen: () => void;
   onQuickAdd: () => Promise<void>;
+  busy?: boolean; // being opened (a Culury recipe loading): disabled, "Opening…" for the amount
 }) {
   const quick = useQuickAdd(onQuickAdd);
   return (
     <li className="rounded-2xl bg-pressed">
       <div className="flex items-center gap-2 p-2">
-        <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left">
+        <button type="button" onClick={onOpen} disabled={busy} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left disabled:opacity-60">
           <FoodPic icon={icon} imageUrl={imageUrl} />
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-1.5">
@@ -87,8 +89,8 @@ export default function FoodRow({
               {tag && <Tag text={tag} />}
             </span>
             <span className="block truncate text-sm text-subtle">
-              <span>{amount}</span>
-              {brand && <span>{` · ${brand}`}</span>}
+              <span>{busy ? "Opening…" : amount}</span>
+              {brand && !busy && <span>{` · ${brand}`}</span>}
             </span>
             <span className="mt-1 block">
               <Pills n={nutrients} />

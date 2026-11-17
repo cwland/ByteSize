@@ -6,7 +6,8 @@ import { foodCache, logEntries, userFoods, userSettings, users } from "../db/sch
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
 import { addDays, DAY, localDay, mealFor, MEALS, streak, suggestedFor, todayFor, userTimezone, type Meal } from "../lib/days.js";
-import { loadFood, toResult, type FoodResult } from "../lib/foods.js";
+import { cleanNutrients, loadFood, toResult, type FoodResult } from "../lib/foods.js";
+import { loadCuluryRecipe } from "../lib/culury.js";
 import { itemList, portionFields, quickMealParts } from "../lib/recipes.js";
 import { amountFactor, scaleNutrients, sumNutrients, UnitError, type Nutrients, type Serving, type Unit } from "../lib/nutrients.js";
 import { DEFAULT_MEAL_WINDOWS } from "./settings-me.js";
@@ -50,12 +51,15 @@ const idParam = z.object({ id: z.coerce.number().int().positive().max(2147483647
 const foodBody = z.object({
   day: DAY.optional(),
   meal: z.enum(MEALS).optional(),
-  food: z.object({ kind: z.enum(["cache", "user_food"]), id }),
+  food: z.object({ kind: z.enum(["cache", "user_food", "culury"]), id }),
   servingIndex: portionFields.servingIndex.default(0),
   unit: portionFields.unit,
   quantity: portionFields.quantity,
   fraction: portionFields.fraction.default(1),
+  // Only for a Culury recipe without nutrition: an AI estimate per serving (logged as AI-estimated)
+  nutrients: z.record(z.string(), z.number().nonnegative().max(1000000)).optional(),
 });
+const ESTIMATE_ONLY = "An estimate can only be sent for a Culury recipe without nutrition";
 const mealLogBody = z.object({ day: DAY.optional(), meal: z.enum(MEALS).optional(), foodId: id, items: itemList.optional() });
 const waterBody = z.object({
   day: DAY.optional(),
@@ -176,6 +180,8 @@ async function resolveFoods(db: Db, userId: number, picks: { ref: string | null;
     ...cache.map((r) => [`cache:${r.id}`, overrideOf.get(r.id) ?? toResult(r, "cache")] as const),
     ...mine.map((r) => [`user_food:${r.id}`, toResult(r, "user_food")] as const),
     ...mine.filter((r) => r.kind === "quick_meal").map((r) => [`quick:${r.id}`, toResult(r, "user_food")] as const),
+    // Culury recipes are never copied: they come back as last logged (the entry's snapshot)
+    ...picks.filter((p) => p.ref!.startsWith("culury:")).map((p) => [p.ref!, culurySnapshot(p.entry)] as const),
   ]);
   // In the order given (newest or most used first); a food reached twice (itself and via its database
   // original) appears once, at its first place
@@ -187,6 +193,43 @@ async function resolveFoods(db: Db, userId: number, picks: { ref: string | null;
     const last = ref!.startsWith("quick:") ? ONE_MEAL : { servingIndex: entry.servingIndex, unit: entry.unit as Unit, quantity: entry.quantity, fraction: entry.fraction };
     return [{ ...food, last }];
   });
+}
+
+/** A logged Culury recipe as a food, from the entry's own snapshot. */
+function culurySnapshot(r: Row): FoodResult {
+  const nutrients = r.perServing as Nutrients;
+  return {
+    kind: "culury",
+    id: Number(r.sourceRef!.slice("culury:".length)),
+    name: r.name,
+    brand: r.brand,
+    icon: r.icon,
+    barcode: null,
+    servings: r.servings as Serving[],
+    nutrients,
+    aiFields: r.aiEstimated ? Object.keys(nutrients) : [],
+    imageUrl: null,
+    override: false,
+    source: "culury",
+    foodKind: "recipe",
+  };
+}
+
+/**
+ * This person's newest snapshot of a Culury recipe, as the food to log when Culury can't be asked. A recipe
+ * Culury says it doesn't have (404) isn't revived; never logged: Culury's own error stands.
+ */
+async function lastCuluryLogged(db: Db, userId: number, recipeId: number, err: unknown) {
+  if (err instanceof HttpError && err.statusCode === 404) throw err;
+  const [last] = await db
+    .select()
+    .from(logEntries)
+    .where(and(eq(logEntries.userId, userId), eq(logEntries.sourceRef, `culury:${recipeId}`)))
+    .orderBy(desc(logEntries.id))
+    .limit(1);
+  if (!last) throw err;
+  const food = culurySnapshot(last);
+  return { food, hasNutrition: Object.keys(food.nutrients).length > 0 }; // an AI-estimated snapshot stays flagged
 }
 
 /** The meal for this time of day, by the person's meal windows. */
@@ -262,7 +305,21 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     }
 
     const b = foodBody.parse(raw);
-    const food = await loadFood(db, userId, b.food);
+    let food: FoodResult;
+    if (b.food.kind === "culury") {
+      // Read live from the caller's own Culury, then snapshotted like any food; when Culury can't be asked
+      // (down, or the link removed), the caller's own last snapshot of it is used
+      const recipe = await loadCuluryRecipe(app, userId, b.food.id).catch((err) => lastCuluryLogged(db, userId, b.food.id, err));
+      food = recipe.food;
+      if (b.nutrients) {
+        if (recipe.hasNutrition) throw badRequest(ESTIMATE_ONLY);
+        const estimate = cleanNutrients(b.nutrients);
+        food = { ...food, nutrients: estimate, aiFields: Object.keys(estimate) };
+      }
+    } else {
+      if (b.nutrients) throw badRequest(ESTIMATE_ONLY);
+      food = await loadFood(db, userId, { kind: b.food.kind, id: b.food.id });
+    }
     // A quick meal is logged as one entry per item (POST /api/log/meal), never as one opaque entry
     if (food.foodKind === "quick_meal") throw badRequest(QUICK_MEAL_HERE);
     const nutrients = portionNutrients(food.nutrients, food.servings, b);

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import AddFoodSheet from "./AddFoodSheet";
 import { fakeServer, type Sent } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
-import { barFood, dayJson } from "../../test/fixtures";
+import { barFood, culuryOff, dayJson, restaurantRoutes } from "../../test/fixtures";
 
 // A label read by the photo AI: every nutrient AI-estimated, the stored photo's id and link
 const labelDraft = {
@@ -26,8 +26,10 @@ const jpeg = (name: string) => new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0]
 
 function open(routes: Record<string, (b: any, path: string) => unknown> = {}, photos = true) {
   const server = fakeServer({
+    ...culuryOff,
     "GET /api/day/:date": () => dayJson(),
     "GET /api/foods/recent": () => ({ foods: [] }),
+    ...restaurantRoutes,
     "GET /api/ai/status": () => ({ ready: photos, provider: photos ? "openai" : null, photos }),
     ...routes,
   });
