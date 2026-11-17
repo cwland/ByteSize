@@ -156,7 +156,9 @@ describe("per-user isolation", () => {
     const bens = (await b.as("POST", "/api/my-foods", food)).body.food;
     expect((await b.as("PATCH", `/api/my-foods/${bens.id}`, { photoId: id })).status).toBe(400);
     const annas = (await a.as("POST", "/api/my-foods", { ...food, photoId: id })).body.food;
-    expect(annas.imageUrl).toBe(`/api/photos/${id}`);
+    expect(annas.imageUrl).toMatch(new RegExp(`^/api/photos/${id}\\?sig=`));
+    // ben can't open it from the plain path or with a made-up signature
+    expect((await b.as("GET", `/api/photos/${id}?sig=AAAAAAAAAAAAAAAAAAAAAA`)).status).toBe(404);
     // Linked or not, still only anna's
     expect((await b.as("GET", `/api/photos/${id}`)).status).toBe(404);
     expect((await b.as("GET", "/api/my-foods")).body.foods.map((f: any) => f.imageUrl)).toEqual([null]);

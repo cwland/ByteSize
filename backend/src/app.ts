@@ -24,7 +24,7 @@ import foodRoutes from "./routes/foods.js";
 import myFoodRoutes from "./routes/my-foods.js";
 import foodLogRoutes from "./routes/log.js";
 import photoRoutes from "./routes/photos.js";
-import { scheduleUploadCleanup } from "./lib/photos.js";
+import { scheduleUploadCleanup, setPhotoSecret } from "./lib/photos.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -49,6 +49,7 @@ const PUBLIC_ROUTES = new Set([
   "POST /api/auth/logout",
   "POST /api/passkeys/login/options",
   "POST /api/passkeys/login/verify",
+  "GET /api/photos/:id", // the owner's login or the URL's signature (an <img> can't send the token)
 ]);
 
 export interface AppOptions {
@@ -70,6 +71,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.decorate("now", opts.now ?? (() => new Date()));
   app.decorate("ai", new AiService(opts.db, opts.jwtSecret, opts.aiFetch, opts.aiTimeScale ?? 1));
   app.decorate("foodFetch", opts.foodFetch ?? ((input: Parameters<typeof fetch>[0], init?: RequestInit) => fetch(input, init)));
+  setPhotoSecret(opts.jwtSecret);
   app.decorate("dataDir", path.resolve(opts.dataDir ?? process.env.DATA_DIR ?? "data/app"));
 
   app.setErrorHandler((err, req, reply) => {

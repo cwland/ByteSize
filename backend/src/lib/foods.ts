@@ -15,7 +15,7 @@ import { usdaKey } from "./foodSources/settings.js";
 import { SourceError, type SourceFood } from "./foodSources/types.js";
 import { usdaByBarcode, usdaSearch } from "./foodSources/usda.js";
 import { NUTRIENT_KEYS, withLiquidVolumes, type NutrientKey, type Nutrients, type Serving } from "./nutrients.js";
-import { linkPhoto, photoForFood, photoUrl } from "./photos.js";
+import { linkPhoto, photoForFood, photoUrl, signImageUrl } from "./photos.js";
 
 export type FoodResult = {
   kind: "cache" | "user_food";
@@ -69,14 +69,14 @@ export function toResult(row: CacheRow | UserFoodRow, kind: "cache" | "user_food
   const base = { kind, id: row.id, name: row.name, brand: row.brand, icon: iconFor(row.category, row.name), barcode: row.barcode, servings: withLiquidVolumes(row.servings as Serving[], row.category, row.name), nutrients };
   if (kind === "cache") {
     const c = row as CacheRow;
-    return { ...base, aiFields: [], imageUrl: c.imageUrl, override: false, source: c.source === "usda" ? "usda" : "off" };
+    return { ...base, aiFields: [], imageUrl: signImageUrl(c.imageUrl), override: false, source: c.source === "usda" ? "usda" : "off" };
   }
   const u = row as UserFoodRow;
   const aiFields = presentAiFields(u.aiFields, nutrients);
   const keys = Object.keys(nutrients);
   // Every value is an untouched AI guess → "ai"; anything the person typed or corrected → "mine"
   const allAi = keys.length > 0 && aiFields.length === keys.length;
-  return { ...base, aiFields, imageUrl: u.imagePath ? photoUrl(u.imagePath) : null, override: u.kind === "override", source: allAi ? "ai" : "mine" };
+  return { ...base, aiFields, imageUrl: u.imagePath ? signImageUrl(photoUrl(u.imagePath)) : null, override: u.kind === "override", source: allAi ? "ai" : "mine" };
 }
 
 // ---------- cache ----------

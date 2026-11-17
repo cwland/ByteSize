@@ -7,7 +7,7 @@ import { setupTestApp, type TestApp } from "./helpers.js";
 import { asUser } from "./isolation.js";
 import { aiAnswers, aiSettings, offKnows, offProduct } from "./foodFakes.js";
 import { barcodePhoto, junk, labelPhoto, plainPhoto, photoUpload } from "./photoFakes.js";
-import { appLog, uploads } from "../src/db/schema.js";
+import { appLog, logEntries, uploads, userFoods, users } from "../src/db/schema.js";
 import { cleanupUploads } from "../src/lib/photos.js";
 
 let t: TestApp;
@@ -36,6 +36,11 @@ async function analyze(images: Parameters<typeof photoUpload>[0], mode?: string,
   }
   return t.api("POST", "/api/photos/analyze", payload, headers);
 }
+
+/** A photo URL as the API hands it out: signed, so a plain <img> can load it. */
+const signed = (id: string) => expect.stringMatching(new RegExp(`^/api/photos/${id}\\?sig=[A-Za-z0-9_-]{22}$`));
+/** A GET with no login at all, the way an <img> asks. */
+const imgGet = (url: string) => t.app.inject({ method: "GET", url });
 
 /** How many pictures the last AI call carried. */
 const aiImages = () => (JSON.stringify(t.ai.calls[t.ai.calls.length - 1]?.body).match(/data:image\/jpeg;base64,/g) ?? []).length;
@@ -69,7 +74,7 @@ describe("photo analyze", () => {
       servings: [{ label: "2 crackers", grams: 30 }],
       nutrients: label.nutrients,
       aiFields: ["calories", "protein_g", "carbs_g", "fat_g", "sodium_mg"],
-      imageUrl: `/api/photos/${id}`,
+      imageUrl: signed(id),
       override: false,
       source: "ai",
       photoId: id,
@@ -151,6 +156,10 @@ describe("photo analyze", () => {
     const heic = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypheic"), Buffer.from([0, 0, 0, 0]), Buffer.from("mif1heic"), junk(4000)]);
     const iphone = await analyze([{ data: heic, type: "image/heic", filename: "IMG_0001.HEIC" }]);
     expect([iphone.status, iphone.body.error]).toEqual([400, "Use a JPEG or PNG photo"]);
+    const cut = await analyze([(await plainPhoto(400, 400)).subarray(0, 600)]); // a JPEG cut short
+    expect([cut.status, cut.body.error]).toEqual([400, "Use a JPEG or PNG photo"]);
+    const huge72mp = await analyze([await plainPhoto(9000, 8000)]); // 72 MP: over the pixel limit, though small in bytes
+    expect([huge72mp.status, huge72mp.body.error]).toEqual([413, "That photo is too large. Try a smaller one."]);
     const big = await analyze([junk(12 * 1024 * 1024 + 1)]);
     expect([big.status, big.body.error]).toEqual([413, "Each photo must be 12 MB or less"]);
     const huge = await analyze([junk(9 * 1024 * 1024), junk(9 * 1024 * 1024), junk(9 * 1024 * 1024)]); // 27 MB in all
@@ -162,6 +171,14 @@ describe("photo analyze", () => {
     expect([none.status, none.body.error]).toEqual([400, "Add a photo"]);
     const json = await t.api("POST", "/api/photos/analyze", { images: [] });
     expect(json.status).toBe(400);
+    // A broken upload (cut off before its end, or a boundary that doesn't match) is a 400, never a crash
+    const whole = photoUpload([img]);
+    const truncated = await t.api("POST", "/api/photos/analyze", whole.payload.subarray(0, whole.payload.length - 2000), whole.headers);
+    expect([truncated.status, truncated.body.error]).toEqual([400, "That upload couldn't be read"]);
+    const wrongBoundary = await t.api("POST", "/api/photos/analyze", whole.payload, { "content-type": "multipart/form-data; boundary=nope" });
+    expect([wrongBoundary.status, wrongBoundary.body.error]).toEqual([400, "That upload couldn't be read"]);
+    const noBoundary = await t.api("POST", "/api/photos/analyze", whole.payload, { "content-type": "multipart/form-data" });
+    expect([noBoundary.status, noBoundary.body.error]).toEqual([400, "That upload couldn't be read"]);
     // Nothing was kept from any refused upload
     expect(await t.db.select().from(uploads)).toEqual([]);
   });
@@ -195,16 +212,52 @@ describe("photo serving and linking", () => {
     expect((await t.api("GET", `/api/photos/not-a-uuid`)).status).toBe(404);
     expect((await t.api("GET", `/api/photos/..%2F..%2Fetc%2Fpasswd`)).status).toBe(404);
     t.setToken("");
-    expect((await t.api("GET", `/api/photos/${id}`)).status).toBe(401);
+    expect((await t.api("GET", `/api/photos/${id}`)).status).toBe(404); // no login and no signature
+  });
+
+  it("photo URLs are signed: a plain <img> GET with the signature works, anything else is 404", async () => {
+    const [id, other] = (await analyze([await labelPhoto(), await labelPhoto()])).body.photoIds;
+    const saved = (await t.api("POST", "/api/my-foods", { ...label, photoId: id })).body.food;
+    const otherFood = (await t.api("POST", "/api/my-foods", { ...label, name: "Rye crackers", photoId: other })).body.food;
+    expect(saved.imageUrl).toEqual(signed(id));
+    const ok = await imgGet(saved.imageUrl);
+    expect([ok.statusCode, ok.headers["content-type"]]).toEqual([200, "image/jpeg"]);
+    const sig = new URL(saved.imageUrl, "http://x").searchParams.get("sig")!;
+    const otherSig = new URL(otherFood.imageUrl, "http://x").searchParams.get("sig")!;
+    expect((await imgGet(`/api/photos/${id}`)).statusCode).toBe(404); // no signature
+    expect((await imgGet(`/api/photos/${id}?sig=`)).statusCode).toBe(404);
+    expect((await imgGet(`/api/photos/${id}?sig=${sig.slice(0, -1)}A`)).statusCode).toBe(404); // wrong
+    expect((await imgGet(`/api/photos/${id}?sig=${otherSig}`)).statusCode).toBe(404); // another photo's
+    expect((await imgGet(`/api/photos/${id}?sig=${sig}x`)).statusCode).toBe(404);
+    // Only the id is stored, never a signature
+    const [row] = await t.db.select().from(userFoods).where(eq(userFoods.id, saved.id));
+    expect(row.imagePath).not.toMatch(/sig/);
+
+    // Search and the day view hand out signed URLs; the logged entry stores the plain path
+    const s = await t.api("GET", "/api/foods/search?q=wheat crackers");
+    expect(s.body.groups[0].foods[0].imageUrl).toEqual(signed(id));
+    const logged = await t.api("POST", "/api/log", { day: "2026-11-17", meal: "lunch", food: { kind: "user_food", id: saved.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
+    expect(logged.body.entry.imageUrl).toEqual(signed(id));
+    const [entry] = await t.db.select().from(logEntries).where(eq(logEntries.id, logged.body.entry.id));
+    expect(entry.imageUrl).toBe(`/api/photos/${id}`);
+    const day = (await t.api("GET", "/api/day/2026-11-17")).body;
+    expect(day.entries[0].imageUrl).toEqual(signed(id));
+    expect((await imgGet(day.entries[0].imageUrl)).statusCode).toBe(200);
+    const recent = (await t.api("GET", "/api/foods/recent")).body;
+    expect(recent.foods.find((f: any) => f.id === saved.id)?.imageUrl).toEqual(signed(id));
+
+    // Outside photos (Open Food Facts) pass through as they are
+    offKnows(t, { [CODE]: offProduct(CODE, "Crunchy bar", 400, { image_front_small_url: "https://images.openfoodfacts.org/x.jpg" }) });
+    expect((await t.api("GET", `/api/foods/barcode/${CODE}`)).body.food.imageUrl).toBe("https://images.openfoodfacts.org/x.jpg");
   });
 
   it("saving a food with photoId links the photo; search and the food show it", async () => {
     const [id, id2] = (await analyze([await labelPhoto(), await labelPhoto()])).body.photoIds;
     const saved = await t.api("POST", "/api/my-foods", { ...label, photoId: id });
     expect(saved.status).toBe(200);
-    expect(saved.body.food.imageUrl).toBe(`/api/photos/${id}`);
+    expect(saved.body.food.imageUrl).toEqual(signed(id));
     const s = await t.api("GET", "/api/foods/search?q=wheat crackers");
-    expect(s.body.groups[0].foods[0]).toMatchObject({ id: saved.body.food.id, imageUrl: `/api/photos/${id}` });
+    expect(s.body.groups[0].foods[0]).toMatchObject({ id: saved.body.food.id, imageUrl: signed(id) });
     const [row] = await t.db.select().from(uploads).where(eq(uploads.id, id));
     expect(row.linkedAt).toBeInstanceOf(Date);
 
@@ -213,9 +266,9 @@ describe("photo serving and linking", () => {
     expect([other.status, other.body.error]).toEqual([400, "That photo isn't available"]);
     const same = await t.api("PATCH", `/api/my-foods/${saved.body.food.id}`, { name: "Wheat crackers (box)", photoId: id });
     expect(same.status).toBe(200);
-    expect(same.body.food.imageUrl).toBe(`/api/photos/${id}`);
+    expect(same.body.food.imageUrl).toEqual(signed(id));
     const swapped = await t.api("PATCH", `/api/my-foods/${saved.body.food.id}`, { photoId: id2 });
-    expect(swapped.body.food.imageUrl).toBe(`/api/photos/${id2}`);
+    expect(swapped.body.food.imageUrl).toEqual(signed(id2));
     // A food that was logged keeps its photo link, so the old photo stays available
     expect((await t.api("GET", `/api/photos/${id}`)).status).toBe(200);
 
@@ -259,6 +312,19 @@ describe("photo cleanup", () => {
     // Nothing to do: nothing deleted, nothing logged
     expect(await cleanupUploads(t.app)).toBe(0);
     expect(await t.db.select().from(appLog).where(eq(appLog.category, "schedule"))).toHaveLength(1);
+  });
+
+  it("a deleted person's photo files are removed with them", async () => {
+    const sam = await t.createUser("sam");
+    await analyze([await labelPhoto()], undefined, sam.token);
+    const mine = (await analyze([await labelPhoto()])).body.photoIds[0];
+    const me = (await t.api("GET", "/api/auth/me")).body.user;
+    const samDir = path.join(t.app.dataDir, "uploads", String(sam.id));
+    expect(readdirSync(samDir)).toHaveLength(1);
+    await t.db.delete(users).where(eq(users.id, sam.id)); // their rows go by cascade
+    await cleanupUploads(t.app);
+    expect(existsSync(samDir)).toBe(false);
+    expect(readdirSync(path.join(t.app.dataDir, "uploads", String(me.id)))).toEqual([`${mine}.jpg`]);
   });
 
   it("a missing file doesn't stop the cleanup", async () => {

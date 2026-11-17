@@ -6,7 +6,7 @@ import { AiError, LABEL_ASK, LABEL_SYSTEM } from "../lib/ai.js";
 import { logEvent } from "../lib/appLog.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { aiDraft, lookupBarcode, type AiDraft, type FoodResult, type SearchResult } from "../lib/foods.js";
-import { MAX_PHOTOS, MAX_PHOTO_BYTES, MAX_REQUEST_BYTES, decodeBarcode, normalisePhoto, photoUrl, readPhoto, storePhoto } from "../lib/photos.js";
+import { MAX_PHOTOS, MAX_PHOTO_BYTES, MAX_REQUEST_BYTES, decodeBarcode, normalisePhoto, photoUrl, readPhoto, signImageUrl, storePhoto } from "../lib/photos.js";
 
 export type PhotoDraft = AiDraft & { photoId: string };
 export type AnalyzeResult = {
@@ -20,6 +20,7 @@ export type AnalyzeResult = {
 
 const TOO_BIG = "Each photo must be 12 MB or less";
 const TOO_MANY = "Send at most 2 photos";
+const UNREADABLE = "That upload couldn't be read";
 const NO_LABEL = "The AI couldn't read a nutrition label in that photo. Try a clearer photo, or enter the food yourself.";
 const modeField = z.enum(["auto", "barcode", "label"]);
 
@@ -28,8 +29,10 @@ async function readUpload(req: FastifyRequest): Promise<{ images: Buffer[]; mode
   if (!req.isMultipart()) throw badRequest("Send the photos as a form upload");
   const images: Buffer[] = [];
   let mode = "auto";
+  let parts = 0;
   try {
     for await (const part of req.parts()) {
+      parts++;
       if (part.type === "file") {
         if (part.fieldname !== "images") {
           part.file.resume(); // not ours: skipped
@@ -45,8 +48,10 @@ async function readUpload(req: FastifyRequest): Promise<{ images: Buffer[]; mode
     if (code === "FST_REQ_FILE_TOO_LARGE") throw new HttpError(413, TOO_BIG);
     if (code === "FST_FILES_LIMIT") throw badRequest(TOO_MANY);
     if (code === "FST_PARTS_LIMIT" || code === "FST_FIELDS_LIMIT") throw badRequest("That upload has too many parts");
-    throw err;
+    // Anything else while reading the form (cut short, a boundary that doesn't match...) is the upload's fault
+    throw badRequest(UNREADABLE);
   }
+  if (!parts) throw badRequest(UNREADABLE); // nothing in it could be read (e.g. a boundary that doesn't match)
   if (!images.length) throw badRequest("Add a photo");
   return { images, mode: modeField.parse(mode) };
 }
@@ -114,15 +119,15 @@ export default async function photoRoutes(app: FastifyInstance) {
     return {
       photoIds,
       ...(barcode ? { barcode } : {}),
-      ...(draft ? { draft: { ...draft, barcode: barcode ?? null, imageUrl: photoUrl(photo.path), photoId: photo.id } } : {}),
+      ...(draft ? { draft: { ...draft, barcode: barcode ?? null, imageUrl: signImageUrl(photoUrl(photo.path)), photoId: photo.id } } : {}),
       errors,
       labelReading,
     };
   });
 
   app.get("/api/photos/:id", async (req, reply) => {
-    const userId = requireUser(req);
-    const jpeg = await readPhoto(app, userId, String((req.params as { id: string }).id));
+    // Public route: the owner's login, or the signature in the URL (an <img>)
+    const jpeg = await readPhoto(app, { userId: req.auth?.userId ?? null, sig: (req.query as { sig?: unknown }).sig }, String((req.params as { id: string }).id));
     if (!jpeg) throw new HttpError(404, "Photo not found");
     return reply.type("image/jpeg").header("cache-control", "private, max-age=31536000, immutable").send(jpeg);
   });

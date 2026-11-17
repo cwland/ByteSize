@@ -9,6 +9,7 @@ import { addDays, DAY, localDay, mealFor, MEALS, streak, suggestedFor, type Meal
 import { toResult, type FoodResult } from "../lib/foods.js";
 import { amountFactor, scaleNutrients, sumNutrients, UnitError, type Nutrients, type Serving, type Unit } from "../lib/nutrients.js";
 import { DEFAULT_MEAL_WINDOWS } from "./settings-me.js";
+import { signImageUrl, unsignImageUrl } from "../lib/photos.js";
 import { targetsOn } from "./body-plans.js";
 
 // The food log: entries keep a snapshot of the food (per-serving nutrients and servings), so editing
@@ -79,7 +80,7 @@ export function toEntry(r: Row): LogEntry {
     name: r.name,
     brand: r.brand,
     icon: r.icon,
-    imageUrl: r.imageUrl,
+    imageUrl: signImageUrl(r.imageUrl), // our photos signed on the way out (stored plain)
     servingIndex: r.servingIndex,
     unit: r.unit as Unit,
     quantity: r.quantity,
@@ -291,7 +292,7 @@ export default async function foodLogRoutes(app: FastifyInstance) {
           name: food.name,
           brand: food.brand,
           icon: food.icon,
-          imageUrl: food.imageUrl,
+          imageUrl: unsignImageUrl(food.imageUrl),
           source: food.kind,
           sourceRef: `${food.kind}:${food.id}`,
           servingIndex: b.servingIndex,

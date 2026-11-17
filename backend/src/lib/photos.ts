@@ -1,19 +1,19 @@
 // Photos (barcodes and nutrition labels): normalised with sharp, kept per person under
 // <data dir>/uploads/<user_id>/<id>.jpg, served only to their owner, linked from the food saved
 // with them. Photos never linked are deleted after 24 h (on start, then hourly).
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, unlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
-import { and, eq, isNull, lt } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt } from "drizzle-orm";
 import sharp from "sharp";
 import { prepareZXingModule, readBarcodes } from "zxing-wasm/reader";
-import { uploads } from "../db/schema.js";
+import { uploads, users } from "../db/schema.js";
 import { logEvent } from "./appLog.js";
 import { normalizeBarcode } from "./barcode.js";
-import { badRequest } from "./errors.js";
+import { HttpError, badRequest } from "./errors.js";
 
 export const MAX_PHOTO_BYTES = 12 * 1024 * 1024; // each image as sent
 export const MAX_PHOTOS = 2;
@@ -23,6 +23,7 @@ const MAX_INPUT_PIXELS = 60_000_000; // a 48 MP phone photo fits; a "decompressi
 const KEEP_UNLINKED_MS = 24 * 60 * 60 * 1000;
 const CLEANUP_EVERY_MS = 60 * 60 * 1000;
 export const NOT_A_PHOTO = "Use a JPEG or PNG photo";
+export const PHOTO_TOO_LARGE = "That photo is too large. Try a smaller one.";
 export const PHOTO_UNAVAILABLE = "That photo isn't available";
 // What sharp may read (HEIC isn't in sharp's prebuilt libvips: it fails to decode and gets NOT_A_PHOTO)
 const READABLE = new Set(["jpeg", "png", "webp", "gif", "tiff", "heif"]);
@@ -38,18 +39,62 @@ export function wasmBinary(kind: "reader" | "writer"): ArrayBuffer {
 
 let readerReady = false;
 
-/** The URL a food's photo is served at, from its stored path ("<user_id>/<id>.jpg"). */
+/** The URL a food's photo is stored as (unsigned), from its stored path ("<user_id>/<id>.jpg"). */
 export const photoUrl = (imagePath: string) => `/api/photos/${path.basename(imagePath, ".jpg")}`;
+
+// Signed photo URLs: an <img> can't send the login token, so each URL handed out carries
+// sig = HMAC-SHA256(photo id) under a key derived from the server's secret. Only the plain form is
+// stored (foods, log entries); it is signed on the way out.
+let signingKey: Buffer | null = null;
+const SIG_LENGTH = 22; // base64url characters (132 bits)
+const PHOTO_PATH = /^\/api\/photos\/([0-9a-f-]{36})(?:\?.*)?$/i;
+
+/** Set once from the server's secret (the one that signs login tokens). */
+export function setPhotoSecret(secret: string) {
+  signingKey = createHmac("sha256", secret).update("bytesize photo urls").digest();
+}
+
+export function photoSig(id: string): string {
+  if (!signingKey) throw new Error("Photo signing key isn't set");
+  return createHmac("sha256", signingKey).update(id.toLowerCase()).digest("base64url").slice(0, SIG_LENGTH);
+}
+
+/** Whether sig is this photo's signature (timing-safe). */
+export function validPhotoSig(id: string, sig: unknown): boolean {
+  if (typeof sig !== "string" || sig.length !== SIG_LENGTH || !UUID.test(id)) return false;
+  return timingSafeEqual(Buffer.from(sig), Buffer.from(photoSig(id)));
+}
+
+/** An image URL as handed out: our photos signed, anything else (Open Food Facts...) as it is. */
+export function signImageUrl(url: string | null): string | null {
+  const m = url ? PHOTO_PATH.exec(url) : null;
+  return m ? `/api/photos/${m[1]}?sig=${photoSig(m[1])}` : url;
+}
+
+/** An image URL as stored: our photos without a signature. */
+export function unsignImageUrl(url: string | null): string | null {
+  const m = url ? PHOTO_PATH.exec(url) : null;
+  return m ? `/api/photos/${m[1]}` : url;
+}
 
 /** Upright (EXIF rotation applied), at most 1600 px on its longest side, JPEG, metadata (GPS...) dropped. Not an image → 400. */
 export async function normalisePhoto(input: Buffer): Promise<Buffer> {
+  let meta: sharp.Metadata;
   try {
-    const img = sharp(input, { limitInputPixels: MAX_INPUT_PIXELS });
-    const { format } = await img.metadata();
-    if (!format || !READABLE.has(format)) throw new Error(`unsupported format ${format}`);
-    return await img.rotate().resize(MAX_SIDE, MAX_SIDE, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+    meta = await sharp(input, { limitInputPixels: false }).metadata(); // the header only
   } catch {
-    throw badRequest(NOT_A_PHOTO);
+    throw badRequest(NOT_A_PHOTO); // not an image sharp knows
+  }
+  if (!meta.format || !READABLE.has(meta.format)) throw badRequest(NOT_A_PHOTO);
+  if ((meta.width ?? 0) * (meta.height ?? 0) > MAX_INPUT_PIXELS) throw new HttpError(413, PHOTO_TOO_LARGE);
+  try {
+    return await sharp(input, { limitInputPixels: MAX_INPUT_PIXELS }).rotate().resize(MAX_SIDE, MAX_SIDE, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+  } catch (err) {
+    const message = (err as Error).message ?? "";
+    if (/pixel limit/i.test(message)) throw new HttpError(413, PHOTO_TOO_LARGE);
+    // The picture's data can't be decoded (cut short, corrupt, a codec sharp lacks such as HEIC)
+    if (/unsupported image format|corrupt|premature|truncated|invalid|bad seek|heif:|Vips\w*(Jpeg|Png|Gif|Webp|Tiff|Load)/i.test(message)) throw badRequest(NOT_A_PHOTO);
+    throw err;
   }
 }
 
@@ -97,10 +142,15 @@ export async function storePhoto(app: FastifyInstance, userId: number, jpeg: Buf
   return { id, path: rel };
 }
 
-/** A person's own photo as JPEG bytes; null for anyone else's, a made-up id or a missing file. */
-export async function readPhoto(app: FastifyInstance, userId: number, id: string): Promise<Buffer | null> {
+/**
+ * A photo as JPEG bytes, for its owner (userId) or for a request carrying the photo's signature
+ * (an <img>); null for anyone else, a made-up id or a missing file.
+ */
+export async function readPhoto(app: FastifyInstance, who: { userId: number | null; sig?: unknown }, id: string): Promise<Buffer | null> {
   if (!UUID.test(id)) return null;
-  const [row] = await app.db.select().from(uploads).where(and(eq(uploads.id, id), eq(uploads.userId, userId)));
+  const signed = validPhotoSig(id, who.sig);
+  if (!signed && who.userId === null) return null;
+  const [row] = await app.db.select().from(uploads).where(and(eq(uploads.id, id), signed ? undefined : eq(uploads.userId, who.userId!)));
   if (!row) return null;
   try {
     return await readFile(absolute(app, row.path));
@@ -142,8 +192,28 @@ export async function cleanupUploads(app: FastifyInstance): Promise<number> {
       }
     }
   }
+  await removeDeletedUsersFiles(app);
   if (deleted) await logEvent(app.db, { category: "schedule", level: "info", source: "Photo cleanup", event: `Deleted ${deleted} unused photo${deleted === 1 ? "" : "s"}`, detail: "Photos no food was saved with, after 24 hours" });
   return deleted;
+}
+
+/** A person's whole photo folder (when they are deleted). */
+export async function deleteUserPhotos(app: FastifyInstance, userId: number) {
+  await rm(path.join(app.dataDir, "uploads", String(userId)), { recursive: true, force: true });
+}
+
+/** Photo folders of people who no longer exist (their rows went by cascade): removed. */
+async function removeDeletedUsersFiles(app: FastifyInstance) {
+  let names: string[];
+  try {
+    names = (await readdir(path.join(app.dataDir, "uploads"), { withFileTypes: true })).filter((d) => d.isDirectory() && /^\d+$/.test(d.name)).map((d) => d.name);
+  } catch {
+    return; // no uploads yet
+  }
+  const ids = names.map(Number).filter((n) => n <= 2147483647);
+  if (!ids.length) return;
+  const alive = new Set((await app.db.select({ id: users.id }).from(users).where(inArray(users.id, ids))).map((u) => u.id));
+  for (const id of ids) if (!alive.has(id)) await deleteUserPhotos(app, id);
 }
 
 /** Runs the cleanup when the server starts, then every hour (never stops the server). */
