@@ -193,7 +193,10 @@ export default async function bodyPlanRoutes(app: FastifyInstance) {
     const day = await today(app, userId);
     // Exactly the targets on the plan's card
     const chosen = buildPlans(body, day).plans.find((p) => p.id === plan)!;
-    return { targets: await saveTargets(db, userId, day, chosen.targets, plan) };
+    const saved = await saveTargets(db, userId, day, chosen.targets, plan);
+    // The weight these targets were set with: a later weigh-in 10 lb away suggests a re-plan
+    await db.update(userBody).set({ targetsWeightKg: body.weightKg }).where(eq(userBody.userId, userId));
+    return { targets: saved };
   });
 
   app.get("/api/targets", async (req) => {

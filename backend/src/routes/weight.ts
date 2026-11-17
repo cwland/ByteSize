@@ -1,0 +1,111 @@
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { and, asc, desc, eq, gt } from "drizzle-orm";
+import type { Db } from "../db/index.js";
+import { userBody, users, weighIns } from "../db/schema.js";
+import { HttpError, badRequest } from "../lib/errors.js";
+import { requireUser } from "../lib/guards.js";
+import { DAY, localDay } from "../lib/days.js";
+import { projectionOf, replanHint, trendOf } from "../lib/weight.js";
+
+// Weigh-ins (one per day, in kg) and the weight trend toward the goal (design §13 A).
+// Who is asking comes only from the login.
+
+const NOT_FOUND = "Weigh-in not found";
+const FUTURE = "Choose today or an earlier day";
+const WEIGHT = "Enter a weight between 20 and 500 kg";
+
+const dayParam = z.object({ day: DAY });
+const weighInBody = z.object({
+  weightKg: z.number({ error: WEIGHT }).min(20, WEIGHT).max(500, WEIGHT),
+  note: z.string().trim().max(500, "Keep the note under 500 characters").nullish(),
+});
+const rangeQuery = z
+  .object({ from: DAY.optional(), to: DAY.optional() })
+  .refine((q) => !q.from || !q.to || q.from <= q.to, "The start day must not be after the end day");
+
+async function todayFor(app: FastifyInstance, userId: number): Promise<string> {
+  const [u] = await app.db.select({ timezone: users.timezone }).from(users).where(eq(users.id, userId));
+  if (!u) throw new HttpError(401, "Not logged in");
+  return localDay(u.timezone, app.now());
+}
+
+async function latestWeighIn(db: Db, userId: number) {
+  const [row] = await db.select().from(weighIns).where(eq(weighIns.userId, userId)).orderBy(desc(weighIns.day)).limit(1);
+  return row ?? null;
+}
+
+/** The body weight (the plan's weight) follows the latest weigh-in; no body profile yet: nothing to update. */
+async function syncBodyWeight(app: FastifyInstance, userId: number) {
+  const latest = await latestWeighIn(app.db, userId);
+  if (!latest) return;
+  await app.db.update(userBody).set({ weightKg: latest.weightKg, updatedAt: app.now() }).where(eq(userBody.userId, userId));
+}
+
+const isLatest = async (db: Db, userId: number, day: string) =>
+  !(await db.select({ id: weighIns.id }).from(weighIns).where(and(eq(weighIns.userId, userId), gt(weighIns.day, day))).limit(1)).length;
+
+export default async function weightRoutes(app: FastifyInstance) {
+  const { db } = app;
+
+  // One per day: a second weigh-in that day replaces it (note included)
+  app.put("/api/weigh-ins/:day", async (req) => {
+    const userId = requireUser(req);
+    const { day } = dayParam.parse(req.params);
+    const { weightKg, note } = weighInBody.parse(req.body ?? {});
+    if (day > (await todayFor(app, userId))) throw badRequest(FUTURE);
+    const values = { weightKg, note: note || null };
+    const [row] = await db
+      .insert(weighIns)
+      .values({ userId, day, ...values })
+      .onConflictDoUpdate({ target: [weighIns.userId, weighIns.day], set: values })
+      .returning();
+    // A backdated weigh-in leaves the body weight alone
+    if (await isLatest(db, userId, day)) await syncBodyWeight(app, userId);
+    return { weighIn: { day: row.day, weightKg: row.weightKg, note: row.note } };
+  });
+
+  app.delete("/api/weigh-ins/:day", async (req, reply) => {
+    const userId = requireUser(req);
+    const { day } = dayParam.parse(req.params);
+    const gone = await db
+      .delete(weighIns)
+      .where(and(eq(weighIns.userId, userId), eq(weighIns.day, day)))
+      .returning({ id: weighIns.id });
+    if (!gone.length) throw new HttpError(404, NOT_FOUND);
+    // Removing the latest: the body weight falls back to the one before
+    if (await isLatest(db, userId, day)) await syncBodyWeight(app, userId);
+    return reply.status(204).send();
+  });
+
+  // The trend is computed over every weigh-in, then the list is cut to from..to
+  app.get("/api/weight", async (req) => {
+    const userId = requireUser(req);
+    const { from, to } = rangeQuery.parse(req.query ?? {});
+    const rows = await db
+      .select({ day: weighIns.day, weightKg: weighIns.weightKg, note: weighIns.note })
+      .from(weighIns)
+      .where(eq(weighIns.userId, userId))
+      .orderBy(asc(weighIns.day));
+    const [body] = await db
+      .select({ goalKg: userBody.goalWeightKg, targetsWeightKg: userBody.targetsWeightKg })
+      .from(userBody)
+      .where(eq(userBody.userId, userId));
+    const all = trendOf(rows);
+    const first = all[0];
+    const last = all[all.length - 1];
+    const goalKg = body?.goalKg ?? null;
+    return {
+      weighIns: all
+        .filter((p) => (!from || p.day >= from) && (!to || p.day <= to))
+        .map((p) => ({ day: p.day, weightKg: p.weightKg, trendKg: p.trendKg, note: p.note })),
+      start: first ? { day: first.day, weightKg: first.weightKg } : null,
+      latest: last ? { day: last.day, weightKg: last.weightKg } : null,
+      trendKg: last ? last.trendKg : null,
+      goalKg,
+      lostKg: first && last ? first.weightKg - last.trendKg : null,
+      projection: projectionOf(all, goalKg, await todayFor(app, userId)),
+      replanHint: replanHint(last?.weightKg ?? null, body?.targetsWeightKg ?? null),
+    };
+  });
+}
