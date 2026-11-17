@@ -80,6 +80,11 @@ async function savePoints(app: FastifyInstance, left: number) {
   await app.db.insert(appSettings).values({ key: QUOTA_KEY, value }).onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
 }
 
+/** Forgets that Spoonacular was used up today (a new key gets tried straight away). */
+export async function clearPoints(app: FastifyInstance) {
+  await app.db.delete(appSettings).where(eq(appSettings.key, QUOTA_KEY));
+}
+
 /** "N lookups left today": whole points left, when Spoonacular is set up and has said today. */
 async function lookupsLeft(app: FastifyInstance, keys: RestaurantKeys): Promise<number | null> {
   if (!keys.spoonacular) return null;
@@ -208,7 +213,11 @@ export async function restaurantItem(app: FastifyInstance, userId: number, sourc
   const keys = await restaurantKeys(app);
   const find = () => app.db.select().from(foodCache).where(and(eq(foodCache.source, source), eq(foodCache.sourceId, sourceId)));
   const [have] = await find();
-  if (have) return { food: toResult(have, "cache"), lookupsLeft: await lookupsLeft(app, keys) };
+  if (have) {
+    // Opened again: kept another 24 h, so the hourly cleanup can't remove a FatSecret food being logged
+    if (source === "fatsecret") await app.db.update(foodCache).set({ fetchedAt: app.now() }).where(eq(foodCache.id, have.id));
+    return { food: toResult(have, "cache"), lookupsLeft: await lookupsLeft(app, keys) };
+  }
 
   const adapter = adapterFor(app, keys, source);
   if (!adapter) throw badRequest(NO_KEY_MESSAGE);

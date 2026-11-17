@@ -143,6 +143,22 @@ describe("Restaurants tab", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("a restaurant drink whose only serving has ml opens at 1 of that item (not 8 fl oz) and Track posts it", async () => {
+    const shake = { ...bowl, id: 902, name: "Vanilla Shake", servings: [{ label: "1 shake", grams: 400, ml: 400 }], nutrients: { calories: 520 } };
+    const { server } = open({
+      "POST /api/restaurants/item": () => ({ food: shake, lookupsLeft: 39 }),
+      "POST /api/log": (b) => ({ entry: { id: 3, ...b } }),
+    });
+    const user = userEvent.setup();
+    const sheet = await openRestaurants(user);
+    await search(user, "chicken bowl");
+    await user.click(await within(sheet).findByRole("button", { name: /^Chicken Burrito Bowl/ }));
+    expect(await screen.findByRole("heading", { name: "Track food" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Serving/ })).toHaveTextContent("1 shake");
+    await user.click(screen.getByRole("button", { name: "Track" }));
+    expect(server.sent.find((s) => s.path === "/api/log")?.body).toMatchObject({ servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
+  });
+
   it("an item that can't be fetched says why", async () => {
     open({ "POST /api/restaurants/item": () => ({ status: 503, json: { error: "Spoonacular isn't answering right now" } }) });
     const user = userEvent.setup();
@@ -245,6 +261,20 @@ describe("Restaurants tab", () => {
     expect(within(sheet).queryByText(/No menu items found/)).not.toBeInTheDocument();
     await user.click(within(sheet).getByRole("button", { name: "Describe it" }));
     expect(await screen.findByRole("textbox", { name: "Describe the food" })).toBeInTheDocument();
+  });
+
+  it("Back from Describe it, opened from the used-up banner, returns to Restaurants", async () => {
+    open({
+      "GET /api/restaurants/status": () => ({ sources: ["spoonacular"], lookupsLeft: 5 }),
+      "GET /api/restaurants/search": () => ({ items: [], lookupsLeft: 0, errors: [{ source: "spoonacular", message: USED_UP }] }),
+    });
+    const user = userEvent.setup();
+    const sheet = await openRestaurants(user);
+    await search(user, "chicken bowl");
+    await user.click(await within(sheet).findByRole("button", { name: "Describe it" }));
+    await user.click(await screen.findByRole("button", { name: "‹ Back" }));
+    expect(await screen.findByRole("searchbox", { name: "Search restaurants" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Describe the food" })).not.toBeInTheDocument();
   });
 
   it("a source that failed is mentioned under the results", async () => {

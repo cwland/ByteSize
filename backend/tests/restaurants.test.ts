@@ -176,6 +176,21 @@ describe("restaurant search", () => {
     expect(next.body.lookupsLeft).toBe(48);
   });
 
+  it("saving a different Spoonacular key clears the used-up state: the next search calls Spoonacular", async () => {
+    t.clock.date = new Date("2026-11-17T15:00:00Z");
+    await setRestaurantKeys(t, { spoonacular: "old-key" });
+    restaurantWeb(t, { spoonSearch: () => ({ status: 402, json: {} }) });
+    await search("chipotle");
+    await search("panda");
+    expect(spoonCalls(t)).toHaveLength(1); // blocked for the rest of the day
+    restaurantWeb(t, { spoonSearch: () => ({ status: 200, json: { menuItems: [bowl] }, headers: quota(40) }) });
+    await setRestaurantKeys(t, { spoonacular: "new-key" });
+    const r = await search("panda");
+    expect(spoonCalls(t)).toHaveLength(2);
+    expect(r.body.errors).toEqual([]);
+    expect(r.body.items).toHaveLength(1);
+  });
+
   it("out of points without FatSecret: the message and no items, never a 500", async () => {
     await setRestaurantKeys(t, { spoonacular: "spoon-key" });
     restaurantWeb(t, { spoonSearch: () => ({ status: 402, json: {} }) });
@@ -392,6 +407,19 @@ describe("restaurant cleanup", () => {
     const [row] = (await t.db.execute<{ id: number }>(sql`insert into food_cache (source, source_id, name, brand, servings, nutrients, fetched_at) values ('fatsecret', ${String(id)}, ${"Item " + id}, 'Chipotle', '[{"label":"1 item"}]', '{"calories":100}', ${fetchedAt.toISOString()}) returning id`)).rows;
     return row.id;
   }
+
+  it("reopening a cached FatSecret item keeps it for another 24 h, so cleanup can't remove it mid-log", async () => {
+    await setRestaurantKeys(t, { fatsecret: FS });
+    const now = new Date("2026-11-20T12:00:00Z");
+    const id = await fsRow(101, new Date(now.getTime() - day + 60_000)); // opened 23 h 59 m ago
+    t.clock.date = now;
+    const r = await t.api("POST", "/api/restaurants/item", { source: "fatsecret", sourceId: "101" });
+    expect(r.body.food.id).toBe(id);
+    t.clock.date = new Date(now.getTime() + 2 * 60_000);
+    await cleanupRestaurants(t.app);
+    expect(await count("food_cache")).toBe(1);
+    expect((await t.api("POST", "/api/restaurants/item", { source: "fatsecret", sourceId: "101" })).status).toBe(200);
+  });
 
   it("removes old FatSecret foods nobody starred, logged, used in a recipe or corrected; keeps the rest", async () => {
     const now = new Date("2026-11-20T12:00:00Z");

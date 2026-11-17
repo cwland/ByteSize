@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAdmin } from "../lib/guards.js";
 import { restaurantKeys, setSourceKeys, usdaKey } from "../lib/foodSources/settings.js";
-import { testRestaurantSource } from "../lib/restaurants/index.js";
+import { clearPoints, testRestaurantSource } from "../lib/restaurants/index.js";
 import { RESTAURANT_SOURCES } from "../lib/restaurants/types.js";
 
 const key = z.string().trim().max(200).nullable().optional();
@@ -23,7 +23,10 @@ export default async function foodSourceRoutes(app: FastifyInstance) {
   app.put("/api/admin/food-sources", async (req) => {
     requireAdmin(req);
     const body = z.object({ usdaApiKey: key, spoonacularApiKey: key, fatsecretClientId: key, fatsecretClientSecret: key }).parse(req.body ?? {});
+    const before = (await restaurantKeys(app)).spoonacular;
     await setSourceKeys(app, body);
+    // A new or changed Spoonacular key is tried at once, not after midnight UTC
+    if ((await restaurantKeys(app)).spoonacular !== before) await clearPoints(app);
     return summary();
   });
 

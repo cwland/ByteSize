@@ -9,7 +9,7 @@ import { addDays, dayLabel, todayIn } from "../../selectedDay";
 import { useSession } from "../../session";
 import type { CuluryLink, CuluryRecipe, Day, FoodResult, Item, LogEntry, Meal, Nutrients, PhotoDraft, PhotoMode, Portion, RecentFood, RestaurantStatus, SearchResult, SourceError } from "../../types";
 import FoodForm, { draftOf, emptyDraft, type FoodDraft, type FoodFormMode } from "./FoodForm";
-import FoodDetail, { defaultPortion, nutrientsFor, startingPortion } from "./FoodDetail";
+import FoodDetail, { nutrientsFor, startingPortion } from "./FoodDetail";
 import FoodRow, { QuickAddButton, tagOf, useQuickAdd } from "./FoodRow";
 import { TrackMeal } from "../myfoods/QuickMealEditor";
 import Pills from "./Pills";
@@ -24,7 +24,7 @@ import { field, primaryButton, secondaryButton } from "../ui/styles";
 type Found = ({ kind: "search" } & SearchResult) | { kind: "barcode"; code: string; food: FoodResult | null; errors?: SourceError[] };
 type View =
   | { k: "search" }
-  | { k: "describe" }
+  | { k: "describe"; from?: "restaurants" }
   | { k: "photo"; files: File[]; mode: PhotoMode }
   // photos: the photo(s) a label draft was read from, so a barcode photo can still be added
   // barcodeFill: the barcode a barcode photo added to that draft found, merged into the form as it stands
@@ -303,7 +303,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
   };
 
   const label = `Add food to ${MEAL_NAMES[meal]}`;
-  const back = () => setView((view.k === "detail" || view.k === "form") && view.from ? { k: view.from } : { k: "search" });
+  const back = () => setView((view.k === "detail" || view.k === "form" || view.k === "describe") && view.from ? { k: view.from } : { k: "search" });
 
   if (view.k === "detail") {
     return (
@@ -346,7 +346,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
   }
   if (view.k === "restaurants" && restaurants) {
     return (
-      <RestaurantsView label={label} onClose={onClose} onBack={back} status={restaurants} memo={restaurantsMemo.current} onDescribe={() => setView({ k: "describe" })} onPick={(food) => pick(food, undefined, "restaurants")} />
+      <RestaurantsView label={label} onClose={onClose} onBack={back} status={restaurants} memo={restaurantsMemo.current} onDescribe={() => setView({ k: "describe", from: "restaurants" })} onPick={(food) => pick(food, undefined, "restaurants")} />
     );
   }
   if (view.k === "meal") {
@@ -367,7 +367,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
     return (
       <Sheet tall label={label} heading={heading} onClose={onClose} onBack={back}>
         {view.photos && view.photos.length < MAX_PHOTOS && !view.draft.barcode && !view.barcodeFill && <AddBarcodePhoto onBarcode={(code) => setView({ ...view, barcodeFill: code })} />}
-        <FoodForm mode={view.mode} draft={view.draft} fillRef={view.fillRef} barcodeFill={view.barcodeFill} onSaved={(f) => pick(f, defaultPortion(f.servings, units), view.from)} />
+        <FoodForm mode={view.mode} draft={view.draft} fillRef={view.fillRef} barcodeFill={view.barcodeFill} onSaved={(f) => pick(f, startingPortion(f, units), view.from)} />
       </Sheet>
     );
   }
