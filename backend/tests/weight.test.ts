@@ -78,6 +78,31 @@ describe("projectionOf", () => {
     expect(p.date! > today).toBe(true);
   });
 
+  it("projects from where the trend is today when the last weigh-in was 10 days ago", () => {
+    // The line reaches 95 today; the last weigh-in (10 days ago) had it at 95 + 10 × 0.5/7
+    const pts = steady(95).slice(0, -10);
+    expect(pts[pts.length - 1].day).toBe(addDays(today, -10));
+    const p = projectionOf(pts, 90, today);
+    expect(p).toEqual({ status: "ok", date: addDays(today, 70), kgPerWeek: expect.closeTo(0.5, 9) });
+    // Already past the goal by today's estimate: tomorrow, still ok
+    expect(projectionOf(steady(89.7).slice(0, -10), 90, today)).toEqual({ status: "ok", date: addDays(today, 1), kgPerWeek: expect.closeTo(0.5, 9) });
+  });
+
+  it("a plateau after a loss is not_losing, not a goal date thousands of years away", () => {
+    const start = "2026-04-01";
+    const series = [{ day: start, weightKg: 100 }, ...Array.from({ length: 200 }, (_, i) => ({ day: addDays(start, i + 1), weightKg: 90 }))];
+    const last = series[series.length - 1].day;
+    const p = projectionOf(trendOf(series), 80, last);
+    expect(p.status).toBe("not_losing");
+    expect(p.date).toBeUndefined();
+  });
+
+  it("a goal more than 3 years away is not_losing", () => {
+    // 0.5 kg/week: 1095 days is 78.2 kg away
+    expect(projectionOf(steady(95), 95 - (1095 * 0.5) / 7 + 0.01, today).status).toBe("ok");
+    expect(projectionOf(steady(95), 95 - (1096 * 0.5) / 7, today)).toEqual({ status: "not_losing", kgPerWeek: expect.closeTo(0.5, 9) });
+  });
+
   it("is not_losing for a gain or a flat trend", () => {
     const gain = steady(95).map((p, i, all) => ({ ...p, trendKg: all[all.length - 1 - i].trendKg }));
     const g = projectionOf(gain, 90, today);
@@ -139,9 +164,10 @@ describe("weigh-ins", () => {
   });
 
   it("checks the weight and the day", async () => {
-    for (const w of [19.9, 500.1, "90"]) expect((await t.api("PUT", `/api/weigh-ins/${TODAY}`, { weightKg: w })).status).toBe(400);
-    expect((await weigh(TODAY, 20)).status).toBe(200);
-    expect((await weigh(TODAY, 500)).status).toBe(200);
+    for (const w of [29.9, 350.1, "90"]) expect((await t.api("PUT", `/api/weigh-ins/${TODAY}`, { weightKg: w })).status).toBe(400);
+    expect((await weigh(TODAY, 29.9)).body.details[0].message).toBe("Enter a weight between 30 and 350 kg");
+    expect((await weigh(TODAY, 30)).status).toBe(200);
+    expect((await weigh(TODAY, 350)).status).toBe(200);
     expect((await weigh("2026-02-30", 90)).status).toBe(400);
     expect((await t.api("PUT", `/api/weigh-ins/${TODAY}`, {})).status).toBe(400);
   });
@@ -155,6 +181,8 @@ describe("weigh-ins", () => {
 
   it("the latest weigh-in becomes the body weight; a backdated one doesn't", async () => {
     await t.api("PUT", "/api/body", BODY);
+    await t.api("DELETE", `/api/weigh-ins/${TODAY}`); // the body's own weigh-in; removing it leaves the body at 100
+    expect(await bodyWeight()).toBe(100);
     await weigh("2026-11-10", 98);
     expect(await bodyWeight()).toBe(98);
     await weigh("2026-11-03", 99); // backdated
@@ -168,6 +196,19 @@ describe("weigh-ins", () => {
     expect(await bodyWeight()).toBe(96.5);
     await t.api("DELETE", `/api/weigh-ins/${TODAY}`);
     expect(await bodyWeight()).toBe(98);
+  });
+
+  it("saving the body with a new weight weighs in today (local day); the same weight adds nothing", async () => {
+    await weigh("2026-11-01", 101);
+    await t.api("PUT", "/api/body", BODY); // first save: 100 kg
+    const list = async () => (await t.api("GET", "/api/weight")).body.weighIns.map((w: any) => [w.day, w.weightKg, w.note]);
+    expect(await list()).toEqual([["2026-11-01", 101, null], [TODAY, 100, null]]);
+    await weigh(TODAY, 99, "morning");
+    await t.api("PUT", "/api/body", { ...BODY, weightKg: 99, goalWeightKg: 75 }); // weight unchanged
+    expect(await list()).toEqual([["2026-11-01", 101, null], [TODAY, 99, "morning"]]);
+    await t.api("PUT", "/api/body", { ...BODY, weightKg: 98.5 }); // changed: replaces today's weight, keeps the note
+    expect(await list()).toEqual([["2026-11-01", 101, null], [TODAY, 98.5, "morning"]]);
+    expect(await bodyWeight()).toBe(98.5);
   });
 
   it("a weigh-in without a body profile is still saved", async () => {
@@ -231,6 +272,7 @@ describe("GET /api/weight", () => {
 
   it("a single weigh-in is not enough; a gain is not losing; at the goal is reached", async () => {
     await t.api("PUT", "/api/body", BODY);
+    await t.api("DELETE", `/api/weigh-ins/${TODAY}`); // the body's own weigh-in
     await weigh("2026-11-01", 90);
     expect((await t.api("GET", "/api/weight")).body.projection).toEqual({ status: "not_enough" });
     await weigh("2026-11-10", 92);
@@ -254,6 +296,24 @@ describe("GET /api/weight", () => {
     expect((await t.api("GET", "/api/weight")).body.replanHint).toBe(true);
     // Choosing a plan again records the new weight (the body follows the latest weigh-in)
     await t.api("POST", "/api/plans/select", { plan: "steady" });
+    expect((await t.api("GET", "/api/weight")).body.replanHint).toBe(false);
+  });
+
+  it("an account that chose its plan before targets_weight_kg existed measures from its first weigh-in", async () => {
+    await t.api("PUT", "/api/body", BODY); // weighs in 100 kg today... move that to an earlier day
+    await t.api("DELETE", `/api/weigh-ins/${TODAY}`);
+    await weigh("2026-10-01", 100); // the migration's starting weigh-in
+    await t.api("POST", "/api/plans/select", { plan: "steady" });
+    await t.db.update(userBody).set({ targetsWeightKg: null }).where(eq(userBody.userId, 1));
+    await weigh("2026-11-10", 95.47);
+    expect((await t.api("GET", "/api/weight")).body.replanHint).toBe(false);
+    await weigh(TODAY, 95.46);
+    expect((await t.api("GET", "/api/weight")).body.replanHint).toBe(true);
+  });
+
+  it("no plan chosen: no hint, however far the weight moves", async () => {
+    await weigh("2026-10-01", 100);
+    await weigh(TODAY, 90);
     expect((await t.api("GET", "/api/weight")).body.replanHint).toBe(false);
   });
 });

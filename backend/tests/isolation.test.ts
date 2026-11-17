@@ -210,13 +210,13 @@ describe("per-user isolation", () => {
     t.clock.date = new Date("2026-11-18T05:30:00Z"); // Nov 17 in Boise
     const body = { sex: "female", birthDate: "1980-03-04", heightCm: 165, weightKg: 90, goalWeightKg: 70, activity: "some", glp1: false };
     await a.as("PUT", "/api/body", body);
-    await b.as("PUT", "/api/body", { ...body, weightKg: 120 });
     await a.as("POST", "/api/plans/select", { plan: "steady" });
     expect((await a.as("PUT", "/api/weigh-ins/2026-11-10", { weightKg: 89, note: "anna's" })).status).toBe(200);
     expect((await a.as("PUT", "/api/weigh-ins/2026-11-17", { weightKg: 85 })).status).toBe(200);
 
     expect((await b.as("GET", "/api/weight")).body).toMatchObject({ weighIns: [], start: null, latest: null, trendKg: null, lostKg: null, replanHint: false });
     expect((await b.as("DELETE", "/api/weigh-ins/2026-11-17")).status).toBe(404);
+    await b.as("PUT", "/api/body", { ...body, weightKg: 120 }); // his own weigh-in today (120)
     // ben's weigh-in on the same day is his own and only moves his body weight
     expect((await b.as("PUT", "/api/weigh-ins/2026-11-17", { weightKg: 118 })).status).toBe(200);
     expect((await b.as("GET", "/api/body")).body.body.weightKg).toBe(118);

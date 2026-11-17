@@ -7,6 +7,7 @@ import { HttpError } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
 import { localDay } from "../lib/days.js";
 import { logEvent } from "../lib/appLog.js";
+import { saveWeighIn } from "./weight.js";
 import { ACTIVITIES, age, buildPlans, planExplanation, type Body, type PlanId, type PlanResult, type PlanTargets } from "../lib/plans.js";
 
 export type Targets = PlanTargets & { plan: PlanId | null; effectiveFrom: string };
@@ -166,13 +167,19 @@ export default async function bodyPlanRoutes(app: FastifyInstance) {
 
   app.put("/api/body", async (req) => {
     const userId = requireUser(req);
-    const body = bodySchema(await today(app, userId)).parse(req.body ?? {});
+    const day = await today(app, userId);
+    const body = bodySchema(day).parse(req.body ?? {});
     // Saving the details is the review: clears needsReview
     const row = { ...body, needsReview: false, updatedAt: app.now() };
-    await db
-      .insert(userBody)
-      .values({ userId, ...row })
-      .onConflictDoUpdate({ target: userBody.userId, set: row });
+    await db.transaction(async (tx) => {
+      const [before] = await tx.select({ weightKg: userBody.weightKg }).from(userBody).where(eq(userBody.userId, userId));
+      await tx
+        .insert(userBody)
+        .values({ userId, ...row })
+        .onConflictDoUpdate({ target: userBody.userId, set: row });
+      // A new (or first) weight is also today's weigh-in, so weight has one history
+      if (before?.weightKg !== body.weightKg) await saveWeighIn(tx, userId, day, body.weightKg, undefined, app.now());
+    });
     // As stored (height and weights are float4 columns), so PUT and GET agree
     return { body: await loadBody(db, userId) };
   });

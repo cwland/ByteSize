@@ -15,6 +15,8 @@ export type Projection = {
 const SMOOTHING = 0.9;
 export const PROJECTION_DAYS = 28;
 const MIN_SPAN_DAYS = 7;
+/** A goal date further out than 3 years is shown as "Not losing right now" */
+export const MAX_PROJECTION_DAYS = 1095;
 /** 10 lb: the latest weight this far from the plan's weight suggests a re-plan */
 export const REPLAN_KG = 4.54;
 
@@ -68,12 +70,19 @@ export function projectionOf(trendPoints: readonly TrendPoint[], goalKg: number 
   if (!(kgPerWeek > 0)) return { status: "not_losing", kgPerWeek };
   if (goalKg === null) return { status: "ok", kgPerWeek };
 
+  // From where the trend is today, not at the last weigh-in (already past the goal by now: tomorrow)
+  const trendToday = last.trendKg - lossPerDay * (dayNumber(today) - dayNumber(last.day));
   // Round to 1e-6 day so float noise can't push ceil() a day later
-  const days = Math.ceil(Math.round(((last.trendKg - goalKg) / lossPerDay) * 1e6) / 1e6);
-  return { status: "ok", date: addDays(today, Math.max(1, days)), kgPerWeek };
+  const days = Math.max(1, Math.ceil(Math.round(((trendToday - goalKg) / lossPerDay) * 1e6) / 1e6));
+  // A plateau's tiny slope would put the goal centuries away (and past what a date can hold)
+  if (days > MAX_PROJECTION_DAYS) return { status: "not_losing", kgPerWeek };
+  return { status: "ok", date: addDays(today, days), kgPerWeek };
 }
 
-/** Whether the latest weight is 10 lb (4.54 kg) or more from the weight the current targets were set with. */
+/**
+ * Whether the latest weight is 10 lb (4.54 kg) or more from the weight the current targets were set with
+ * (for plans chosen before that was recorded, the caller passes the first weigh-in's weight).
+ */
 export function replanHint(latestKg: number | null, targetsWeightKg: number | null): boolean {
   if (latestKg === null || targetsWeightKg === null) return false;
   return Math.abs(latestKg - targetsWeightKg) >= REPLAN_KG - 1e-9;
