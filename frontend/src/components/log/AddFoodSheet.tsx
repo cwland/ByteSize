@@ -256,7 +256,14 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
   const sameMeal = yesterday.filter((e) => e.meal === meal);
 
   return (
-    <Sheet tall label={label} heading={<MealTitle meal={meal} day={day} onPick={setMeal} />} onClose={onClose}>
+    <Sheet
+      tall
+      label={label}
+      heading={<MealTitle meal={meal} day={day} onPick={setMeal} />}
+      onClose={onClose}
+      bodyLabel="Foods"
+      top={
+        <>
       <div className="flex items-center gap-2">
         <input type="search" aria-label="Search foods" autoFocus placeholder="Search and track food" value={query} onChange={(e) => setQuery(e.target.value)} className={`${field} mt-0 flex-1 rounded-full`} />
         <button
@@ -290,6 +297,9 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
         </button>
       </div>
       <Notice msg={msg} />
+        </>
+      }
+    >
       {!found && (
         <>
           {sameMeal.length > 0 && <SameAsYesterday key={meal} entries={sameMeal} onAdd={() => copyYesterday(sameMeal)} />}

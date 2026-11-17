@@ -96,6 +96,20 @@ describe("Add food", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("only the food list scrolls: the meal, search box and buttons stay put", async () => {
+    open();
+    const user = userEvent.setup();
+    const sheet = await openSnacks(user);
+    await user.type(within(sheet).getByRole("searchbox", { name: "Search foods" }), "peanut");
+    const usda = await within(sheet).findByRole("heading", { name: "USDA" });
+    const list = within(sheet).getByRole("region", { name: "Foods" });
+    expect(list).toContainElement(usda);
+    expect(list).toHaveClass("overflow-y-auto");
+    expect(list).not.toContainElement(within(sheet).getByRole("searchbox", { name: "Search foods" }));
+    expect(list).not.toContainElement(within(sheet).getByRole("button", { name: /Create food/ }));
+    expect(sheet).not.toHaveClass("overflow-y-auto"); // the window itself doesn't scroll
+  });
+
   it("a refused portion shows the server's message in the sheet", async () => {
     open({ "POST /api/log": () => ({ status: 400, json: { error: "Can't measure this food in ml" } }) });
     const user = userEvent.setup();

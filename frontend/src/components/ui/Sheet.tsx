@@ -3,7 +3,9 @@ import { X } from "lucide-react";
 
 // A bottom sheet on phones, a centered panel on desktop. Escape or the backdrop closes it.
 // heading: a title (default: the label) or your own header content (e.g. a dropdown)
-export function Sheet({ label, heading = label, onClose, onBack, tall = false, children }: { label: string; heading?: ReactNode; onClose: () => void; onBack?: () => void; tall?: boolean; children: ReactNode }) {
+// top: content pinned under the header (e.g. a search box); then only the children scroll, in a region named bodyLabel
+export function Sheet({ label, heading = label, onClose, onBack, tall = false, top, bodyLabel = "Content", children }: { label: string; heading?: ReactNode; onClose: () => void; onBack?: () => void; tall?: boolean; top?: ReactNode; bodyLabel?: string; children: ReactNode }) {
+  const pinned = top !== undefined;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -16,7 +18,7 @@ export function Sheet({ label, heading = label, onClose, onBack, tall = false, c
         aria-modal="true"
         aria-label={label}
         onClick={(e) => e.stopPropagation()}
-        className={`pb-safe max-h-[92vh] ${tall ? "min-h-[92vh]" : ""} w-full max-w-[560px] overflow-y-auto rounded-t-3xl bg-container p-5 sm:rounded-3xl`}
+        className={`pb-safe max-h-[92vh] ${tall ? "min-h-[92vh]" : ""} ${pinned ? "flex flex-col overflow-hidden" : "overflow-y-auto"} w-full max-w-[560px] rounded-t-3xl bg-container p-5 sm:rounded-3xl`}
       >
         <div className="mb-4 flex items-center gap-2">
           {onBack && (
@@ -29,7 +31,16 @@ export function Sheet({ label, heading = label, onClose, onBack, tall = false, c
             <X className="size-5" />
           </button>
         </div>
-        {children}
+        {pinned ? (
+          <>
+            <div className="shrink-0">{top}</div>
+            <div role="region" aria-label={bodyLabel} className="-mx-5 min-h-0 flex-1 overflow-y-auto px-5">
+              {children}
+            </div>
+          </>
+        ) : (
+          children
+        )}
       </div>
     </div>
   );
