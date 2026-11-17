@@ -91,7 +91,9 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}, b
       : reply);
     return new Response(JSON.stringify(r.json), { status: r.status, headers: { "content-type": "application/json" } });
   }) as typeof fetch;
-  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, foodFetch, ...opts });
+  // The app's clock: set clock.date to fix "now" (reset() clears it back to the real time)
+  const clock = { date: null as Date | null };
+  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, foodFetch, now: () => clock.date ?? new Date(), ...opts });
   if (beforeReady) await beforeReady(app);
   await app.ready();
   let token = "";
@@ -115,6 +117,7 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}, b
   // Empty every table (keeps the schema and the migration record)
   async function reset() {
     token = "";
+    clock.date = null;
     ai.calls.length = 0;
     ai.down = false;
     ai.respond = okReply;
@@ -151,6 +154,7 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}, b
     api,
     ai,
     foodWeb,
+    clock,
     reset,
     login,
     createUser,
