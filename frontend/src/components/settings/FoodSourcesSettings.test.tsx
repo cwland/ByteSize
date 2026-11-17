@@ -54,6 +54,7 @@ describe("Food sources settings", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save Spoonacular key" }));
     expect(server.sent.find((r) => r.method === "PUT")?.body).toEqual({ spoonacularApiKey: "sp-secret" });
     expect(await screen.findByText(/Spoonacular key saved/)).toBeInTheDocument();
+    expect(screen.getByText("(uses 1 lookup)")).toBeInTheDocument();
     expect(screen.queryByDisplayValue("sp-secret")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Test Spoonacular" }));
     expect(server.sent.find((r) => r.path === "/api/admin/food-sources/test")?.body).toEqual({ source: "spoonacular" });

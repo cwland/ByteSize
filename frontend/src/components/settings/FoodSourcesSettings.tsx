@@ -28,6 +28,7 @@ function KeyBlock({
   saved,
   none,
   testable,
+  testNote,
   onSaved,
 }: {
   source: Source;
@@ -39,6 +40,7 @@ function KeyBlock({
   saved: string;
   none: string;
   testable?: boolean;
+  testNote?: string; // what a Test costs
   onSaved: (s: Summary) => void;
 }) {
   const [values, setValues] = useState<Record<string, string>>({});
@@ -109,6 +111,7 @@ function KeyBlock({
               Test
             </button>
           )}
+          {hasKey && testable && testNote && <span className="self-center text-sm text-subtle">{testNote}</span>}
           {hasKey && (
             <button type="button" aria-label={`Remove ${what}`} className={secondaryButton} disabled={busy} onClick={() => void save(true)}>
               Remove {noun}
@@ -157,6 +160,7 @@ export default function FoodSourcesSettings() {
         saved="A Spoonacular key is saved. The Restaurants tab tries it first."
         none="No Spoonacular key yet."
         testable
+        testNote="(uses 1 lookup)"
         onSaved={setKeys}
       />
       <KeyBlock

@@ -54,11 +54,10 @@ describe("Restaurants tab", () => {
     expect(server.sent.some((s) => s.path.startsWith("/api/restaurants/search"))).toBe(false);
   });
 
-  it("shows nothing about restaurants to someone who can't add a key", async () => {
+  it("tells someone who can't add a key to ask an admin", async () => {
     open({ "GET /api/restaurants/status": () => ({ sources: [], lookupsLeft: null }) }, false);
-    expect(await screen.findByRole("button", { name: "My Foods" })).toBeInTheDocument();
-    await act(async () => {});
-    expect(screen.queryByText(/restaurant data key/)).not.toBeInTheDocument();
+    expect(await screen.findByText(/Ask an admin to add a restaurant data key/)).toBeInTheDocument();
+    expect(screen.queryByText(/Settings › Food sources/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Restaurants" })).not.toBeInTheDocument();
   });
 
@@ -255,5 +254,142 @@ describe("Restaurants tab", () => {
     await search(user, "chicken bowl");
     expect(await within(sheet).findByText("Spoonacular isn't answering right now")).toBeInTheDocument();
     expect(within(sheet).getByRole("region", { name: "Chipotle" })).toBeInTheDocument();
+  });
+
+  it("keeps the search box and lookups line pinned outside the scrolling list", async () => {
+    open({ "GET /api/restaurants/favourites": () => ({ chains: [{ chain: "Panera Bread", foods: [panini] }] }) });
+    const user = userEvent.setup();
+    const sheet = await openRestaurants(user);
+    const list = within(sheet).getByRole("region", { name: "Restaurant results" });
+    expect(await within(list).findByRole("region", { name: "Favourites" })).toBeInTheDocument();
+    expect(within(list).queryByRole("searchbox", { name: "Search restaurants" })).not.toBeInTheDocument();
+    expect(within(list).queryByText(/lookups left/)).not.toBeInTheDocument();
+    expect(within(sheet).getByRole("searchbox", { name: "Search restaurants" })).toBeInTheDocument();
+    expect(within(sheet).getByText("About 20 lookups left today")).toBeInTheDocument();
+  });
+
+  it("Back from Edit food on a restaurant item returns to Restaurants", async () => {
+    open({ "POST /api/restaurants/item": () => ({ food: bowl, lookupsLeft: 39 }) });
+    const user = userEvent.setup();
+    const sheet = await openRestaurants(user);
+    await search(user, "chicken bowl");
+    await user.click(await within(sheet).findByRole("button", { name: /^Chicken Burrito Bowl/ }));
+    await user.click(await screen.findByRole("button", { name: "Edit food" }));
+    expect(await screen.findByRole("heading", { name: "Correct this food" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "‹ Back" }));
+    expect(await screen.findByRole("heading", { name: "Restaurants" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Chipotle" })).toBeInTheDocument();
+  });
+
+  it("with both sources, Spoonacular used up but other results back: results and a small line, no banner", async () => {
+    open({
+      "GET /api/restaurants/search": () => ({ items: [results.items[2]], lookupsLeft: 0, errors: [{ source: "spoonacular", message: USED_UP }] }),
+    });
+    const user = userEvent.setup();
+    const sheet = await openRestaurants(user);
+    await search(user, "chicken bowl");
+    expect(await within(sheet).findByRole("region", { name: "Qdoba" })).toBeInTheDocument();
+    expect(within(sheet).getByText("Spoonacular's lookups are used up for today — showing other results")).toBeInTheDocument();
+    expect(within(sheet).queryByText(USED_UP)).not.toBeInTheDocument();
+    expect(within(sheet).queryByRole("button", { name: "Describe it" })).not.toBeInTheDocument();
+    expect(within(sheet).queryByText(/lookups left/)).not.toBeInTheDocument();
+  });
+
+  it("opens on the used-up banner when Spoonacular is the only source and has no points left", async () => {
+    const { server } = open({ "GET /api/restaurants/status": () => ({ sources: ["spoonacular"], lookupsLeft: 0 }) });
+    const user = userEvent.setup();
+    const sheet = await openRestaurants(user);
+    expect(within(sheet).getByText(USED_UP)).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: "Describe it" })).toBeInTheDocument();
+    expect(searches(server)).toEqual([]);
+  });
+
+  it("keeps showing Searching… when an older search finishes before the newer one", async () => {
+    const pending: Record<string, (v: unknown) => void> = {};
+    open({ "GET /api/restaurants/search": (_b, path) => new Promise((res) => (pending[decodeURIComponent(path.split("q=")[1])] = () => res(results))) });
+    const user = userEvent.setup();
+    const sheet = await openRestaurants(user);
+    await search(user, "chipotle");
+    const box = screen.getByRole("searchbox", { name: "Search restaurants" });
+    await user.clear(box);
+    await user.type(box, "qdoba{Enter}");
+    await vi.waitFor(() => expect(pending.qdoba).toBeDefined());
+    await act(async () => pending.chipotle(null));
+    expect(within(sheet).getByText("Searching…")).toBeInTheDocument();
+    await act(async () => pending.qdoba(null));
+    expect(await within(sheet).findByRole("region", { name: "Chipotle" })).toBeInTheDocument();
+    expect(within(sheet).queryByText("Searching…")).not.toBeInTheDocument();
+  });
+
+  describe("no repeated calls", () => {
+    async function withFakeTimers(routes: Record<string, (b: any, path: string) => unknown>, fn: (server: ReturnType<typeof fakeServer>, box: HTMLElement) => Promise<void>) {
+      const { server } = open(routes);
+      await openRestaurants(userEvent.setup());
+      const box = screen.getByRole("searchbox", { name: "Search restaurants" });
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      try {
+        await fn(server, box);
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+    const tick = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
+
+    it("the pause search then Enter on the same words: one call", () =>
+      withFakeTimers({}, async (server, box) => {
+        fireEvent.change(box, { target: { value: "chipotle" } });
+        await tick(800);
+        expect(searches(server)).toHaveLength(1);
+        fireEvent.submit(box);
+        await tick(2000);
+        expect(searches(server)).toHaveLength(1);
+      }));
+
+    it("a failed search isn't sent again by the pending pause; Enter retries it", () => {
+      let n = 0;
+      return withFakeTimers({ "GET /api/restaurants/search": () => (++n === 1 ? { status: 500, json: { error: "Something broke" } } : results) }, async (server, box) => {
+        fireEvent.change(box, { target: { value: "chipotle" } });
+        fireEvent.submit(box);
+        await tick(0);
+        expect(screen.getByText("Something broke")).toBeInTheDocument();
+        await tick(2000);
+        expect(searches(server)).toHaveLength(1);
+        fireEvent.submit(box);
+        await tick(0);
+        expect(searches(server)).toHaveLength(2);
+      });
+    });
+
+    it("a recent-chain chip searches once, not again after the pause", () =>
+      withFakeTimers({ "GET /api/restaurants/recent-chains": () => ({ chains: ["Chipotle"] }) }, async (server) => {
+        await tick(0);
+        fireEvent.click(screen.getByRole("button", { name: "Chipotle" }));
+        await tick(2000);
+        expect(searches(server)).toEqual(["/api/restaurants/search?q=Chipotle"]);
+      }));
+  });
+
+  it("a double tap on a result or its star sends each request once", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const { server } = open({
+      "POST /api/restaurants/item": async () => {
+        await gate;
+        return { food: bowl, lookupsLeft: 39 };
+      },
+      "POST /api/restaurants/favourites": () => ({ chains: [{ chain: "Chipotle", foods: [bowl] }] }),
+    });
+    const user = userEvent.setup();
+    const sheet = await openRestaurants(user);
+    await search(user, "chicken bowl");
+    const star = await within(sheet).findByRole("button", { name: "Star Chicken Burrito Bowl" });
+    await user.click(star);
+    await user.click(star);
+    await user.click(within(sheet).getByRole("button", { name: /^Chicken Burrito Bowl/ }));
+    await user.click(within(sheet).getByRole("button", { name: /^Chicken Burrito Bowl/ }));
+    await act(async () => release());
+    expect(await screen.findByRole("heading", { name: "Track food" })).toBeInTheDocument();
+    expect(items(server)).toHaveLength(1);
+    expect(server.sent.filter((s) => s.method === "POST" && s.path === "/api/restaurants/favourites")).toHaveLength(1);
   });
 });

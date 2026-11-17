@@ -26,8 +26,9 @@ type View =
   | { k: "photo"; files: File[]; mode: PhotoMode }
   // photos: the photo(s) a label draft was read from, so a barcode photo can still be added
   // barcodeFill: the barcode a barcode photo added to that draft found, merged into the form as it stands
-  | { k: "form"; mode: FoodFormMode; draft: FoodDraft; fillRef?: { kind: "cache" | "user_food"; id: number }; photos?: File[]; barcodeFill?: string }
-  | { k: "detail"; food: FoodResult; initial: Portion; from?: "restaurants" } // from: where Back goes
+  // from: where Back goes (a restaurant item's Track food and Edit food go back to Restaurants)
+  | { k: "form"; mode: FoodFormMode; draft: FoodDraft; fillRef?: { kind: "cache" | "user_food"; id: number }; photos?: File[]; barcodeFill?: string; from?: "restaurants" }
+  | { k: "detail"; food: FoodResult; initial: Portion; from?: "restaurants" }
   | { k: "restaurants" }
   | { k: "meal"; food: FoodResult }; // a quick meal: adjust its foods, then Track
 
@@ -220,9 +221,10 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
 
   // The portion a food starts at: the last one used for this meal, else its own serving (a recipe: 1 serving)
   const startPortion = (food: FoodResult) => recent.find((r) => r.kind === food.kind && r.id === food.id)?.last ?? startingPortion(food, units);
-  const pick = (food: FoodResult, initial = startPortion(food)) => setView(food.foodKind === "quick_meal" ? { k: "meal", food } : { k: "detail", food, initial });
-  const edit = (food: FoodResult) =>
+  const pick = (food: FoodResult, initial = startPortion(food), from?: "restaurants") => setView(food.foodKind === "quick_meal" ? { k: "meal", food } : { k: "detail", food, initial, from });
+  const edit = (food: FoodResult, from?: "restaurants") =>
     setView({
+      from,
       k: "form",
       mode: food.kind === "cache" ? { kind: "override", cacheId: food.id } : { kind: "edit", id: food.id },
       draft: draftOf(food),
@@ -255,7 +257,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
   };
 
   const label = `Add food to ${MEAL_NAMES[meal]}`;
-  const back = () => setView(view.k === "detail" && view.from ? { k: view.from } : { k: "search" });
+  const back = () => setView((view.k === "detail" || view.k === "form") && view.from ? { k: view.from } : { k: "search" });
 
   if (view.k === "detail") {
     return (
@@ -265,7 +267,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
           initial={view.initial}
           submitLabel="Track"
           // recipes are changed in their own editor in My Foods
-          onEditFood={view.food.foodKind === "recipe" ? undefined : () => edit(view.food)}
+          onEditFood={view.food.foodKind === "recipe" ? undefined : () => edit(view.food, view.from)}
           onSubmit={async (p) => {
             await log(view.food, p);
             onClose();
@@ -276,9 +278,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
   }
   if (view.k === "restaurants" && restaurants) {
     return (
-      <Sheet tall label={label} heading="Restaurants" onClose={onClose} onBack={back}>
-        <RestaurantsView status={restaurants} memo={restaurantsMemo.current} onDescribe={() => setView({ k: "describe" })} onPick={(food) => setView({ k: "detail", food, initial: startPortion(food), from: "restaurants" })} />
-      </Sheet>
+      <RestaurantsView label={label} onClose={onClose} onBack={back} status={restaurants} memo={restaurantsMemo.current} onDescribe={() => setView({ k: "describe" })} onPick={(food) => pick(food, undefined, "restaurants")} />
     );
   }
   if (view.k === "meal") {
@@ -299,7 +299,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
     return (
       <Sheet tall label={label} heading={heading} onClose={onClose} onBack={back}>
         {view.photos && view.photos.length < MAX_PHOTOS && !view.draft.barcode && !view.barcodeFill && <AddBarcodePhoto onBarcode={(code) => setView({ ...view, barcodeFill: code })} />}
-        <FoodForm mode={view.mode} draft={view.draft} fillRef={view.fillRef} barcodeFill={view.barcodeFill} onSaved={(f) => pick(f, defaultPortion(f.servings, units))} />
+        <FoodForm mode={view.mode} draft={view.draft} fillRef={view.fillRef} barcodeFill={view.barcodeFill} onSaved={(f) => pick(f, defaultPortion(f.servings, units), view.from)} />
       </Sheet>
     );
   }
@@ -412,7 +412,9 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
           </button>
         )}
       </div>
-      {restaurants?.sources.length === 0 && user?.isAdmin && <p className="mt-2 px-1 text-xs text-muted">Add a restaurant data key in Settings › Food sources to search restaurant menus.</p>}
+      {restaurants?.sources.length === 0 && (
+        <p className="mt-2 px-1 text-xs text-muted">{user?.isAdmin ? "Add a restaurant data key in Settings › Food sources to search restaurant menus." : "Ask an admin to add a restaurant data key to search restaurant menus."}</p>
+      )}
       <Notice msg={msg} />
         </>
       }

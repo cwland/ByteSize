@@ -4,6 +4,7 @@ import { api } from "../../api";
 import type { FoodResult, MenuHit, MenuSearch, RestaurantFavourites, RestaurantSource, RestaurantStatus } from "../../types";
 import FoodPic from "./FoodPic";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
+import { Sheet } from "../ui/Sheet";
 import { field, secondaryButton } from "../ui/styles";
 
 // What the Restaurants view keeps while the person opens an item and comes back (owned by Add Food):
@@ -57,7 +58,24 @@ function MenuRow({ name, calories, sourceLabel, imageUrl, starred, onOpen, onSta
 
 // Restaurants (§14 B): search big chains' menus (Spoonacular, FatSecret as the fallback); tap an item to
 // open Track food; star items to keep them under Favourites by chain; recent chains as chips.
-export default function RestaurantsView({ status, memo, onPick, onDescribe }: { status: RestaurantStatus; memo: RestaurantsMemo; onPick: (food: FoodResult) => void; onDescribe: () => void }) {
+// It is the whole sheet: the search box and lookups line stay pinned while the list scrolls.
+export default function RestaurantsView({
+  label,
+  onClose,
+  onBack,
+  status,
+  memo,
+  onPick,
+  onDescribe,
+}: {
+  label: string;
+  onClose: () => void;
+  onBack: () => void;
+  status: RestaurantStatus;
+  memo: RestaurantsMemo;
+  onPick: (food: FoodResult) => void;
+  onDescribe: () => void;
+}) {
   const [q, setQ] = useState(memo.q);
   const [found, setFound] = useState<MenuSearch | null>(memo.found);
   const [left, setLeft] = useState<number | null>(memo.lookupsLeft ?? status.lookupsLeft);
@@ -66,6 +84,10 @@ export default function RestaurantsView({ status, memo, onPick, onDescribe }: { 
   const [favs, setFavs] = useState<RestaurantFavourites["chains"]>([]);
   const [chains, setChains] = useState<string[]>([]);
   const searched = useRef(memo.searched); // the words of the last search sent (no second call for the same words)
+  const failed = useRef(false); // the last search failed: only Enter (or a chip) sends it again, never the pause
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const fetching = useRef<Record<string, Promise<FoodResult>>>({}); // items being fetched (a double tap waits on the same one)
+  const starring = useRef(new Set<string>()); // stars being changed (a double tap is ignored)
 
   useEffect(() => {
     api<RestaurantFavourites>("GET", "/api/restaurants/favourites").then((r) => setFavs(r.chains), () => {});
@@ -78,10 +100,13 @@ export default function RestaurantsView({ status, memo, onPick, onDescribe }: { 
     memo.lookupsLeft = n;
   };
 
-  const search = async (text: string) => {
+  // asked: Enter or a chip (cancels the pending pause, and may retry words whose search failed)
+  const search = async (text: string, asked = false) => {
     const t = text.trim();
-    if (t.length < MIN_LETTERS || t === searched.current) return;
+    if (asked) clearTimeout(timer.current);
+    if (t.length < MIN_LETTERS || (t === searched.current && !(asked && failed.current))) return;
     searched.current = memo.searched = t;
+    failed.current = false;
     setBusy(true);
     setMsg(null);
     try {
@@ -90,10 +115,11 @@ export default function RestaurantsView({ status, memo, onPick, onDescribe }: { 
       setFound((memo.found = r));
       noteLeft(r.lookupsLeft);
     } catch (e) {
-      if (searched.current === t) searched.current = memo.searched = ""; // Enter tries again
+      if (searched.current !== t) return;
+      failed.current = true;
       setMsg(errorMsg(e));
     } finally {
-      setBusy(false);
+      if (searched.current === t) setBusy(false); // a superseded search doesn't end the newer one's wait
     }
   };
 
@@ -104,17 +130,20 @@ export default function RestaurantsView({ status, memo, onPick, onDescribe }: { 
       setFound((memo.found = null));
       return;
     }
-    const t = setTimeout(() => void search(q), PAUSE_MS);
-    return () => clearTimeout(t);
+    timer.current = setTimeout(() => void search(q), PAUSE_MS);
+    return () => clearTimeout(timer.current);
   }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // An item's full nutrition, fetched once (POST /item stores it and gives its cache id)
-  const foodOf = async (h: MenuHit) => {
+  const foodOf = (h: MenuHit): Promise<FoodResult> => {
     const k = keyOf(h);
-    if (memo.foods[k]) return memo.foods[k];
-    const r = await api<{ food: FoodResult; lookupsLeft: number | null }>("POST", "/api/restaurants/item", { source: h.source, sourceId: h.sourceId });
-    noteLeft(r.lookupsLeft);
-    return (memo.foods[k] = r.food);
+    if (memo.foods[k]) return Promise.resolve(memo.foods[k]);
+    return (fetching.current[k] ??= api<{ food: FoodResult; lookupsLeft: number | null }>("POST", "/api/restaurants/item", { source: h.source, sourceId: h.sourceId })
+      .then((r) => {
+        noteLeft(r.lookupsLeft);
+        return (memo.foods[k] = r.food);
+      })
+      .finally(() => delete fetching.current[k]));
   };
   const run = async (f: () => Promise<void>) => {
     setMsg(null);
@@ -128,21 +157,37 @@ export default function RestaurantsView({ status, memo, onPick, onDescribe }: { 
   const starredIds = new Set(favs.flatMap((c) => c.foods.map((f) => f.id)));
   const setStar = (cacheId: number, on: boolean) =>
     api<RestaurantFavourites>(on ? "POST" : "DELETE", "/api/restaurants/favourites", { cacheId }).then((r) => setFavs(r.chains));
+  // One star change per item at a time; key: the hit's or the favourite's
+  const toggle = (key: string, f: () => Promise<void>) => {
+    if (starring.current.has(key)) return;
+    starring.current.add(key);
+    void run(f).finally(() => starring.current.delete(key));
+  };
   const cacheIdOf = (h: MenuHit) => h.cacheId ?? memo.foods[keyOf(h)]?.id ?? null;
 
   const spoonacular = status.sources.includes("spoonacular");
   const usedUp = (spoonacular && left === 0) || !!found?.errors.some((e) => e.message === USED_UP);
+  // The full banner only when nothing else can answer: no items came back (or, before any search,
+  // Spoonacular is the only source); otherwise a small line, and the other results
+  const banner = usedUp && (found ? found.items.length === 0 : !status.sources.includes("fatsecret"));
   const errors = found?.errors.filter((e) => e.message !== USED_UP) ?? [];
   const labelled = status.sources.length > 1; // a source label only when both sources could answer
 
   return (
-    <>
+    <Sheet
+      tall
+      label={label}
+      heading="Restaurants"
+      onClose={onClose}
+      onBack={onBack}
+      bodyLabel="Restaurant results"
+      top={
       <div className="flex flex-col gap-2">
         <form
           role="search"
           onSubmit={(e) => {
             e.preventDefault();
-            void search(q);
+            void search(q, true);
           }}
         >
           <input
@@ -155,18 +200,22 @@ export default function RestaurantsView({ status, memo, onPick, onDescribe }: { 
             className={`${field} mt-0 rounded-full`}
           />
         </form>
-        {usedUp ? (
+        {banner ? (
           <div className="flex flex-col items-start gap-2 rounded-2xl bg-pressed px-3 py-2 text-sm">
             <p>{USED_UP}</p>
             <button type="button" onClick={onDescribe} className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}>
               <Sparkles className="size-4" /> Describe it
             </button>
           </div>
+        ) : usedUp ? (
+          <p className="px-2 text-xs text-muted">{found?.items.length ? "Spoonacular's lookups are used up for today — showing other results" : "Spoonacular's lookups are used up for today"}</p>
         ) : (
           spoonacular && left !== null && <p className="px-2 text-xs text-muted">{lookupsText(left)}</p>
         )}
         <Notice msg={msg} />
       </div>
+      }
+    >
 
       {busy && <p className="mt-4 px-2 text-subtle">Searching…</p>}
 
@@ -188,14 +237,14 @@ export default function RestaurantsView({ status, memo, onPick, onDescribe }: { 
                       imageUrl={h.imageUrl}
                       starred={starred}
                       onOpen={() => void run(async () => onPick(await foodOf(h)))}
-                      onStar={() => void run(async () => setStar(starred ? id! : (id ?? (await foodOf(h)).id), !starred))}
+                      onStar={() => toggle(keyOf(h), async () => setStar(starred ? id! : (id ?? (await foodOf(h)).id), !starred))}
                     />
                   );
                 })}
               </ul>
             </section>
           ))}
-          {found.items.length === 0 && !usedUp && <p className="mt-4 px-2 text-subtle">No menu items found. Try the chain and the item, like “chipotle chicken bowl”.</p>}
+          {found.items.length === 0 && !banner && <p className="mt-4 px-2 text-subtle">No menu items found. Try the chain and the item, like “chipotle chicken bowl”.</p>}
           {errors.map((e) => (
             <p key={e.source} className="mt-2 px-2 text-xs text-muted">
               {e.message}
@@ -216,7 +265,7 @@ export default function RestaurantsView({ status, memo, onPick, onDescribe }: { 
                     type="button"
                     onClick={() => {
                       setQ(c);
-                      void search(c);
+                      void search(c, true);
                     }}
                     className="rounded-full border border-line px-3 py-1 text-sm font-semibold hover:bg-pressed"
                   >
@@ -241,7 +290,7 @@ export default function RestaurantsView({ status, memo, onPick, onDescribe }: { 
                         imageUrl={f.imageUrl}
                         starred
                         onOpen={() => onPick(f)}
-                        onStar={() => void run(() => setStar(f.id, false))}
+                        onStar={() => toggle(`cache:${f.id}`, () => setStar(f.id, false))}
                       />
                     ))}
                   </ul>
@@ -265,6 +314,6 @@ export default function RestaurantsView({ status, memo, onPick, onDescribe }: { 
           </a>
         )}
       </p>
-    </>
+    </Sheet>
   );
 }
