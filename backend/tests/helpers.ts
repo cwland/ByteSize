@@ -5,6 +5,7 @@ import { runMigrations } from "../src/db/migrate.js";
 import { buildApp, type AppOptions } from "../src/app.js";
 import { resetLoginLockouts } from "../src/routes/auth.js";
 import { resetSessionTouches } from "../src/lib/sessions.js";
+import { resetPasskeyChallenges } from "../src/routes/passkeys.js";
 
 // Tests use their own database so they never touch real data.
 // Create it once with: createdb bytesize_test (docker-compose.dev.yml does this for you)
@@ -47,6 +48,7 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}) {
     if (names.length) await db.execute(sql.raw(`truncate ${names.join(", ")} restart identity cascade`));
     resetLoginLockouts();
     resetSessionTouches();
+    resetPasskeyChallenges();
   }
 
   // First-run setup as the admin "alex"; signs in as them

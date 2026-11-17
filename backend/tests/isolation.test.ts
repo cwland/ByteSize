@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { twoUsers } from "./isolation.js";
+import { softPasskey } from "./softPasskey.js";
 
 // Every route that reads or changes a person's data gets a case here (M2 adds foods, logs, targets...)
 let t: TestApp;
@@ -28,5 +29,20 @@ describe("per-user isolation", () => {
     const names = (await a.as("GET", "/api/auth/logins")).body.map((e: any) => e.username.toLowerCase());
     expect(names.length).toBeGreaterThan(0);
     expect(new Set(names)).toEqual(new Set(["anna"]));
+  });
+
+  it("a user can't list, rename or delete another user's passkeys", async () => {
+    const { a, b } = await twoUsers(t);
+    const origin = "http://localhost:5173";
+    const key = softPasskey();
+    const as = (token: string, method: string, url: string, payload?: object) =>
+      t.app.inject({ method: method as "POST", url, payload, headers: { origin, authorization: `Bearer ${token}` } }).then((r) => ({ status: r.statusCode, body: r.body ? r.json() : undefined }));
+    const o = await as(b.token, "POST", "/api/passkeys/register/options", {});
+    const added = await as(b.token, "POST", "/api/passkeys/register/verify", { challengeId: o.body.challengeId, response: key.create(o.body.options, origin), name: "Ben's phone" });
+    expect(added.status).toBe(200);
+    expect((await a.as("GET", "/api/passkeys")).body).toEqual([]);
+    expect((await a.as("PATCH", `/api/passkeys/${added.body.id}`, { name: "Mine now" })).status).toBe(404);
+    expect((await a.as("DELETE", `/api/passkeys/${added.body.id}`)).status).toBe(404);
+    expect((await b.as("GET", "/api/passkeys")).body).toMatchObject([{ id: added.body.id, name: "Ben's phone" }]);
   });
 });
