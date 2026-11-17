@@ -17,6 +17,8 @@ import { logEvent } from "./lib/appLog.js";
 import aiSettingsRoutes from "./routes/settings-ai.js";
 import logRoutes from "./routes/logs.js";
 import foodSourceRoutes from "./routes/food-sources.js";
+import bodyPlanRoutes from "./routes/body-plans.js";
+import settingsMeRoutes from "./routes/settings-me.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -107,5 +109,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(aiSettingsRoutes);
   app.register(logRoutes);
   app.register(foodSourceRoutes);
+  app.register(bodyPlanRoutes);
+  app.register(settingsMeRoutes);
   return app;
 }

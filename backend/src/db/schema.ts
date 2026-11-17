@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, date, index, integer, jsonb, pgTable, real, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, date, doublePrecision, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 // Shared tables. Every table that holds a person's own data has a user_id that cascades,
 // so deleting a user removes everything they own.
@@ -121,9 +121,9 @@ export const userBody = pgTable("user_body", {
   userId: userRef().primaryKey(),
   sex: text("sex").$type<"male" | "female">().notNull(),
   birthYear: integer("birth_year").notNull(),
-  heightCm: real("height_cm").notNull(),
-  weightKg: real("weight_kg").notNull(),
-  goalWeightKg: real("goal_weight_kg").notNull(),
+  heightCm: doublePrecision("height_cm").notNull(),
+  weightKg: doublePrecision("weight_kg").notNull(),
+  goalWeightKg: doublePrecision("goal_weight_kg").notNull(),
   activity: text("activity").$type<"sedentary" | "light" | "moderate" | "active" | "very">().notNull(),
   glp1: boolean("glp1").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -152,12 +152,12 @@ export const targets = pgTable(
     plan: text("plan"), // relaxed, steady, accelerated, vigorous; null: set by hand
     caloriesMin: integer("calories_min").notNull(),
     caloriesMax: integer("calories_max").notNull(),
-    proteinMin: real("protein_min").notNull(),
-    proteinMax: real("protein_max").notNull(),
-    fiberMin: real("fiber_min").notNull(),
-    fiberMax: real("fiber_max").notNull(),
-    waterMin: real("water_min").notNull(),
-    waterMax: real("water_max").notNull(),
+    proteinMin: doublePrecision("protein_min").notNull(),
+    proteinMax: doublePrecision("protein_max").notNull(),
+    fiberMin: doublePrecision("fiber_min").notNull(),
+    fiberMax: doublePrecision("fiber_max").notNull(),
+    waterMin: doublePrecision("water_min").notNull(),
+    waterMax: doublePrecision("water_max").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("targets_user_from_idx").on(t.userId, t.effectiveFrom)]
@@ -228,8 +228,8 @@ export const logEntries = pgTable(
     sourceRef: text("source_ref"),
     servingIndex: integer("serving_index").notNull().default(0),
     unit: text("unit").notNull(), // serving, g, oz, ml, fl_oz, cup, tbsp, tsp
-    quantity: real("quantity").notNull(),
-    fraction: real("fraction").notNull().default(1),
+    quantity: doublePrecision("quantity").notNull(),
+    fraction: doublePrecision("fraction").notNull().default(1),
     perServing: jsonb("per_serving").$type<NutrientsJson>().notNull(),
     servings: jsonb("servings").$type<ServingJson[]>().notNull(),
     nutrients: jsonb("nutrients").$type<NutrientsJson>().notNull(), // for the amount logged
