@@ -80,6 +80,7 @@ export default function GoalsPage() {
         </section>
       )}
       <WeightSection onReplan={() => setMode("plan")} />
+      <a href="#/glp1?from=/goals" className={`${secondaryButton} text-center`}>GLP-1 shots</a>
     </div>
   );
 }

@@ -14,6 +14,7 @@ import { usePhotoInput } from "../log/PhotoPicker";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { primaryButton, secondaryButton } from "../ui/styles";
 import WeightCard from "../weight/WeightCard";
+import Glp1Card from "../glp1/Glp1Card";
 
 // The selected day at a glance: calorie budget gauge, protein/fiber/water rings, water quick-add, streak
 export default function Dashboard() {
@@ -115,6 +116,7 @@ export default function Dashboard() {
           </button>
         ))}
       </section>
+      <Glp1Card />
       <Notice msg={msg} />
       <WeightCard />
       {data && (
