@@ -49,4 +49,12 @@ describe("profile", () => {
     expect((await t.api("PATCH", "/api/profile", { units: "metric" })).status).toBe(401);
     expect((await t.api("POST", "/api/profile/setup-done")).status).toBe(401);
   });
+
+  it("accepts every valid IANA time zone, including ones Node's list leaves out", async () => {
+    for (const timezone of ["UTC", "Europe/Kyiv", "Asia/Kolkata", "Asia/Ho_Chi_Minh"]) {
+      const res = await t.api("PATCH", "/api/profile", { timezone });
+      expect(res.status, timezone).toBe(200);
+      expect(res.body.user.timezone).toBe(timezone);
+    }
+  });
 });

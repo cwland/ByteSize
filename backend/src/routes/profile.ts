@@ -10,6 +10,16 @@ import { publicUser } from "../lib/users.js";
 export const THEMES = ["avocado", "fresh", "harbor", "terracotta-sage", "slate-rose", "midnight-coral"] as const;
 
 // Your own settings. Who you are comes only from your login, never from the body.
+// Any name the runtime can actually use (Node's supportedValuesOf list leaves out UTC, Europe/Kyiv and others)
+const isTimeZone = (tz: string) => {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export default async function profileRoutes(app: FastifyInstance) {
   const { db } = app;
 
@@ -26,7 +36,7 @@ export default async function profileRoutes(app: FastifyInstance) {
         timezone: z
           .string()
           .trim()
-          .refine((tz) => Intl.supportedValuesOf("timeZone").includes(tz), "Choose a time zone from the list")
+          .refine(isTimeZone, "Choose a time zone from the list")
           .optional(),
       })
       .parse(req.body ?? {});

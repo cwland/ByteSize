@@ -45,4 +45,14 @@ describe("per-user isolation", () => {
     expect((await a.as("DELETE", `/api/passkeys/${added.body.id}`)).status).toBe(404);
     expect((await b.as("GET", "/api/passkeys")).body).toMatchObject([{ id: added.body.id, name: "Ben's phone" }]);
   });
+
+  it("a member can't see someone else's sign-ins by setting their email to that username", async () => {
+    await t.createUser("alice@example.com");
+    const mallory = await t.createUser("mallory");
+    const as = (await import("./isolation.js")).asUser(t, mallory.token);
+    expect((await as("PATCH", "/api/profile", { email: "Alice@example.com" })).status).toBe(200);
+    const names = (await as("GET", "/api/auth/logins")).body.map((e: any) => e.username.toLowerCase());
+    expect(names).not.toContain("alice@example.com");
+    expect(names).toContain("mallory");
+  });
 });
