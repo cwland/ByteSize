@@ -3,11 +3,12 @@ import { api } from "../../api";
 import { notifyDayChanged, useDay } from "../../day";
 import { MEALS } from "../../meals";
 import { amountFactor } from "../../nutrition";
+import { myFoodsHref } from "../../routes";
 import { useSelectedDay } from "../../selectedDay";
 import { useSession } from "../../session";
 import type { LogEntry, Meal, Nutrients } from "../../types";
 import AddFoodSheet from "./AddFoodSheet";
-import MealCard from "./MealCard";
+import MealCard, { SaveAsMealSheet } from "./MealCard";
 import MoveSheet from "./MoveSheet";
 import FoodDetail from "./FoodDetail";
 import { Confirm } from "../ui/Confirm";
@@ -40,6 +41,7 @@ export default function LogPage() {
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [msg, setMsg] = useState<Msg>(null);
+  const [savingMeal, setSavingMeal] = useState<Meal | null>(null);
 
   const toggle = (e: LogEntry) =>
     setSelected((s) => {
@@ -69,24 +71,29 @@ export default function LogPage() {
       <h1 className="sr-only">Log</h1>
       {error && <Notice msg={{ ok: false, text: error }} />}
       <Notice msg={msg} />
-      {entries.length > 0 && (
-        <div className="flex items-center justify-end gap-2">
-          {selecting && (
-            <>
-              <span className="mr-auto text-sm text-subtle">{selected.size} selected</span>
-              <button type="button" disabled={!selected.size} onClick={() => setMoving({ ids: [...selected], copy: false, meal: "breakfast" })} className={`${secondaryButton} px-4 py-1.5 text-sm`}>
-                Move selected
-              </button>
-              <button type="button" disabled={!selected.size} onClick={() => setMoving({ ids: [...selected], copy: true, meal: "breakfast" })} className={`${secondaryButton} px-4 py-1.5 text-sm`}>
-                Copy selected
-              </button>
-            </>
-          )}
+      <div className="flex items-center justify-end gap-2">
+        {!selecting && (
+          <a href={myFoodsHref("/log")} className="mr-auto rounded-full px-3 py-1.5 text-sm font-semibold text-link hover:bg-pressed">
+            My Foods
+          </a>
+        )}
+        {entries.length > 0 && selecting && (
+          <>
+            <span className="mr-auto text-sm text-subtle">{selected.size} selected</span>
+            <button type="button" disabled={!selected.size} onClick={() => setMoving({ ids: [...selected], copy: false, meal: "breakfast" })} className={`${secondaryButton} px-4 py-1.5 text-sm`}>
+              Move selected
+            </button>
+            <button type="button" disabled={!selected.size} onClick={() => setMoving({ ids: [...selected], copy: true, meal: "breakfast" })} className={`${secondaryButton} px-4 py-1.5 text-sm`}>
+              Copy selected
+            </button>
+          </>
+        )}
+        {entries.length > 0 && (
           <button type="button" onClick={() => (selecting ? endSelect() : setSelecting(true))} className="rounded-full px-3 py-1.5 text-sm font-semibold text-link hover:bg-pressed">
             {selecting ? "Done" : "Select"}
           </button>
-        </div>
-      )}
+        )}
+      </div>
       {data &&
         MEALS.map((m) => (
           <MealCard
@@ -104,9 +111,11 @@ export default function LogPage() {
               setSelecting(true);
               setSelected(new Set([e.id]));
             }}
+            onSaveAsMeal={() => setSavingMeal(m)}
           />
         ))}
 
+      {savingMeal && <SaveAsMealSheet meal={savingMeal} ids={entries.filter((e) => e.meal === savingMeal).map((e) => e.id)} onClose={() => setSavingMeal(null)} />}
       {adding && <AddFoodSheet day={day} meal={adding} onClose={() => setAdding(null)} />}
       {editing && (
         <Sheet label="Edit portion" heading="Edit entry" onClose={() => setEditing(null)}>

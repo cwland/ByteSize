@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { Camera, ChevronDown, Plus, ScanBarcode, Sparkles } from "lucide-react";
+import { BookOpen, Camera, ChevronDown, Plus, ScanBarcode, Sparkles } from "lucide-react";
 import { api } from "../../api";
 import { formatAmount } from "../../amounts";
 import { notifyDayChanged } from "../../day";
 import { MEALS, MEAL_NAMES } from "../../meals";
+import { isMyFoods, myFoodsHref } from "../../routes";
 import { addDays, dayLabel, todayIn } from "../../selectedDay";
 import { useSession } from "../../session";
-import type { Day, FoodResult, LogEntry, Meal, Nutrients, PhotoDraft, PhotoMode, Portion, RecentFood, SearchResult, SourceError } from "../../types";
+import type { Day, FoodResult, Item, LogEntry, Meal, Nutrients, PhotoDraft, PhotoMode, Portion, RecentFood, SearchResult, SourceError } from "../../types";
 import FoodForm, { draftOf, emptyDraft, type FoodDraft, type FoodFormMode } from "./FoodForm";
-import FoodDetail, { defaultPortion, nutrientsFor } from "./FoodDetail";
-import FoodRow, { QuickAddButton, useQuickAdd } from "./FoodRow";
+import FoodDetail, { defaultPortion, nutrientsFor, startingPortion } from "./FoodDetail";
+import FoodRow, { QuickAddButton, tagOf, useQuickAdd } from "./FoodRow";
+import { TrackMeal } from "../myfoods/QuickMealEditor";
 import Pills from "./Pills";
 import PhotoPicker, { MAX_PHOTOS, usePhotoInput } from "./PhotoPicker";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
@@ -23,7 +25,8 @@ type View =
   | { k: "photo"; files: File[]; mode: PhotoMode }
   // photos: the photo(s) a label draft was read from, so a barcode photo can still be added
   | { k: "form"; mode: FoodFormMode; draft: FoodDraft; fillRef?: { kind: "cache" | "user_food"; id: number }; photos?: File[] }
-  | { k: "detail"; food: FoodResult; initial: Portion };
+  | { k: "detail"; food: FoodResult; initial: Portion }
+  | { k: "meal"; food: FoodResult }; // a quick meal: adjust its foods, then Track
 
 // Digits, spaces and dashes only: someone typing a barcode. Lookup only at a barcode's length.
 const barcodeLike = (q: string) => /^[\d\s-]+$/.test(q);
@@ -189,9 +192,9 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
     };
   }, [lookup, attempt]);
 
-  // The portion a food starts at: the last one used for this meal, else its own serving
-  const startPortion = (food: FoodResult) => recent.find((r) => r.kind === food.kind && r.id === food.id)?.last ?? defaultPortion(food.servings, units);
-  const pick = (food: FoodResult, initial = startPortion(food)) => setView({ k: "detail", food, initial });
+  // The portion a food starts at: the last one used for this meal, else its own serving (a recipe: 1 serving)
+  const startPortion = (food: FoodResult) => recent.find((r) => r.kind === food.kind && r.id === food.id)?.last ?? startingPortion(food, units);
+  const pick = (food: FoodResult, initial = startPortion(food)) => setView(food.foodKind === "quick_meal" ? { k: "meal", food } : { k: "detail", food, initial });
   const edit = (food: FoodResult) =>
     setView({
       k: "form",
@@ -210,7 +213,13 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
     }
   };
 
+  // A quick meal logs one entry per food (its items as saved, or as adjusted)
+  const logMeal = async (food: FoodResult, items?: Item[]) => {
+    await api("POST", "/api/log/meal", { day, meal, foodId: food.id, ...(items ? { items } : {}) });
+    notifyDayChanged();
+  };
   const log = async (food: FoodResult, p: Portion) => {
+    if (food.foodKind === "quick_meal") return logMeal(food);
     await api("POST", "/api/log", { day, meal, food: { kind: food.kind, id: food.id }, servingIndex: p.servingIndex, unit: p.unit, quantity: p.quantity, fraction: p.fraction });
     notifyDayChanged();
   };
@@ -229,9 +238,23 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
           food={view.food}
           initial={view.initial}
           submitLabel="Track"
-          onEditFood={() => edit(view.food)}
+          // recipes are changed in their own editor in My Foods
+          onEditFood={view.food.foodKind === "recipe" ? undefined : () => edit(view.food)}
           onSubmit={async (p) => {
             await log(view.food, p);
+            onClose();
+          }}
+        />
+      </Sheet>
+    );
+  }
+  if (view.k === "meal") {
+    return (
+      <Sheet tall label={label} heading="Track meal" onClose={onClose} onBack={back}>
+        <TrackMeal
+          id={view.food.id}
+          onTrack={async (items) => {
+            await logMeal(view.food, items);
             onClose();
           }}
         />
@@ -283,6 +306,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
       imageUrl={f.imageUrl}
       amount={amountOf(f.servings, p)}
       brand={f.brand}
+      tag={tagOf(f.foodKind)}
       nutrients={nutrientsFor(f, p)}
       onOpen={() => pick(f, p)}
       onQuickAdd={() => log(f, p)}
@@ -332,12 +356,22 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
           className={`${field} mt-2 tabular`}
         />
       )}
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" onClick={() => setView({ k: "describe" })} className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}>
           <Sparkles className="size-4" /> Describe it
         </button>
         <button type="button" onClick={() => setView({ k: "form", mode: { kind: "create" }, draft: emptyDraft() })} className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}>
           <Plus className="size-4" /> Create food
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onClose();
+            if (!isMyFoods()) window.location.hash = myFoodsHref();
+          }}
+          className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}
+        >
+          <BookOpen className="size-4" /> My Foods
         </button>
       </div>
       <Notice msg={msg} />

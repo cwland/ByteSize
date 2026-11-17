@@ -125,3 +125,23 @@ describe("AppShell log button", () => {
     expect(await screen.findByRole("dialog", { name: "Add food to Lunch" })).toBeInTheDocument();
   });
 });
+
+describe("AppShell My Foods", () => {
+  afterEach(() => {
+    window.location.hash = "";
+  });
+
+  it("#/log/my-foods shows My Foods (no week strip), and Back returns to the Log", async () => {
+    window.location.hash = "#/log/my-foods?from=/log";
+    fakeServer({ "GET /api/my-foods": () => ({ foods: [] }) });
+    renderWithSession(<AppShell />, { timezone: "America/Boise" });
+    expect(await screen.findByRole("heading", { level: 1, name: "My Foods" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /^Week of/ })).not.toBeInTheDocument();
+    // The Log tab stays the current one
+    expect(within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", { name: "Log" })).toHaveAttribute("aria-current", "page");
+    await userEvent.setup().click(screen.getByRole("link", { name: "‹ Back" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/log"));
+    expect(await screen.findByRole("heading", { level: 1, name: "Log" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: "My Foods" })).not.toBeInTheDocument();
+  });
+});

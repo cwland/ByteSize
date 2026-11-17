@@ -1,11 +1,16 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import FoodPic from "./FoodPic";
-import { Check, Plus } from "lucide-react";
+import { BookmarkPlus, Check, Plus } from "lucide-react";
+import { api } from "../../api";
 import { MEAL_NAMES } from "../../meals";
 import { formatAmount } from "../../amounts";
 import type { LogEntry, Meal, MealTotals, Units } from "../../types";
 import { fmt } from "../../units";
 import Pills from "./Pills";
+import { Field } from "../ui/Field";
+import { Notice, errorMsg, type Msg } from "../ui/Notice";
+import { Sheet } from "../ui/Sheet";
+import { primaryButton, secondaryButton } from "../ui/styles";
 
 const g = (n: number) => `${Math.round(n)}g`;
 
@@ -65,6 +70,7 @@ export default function MealCard(props: {
   onOpen: (e: LogEntry) => void;
   onToggle: (e: LogEntry) => void;
   onLongPress: (e: LogEntry) => void;
+  onSaveAsMeal?: () => void;
 }) {
   const { meal, entries, totals, units, selecting, selected } = props;
   const name = MEAL_NAMES[meal];
@@ -90,9 +96,68 @@ export default function MealCard(props: {
           ))}
         </ul>
       )}
-      <button type="button" onClick={props.onAdd} className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-bold text-on-primary hover:bg-primary-pressed">
-        <Plus className="size-4" strokeWidth={3} /> Add Food
-      </button>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={props.onAdd} className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-bold text-on-primary hover:bg-primary-pressed">
+          <Plus className="size-4" strokeWidth={3} /> Add Food
+        </button>
+        {props.onSaveAsMeal && entries.length > 0 && !selecting && (
+          <button type="button" onClick={props.onSaveAsMeal} className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold text-link hover:bg-pressed">
+            <BookmarkPlus aria-hidden="true" className="size-4" /> Save as a meal
+          </button>
+        )}
+      </div>
     </section>
+  );
+}
+
+// "Save as a meal": this meal's entries and portions become a quick meal in My Foods. Water and foods
+// that can't be found are left out, and listed.
+export function SaveAsMealSheet({ meal, ids, onClose }: { meal: Meal; ids: number[]; onClose: () => void }) {
+  const [name, setName] = useState<string>(MEAL_NAMES[meal]);
+  const [msg, setMsg] = useState<Msg>(null);
+  const [busy, setBusy] = useState(false);
+  const [leftOut, setLeftOut] = useState<string[] | null>(null);
+
+  const save = async () => {
+    if (!name.trim()) return setMsg({ ok: false, text: "Give the meal a name" });
+    setBusy(true);
+    setMsg(null);
+    try {
+      const out = await api<{ food: { name: string }; leftOut: string[] }>("POST", "/api/my-foods/meals/from-entries", { name: name.trim(), ids });
+      setMsg({ ok: true, text: `Saved ${out.food.name} to My Foods` });
+      setLeftOut(out.leftOut);
+    } catch (e) {
+      setMsg(errorMsg(e));
+    }
+    setBusy(false);
+  };
+
+  return (
+    <Sheet label="Save as a meal" onClose={onClose}>
+      {leftOut === null ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+          className="flex flex-col gap-3"
+        >
+          <p className="text-sm text-subtle">Saves these foods and portions as a quick meal you can log in one tap.</p>
+          <Field label="Name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Notice msg={msg} />
+          <button type="submit" disabled={busy} className={`${primaryButton} self-start`}>
+            Save
+          </button>
+        </form>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <Notice msg={msg} />
+          {leftOut.length > 0 && <p className="text-sm text-subtle">{`Left out: ${leftOut.join(", ")}`}</p>}
+          <button type="button" onClick={onClose} className={`${secondaryButton} self-start`}>
+            Done
+          </button>
+        </div>
+      )}
+    </Sheet>
   );
 }

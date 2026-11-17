@@ -163,4 +163,41 @@ describe("Log", () => {
     expect(cal).toHaveTextContent("?");
     expect(cal).not.toHaveTextContent("0");
   });
+  it("My Foods is a link from the Log page", async () => {
+    show();
+    expect(await screen.findByRole("link", { name: "My Foods" })).toHaveAttribute("href", "#/log/my-foods?from=/log");
+  });
+
+  it("Save as a meal: posts the meal's entries and lists what was left out", async () => {
+    const water = entryJson({ id: 3, name: "Water", icon: "💧", servings: [{ label: "1 ml", ml: 1 }], unit: "ml", quantity: 473, sourceRef: null, source: "water", nutrients: { water_ml: 473 } });
+    const server = show({
+      "GET /api/day/:date": () => ({ ...bothInBreakfast, entries: [...bothInBreakfast.entries, water] }),
+      "POST /api/my-foods/meals/from-entries": (b) => ({ food: { id: 40, name: b.name }, leftOut: ["Water"] }),
+    });
+    const user = userEvent.setup();
+    const card = await screen.findByRole("region", { name: "Breakfast" });
+    // An empty meal has nothing to save
+    expect(within(screen.getByRole("region", { name: "Lunch" })).queryByRole("button", { name: "Save as a meal" })).toBeNull();
+    await user.click(within(card).getByRole("button", { name: "Save as a meal" }));
+    const sheet = screen.getByRole("dialog", { name: "Save as a meal" });
+    const name = within(sheet).getByRole("textbox", { name: "Name" });
+    expect(name).toHaveValue("Breakfast");
+    await user.clear(name);
+    await user.type(name, "Usual breakfast");
+    await user.click(within(sheet).getByRole("button", { name: "Save" }));
+    expect(await within(sheet).findByRole("status")).toHaveTextContent("Saved Usual breakfast to My Foods");
+    expect(within(sheet).getByText("Left out: Water")).toBeInTheDocument();
+    expect(server.writes().map((w) => [w.path, w.body])).toEqual([["/api/my-foods/meals/from-entries", { name: "Usual breakfast", ids: [1, 2, 3] }]]);
+    await user.click(within(sheet).getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("Save as a meal shows why when nothing can be saved", async () => {
+    show({ "POST /api/my-foods/meals/from-entries": () => ({ status: 400, json: { error: "Nothing here can be saved as a meal" } }) });
+    const user = userEvent.setup();
+    const card = await screen.findByRole("region", { name: "Breakfast" });
+    await user.click(within(card).getByRole("button", { name: "Save as a meal" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Save as a meal" })).getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Nothing here can be saved as a meal");
+  });
 });

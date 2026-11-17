@@ -136,6 +136,48 @@ describe("per-user isolation", () => {
     expect((await a.as("GET", "/api/day/2026-11-18")).body.entries).toEqual([]);
   });
 
+  it("a user can't read, edit, recalculate, delete, log or build on another user's recipes and quick meals", async () => {
+    const { a, b } = await twoUsers(t);
+    const day = "2026-11-17";
+    const portion = { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 };
+    const toast = (await a.as("POST", "/api/my-foods", { name: "Anna's toast", servings: [{ label: "1 slice", grams: 30 }], nutrients: { calories: 80 } })).body.food;
+    const recipe = (await a.as("POST", "/api/my-foods/recipes", { name: "Anna's stew", items: [{ food: { kind: "user_food", id: toast.id }, ...portion }], servings: 2 })).body.food;
+    const meal = (await a.as("POST", "/api/my-foods/meals", { name: "Anna's lunch", items: [{ food: { kind: "user_food", id: toast.id }, ...portion }] })).body.food;
+    expect([recipe.foodKind, meal.foodKind]).toEqual(["recipe", "quick_meal"]);
+    const logged = (await a.as("POST", "/api/log/meal", { day, meal: "lunch", foodId: meal.id })).body.entries;
+    expect(logged).toHaveLength(1);
+
+    for (const id of [toast.id, recipe.id, meal.id]) {
+      expect((await b.as("GET", `/api/my-foods/${id}`)).status).toBe(404);
+      expect((await b.as("POST", `/api/my-foods/${id}/recalculate`)).status).toBe(404);
+      expect((await b.as("DELETE", `/api/my-foods/${id}`)).status).toBe(404);
+      // anna's foods can't be ben's ingredients or meal items
+      const items = [{ food: { kind: "user_food", id }, ...portion }];
+      expect((await b.as("POST", "/api/my-foods/recipes", { name: "Ben's", items, servings: 1 })).status).toBe(404);
+      expect((await b.as("POST", "/api/my-foods/meals", { name: "Ben's", items })).status).toBe(404);
+    }
+    expect((await b.as("PUT", `/api/my-foods/recipes/${recipe.id}`, { name: "Mine", items: [{ food: { kind: "user_food", id: toast.id }, ...portion }], servings: 1 })).status).toBe(404);
+    expect((await b.as("PUT", `/api/my-foods/meals/${meal.id}`, { name: "Mine", items: [{ food: { kind: "user_food", id: toast.id }, ...portion }] })).status).toBe(404);
+    expect((await b.as("POST", "/api/log/meal", { day, meal: "lunch", foodId: meal.id })).status).toBe(404);
+    // ben's own meal can't log anna's food as an adjusted item
+    const bens = (await b.as("POST", "/api/my-foods", { name: "Ben's egg", servings: [{ label: "1 egg", grams: 50 }], nutrients: { calories: 70 } })).body.food;
+    const bensMeal = (await b.as("POST", "/api/my-foods/meals", { name: "Ben's meal", items: [{ food: { kind: "user_food", id: bens.id }, ...portion }] })).body.food;
+    expect((await b.as("POST", "/api/log/meal", { day, meal: "lunch", foodId: bensMeal.id, items: [{ food: { kind: "user_food", id: toast.id }, ...portion }] })).status).toBe(404);
+    // ...nor save anna's entries as a meal
+    expect((await b.as("POST", "/api/my-foods/meals/from-entries", { name: "Stolen", ids: logged.map((e: any) => e.id) })).status).toBe(404);
+    expect((await b.as("GET", "/api/my-foods?kind=recipes")).body.foods).toEqual([]);
+    expect((await b.as("GET", "/api/my-foods?kind=meals")).body.foods.map((f: any) => f.id)).toEqual([bensMeal.id]);
+    expect((await b.as("GET", "/api/my-foods?sort=recent")).body.foods.map((f: any) => f.id).sort()).toEqual([bens.id, bensMeal.id].sort());
+    expect((await b.as("GET", "/api/foods/search?q=anna")).body.groups.flatMap((g: any) => g.foods.filter((f: any) => f.kind === "user_food"))).toEqual([]);
+    expect((await b.as("GET", "/api/foods/recent")).body.foods).toEqual([]);
+    expect((await b.as("GET", "/api/foods/frequent")).body.foods).toEqual([]);
+
+    // ...and anna's are untouched
+    expect((await a.as("GET", `/api/my-foods/${recipe.id}`)).body.food).toMatchObject({ name: "Anna's stew", items: [{ food: { id: toast.id } }] });
+    expect((await a.as("GET", "/api/foods/recent")).body.foods.map((f: any) => f.id)).toEqual([meal.id]);
+    expect((await a.as("GET", `/api/day/${day}`)).body.entries).toEqual(logged);
+  });
+
   it("a user's logged days never include another user's entries", async () => {
     const { a, b } = await twoUsers(t);
     const food = (await a.as("POST", "/api/my-foods", { name: "Anna's toast", servings: [{ label: "1 slice", grams: 30 }], nutrients: { calories: 80 } })).body.food;
