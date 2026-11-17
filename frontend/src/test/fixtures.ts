@@ -1,5 +1,8 @@
 // Contract-shaped sample data (plan "API contracts") shared by the screen tests.
 
+import { emptyWeightJson } from "./weightFixtures";
+import { noGlp1 } from "./glp1Fixtures";
+
 export const steadyTargets = {
   calories: { min: 1810, max: 2110 },
   protein_g: { min: 126, max: 180 },
@@ -120,3 +123,15 @@ export function entryJson(over: Record<string, unknown> = {}) {
     ...over,
   };
 }
+
+// The M3 GET routes Goals and the Dashboard call besides their own, answered as for a person with nothing
+// recorded yet, so a test that isn't about them renders no 404 notices. Spread first, then override:
+// fakeServer({ ...m3Routes, "GET /api/weight": () => weightJson() })
+export const m3Routes = {
+  "GET /api/weight": () => emptyWeightJson,
+  "GET /api/glp1": () => noGlp1,
+  "GET /api/body": () => ({ body: null }),
+  "GET /api/badges": () => ({ badges: [], new: [] }),
+  "GET /api/trends/weekly": () => ({ weeks: [] }),
+  "GET /api/vacations": () => ({ vacations: [] }),
+};

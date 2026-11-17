@@ -118,8 +118,8 @@ export default function Dashboard() {
           </button>
         ))}
       </section>
-      <Glp1Card />
       <Notice msg={msg} />
+      <Glp1Card />
       <WeightCard />
       {data && (
         <section aria-label="Streak" className="flex items-center gap-2 rounded-2xl bg-container px-4 py-3">

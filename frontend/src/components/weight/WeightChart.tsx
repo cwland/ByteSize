@@ -4,7 +4,8 @@ import type { Units, WeighIn } from "../../types";
 import { formatWeight, weightValue } from "../../units";
 import { daysBetween, shortDay } from "../../weight";
 
-export type ChartMarker = { day: string; label: string };
+/** label: drawn on the chart ("5 mg"); name: how the summary says it ("dose 5 mg"), the label when left out */
+export type ChartMarker = { day: string; label: string; name?: string };
 
 const HEIGHT = 220;
 const PAD = { left: 40, right: 14, top: 26, bottom: 26 };
@@ -12,10 +13,10 @@ const STEPS = [0.5, 1, 2, 5, 10, 20, 25, 50, 100];
 const n1 = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 1 });
 const c = (n: number) => n.toFixed(1);
 
-// What the chart shows, in words (the SVG's accessible name)
-function summary(points: WeighIn[], goalKg: number | null, units: Units, from: string, to: string) {
+// What the chart shows, in words (the SVG's accessible name), with the markers it draws
+function summary(points: WeighIn[], goalKg: number | null, units: Units, markers: ChartMarker[]) {
   const w = (kg: number) => formatWeight(kg, units);
-  const goal = goalKg !== null ? `, goal ${w(goalKg)}` : "";
+  const goal = `${goalKg !== null ? `, goal ${w(goalKg)}` : ""}${markers.map((m) => `, ${m.name ?? m.label} from ${shortDay(m.day)}`).join("")}`;
   const first = points[0];
   const last = points[points.length - 1];
   if (points.length === 1) return `Weight on ${shortDay(first.day)}: ${w(first.weightKg)}, trend ${w(first.trendKg)}${goal}`;
@@ -92,7 +93,7 @@ export default function WeightChart({
 
   return (
     <div ref={box} className="w-full">
-      <svg width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} role="img" aria-label={summary(points, goalKg, units, from, to)} className="block max-w-full select-none">
+      <svg width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} role="img" aria-label={summary(points, goalKg, units, shownMarkers)} className="block max-w-full select-none">
         {ticks.map((t) => (
           <g key={t}>
             <line x1={PAD.left} x2={width - PAD.right} y1={c(y(t))} y2={c(y(t))} stroke="var(--color-line)" strokeWidth="1" />

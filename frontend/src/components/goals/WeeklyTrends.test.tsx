@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import WeeklyTrends from "./WeeklyTrends";
 import { fakeServer } from "../../test/fakeServer";
@@ -82,10 +82,62 @@ describe("Weekly trends", () => {
     expect(await rows()).toHaveLength(16);
   });
 
-  it("offers no Show more when the last 8 weeks loaded are all empty", async () => {
-    fakeServer({ "GET /api/trends/weekly": () => ({ weeks: Array.from({ length: 8 }, (_, i) => week(`2026-10-${10 + i}`, "2026-10-31")) }) });
+  it("keeps Show more after 8 empty weeks, so history before a long gap stays reachable", async () => {
+    const gap = (n: number) => Array.from({ length: n }, (_, i) => week(`2026-10-${String(1 + i).padStart(2, "0")}`, "2026-10-31"));
+    const server = fakeServer({
+      "GET /api/trends/weekly": (_b, path) => {
+        const n = Number(new URL(path, "http://x").searchParams.get("weeks"));
+        return { weeks: n === 8 ? gap(8) : [...gap(8), week("2026-08-02", "2026-08-08", { daysLogged: 4 })] };
+      },
+    });
     renderWithSession(<WeeklyTrends />);
     expect(await rows()).toHaveLength(8);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Show more" }));
+    expect(server.sent.at(-1)!.path).toBe("/api/trends/weekly?weeks=16");
+    expect(await screen.findByText(/Aug 2–8 · 4 days logged/)).toBeInTheDocument();
+    // the server had fewer weeks than asked: that's all of them
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+  });
+
+  it("stops offering Show more at 104 weeks", async () => {
+    const all = Array.from({ length: 104 }, (_, i) => week(`2024-${String(1 + (i % 12)).padStart(2, "0")}-01`, "2024-12-31", { daysLogged: 1 }));
+    fakeServer({ "GET /api/trends/weekly": (_b, path) => ({ weeks: all.slice(0, Number(new URL(path, "http://x").searchParams.get("weeks"))) }) });
+    renderWithSession(<WeeklyTrends />);
+    const user = userEvent.setup();
+    for (let shown = 8; shown < 104; shown = Math.min(shown + 8, 104)) {
+      await user.click(await screen.findByRole("button", { name: "Show more" }));
+      await waitFor(async () => expect(await rows()).toHaveLength(Math.min(shown + 8, 104)));
+    }
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+  });
+
+  it("clears the error after a later load works", async () => {
+    let fail = true;
+    fakeServer({
+      "GET /api/trends/weekly": (_b, path) => {
+        const n = Number(new URL(path, "http://x").searchParams.get("weeks"));
+        if (n === 16 && fail) {
+          fail = false;
+          return { status: 500, json: { error: "Trends are down" } };
+        }
+        return { weeks: [...weeks, ...older].slice(0, n) };
+      },
+    });
+    renderWithSession(<WeeklyTrends />);
+    expect(await rows()).toHaveLength(8);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Show more" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Trends are down");
+    await user.click(screen.getByRole("button", { name: "Show more" })); // try again
+    await waitFor(async () => expect(await rows()).toHaveLength(16));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("a week whose weight didn't change reads 0 lb, and the weight change is announced once", async () => {
+    fakeServer({ "GET /api/trends/weekly": () => ({ weeks: [week("2026-11-15", "2026-11-21", { daysLogged: 3, weightChangeKg: 0 })] }) });
+    renderWithSession(<WeeklyTrends />);
+    const [row] = await rows();
+    const weight = cell(row, "Weight");
+    expect(weight).toHaveTextContent(/^0 lb$/); // the group's name says "Weight"; its text doesn't repeat it
   });
 });

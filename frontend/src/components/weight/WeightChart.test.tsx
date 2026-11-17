@@ -76,6 +76,26 @@ describe("WeightChart", () => {
     expect(marks[0]).toHaveTextContent("5 mg");
   });
 
+  it("names the markers inside the range in its summary", () => {
+    render(
+      <WeightChart
+        weighIns={sampleWeighIns}
+        goalKg={goalKg}
+        units="imperial"
+        from="2026-10-20"
+        to="2026-11-17"
+        markers={[
+          { day: "2026-09-01", label: "2.5 mg", name: "dose 2.5 mg" },
+          { day: "2026-11-03", label: "5 mg", name: "dose 5 mg" },
+          { day: "2026-11-10", label: "Moved" },
+        ]}
+      />,
+    );
+    const name = screen.getByRole("img").getAttribute("aria-label")!;
+    expect(name).toMatch(/, dose 5 mg from Nov 3, Moved from Nov 10$/);
+    expect(name).not.toContain("2.5 mg");
+  });
+
   it("tapping a dot selects that weigh-in", async () => {
     const onSelect = vi.fn();
     const { container } = render(<WeightChart weighIns={sampleWeighIns} goalKg={goalKg} units="imperial" from="2026-10-20" to="2026-11-17" onSelect={onSelect} />);

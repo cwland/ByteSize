@@ -6,13 +6,15 @@ import { SelectedDayProvider } from "../../selectedDay";
 import TopBar from "../TopBar";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
-import { barFood, dayJson, settingsMe } from "../../test/fixtures";
+import { barFood, dayJson, m3Routes, settingsMe } from "../../test/fixtures";
+import { glp1View } from "../../test/glp1Fixtures";
 import { weightJson } from "../../test/weightFixtures";
 
 const totals = { calories: 1138, protein_g: 97, fiber_g: 29, water_ml: 769, unknownCount: {} };
 
 function show(day: object, over: Record<string, (b: any) => unknown> = {}) {
   const server = fakeServer({
+    ...m3Routes,
     "GET /api/day/:date": () => day,
     "GET /api/settings/me": () => settingsMe,
     "GET /api/weight": () => weightJson(),
@@ -95,6 +97,19 @@ describe("Dashboard", () => {
     await user.click(await screen.findByRole("button", { name: "+8 oz" }));
     expect(server.writes()).toContainEqual(expect.objectContaining({ method: "POST", path: "/api/log", body: { day: "2026-11-15", meal: "supplements", water_ml: 237 } }));
     expect(await screen.findByText("34 / 64 fl oz")).toBeInTheDocument();
+  });
+
+  it("a failed water quick-add says so directly under the Water section, not after the GLP-1 card", async () => {
+    show(dayJson({ totals }), {
+      "GET /api/glp1": () => glp1View(),
+      "POST /api/log": () => ({ status: 500, json: { error: "Couldn't add water" } }),
+    });
+    await screen.findByRole("region", { name: "GLP-1" });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument(); // the default fakes: no 404 notices
+    await userEvent.setup().click(await screen.findByRole("button", { name: "+8 oz" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn't add water");
+    expect(alert.previousElementSibling).toBe(screen.getByRole("region", { name: "Water" }));
   });
 
   it("Photo opens the file picker straight away, then Add Food on the meal of the moment with the result", async () => {

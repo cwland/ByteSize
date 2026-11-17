@@ -22,7 +22,8 @@ const LIST_LIMIT = 7;
 export function projectionText(w: Weight, units: Units) {
   const p = w.projection;
   if (p.status === "not_enough") return "Not enough weigh-ins yet";
-  if (p.status === "not_losing") return "Not losing right now";
+  // The server's not_losing for a goal at or above the start that the trend is already at or under: nothing to lose
+  if (p.status === "not_losing") return w.goalKg !== null && w.trendKg !== null && w.trendKg <= w.goalKg ? "At or below your goal weight" : "Not losing right now";
   if (p.status === "reached") return "You've reached your goal";
   // A rate that rounds to 0 in the person's units would read "Losing 0 lb a week"
   const rate = p.kgPerWeek !== undefined && weightValue(p.kgPerWeek, units) > 0 ? `Losing ${formatWeight(p.kgPerWeek, units)} a week` : "Losing slowly";

@@ -52,7 +52,6 @@ function WeekRow({ week, units }: { week: WeekTrend; units: Units }) {
       <div className="flex items-baseline justify-between gap-2">
         <p className="font-semibold">{`${dayRange(week.start, week.end)} · ${logged}`}</p>
         <div role="group" aria-label="Weight" className="shrink-0 text-sm">
-          <span className="sr-only">Weight </span>
           <span className="font-semibold tabular">{weightChange(week.weightChangeKg, units)}</span>
         </div>
       </div>
@@ -67,23 +66,30 @@ function WeekRow({ week, units }: { week: WeekTrend; units: Units }) {
 }
 
 // Goals › Weekly trends: newest week first, daily averages over logged days against the targets,
-// and the week's change in trend weight. 8 weeks at a time.
+// and the week's change in trend weight. 8 weeks at a time, up to 104.
 export default function WeeklyTrends() {
   const { user } = useSession();
-  const [count, setCount] = useState(PAGE);
-  const [weeks, setWeeks] = useState<WeekTrend[] | null>(null);
+  // The weeks to ask for; try counts requests, so Show more after a failed load asks again
+  const [want, setWant] = useState({ weeks: PAGE, try: 0 });
+  const [loaded, setLoaded] = useState<{ weeks: WeekTrend[]; asked: number } | null>(null);
   const [msg, setMsg] = useState<Msg>(null);
 
   useEffect(() => {
     let live = true;
-    api<{ weeks: WeekTrend[] }>("GET", `/api/trends/weekly?weeks=${count}`)
-      .then((r) => live && setWeeks(r.weeks))
+    api<{ weeks: WeekTrend[] }>("GET", `/api/trends/weekly?weeks=${want.weeks}`)
+      .then((r) => {
+        if (!live) return;
+        setLoaded({ weeks: r.weeks, asked: want.weeks });
+        setMsg(null);
+      })
       .catch((e) => live && setMsg(errorMsg(e)));
     return () => void (live = false);
-  }, [count]);
+  }, [want]);
 
-  // Offer more while the last 8 weeks loaded still had something in them
-  const more = !!weeks && weeks.length === count && count < MAX_WEEKS && weeks.slice(-PAGE).some((w) => w.daysLogged > 0 || w.weightChangeKg !== null);
+  const weeks = loaded?.weeks ?? null;
+  // More until the server has fewer weeks than asked (that's all of them) or 104 are shown: empty weeks
+  // don't stop it, so history before a long gap stays reachable
+  const more = !!loaded && loaded.weeks.length >= loaded.asked && loaded.asked < MAX_WEEKS;
   return (
     <section aria-label="Weekly trends" className="rounded-2xl bg-container p-5">
       <h2 className="text-lg font-bold">Weekly trends</h2>
@@ -97,7 +103,7 @@ export default function WeeklyTrends() {
         </ul>
       )}
       {more && (
-        <button type="button" onClick={() => setCount((c) => Math.min(c + PAGE, MAX_WEEKS))} className={`${linkButton} mt-2`}>
+        <button type="button" onClick={() => setWant((w) => ({ weeks: Math.min(loaded!.asked + PAGE, MAX_WEEKS), try: w.try + 1 }))} className={`${linkButton} mt-2`}>
           Show more
         </button>
       )}

@@ -42,6 +42,13 @@ describe("WeightSection (Goals)", () => {
     expect(await screen.findByText(text)).toBeInTheDocument();
   });
 
+  it("a goal at or above the starting weight, with the trend at or under it, reads as at the goal, not as not losing", async () => {
+    fakeServer({ "GET /api/weight": () => weightJson({ goalKg: 230 * KG, projection: { status: "not_losing" } }) });
+    renderWithSession(<WeightSection onReplan={() => {}} />);
+    expect(await screen.findByText("At or below your goal weight")).toBeInTheDocument();
+    expect(screen.queryByText("Not losing right now")).not.toBeInTheDocument();
+  });
+
   it("a gain reads as gained so far", async () => {
     fakeServer({ "GET /api/weight": () => weightJson({ lostKg: -1.2 * KG }) });
     renderWithSession(<WeightSection onReplan={() => {}} />);
