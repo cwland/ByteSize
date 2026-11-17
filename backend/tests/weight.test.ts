@@ -113,9 +113,15 @@ describe("projectionOf", () => {
     expect(projectionOf(flat, 90, today).status).toBe("not_losing");
   });
 
-  it("is reached at or below the goal, even with one weigh-in", () => {
+  it("is reached at or below a goal under the starting weight, even without 7 days of weigh-ins", () => {
     expect(projectionOf(steady(90), 90, today)).toEqual({ status: "reached" });
-    expect(projectionOf([{ day: today, trendKg: 85 }], 90, today)).toEqual({ status: "reached" });
+    expect(projectionOf([{ day: addDays(today, -1), trendKg: 95 }, { day: today, trendKg: 85 }], 90, today)).toEqual({ status: "reached" });
+  });
+
+  it("a goal at or above the starting weight is never reached: nothing to lose toward is not_losing", () => {
+    expect(projectionOf([{ day: today, trendKg: 85 }], 90, today)).toEqual({ status: "not_losing" });
+    expect(projectionOf([{ day: today, trendKg: 90 }], 90, today)).toEqual({ status: "not_losing" });
+    expect(projectionOf(steady(90).map((p) => ({ ...p, trendKg: 90 })), 92, today)).toEqual({ status: "not_losing" });
   });
 
   it("gives the rate but no date without a goal", () => {
@@ -211,6 +217,17 @@ describe("weigh-ins", () => {
     expect(await bodyWeight()).toBe(98.5);
   });
 
+  it("saving the body with a weight within 0.05 kg of the stored one (a units round trip) adds no weigh-in", async () => {
+    await t.api("PUT", "/api/body", BODY); // 100 kg, weighs in today
+    await t.api("DELETE", `/api/weigh-ins/${TODAY}`);
+    await weigh("2026-11-10", 100); // the latest: the body stays 100 kg
+    const days = async () => (await t.api("GET", "/api/weight")).body.weighIns.map((w: any) => w.day);
+    await t.api("PUT", "/api/body", { ...BODY, weightKg: 100.04 }); // e.g. 220.5 lb → 100.0175 kg
+    expect(await days()).toEqual(["2026-11-10"]);
+    await t.api("PUT", "/api/body", { ...BODY, weightKg: 100.1 }); // a real change
+    expect(await days()).toEqual(["2026-11-10", TODAY]);
+  });
+
   it("a weigh-in without a body profile is still saved", async () => {
     expect((await weigh(TODAY, 99)).status).toBe(200);
     expect((await t.api("GET", "/api/body")).body).toEqual({ body: null });
@@ -270,7 +287,7 @@ describe("GET /api/weight", () => {
     expect((await t.api("GET", "/api/weight?from=2026-11-09&to=2026-11-01")).status).toBe(400);
   });
 
-  it("a single weigh-in is not enough; a gain is not losing; at the goal is reached", async () => {
+  it("a single weigh-in is not enough; a gain is not losing; at a goal at or above the start is not_losing, not reached", async () => {
     await t.api("PUT", "/api/body", BODY);
     await t.api("DELETE", `/api/weigh-ins/${TODAY}`); // the body's own weigh-in
     await weigh("2026-11-01", 90);
@@ -281,7 +298,11 @@ describe("GET /api/weight", () => {
     expect(gain.projection.status).toBe("not_losing");
     expect(gain.projection.date).toBeUndefined();
     expect(gain.lostKg).toBeLessThan(0);
-    await t.api("PUT", "/api/body", { ...BODY, weightKg: 94, goalWeightKg: 95 });
+    await t.api("PUT", "/api/body", { ...BODY, weightKg: 94, goalWeightKg: 95 }); // started at 90: nothing to lose
+    expect((await t.api("GET", "/api/weight")).body.projection).toEqual({ status: "not_losing" });
+    await t.api("PUT", "/api/body", { ...BODY, weightKg: 94, goalWeightKg: 85 });
+    await weigh("2026-10-20", 99); // now the start is 99 kg, and the trend is under an 95.5 kg goal
+    await t.api("PUT", "/api/body", { ...BODY, weightKg: 94, goalWeightKg: 95.5 });
     expect((await t.api("GET", "/api/weight")).body.projection).toEqual({ status: "reached" });
   });
 

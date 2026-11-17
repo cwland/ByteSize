@@ -5,7 +5,7 @@ import type { Db } from "../db/index.js";
 import { foodCache, logEntries, userFoods, userSettings, users } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
-import { addDays, DAY, localDay, mealFor, MEALS, streak, suggestedFor, type Meal } from "../lib/days.js";
+import { addDays, DAY, localDay, mealFor, MEALS, streak, suggestedFor, todayFor, userTimezone, type Meal } from "../lib/days.js";
 import { loadFood, toResult, type FoodResult } from "../lib/foods.js";
 import { itemList, portionFields, quickMealParts } from "../lib/recipes.js";
 import { amountFactor, scaleNutrients, sumNutrients, UnitError, type Nutrients, type Serving, type Unit } from "../lib/nutrients.js";
@@ -97,16 +97,6 @@ function portionNutrients(per: Nutrients, servings: Serving[], p: Portion): Nutr
     if (e instanceof UnitError) throw badRequest(e.message);
     throw e;
   }
-}
-
-async function userTimezone(db: Db, userId: number): Promise<string> {
-  const [u] = await db.select({ timezone: users.timezone }).from(users).where(eq(users.id, userId));
-  if (!u) throw new HttpError(401, "Not logged in");
-  return u.timezone;
-}
-
-async function todayFor(app: FastifyInstance, userId: number) {
-  return localDay(await userTimezone(app.db, userId), app.now());
 }
 
 const isWater = (r: Row) => r.source === "water";

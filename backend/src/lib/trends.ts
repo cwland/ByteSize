@@ -1,33 +1,11 @@
 // Weight trend and weekly-average helpers (pure). Days are the person's local YYYY-MM-DD dates.
 
-import { addDays } from "./days.js";
+import { addDays, weekdayOf } from "./days.js";
 import type { Nutrients } from "./nutrients.js";
+import type { TrendPoint } from "./weight.js";
 
-export type WeighIn = { day: string; weightKg: number };
-export type TrendPoint = WeighIn & { trendKg: number };
-
-/** Whole days from `a` to `b` (b - a). */
-export function daysBetween(a: string, b: string): number {
-  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
-}
-
-/**
- * Exponentially smoothed weight, time-aware: trend₀ = w₀; then trend += (w − trend) × (1 − 0.9^gapDays),
- * gapDays = days since the previous weigh-in. Returned oldest first.
- */
-export function trendSeries(list: WeighIn[]): TrendPoint[] {
-  const sorted = [...list].sort((x, y) => (x.day < y.day ? -1 : x.day > y.day ? 1 : 0));
-  const out: TrendPoint[] = [];
-  for (const w of sorted) {
-    const prev = out[out.length - 1];
-    const trendKg = prev ? prev.trendKg + (w.weightKg - prev.trendKg) * (1 - 0.9 ** daysBetween(prev.day, w.day)) : w.weightKg;
-    out.push({ ...w, trendKg });
-  }
-  return out;
-}
-
-/** The trend as of `day` (from the last weigh-in on or before it); null before the first weigh-in. */
-export function trendOn(series: TrendPoint[], day: string): number | null {
+/** The trend as of `day` (from the last weigh-in on or before it; `series` oldest first, as trendOf gives it); null before the first weigh-in. */
+export function trendOn(series: readonly TrendPoint[], day: string): number | null {
   let found: number | null = null;
   for (const p of series) {
     if (p.day > day) break;
@@ -35,9 +13,6 @@ export function trendOn(series: TrendPoint[], day: string): number | null {
   }
   return found;
 }
-
-/** Day of the week of a YYYY-MM-DD date: 0 = Sunday ... 6 = Saturday. */
-export const weekdayOf = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay();
 
 /** The first day of the week holding `day`, for weeks starting on `weekStart` (0 = Sunday). */
 export function weekStartOf(day: string, weekStart: number): string {

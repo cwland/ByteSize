@@ -1,15 +1,29 @@
 // Days are the user's local dates (YYYY-MM-DD in users.timezone), never UTC dates.
 
+import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, desc, eq, lte, ne } from "drizzle-orm";
 import type { Db } from "../db/index.js";
-import { logEntries, vacations, type MealWindows } from "../db/schema.js";
+import { logEntries, users, vacations, type MealWindows } from "../db/schema.js";
+import { HttpError } from "./errors.js";
 
 /** The local date in `timeZone` at the moment `now`, as YYYY-MM-DD. */
 export function localDay(timeZone: string, now: Date): string {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
   const get = (type: string) => parts.find((p) => p.type === type)!.value;
   return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** The person's time zone (401 when the account is gone). */
+export async function userTimezone(db: Db, userId: number): Promise<string> {
+  const [u] = await db.select({ timezone: users.timezone }).from(users).where(eq(users.id, userId));
+  if (!u) throw new HttpError(401, "Not logged in");
+  return u.timezone;
+}
+
+/** The person's local today (by the app's clock), as YYYY-MM-DD. */
+export async function todayFor(app: FastifyInstance, userId: number): Promise<string> {
+  return localDay(await userTimezone(app.db, userId), app.now());
 }
 
 export const MEALS = ["breakfast", "lunch", "dinner", "snacks", "supplements"] as const;
@@ -26,6 +40,16 @@ export function addDays(day: string, n: number): string {
   const d = new Date(`${day}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+/** Whole days from `a` to `b` (negative when b is before a). */
+export function daysBetween(a: string, b: string): number {
+  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+}
+
+/** Day of the week of a YYYY-MM-DD date: 0 = Sunday ... 6 = Saturday. */
+export function weekdayOf(day: string): number {
+  return new Date(`${day}T00:00:00Z`).getUTCDay();
 }
 
 /** Share of the day's calories suggested for each meal (supplements & water: none). */

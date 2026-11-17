@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { targets, weighIns } from "../src/db/schema.js";
-import { trendSeries } from "../src/lib/trends.js";
+import { trendOf } from "../src/lib/weight.js";
 
 let t: TestApp;
 let userId: number;
@@ -27,14 +27,14 @@ const NULLS = { calories: null, protein_g: null, fiber_g: null, water_ml: null }
 
 describe("trend (pure)", () => {
   it("smooths by days between weigh-ins: trend0 = w0, trend += (w - trend) * (1 - 0.9^gap)", () => {
-    const s = trendSeries([
+    const s = trendOf([
       { day: "2026-11-08", weightKg: 98 },
       { day: "2026-11-01", weightKg: 100 },
     ]);
     expect(s.map((p) => p.day)).toEqual(["2026-11-01", "2026-11-08"]);
     expect(s[0].trendKg).toBe(100);
     expect(s[1].trendKg).toBeCloseTo(100 + (98 - 100) * (1 - 0.9 ** 7), 10);
-    expect(trendSeries([])).toEqual([]);
+    expect(trendOf([])).toEqual([]);
   });
 });
 

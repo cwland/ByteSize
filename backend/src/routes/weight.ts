@@ -2,10 +2,10 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, asc, desc, eq, gt } from "drizzle-orm";
 import type { Db } from "../db/index.js";
-import { userBody, users, weighIns } from "../db/schema.js";
+import { userBody, weighIns } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
-import { DAY, localDay } from "../lib/days.js";
+import { DAY, todayFor } from "../lib/days.js";
 import { projectionOf, replanHint, trendOf } from "../lib/weight.js";
 import { targetsOn } from "./body-plans.js";
 
@@ -24,12 +24,6 @@ const weighInBody = z.object({
 const rangeQuery = z
   .object({ from: DAY.optional(), to: DAY.optional() })
   .refine((q) => !q.from || !q.to || q.from <= q.to, "The start day must not be after the end day");
-
-async function todayFor(app: FastifyInstance, userId: number): Promise<string> {
-  const [u] = await app.db.select({ timezone: users.timezone }).from(users).where(eq(users.id, userId));
-  if (!u) throw new HttpError(401, "Not logged in");
-  return localDay(u.timezone, app.now());
-}
 
 /** The database or a transaction on it */
 export type DbOrTx = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];

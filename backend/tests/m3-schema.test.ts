@@ -26,6 +26,9 @@ function migrationsUpTo(tag: string): string {
   return dir;
 }
 
+// A time zone whose date differs from UTC's right now: UTC−11 before 11:00 UTC, UTC+14 from 10:00 UTC
+const TZ = new Date().getUTCHours() < 11 ? "Pacific/Pago_Pago" : "Pacific/Kiritimati";
+
 let t: TestApp;
 let uid: number;
 let other: number;
@@ -33,7 +36,7 @@ beforeAll(async () => {
   t = await setupTestApp({}, undefined, async (db) => {
     await migrate(db, { migrationsFolder: migrationsUpTo("0007_recipes") });
     const hash = await bcrypt.hash("password123", 4);
-    const a = await db.execute<{ id: number }>(sql`insert into users (username, password_hash, is_admin) values ('cory', ${hash}, true) returning id`);
+    const a = await db.execute<{ id: number }>(sql`insert into users (username, password_hash, is_admin, timezone) values ('cory', ${hash}, true, ${TZ}) returning id`);
     const b = await db.execute<{ id: number }>(sql`insert into users (username, password_hash) values ('sam', ${hash}) returning id`);
     uid = a.rows[0].id;
     other = b.rows[0].id;
@@ -45,11 +48,12 @@ beforeAll(async () => {
 afterAll(async () => t.close());
 
 describe("migration 0008 (M3)", () => {
-  it("gives each existing body row one starting weigh-in for today at its weight", async () => {
-    const rows = await t.db.execute<{ user_id: number; weight_kg: number; same_day: boolean }>(
-      sql`select user_id, weight_kg, (day = current_date) as same_day from weigh_ins`,
+  it("gives each existing body row one starting weigh-in for the person's local today at its weight", async () => {
+    const rows = await t.db.execute<{ user_id: number; weight_kg: number; local_day: boolean; utc_day: boolean }>(
+      sql`select user_id, weight_kg, (day = (now() at time zone ${TZ})::date) as local_day, (day = (now() at time zone 'UTC')::date) as utc_day from weigh_ins`,
     );
-    expect(rows.rows).toEqual([{ user_id: uid, weight_kg: 102.5, same_day: true }]);
+    // The local date differs from UTC's in TZ, so this tells the two apart
+    expect(rows.rows).toEqual([{ user_id: uid, weight_kg: 102.5, local_day: true, utc_day: false }]);
   });
 
   it("adds targets_weight_kg to user_body, null for existing rows", async () => {

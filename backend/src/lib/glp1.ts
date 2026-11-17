@@ -1,7 +1,7 @@
 // GLP-1 routine: the weekly schedule, site rotation, dose history and the after-injection view.
 // Pure functions over days (YYYY-MM-DD in the person's timezone); the routes load the rows.
 
-import { addDays } from "./days.js";
+import { addDays, daysBetween, weekdayOf } from "./days.js";
 
 /** Injection sites, in rotation order. */
 export const SITES = ["abdomen_left", "abdomen_right", "thigh_left", "thigh_right", "arm_left", "arm_right"] as const;
@@ -16,16 +16,6 @@ export const SHOT_INTERVAL = 7;
 export const AFTER_INJECTION_DAYS = 84;
 
 export type Status = "none" | "upcoming" | "due" | "overdue";
-
-/** Whole days from `a` to `b` (negative when b is before a). */
-export function daysBetween(a: string, b: string): number {
-  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
-}
-
-/** 0 = Sunday ... 6 = Saturday. */
-export function weekdayOf(day: string): number {
-  return new Date(`${day}T00:00:00Z`).getUTCDay();
-}
 
 /** The site after `last` in rotation (wrapping); the first site when there is no last shot. */
 export function nextSite(last: string | null | undefined): Site {

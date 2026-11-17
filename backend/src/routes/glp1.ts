@@ -2,10 +2,10 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, asc, desc, eq, gt, gte, lte } from "drizzle-orm";
 import type { Db } from "../db/index.js";
-import { glp1Settings, glp1Shots, logEntries, sideEffects, users } from "../db/schema.js";
-import { HttpError, badRequest, notFound } from "../lib/errors.js";
+import { glp1Settings, glp1Shots, logEntries, sideEffects } from "../db/schema.js";
+import { badRequest, notFound } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
-import { addDays, DAY, localDay } from "../lib/days.js";
+import { addDays, DAY, todayFor } from "../lib/days.js";
 import { sumNutrients, type Nutrients } from "../lib/nutrients.js";
 import { AFTER_INJECTION_DAYS, afterInjection, doseHistory, nextDueDay, nextSite, scheduleStatus, SIDE_EFFECTS, SITES } from "../lib/glp1.js";
 
@@ -43,12 +43,6 @@ const rangeQuery = z.object({ from: DAY, to: DAY });
 
 type ShotRow = typeof glp1Shots.$inferSelect;
 const toShot = (r: ShotRow) => ({ day: r.day, medication: r.medication, doseMg: r.doseMg, site: r.site, note: r.note });
-
-async function todayFor(app: FastifyInstance, userId: number): Promise<string> {
-  const [u] = await app.db.select({ timezone: users.timezone }).from(users).where(eq(users.id, userId));
-  if (!u) throw new HttpError(401, "Not logged in");
-  return localDay(u.timezone, app.now());
-}
 
 /** A day from the URL that isn't after the person's today. */
 async function pastDay(app: FastifyInstance, userId: number, raw: string): Promise<string> {
@@ -91,13 +85,13 @@ export default async function glp1Routes(app: FastifyInstance) {
     await db
       .insert(glp1Settings)
       .values({ userId, ...b })
-      .onConflictDoUpdate({ target: glp1Settings.userId, set: { ...b, updatedAt: new Date() } });
+      .onConflictDoUpdate({ target: glp1Settings.userId, set: { ...b, updatedAt: app.now() } });
     return glp1View(app, userId);
   });
 
   // One shot per day (a second one that day replaces it). Left out, dose, medication and note keep that
   // day's shot's own (a new shot: dose and medication from the settings). A different dose or medication
-  // on the latest shot becomes the current one (a backdated shot leaves it alone).
+  // sent for the latest shot (or a new latest shot's) becomes the current one (a backdated shot leaves it alone).
   app.put("/api/glp1/shots/:day", async (req) => {
     const userId = requireUser(req);
     const day = await pastDay(app, userId, (req.params as { day: string }).day);
@@ -115,8 +109,11 @@ export default async function glp1Routes(app: FastifyInstance) {
         .values({ userId, day, ...values })
         .onConflictDoUpdate({ target: [glp1Shots.userId, glp1Shots.day], set: values });
       const [later] = await tx.select({ id: glp1Shots.id }).from(glp1Shots).where(and(eq(glp1Shots.userId, userId), gt(glp1Shots.day, day))).limit(1);
-      if (settings && !later && (settings.doseMg !== doseMg || settings.medication !== med)) {
-        await tx.update(glp1Settings).set({ doseMg, medication: med, updatedAt: new Date() }).where(eq(glp1Settings.userId, userId));
+      // Only a dose or medication sent with this shot, or a new latest shot, speaks for the current one: re-saving
+      // the latest shot (e.g. a new site) mustn't undo a dose changed in the settings since
+      const speaks = b.doseMg !== undefined || b.medication !== undefined || !existing;
+      if (settings && speaks && !later && (settings.doseMg !== doseMg || settings.medication !== med)) {
+        await tx.update(glp1Settings).set({ doseMg, medication: med, updatedAt: app.now() }).where(eq(glp1Settings.userId, userId));
       }
     });
     return glp1View(app, userId);
@@ -132,7 +129,7 @@ export default async function glp1Routes(app: FastifyInstance) {
       const [later] = await tx.select({ id: glp1Shots.id }).from(glp1Shots).where(and(eq(glp1Shots.userId, userId), gt(glp1Shots.day, day))).limit(1);
       if (later) return;
       const [latest] = await tx.select().from(glp1Shots).where(eq(glp1Shots.userId, userId)).orderBy(desc(glp1Shots.day)).limit(1);
-      if (latest) await tx.update(glp1Settings).set({ doseMg: latest.doseMg, medication: latest.medication, updatedAt: new Date() }).where(eq(glp1Settings.userId, userId));
+      if (latest) await tx.update(glp1Settings).set({ doseMg: latest.doseMg, medication: latest.medication, updatedAt: app.now() }).where(eq(glp1Settings.userId, userId));
     });
     return glp1View(app, userId);
   });

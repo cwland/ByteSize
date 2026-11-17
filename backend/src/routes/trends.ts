@@ -2,13 +2,14 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import type { Db } from "../db/index.js";
-import { badges, glp1Shots, logEntries, userBody, userSettings, users, vacations, weighIns } from "../db/schema.js";
+import { badges, glp1Shots, logEntries, userBody, userSettings, vacations, weighIns } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
-import { addDays, DAY, localDay, loggedDays, vacationCheck } from "../lib/days.js";
+import { addDays, DAY, loggedDays, todayFor, vacationCheck } from "../lib/days.js";
 import { badgeList, earnedBadges } from "../lib/badges.js";
 import type { Nutrients } from "../lib/nutrients.js";
-import { averages, judge, trendOn, trendSeries, TREND_NUTRIENTS, weekStartOf, type DayLog, type Status, type TrendNutrient } from "../lib/trends.js";
+import { trendOf } from "../lib/weight.js";
+import { averages, judge, trendOn, TREND_NUTRIENTS, weekStartOf, type DayLog, type Status, type TrendNutrient } from "../lib/trends.js";
 import { DEFAULT_WEEK_START } from "./settings-me.js";
 import { targetsOn } from "./body-plans.js";
 
@@ -20,12 +21,6 @@ const weeklyQuery = z.object({ weeks: z.coerce.number().int().min(1, "Choose at 
 const vacationBody = z.object({ from: DAY, to: DAY });
 const seenBody = z.object({ ids: z.array(z.string().max(40)).min(1, "Choose at least one badge").max(100) });
 const idParam = z.object({ id: z.coerce.number().int().positive().max(2147483647) });
-
-async function userTimezone(db: Db, userId: number): Promise<string> {
-  const [u] = await db.select({ timezone: users.timezone }).from(users).where(eq(users.id, userId));
-  if (!u) throw new HttpError(401, "Not logged in");
-  return u.timezone;
-}
 
 const roundKg = (kg: number) => Math.round(kg * 1000) / 1000;
 
@@ -46,7 +41,7 @@ async function weekly(db: Db, userId: number, today: string, weeks: number) {
     else d.foods.push(r.nutrients as Nutrients);
     byDay.set(r.day, d);
   }
-  const series = trendSeries(await db.select({ day: weighIns.day, weightKg: weighIns.weightKg }).from(weighIns).where(and(eq(weighIns.userId, userId), lte(weighIns.day, today))));
+  const series = trendOf(await db.select({ day: weighIns.day, weightKg: weighIns.weightKg }).from(weighIns).where(and(eq(weighIns.userId, userId), lte(weighIns.day, today))));
 
   const out = [];
   for (let i = 0; i < weeks; i++) {
@@ -89,18 +84,17 @@ async function refreshBadges(db: Db, userId: number, today: string) {
 
 export default async function trendRoutes(app: FastifyInstance) {
   const { db } = app;
-  const todayFor = async (userId: number) => localDay(await userTimezone(db, userId), app.now());
 
   app.get("/api/trends/weekly", async (req) => {
     const userId = requireUser(req);
     const { weeks } = weeklyQuery.parse(req.query ?? {});
-    return { weeks: await weekly(db, userId, await todayFor(userId), weeks) };
+    return { weeks: await weekly(db, userId, await todayFor(app, userId), weeks) };
   });
 
   // Every badge (earned or not; "new" = earned and not yet shown), storing any newly earned
   app.get("/api/badges", async (req) => {
     const userId = requireUser(req);
-    return refreshBadges(db, userId, await todayFor(userId));
+    return refreshBadges(db, userId, await todayFor(app, userId));
   });
 
   // The celebration was shown: these badges are no longer new

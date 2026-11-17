@@ -12,6 +12,9 @@ export type Projection = {
   kgPerWeek?: number;
 };
 
+/** One pound in kilograms (exact). */
+export const KG_PER_LB = 0.45359237;
+
 const SMOOTHING = 0.9;
 export const PROJECTION_DAYS = 28;
 const MIN_SPAN_DAYS = 7;
@@ -40,13 +43,15 @@ export function trendOf<P extends WeighInPoint>(points: readonly P[]): (P & { tr
 
 /**
  * Where the trend is heading: least-squares slope of the trend over the last 28 days (needs ≥ 2 weigh-ins at
- * least 7 days apart). Losing → goal day = today + (trend − goal) ÷ rate. At or below the goal → reached.
+ * least 7 days apart). Losing → goal day = today + (trend − goal) ÷ rate. At or below a goal under the starting
+ * weight → reached; at or below a goal at or above the start (nothing to lose toward) → not_losing.
  * `trendPoints` sorted by day (as trendOf gives them); `today` is the person's local day.
  */
 export function projectionOf(trendPoints: readonly TrendPoint[], goalKg: number | null, today: string): Projection {
   const last = trendPoints[trendPoints.length - 1];
   if (!last) return { status: "not_enough" };
-  if (goalKg !== null && last.trendKg <= goalKg) return { status: "reached" };
+  // The start is the first weigh-in (trend₀ = w₀). A goal at or above it has nothing to lose toward: never "reached"
+  if (goalKg !== null && last.trendKg <= goalKg) return goalKg < trendPoints[0].trendKg ? { status: "reached" } : { status: "not_losing" };
 
   const from = addDays(today, -(PROJECTION_DAYS - 1));
   const recent = trendPoints.filter((p) => p.day >= from && p.day <= today);

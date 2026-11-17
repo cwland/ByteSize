@@ -1,10 +1,9 @@
 // Badges (pure): which badges a person's history earns, and on which day each was first earned.
 // Stored on first earn and never removed (routes/trends.ts); this only works out what the history shows.
 
-import { addDays } from "./days.js";
-import { daysBetween, trendSeries, type WeighIn } from "./trends.js";
+import { addDays, daysBetween } from "./days.js";
+import { KG_PER_LB, trendOf, type WeighInPoint } from "./weight.js";
 
-export const LB_KG = 0.45359237;
 export const STREAKS = [7, 30, 100] as const;
 const SHOTS_IN_A_ROW = 4;
 /** A shot is on time within 1 day of the previous shot + 7 days. */
@@ -18,7 +17,7 @@ export const lostId = (lb: number) => `lost_${lb}`;
 export const isLostId = (id: string) => /^lost_\d+$/.test(id);
 
 export type BadgeHistory = {
-  weighIns: WeighIn[];
+  weighIns: WeighInPoint[];
   goalKg: number | null;
   /** Days with food logged (any order). */
   loggedDays: string[];
@@ -36,7 +35,7 @@ export function earnedBadges(h: BadgeHistory): Map<string, string> {
   };
 
   // Weight: start = the first weigh-in; lost = start − trend (in lb thresholds); halfway / goal against the goal
-  const series = trendSeries(h.weighIns);
+  const series = trendOf(h.weighIns);
   if (series.length) {
     const start = series[0].weightKg;
     earn("first_weigh_in", series[0].day);
@@ -44,7 +43,7 @@ export function earnedBadges(h: BadgeHistory): Map<string, string> {
     let next = 0;
     for (const p of series) {
       const lost = start - p.trendKg;
-      while (lost + EPS >= lostLb(next) * LB_KG) earn(lostId(lostLb(next++)), p.day);
+      while (lost + EPS >= lostLb(next) * KG_PER_LB) earn(lostId(lostLb(next++)), p.day);
       if (losing && p.trendKg <= start - (start - h.goalKg!) / 2 + EPS) earn("halfway", p.day);
       if (losing && p.trendKg <= h.goalKg! + EPS) earn("goal_reached", p.day);
     }

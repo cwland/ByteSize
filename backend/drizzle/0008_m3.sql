@@ -60,5 +60,5 @@ CREATE UNIQUE INDEX "glp1_shots_user_day_idx" ON "glp1_shots" USING btree ("user
 CREATE UNIQUE INDEX "side_effects_user_day_idx" ON "side_effects" USING btree ("user_id","day");--> statement-breakpoint
 CREATE INDEX "vacations_user_from_idx" ON "vacations" USING btree ("user_id","from_day");--> statement-breakpoint
 CREATE UNIQUE INDEX "weigh_ins_user_day_idx" ON "weigh_ins" USING btree ("user_id","day");--> statement-breakpoint
--- Hand-appended: every existing person starts with one weigh-in, today, at the weight they signed up with
-INSERT INTO "weigh_ins" ("user_id", "day", "weight_kg") SELECT "user_id", current_date, "weight_kg" FROM "user_body" ON CONFLICT DO NOTHING;
+-- Hand-appended: every existing person starts with one weigh-in, today (their local day), at the weight they signed up with
+INSERT INTO "weigh_ins" ("user_id", "day", "weight_kg") SELECT b."user_id", (now() AT TIME ZONE u."timezone")::date, b."weight_kg" FROM "user_body" b JOIN "users" u ON u."id" = b."user_id" ON CONFLICT DO NOTHING;

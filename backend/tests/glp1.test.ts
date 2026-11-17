@@ -142,6 +142,19 @@ describe("GLP-1 settings and schedule", () => {
     expect((await glp1()).shots.find((s: any) => s.day === "2026-10-27").note).toBeNull();
   });
 
+  it("re-saving the latest shot with only a site leaves a dose raised by hand in the settings alone", async () => {
+    await setup(); // 2.5 mg
+    await shot("2026-11-10"); // at 2.5 mg
+    await setup({ doseMg: 5 });
+    await shot("2026-11-10", { site: "arm_left" });
+    const g = await glp1();
+    expect(g.settings.doseMg).toBe(5);
+    expect(g.shots[0]).toMatchObject({ day: "2026-11-10", doseMg: 2.5, site: "arm_left" });
+    // sending the dose explicitly still makes it the current one
+    await shot("2026-11-10", { site: "arm_left", doseMg: 2.5 });
+    expect((await glp1()).settings.doseMg).toBe(2.5);
+  });
+
   it("deleting the latest shot puts the current dose back to the now-latest shot's", async () => {
     await setup();
     await shot("2026-11-03");

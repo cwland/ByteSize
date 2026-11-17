@@ -2,10 +2,11 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, desc, eq, lte } from "drizzle-orm";
 import type { Db } from "../db/index.js";
-import { targets, userBody, users } from "../db/schema.js";
+import { targets, userBody } from "../db/schema.js";
 import { HttpError } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
-import { localDay } from "../lib/days.js";
+import { todayFor } from "../lib/days.js";
+import { KG_PER_LB } from "../lib/weight.js";
 import { logEvent } from "../lib/appLog.js";
 import { saveWeighIn } from "./weight.js";
 import { ACTIVITIES, age, buildPlans, planExplanation, type Body, type PlanId, type PlanResult, type PlanTargets } from "../lib/plans.js";
@@ -16,6 +17,8 @@ const PLAN_IDS = ["maintenance", "relaxed", "steady", "accelerated", "vigorous"]
 const AI_EXPLAIN_MS = 8000;
 const NO_BODY = "Tell ByteSize about yourself first";
 const REVIEW = "Check your details first";
+/** Body weights this close (kg) are the same weight: a units round trip, not a weigh-in */
+const SAME_WEIGHT_KG = 0.05;
 
 const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date like 2026-11-17").refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00Z`)), "That isn't a real date");
 
@@ -112,12 +115,6 @@ async function bodyForPlans(db: Db, userId: number): Promise<Body> {
   return body;
 }
 
-async function today(app: FastifyInstance, userId: number): Promise<string> {
-  const [u] = await app.db.select({ timezone: users.timezone }).from(users).where(eq(users.id, userId));
-  if (!u) throw new HttpError(401, "Not logged in");
-  return localDay(u.timezone, app.now());
-}
-
 // Two sentences from AI when it's ready; the fixed text when it's off, slow or fails.
 async function explain(app: FastifyInstance, userId: number, result: PlanResult, body: Body): Promise<string> {
   const fallback = planExplanation(result, body);
@@ -127,7 +124,7 @@ async function explain(app: FastifyInstance, userId: number, result: PlanResult,
     `Maintenance (TDEE): ${n(result.tdee)} calories a day. Safe floor: ${n(result.floor)} calories.`,
     ...result.plans.map((p) => `${p.name}: ${n(p.calories)} calories, ${p.lbsPerWeek} lb a week, ${p.weeksToGoal ?? "no"} weeks to goal${p.recommended ? " (recommended)" : ""}${p.notRecommended ? " (below the floor, not recommended)" : ""}.`),
     `Recommended: ${result.recommended ?? "none — every plan is below the safe floor; they should set targets with their care team"}.`,
-    `On a GLP-1 medication: ${body.glp1 ? "yes" : "no"}. Goal: lose ${n(Math.round((body.weightKg - body.goalWeightKg) / 0.45359237))} lb.`,
+    `On a GLP-1 medication: ${body.glp1 ? "yes" : "no"}. Goal: lose ${n(Math.round((body.weightKg - body.goalWeightKg) / KG_PER_LB))} lb.`,
   ].join("\n");
   const controller = new AbortController();
   let timer: NodeJS.Timeout | undefined;
@@ -167,7 +164,7 @@ export default async function bodyPlanRoutes(app: FastifyInstance) {
 
   app.put("/api/body", async (req) => {
     const userId = requireUser(req);
-    const day = await today(app, userId);
+    const day = await todayFor(app, userId);
     const body = bodySchema(day).parse(req.body ?? {});
     // Saving the details is the review: clears needsReview
     const row = { ...body, needsReview: false, updatedAt: app.now() };
@@ -177,8 +174,9 @@ export default async function bodyPlanRoutes(app: FastifyInstance) {
         .insert(userBody)
         .values({ userId, ...row })
         .onConflictDoUpdate({ target: userBody.userId, set: row });
-      // A new (or first) weight is also today's weigh-in, so weight has one history
-      if (before?.weightKg !== body.weightKg) await saveWeighIn(tx, userId, day, body.weightKg, undefined, app.now());
+      // A new (or first) weight is also today's weigh-in, so weight has one history. Within 0.05 kg of the stored
+      // weight is the same weight (e.g. saved in lb, read back and saved again): no weigh-in
+      if (!before || Math.abs(before.weightKg - body.weightKg) >= SAME_WEIGHT_KG - 1e-9) await saveWeighIn(tx, userId, day, body.weightKg, undefined, app.now());
     });
     // As stored (height and weights are float4 columns), so PUT and GET agree
     return { body: await loadBody(db, userId) };
@@ -187,7 +185,7 @@ export default async function bodyPlanRoutes(app: FastifyInstance) {
   app.get("/api/plans", async (req) => {
     const userId = requireUser(req);
     const body = await bodyForPlans(db, userId);
-    const day = await today(app, userId);
+    const day = await todayFor(app, userId);
     const result = buildPlans(body, day);
     const current = (await targetsOn(db, userId, day))?.plan ?? null;
     return { tdee: result.tdee, floor: result.floor, plans: result.plans, explanation: await explain(app, userId, result, body), current };
@@ -197,7 +195,7 @@ export default async function bodyPlanRoutes(app: FastifyInstance) {
     const userId = requireUser(req);
     const { plan } = z.object({ plan: z.enum(PLAN_IDS, { error: "Choose one of the plans" }) }).parse(req.body ?? {});
     const body = await bodyForPlans(db, userId);
-    const day = await today(app, userId);
+    const day = await todayFor(app, userId);
     // Exactly the targets on the plan's card
     const chosen = buildPlans(body, day).plans.find((p) => p.id === plan)!;
     const saved = await saveTargets(db, userId, day, chosen.targets, plan);
@@ -209,13 +207,13 @@ export default async function bodyPlanRoutes(app: FastifyInstance) {
   app.get("/api/targets", async (req) => {
     const userId = requireUser(req);
     const { day } = z.object({ day: DAY.optional() }).parse(req.query ?? {});
-    return { targets: await targetsOn(db, userId, day ?? (await today(app, userId))) };
+    return { targets: await targetsOn(db, userId, day ?? (await todayFor(app, userId))) };
   });
 
   // Set by hand: replaces plan targets from today on (older days keep theirs)
   app.put("/api/targets", async (req) => {
     const userId = requireUser(req);
     const t = targetsSchema.parse(req.body ?? {});
-    return { targets: await saveTargets(db, userId, await today(app, userId), t, null) };
+    return { targets: await saveTargets(db, userId, await todayFor(app, userId), t, null) };
   });
 }
