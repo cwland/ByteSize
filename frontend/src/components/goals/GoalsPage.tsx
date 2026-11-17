@@ -7,6 +7,9 @@ import type { Targets } from "../../types";
 import { fmt, waterUnit, waterValue } from "../../units";
 import PlanFlow from "../plan/PlanFlow";
 import TargetsEditor from "./TargetsEditor";
+import WeeklyTrends from "./WeeklyTrends";
+import Badges from "./Badges";
+import VacationMode from "./VacationMode";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { linkButton, primaryButton, secondaryButton } from "../ui/styles";
 
@@ -78,6 +81,9 @@ export default function GoalsPage() {
           </button>
         </section>
       )}
+      <WeeklyTrends />
+      <Badges />
+      <VacationMode />
     </div>
   );
 }

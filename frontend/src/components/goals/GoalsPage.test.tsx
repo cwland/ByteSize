@@ -45,7 +45,7 @@ describe("Goals", () => {
     const server = fakeServer({ "GET /api/targets": () => ({ targets: null }) });
     renderWithSession(<GoalsPage />);
     expect(await screen.findByRole("button", { name: "Pick a plan" })).toBeInTheDocument();
-    expect(server.sent[0].path).toMatch(/^\/api\/targets\?day=\d{4}-\d{2}-\d{2}$/);
+    expect(server.sent.find((s) => s.path.startsWith("/api/targets"))!.path).toMatch(/^\/api\/targets\?day=\d{4}-\d{2}-\d{2}$/);
   });
 
   it("Goals has Edit my details", async () => {
@@ -66,5 +66,18 @@ describe("Goals", () => {
     expect(server.writes().find((w) => w.path === "/api/body")!.body).toMatchObject({ birthDate: "1974-06-01", activity: "some" });
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(await screen.findByText("Steady plan")).toBeInTheDocument();
+  });
+
+  it("Goals shows weekly trends, badges and vacation mode", async () => {
+    fakeServer({
+      "GET /api/targets": () => ({ targets: steadyTargets }),
+      "GET /api/trends/weekly": () => ({ weeks: [] }),
+      "GET /api/badges": () => ({ badges: [{ id: "first_weigh_in", earnedOn: null, seen: false }], new: [] }),
+      "GET /api/vacations": () => ({ vacations: [] }),
+    });
+    renderWithSession(<GoalsPage />);
+    expect(await screen.findByRole("region", { name: "Weekly trends" })).toBeInTheDocument();
+    expect(await screen.findByRole("listitem", { name: "First weigh-in" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Vacation mode" })).toBeInTheDocument();
   });
 });
