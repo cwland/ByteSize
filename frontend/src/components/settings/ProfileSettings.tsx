@@ -100,7 +100,7 @@ function Appearance() {
             role="radio"
             aria-checked={theme.id === t.id}
             onClick={() => save({ theme: t.id })}
-            className={`flex items-center gap-2 rounded-lg border p-2 text-left text-sm ${theme.id === t.id ? "border-action bg-pressed" : "border-line hover:bg-page"}`}
+            className={`flex items-center gap-2 rounded-xl border-2 p-2 text-left text-sm ${theme.id === t.id ? "border-action bg-pressed" : "border-transparent bg-page hover:bg-pressed"}`}
           >
             <span className="size-6 shrink-0 rounded-full border border-line" style={{ background: t.colors.brand }} aria-hidden="true" />
             <span className="font-semibold">{t.name}</span>

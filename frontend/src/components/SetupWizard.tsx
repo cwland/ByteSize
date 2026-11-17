@@ -21,7 +21,7 @@ export default function SetupWizard({ user, onAccount, onDone }: Props) {
   const step = !user ? "account" : "profile";
   return (
     <AuthFrame>
-      <h1 className="text-xl font-semibold">Set up ByteSize</h1>
+      <h1 className="text-xl font-bold">Set up ByteSize</h1>
       {step === "account" ? <AccountStep onAccount={onAccount} /> : <ProfileStep user={user!} onDone={onDone} />}
     </AuthFrame>
   );

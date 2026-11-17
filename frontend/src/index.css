@@ -1,31 +1,33 @@
 @import "tailwindcss";
 
-/* Color tokens: the default theme (Avocado, light). Themes and dark mode (src/themes.ts) replace
-   them at runtime. Every color in the app comes from these, so a restyle changes tokens, not code. */
+/* Color tokens: the default theme (Avocado, dark — the default mode). Themes and light/dark mode
+   (src/themes.ts) replace them at runtime. Every color in the app comes from these, so a restyle
+   changes tokens, not code. Orange (primary/action) is for actions; brand green is for the logo only. */
 @theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
-  --color-page: #f5f7f2;
-  --color-container: #ffffff;
-  --color-line: #e3e9dd;
-  --color-strong: #cfd8c6;
+  --color-page: #0d0d0f;
+  --color-container: #1d1d21;
+  --color-line: #2c2c31;
+  --color-strong: #3b3b41;
   --color-brand: #5aa83c;
-  --color-brand-subtle: #eef8d6;
-  --color-success: #1f9d55;
-  --color-success-subtle: #dcf5e5;
-  --color-error: #d1433b;
-  --color-error-subtle: #fde2df;
+  --color-brand-subtle: #24331d;
+  --color-success: #3fbf6a;
+  --color-success-subtle: #1a3324;
+  --color-error: #e5534b;
+  --color-error-subtle: #3a1f1e;
   --color-warning: #f2a20c;
-  --color-pressed: #eef5e6;
-  --color-active: #ddedc9;
-  --color-primary: #1f3a1c;
-  --color-primary-pressed: #142812;
-  --color-action: #3f8a2a;
-  --color-link: #3a7f24;
-  --color-ink: #1c2419;
-  --color-subtle: #48543f;
-  --color-muted: #68745f;
-  --color-inactive: #909a87;
+  --color-pressed: #26262b;
+  --color-active: #3a2a1a;
+  --color-primary: #e8892b;
+  --color-primary-pressed: #f09a45;
+  --color-on-primary: #2b1503;
+  --color-action: #e8892b;
+  --color-link: #f0a050;
+  --color-ink: #f2f2f2;
+  --color-subtle: #a8a8ad;
+  --color-muted: #8a8a90;
+  --color-inactive: #66666c;
 }
 
 @layer base {
@@ -35,6 +37,10 @@
     color: var(--color-ink);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+  :root {
+    color-scheme: dark;
   }
   button {
     cursor: pointer;
@@ -43,4 +49,9 @@
 
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* Room for the fixed bottom tab bar and the iPhone home indicator */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
 }
