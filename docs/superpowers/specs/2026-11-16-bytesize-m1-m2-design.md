@@ -498,3 +498,45 @@ existing failover.
 9. *Smaller.* The Dashboard Photo button opens the file picker straight away (auto mode) and then Add Food on the
    smart-default meal with the result. "Recalculate" is for when ingredient data changed; editing recalculates
    anyway. Corrections (overrides) are edited with the existing override form.
+
+## 13. Addendum 2026-11-17 — M3: weight, GLP-1, trends, badges (scope approved by Cory: "build it out and we can look at it")
+
+**Why:** logging shows what was eaten; M3 shows whether it is working — weight trend toward the goal, the GLP-1
+routine, and small rewards for consistency. Reminders are in-app only (Cory); phone notifications wait for iOS.
+
+**A. Weight.** `weigh_ins` (user_id, day, weight_kg, note; one per day — a second entry that day replaces it).
+Entered in the person's units from a Dashboard Weight card and from Goals. Trend = exponentially smoothed weight
+(time-aware: trend += (w − trend) × (1 − 0.9^days since the previous weigh-in)), so water swings don't mislead.
+Projection: least-squares slope of the trend over the last 28 days (needs ≥ 2 weigh-ins at least 7 days apart);
+losing → projected goal date = today + (trend − goal) ÷ rate; otherwise "Not enough weigh-ins yet" / "Not losing
+right now". The latest weigh-in becomes `user_body.weight_kg` (the plan's weight). When the latest weight is 10 lb
+(4.54 kg) or more from the weight the current targets were set with, Goals suggests "Your weight has changed —
+check your plan". Existing accounts get one starting weigh-in from their body weight (migration).
+Goals shows a chart (weigh-in dots, trend line, goal line, dose-change markers), start/now/goal and lost-so-far.
+
+**B. GLP-1.** `glp1_settings` (medication, dose_mg, injection weekday 0–6, weekly). `glp1_shots` (day, medication,
+dose_mg, site, note; one per day). Sites: abdomen_left, abdomen_right, thigh_left, thigh_right, arm_left, arm_right;
+the suggested site is the next in that order after the last shot's (changeable). Next due = last shot + 7 days
+(no shots yet: the next injection weekday, today included). Dashboard GLP-1 card: "Next shot Fri" before; "Injection
+day" on the day; "Injection overdue by N days" after — until a shot is logged. Logging a shot with a different
+dose updates the current dose; dose history = the shots' dose changes. Side effects: `side_effects` (day, effects
+{nausea, low_appetite, fatigue, constipation, diarrhea, heartburn, headache: 1 mild | 2 medium | 3 strong}, note;
+one per day, optional). After-injection view: over the last 12 weeks, average calories and protein by days since
+the most recent shot (day 0–6), over days with food logged; shown once there are ≥ 2 shots. A GLP-1 page
+(`#/glp1`) holds setup, shot log, site picker, side-effect check-in and history; reached from the card and Goals.
+Only for accounts whose body profile says they use a GLP-1 (others can turn it on in the page).
+
+**C. Weekly trends.** `GET /api/trends/weekly?weeks=12`: per week (the person's week start) — days logged, average
+calories/protein/fiber/water over logged days, each judged against the targets in force (below/in range/above),
+and that week's change in trend weight. Shown on Goals as a compact table/bars.
+
+**D. Badges, streak, vacation.** Badges (stored when first earned, with the date): first weigh-in; 5 lb lost, then
+every 10 lb (10, 20, …) measured start → trend; halfway to goal; goal reached; logging streak 7, 30, 100 days;
+4 shots on time in a row (within 1 day of due). New badges show once as a small celebration on the Dashboard, then
+live on Goals. Vacation mode: date ranges (`vacations`) in which a day without food doesn't break the streak (it
+neither counts nor resets); set on Goals.
+
+**Approaches (trend):** (1) exponential smoothing — chosen (standard for daily weigh-ins, works with gaps);
+(2) 7-day moving average — jumps when a day drops out, poor with gaps; (3) raw line — misleading.
+**Builder's calls:** charts are hand-drawn SVG (no chart library); badges computed server-side on read and stored
+on first earn; all new tables carry user_id and are isolation-tested; weights stored in kg, shown in the person's units.
