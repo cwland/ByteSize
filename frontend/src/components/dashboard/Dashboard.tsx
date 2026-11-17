@@ -1,4 +1,4 @@
-import { Flame, GlassWater } from "lucide-react";
+import { Camera, Flame, GlassWater } from "lucide-react";
 import { api } from "../../api";
 import { notifyDayChanged, useDay, useSettingsMe } from "../../day";
 import { useSelectedDay } from "../../selectedDay";
@@ -7,6 +7,10 @@ import { fmt, waterUnit, waterValue } from "../../units";
 import Gauge from "./Gauge";
 import Ring from "./Ring";
 import { useState } from "react";
+import { mealFor } from "../../meals";
+import type { Meal } from "../../types";
+import AddFoodSheet from "../log/AddFoodSheet";
+import { usePhotoInput } from "../log/PhotoPicker";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { primaryButton, secondaryButton } from "../ui/styles";
 
@@ -17,6 +21,9 @@ export default function Dashboard() {
   const { data, error } = useDay(day);
   const settings = useSettingsMe();
   const [msg, setMsg] = useState<Msg>(null);
+  // Photo: the file picker opens straight away; the chosen photo then opens Add Food for the meal of the moment
+  const [photo, setPhoto] = useState<{ file: File; meal: Meal } | null>(null);
+  const photoInput = usePhotoInput((file) => setPhoto({ file, meal: mealFor(user.timezone, new Date(), settings.mealWindows) }));
 
   const addWater = async (ml: number) => {
     try {
@@ -92,6 +99,12 @@ export default function Dashboard() {
           </div>
         )}
       </section>
+      <div className="flex gap-2">
+        {photoInput.input}
+        <button type="button" onClick={photoInput.open} className={`${secondaryButton} inline-flex items-center gap-1.5`}>
+          <Camera aria-hidden="true" className="size-5" /> Photo
+        </button>
+      </div>
       <section aria-label="Water" className="flex items-center gap-3 rounded-2xl bg-container p-4">
         <GlassWater className="size-6 text-action" aria-hidden="true" />
         <span className="flex-1 font-semibold">Water</span>
@@ -108,6 +121,7 @@ export default function Dashboard() {
           <span className="font-semibold">{data.streak > 0 ? `${data.streak}-day streak` : "Log a food to start a streak"}</span>
         </section>
       )}
+      {photo && <AddFoodSheet day={day} meal={photo.meal} photo={photo.file} onClose={() => setPhoto(null)} />}
     </div>
   );
 }

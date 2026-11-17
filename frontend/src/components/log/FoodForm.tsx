@@ -14,6 +14,8 @@ export type FoodDraft = {
   nutrients: Nutrients;
   aiFields: string[];
   category?: string;
+  imageUrl?: string | null; // the food's photo, shown at the top
+  photoId?: string; // a just-uploaded photo (label read by AI): linked to the food on Save
 };
 // create: a new custom food · edit: one of mine · override: my correction of a database food
 export type FoodFormMode = { kind: "create" } | { kind: "edit"; id: number } | { kind: "override"; cacheId: number };
@@ -41,6 +43,7 @@ export const draftOf = (f: FoodResult & { category?: string }): FoodDraft => ({
   servings: f.servings,
   nutrients: f.nutrients,
   aiFields: f.aiFields,
+  imageUrl: f.imageUrl,
   ...(f.category ? { category: f.category } : {}),
 });
 
@@ -95,7 +98,7 @@ export default function FoodForm({ mode, draft, fillRef, onSaved }: { mode: Food
       let out: { food: FoodResult };
       if (mode.kind === "override") out = await api("POST", "/api/my-foods/override", { cacheId: mode.cacheId, ...common });
       else {
-        const body = { ...common, barcode: barcode.trim() || null, aiFields: [...ai].filter((k) => values[k] !== ""), ...(draft.category ? { category: draft.category } : {}) };
+        const body = { ...common, barcode: barcode.trim() || null, aiFields: [...ai].filter((k) => values[k] !== ""), ...(draft.category ? { category: draft.category } : {}), ...(draft.photoId ? { photoId: draft.photoId } : {}) };
         out = mode.kind === "edit" ? await api("PATCH", `/api/my-foods/${mode.id}`, body) : await api("POST", "/api/my-foods", body);
       }
       onSaved(out.food);
@@ -107,6 +110,7 @@ export default function FoodForm({ mode, draft, fillRef, onSaved }: { mode: Food
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
+      {draft.imageUrl && <img src={draft.imageUrl} alt="Food photo" className="max-h-48 self-start rounded-xl object-contain" />}
       {mode.kind === "override" && <p className="text-sm text-subtle">Saved as your version of this food. Searching or typing its barcode finds yours from now on.</p>}
       {ai.size > 0 && <p className="text-sm text-subtle">Values marked AI estimate are guesses. Check them against the label if you can.</p>}
       <Field label="Name" value={name} onChange={(e) => setName(e.target.value)} />

@@ -1,26 +1,28 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Plus, ScanBarcode, Sparkles } from "lucide-react";
+import { Camera, ChevronDown, Plus, ScanBarcode, Sparkles } from "lucide-react";
 import { api } from "../../api";
 import { formatAmount } from "../../amounts";
 import { notifyDayChanged } from "../../day";
 import { MEALS, MEAL_NAMES } from "../../meals";
 import { addDays, dayLabel, todayIn } from "../../selectedDay";
 import { useSession } from "../../session";
-import type { Day, FoodResult, LogEntry, Meal, Nutrients, Portion, RecentFood, SearchResult } from "../../types";
+import type { Day, FoodResult, LogEntry, Meal, Nutrients, PhotoDraft, PhotoMode, Portion, RecentFood, SearchResult, SourceError } from "../../types";
 import FoodForm, { draftOf, emptyDraft, type FoodDraft, type FoodFormMode } from "./FoodForm";
 import FoodDetail, { defaultPortion, nutrientsFor } from "./FoodDetail";
 import FoodRow, { QuickAddButton, useQuickAdd } from "./FoodRow";
 import Pills from "./Pills";
+import PhotoPicker, { MAX_PHOTOS, usePhotoInput } from "./PhotoPicker";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
 import { field, primaryButton, secondaryButton } from "../ui/styles";
 
-type SourceError = { source: string; message: string };
 type Found = ({ kind: "search" } & SearchResult) | { kind: "barcode"; code: string; food: FoodResult | null; errors?: SourceError[] };
 type View =
   | { k: "search" }
   | { k: "describe" }
-  | { k: "form"; mode: FoodFormMode; draft: FoodDraft; fillRef?: { kind: "cache" | "user_food"; id: number } }
+  | { k: "photo"; files: File[]; mode: PhotoMode }
+  // photos: the photo(s) a label draft was read from, so a barcode photo can still be added
+  | { k: "form"; mode: FoodFormMode; draft: FoodDraft; fillRef?: { kind: "cache" | "user_food"; id: number }; photos?: File[] }
   | { k: "detail"; food: FoodResult; initial: Portion };
 
 // Digits, spaces and dashes only: someone typing a barcode. Lookup only at a barcode's length.
@@ -109,12 +111,30 @@ function MealTitle({ meal, day, onPick }: { meal: Meal; day: string; onPick: (m:
   );
 }
 
+// A label draft from a photo as the New food form's draft: AI-estimated values, the photo to link on Save
+const photoDraft = (d: PhotoDraft): FoodDraft => ({ ...draftOf({ ...d, kind: "user_food", id: 0 }), photoId: d.photoId });
+
+// "Add a barcode photo" over a label draft that has no barcode: both photos are sent again together
+function AddBarcodePhoto({ onFile }: { onFile: (f: File) => void }) {
+  const photo = usePhotoInput(onFile);
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl bg-pressed px-3 py-2 text-sm">
+      {photo.input}
+      <span className="flex-1 text-subtle">Has a barcode? Add its photo so scanning finds this food next time.</span>
+      <button type="button" onClick={photo.open} className="rounded-full px-2 py-1 font-semibold text-link hover:bg-strong">
+        Add a barcode photo
+      </button>
+    </div>
+  );
+}
+
 // One sheet for finding a food (same as yesterday, recently tracked for this meal, search, barcode,
-// describe it, create) and tracking it. Quick add (+) logs as shown and keeps the sheet open.
-export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day: string; meal: Meal; onClose: () => void }) {
+// photo, describe it, create) and tracking it. Quick add (+) logs as shown and keeps the sheet open.
+// photo: a photo already chosen (Dashboard's Photo button) opens straight on the photo step with it.
+export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }: { day: string; meal: Meal; photo?: File; onClose: () => void }) {
   const units = useSession().user?.units ?? "imperial";
   const [meal, setMeal] = useState<Meal>(initialMeal);
-  const [view, setView] = useState<View>({ k: "search" });
+  const [view, setView] = useState<View>(() => (photo ? { k: "photo", files: [photo], mode: "auto" } : { k: "search" }));
   const [query, setQuery] = useState("");
   const [barcodeOpen, setBarcodeOpen] = useState(false);
   const [code, setCode] = useState("");
@@ -222,7 +242,22 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
     const heading = view.mode.kind === "override" ? "Correct this food" : view.mode.kind === "edit" ? "Edit food" : "New food";
     return (
       <Sheet tall label={label} heading={heading} onClose={onClose} onBack={back}>
+        {view.photos && view.photos.length < MAX_PHOTOS && !view.draft.barcode && <AddBarcodePhoto onFile={(f) => setView({ k: "photo", files: [...view.photos!, f], mode: "auto" })} />}
         <FoodForm mode={view.mode} draft={view.draft} fillRef={view.fillRef} onSaved={(f) => pick(f, defaultPortion(f.servings, units))} />
+      </Sheet>
+    );
+  }
+  if (view.k === "photo") {
+    return (
+      <Sheet tall label={label} heading="Photo" onClose={onClose} onBack={back}>
+        <PhotoPicker
+          files={view.files}
+          mode={view.mode}
+          onSend={(files, mode) => setView({ k: "photo", files, mode })}
+          onFood={(food) => pick(food)}
+          onDraft={(d, files) => setView({ k: "form", mode: { kind: "create" }, draft: photoDraft(d), photos: files })}
+          onCreate={(barcode) => setView({ k: "form", mode: { kind: "create" }, draft: emptyDraft({ barcode }) })}
+        />
       </Sheet>
     );
   }
@@ -274,6 +309,15 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
           className={`flex size-11 shrink-0 items-center justify-center rounded-full border border-line ${barcodeOpen ? "bg-active text-link" : "text-ink hover:bg-pressed"}`}
         >
           <ScanBarcode aria-hidden="true" className="size-5" />
+        </button>
+        <button
+          type="button"
+          aria-label="Photo"
+          title="Photo of a barcode or nutrition label"
+          onClick={() => setView({ k: "photo", files: [], mode: "auto" })}
+          className="flex size-11 shrink-0 items-center justify-center rounded-full border border-line text-ink hover:bg-pressed"
+        >
+          <Camera aria-hidden="true" className="size-5" />
         </button>
       </div>
       {barcodeOpen && (

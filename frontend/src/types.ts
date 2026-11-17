@@ -33,6 +33,12 @@ export type FoodResult = {
   override: boolean;
   source: "off" | "usda" | "mine" | "ai";
 };
+// POST /api/photos/analyze (multipart: images 1–2, mode). A barcode found in the photo is looked up
+// like a typed one (food); otherwise a nutrition label is read by the photo AI into a draft (nothing saved).
+export type PhotoMode = "auto" | "barcode" | "label";
+export type SourceError = { source: string; message: string };
+export type PhotoDraft = Omit<FoodResult, "id" | "kind"> & { category: string; photoId: string };
+export type PhotoResult = { photoIds: string[]; barcode?: string; food?: FoodResult; draft?: PhotoDraft; errors: SourceError[]; labelReading: boolean };
 export type Portion = { servingIndex: number; unit: Unit; quantity: number; fraction: number };
 export type RecentFood = FoodResult & { last: Portion };
 // Food search: groups in order (My foods, Basic foods, Saved foods, Open Food Facts, USDA); a close
