@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { sql } from "drizzle-orm";
+import type { FastifyInstance } from "fastify";
 import { createDb } from "../src/db/index.js";
 import { runMigrations } from "../src/db/migrate.js";
 import { buildApp, type AppOptions } from "../src/app.js";
@@ -15,7 +16,8 @@ if (!url.includes("test")) throw new Error("TEST_DATABASE_URL must point at a te
 
 export const TEST_SECRET = "test-secret-test-secret-test-secret-1234";
 
-export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}) {
+// beforeReady: register extra plugins (e.g. the web app) before the app is ready
+export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}, beforeReady?: (app: FastifyInstance) => Promise<void>) {
   const { db, pool } = createDb(url);
   await db.execute(sql`drop schema if exists public cascade`);
   await db.execute(sql`drop schema if exists drizzle cascade`);
@@ -57,6 +59,7 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}) {
     return { ok: r.status < 300, status: r.status, json: async () => r.json };
   };
   const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, ...opts });
+  if (beforeReady) await beforeReady(app);
   await app.ready();
   let token = "";
 
