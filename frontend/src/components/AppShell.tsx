@@ -1,35 +1,28 @@
 import Navigation from "./Navigation";
-import Placeholder from "./Placeholder";
+import TopBar from "./TopBar";
+import { DashboardPreview, GoalsPreview, LogPreview } from "./Placeholder";
 import SettingsPage from "./settings/SettingsPage";
-import { Logo } from "./ui/Logo";
 import { pageFromHash, useHash, type Page } from "../routes";
-import { initialsOf, useSession } from "../session";
+import { useSession } from "../session";
+import { SelectedDayProvider } from "../selectedDay";
 
-// The signed-in app: the header, the navigation and the page for the address
+// The signed-in app: top bar (‹ day ›), the page for the address, and the bottom tab bar.
+// Mobile-first; on desktop the content stays a centered phone-width column.
 export default function AppShell() {
   const page: Page = pageFromHash(useHash());
-  const { user, signOut } = useSession();
+  const { user } = useSession();
   return (
-    <div className="flex min-h-screen flex-col bg-page">
-      <header className="flex h-14 items-center gap-2 border-b border-line bg-container px-4">
-        <Logo className="size-8" />
-        <span className="text-lg font-bold">ByteSize</span>
-        <span className="ml-auto flex size-8 items-center justify-center rounded-full bg-brand-subtle text-xs font-bold text-primary" title={user.displayName ?? user.username}>
-          {initialsOf(user)}
-        </span>
-        <button type="button" onClick={signOut} className="text-sm font-semibold text-link hover:underline">
-          Sign out
-        </button>
-      </header>
-      <div className="flex min-h-0 flex-1">
-        <Navigation page={page} />
-        <main className="min-w-0 flex-1 pb-20 sm:pb-6">
-          {page === "today" && <Placeholder title="Today" />}
-          {page === "log" && <Placeholder title="Food log" />}
-          {page === "foods" && <Placeholder title="My foods" />}
+    <SelectedDayProvider timeZone={user.timezone}>
+      <div className="min-h-screen bg-page">
+        <TopBar />
+        <main className="mx-auto max-w-[560px] px-3 pt-2 pb-32">
+          {page === "dashboard" && <DashboardPreview />}
+          {page === "log" && <LogPreview />}
+          {page === "goals" && <GoalsPreview />}
           {page === "settings" && <SettingsPage />}
         </main>
+        <Navigation page={page} />
       </div>
-    </div>
+    </SelectedDayProvider>
   );
 }

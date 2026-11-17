@@ -153,7 +153,7 @@ function ServiceForm({ draft: d, index, count, onChange, onMove, onRemove }: { d
 
   const keyHint = d.removeKey ? "The saved key will be removed when you save." : d.apiKeyUnreadable ? "The saved key can't be read (the server's secret changed). Enter it again." : d.hasKey ? "A key is saved. Leave this empty to keep it." : "";
   return (
-    <li aria-label={`${index === 0 ? "Main" : "Backup"}: ${title}`} className="rounded-xl border border-line p-4">
+    <li aria-label={`${index === 0 ? "Main" : "Backup"}: ${title}`} className="rounded-xl bg-page p-4">
       <div className="flex items-center gap-2">
         <h3 className="flex-1 font-semibold">
           {index === 0 ? "Main" : `Backup ${index}`}: {title}

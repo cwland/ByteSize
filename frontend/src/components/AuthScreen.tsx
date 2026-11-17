@@ -52,7 +52,7 @@ export default function AuthScreen({ onDone }: { onDone: (token: string, user: U
 
   return (
     <AuthFrame>
-      <h1 className="text-lg font-semibold">Sign in</h1>
+      <h1 className="text-xl font-bold">Sign in</h1>
       <form onSubmit={submit} className="mt-4">
         <Field label="Username" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username webauthn" autoCapitalize="none" autoFocus required />
         <Field label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
