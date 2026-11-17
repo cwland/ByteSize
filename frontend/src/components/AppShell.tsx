@@ -9,7 +9,7 @@ import GoalsPage from "./goals/GoalsPage";
 import PlanFlow from "./plan/PlanFlow";
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { Meal, Targets } from "../types";
+import type { Meal, SavedBody, Targets } from "../types";
 import SettingsPage from "./settings/SettingsPage";
 import { pageFromHash, useHash, type Page } from "../routes";
 import { useSession } from "../session";
@@ -21,11 +21,15 @@ export default function AppShell() {
   const page: Page = pageFromHash(useHash());
   const { user } = useSession();
   // First run after setup: no targets yet → the plan flow, full screen, before the tabs.
-  // If the check fails (server hiccup) the app shows as usual; Goals can still pick a plan.
+  // Saved details that need a review (the questions changed) → the same flow, asked once; "Not now" skips it.
+  // If a check fails (server hiccup) the app shows as usual; Goals can still pick a plan.
   const [needsPlan, setNeedsPlan] = useState(false);
   useEffect(() => {
     api<{ targets: Targets | null }>("GET", `/api/targets?day=${todayIn(user.timezone)}`)
-      .then((r) => setNeedsPlan(r.targets === null))
+      .then((r) => r.targets === null && setNeedsPlan(true))
+      .catch(() => {});
+    api<{ body: SavedBody | null }>("GET", "/api/body")
+      .then((r) => r.body?.needsReview && setNeedsPlan(true))
       .catch(() => {});
   }, [user.timezone]);
 

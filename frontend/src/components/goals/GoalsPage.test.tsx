@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import GoalsPage from "./GoalsPage";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
-import { steadyTargets } from "../../test/fixtures";
+import { bodyA, plansA, steadyTargets } from "../../test/fixtures";
 
 describe("Goals", () => {
   it("Goals shows targets and saves edits", async () => {
@@ -46,5 +46,25 @@ describe("Goals", () => {
     renderWithSession(<GoalsPage />);
     expect(await screen.findByRole("button", { name: "Pick a plan" })).toBeInTheDocument();
     expect(server.sent[0].path).toMatch(/^\/api\/targets\?day=\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("Goals has Edit my details", async () => {
+    const server = fakeServer({
+      "GET /api/targets": () => ({ targets: steadyTargets }),
+      "GET /api/body": () => ({ body: bodyA }),
+      "PUT /api/body": (b) => ({ body: { ...b, needsReview: false } }),
+      "GET /api/plans": () => plansA,
+    });
+    renderWithSession(<GoalsPage />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit my details" }));
+    expect(await screen.findByRole("heading", { name: "Tell us about yourself" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Birthdate")).toHaveValue("1974-06-01");
+    expect(screen.getByRole("radio", { name: /On your feet some of the day/ })).toHaveAttribute("aria-checked", "true");
+    await user.click(screen.getByRole("button", { name: "See my plans" }));
+    expect(await screen.findByRole("heading", { name: "Choose your plan" })).toBeInTheDocument();
+    expect(server.writes().find((w) => w.path === "/api/body")!.body).toMatchObject({ birthDate: "1974-06-01", activity: "some" });
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByText("Steady plan")).toBeInTheDocument();
   });
 });

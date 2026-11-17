@@ -6,6 +6,7 @@ export const NUTRIENT_KEYS = [
   "fiber_g",
   "carbs_g",
   "fat_g",
+  "saturated_fat_g",
   "sugar_g",
   "added_sugar_g",
   "sugar_alcohol_g",
@@ -17,8 +18,11 @@ export const NUTRIENT_KEYS = [
 
 export type NutrientKey = (typeof NUTRIENT_KEYS)[number];
 export type Nutrients = Partial<Record<NutrientKey, number>>;
-/** servings[0] is the base the nutrients are for. */
-export type Serving = { label: string; grams?: number; ml?: number };
+/**
+ * servings[0] is the base the nutrients are for. approx: the ml was estimated from the grams
+ * (1 g ≈ 1 ml) for a drink known only by weight; it plays no other part in the maths.
+ */
+export type Serving = { label: string; grams?: number; ml?: number; approx?: true };
 export type Unit = "serving" | "g" | "oz" | "ml" | "fl_oz" | "cup" | "tbsp" | "tsp";
 
 export class UnitError extends Error {
@@ -67,6 +71,39 @@ export function amountFactor(servings: Serving[], servingIndex: number, unit: Un
     return (quantity * ml) / base.ml;
   }
   throw cant();
+}
+
+// ---------- liquid measures ----------
+
+/** Words that make a food a liquid (category or name; whole words, plural "s"/"es" allowed). */
+export const LIQUID_WORDS = ["milk", "juice", "drink", "beverage", "water", "coffee", "tea", "soda", "broth", "shake", "smoothie", "kefir", "oil", "syrup", "creamer"];
+/** Words that make it a solid even so ("milk chocolate", "cheese, whole milk", "coffee beans", "tuna in oil"), checked first. */
+const SOLID_WORDS = ["cheese", "milk chocolate", "bar", "powder", "cereal", "cookie", "cracker", "chip", "cake", "ice cream", "bean", "ground", "candy", "candie", "pudding", "tuna", "sardine", "fish", "chestnut", "mix", "mixes", "ricotta", "cottage", "oatmeal", "oats"];
+
+const wordsRe = (words: string[]) => new RegExp(`\\b(?:${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})(?:e?s)?\\b`);
+const LIQUID_RE = wordsRe(LIQUID_WORDS);
+const SOLID_RE = wordsRe(SOLID_WORDS);
+const plain = (t: string | null | undefined) => (t ?? "").toLowerCase().replace(/[^a-z]+/g, " "); // "en:milks" → "en milks"
+
+/** Liquid by name first (a solid word wins), then by category. */
+export function isLiquid(category: string | null | undefined, name: string | null | undefined): boolean {
+  const n = plain(name);
+  if (SOLID_RE.test(n)) return false;
+  if (LIQUID_RE.test(n)) return true;
+  // USDA files whole fruit under "Fruits and Fruit Juices": that says nothing either way (juices say so by name)
+  const c = plain(category).replace("fruits and fruit juices", " ");
+  if (SOLID_RE.test(c)) return false;
+  return LIQUID_RE.test(c);
+}
+
+/**
+ * A drink known only by weight gets volumes: ml = grams (1 g ≈ 1 ml), marked approx, on every
+ * serving with grams. Foods with a real volume on servings[0], and solids, come back unchanged.
+ */
+export function withLiquidVolumes(servings: Serving[], category: string | null | undefined, name: string | null | undefined): Serving[] {
+  const base = servings[0];
+  if (!base || !positive(base.grams) || base.ml !== undefined || !isLiquid(category, name)) return servings;
+  return servings.map((s) => (positive(s.grams) && s.ml === undefined ? { ...s, ml: s.grams, approx: true as const } : s));
 }
 
 function roundKey(key: NutrientKey, v: number): number {

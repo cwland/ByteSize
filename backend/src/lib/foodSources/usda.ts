@@ -12,6 +12,7 @@ const MAP: [keyof Nutrients, string[], "kcal" | "g" | "mg"][] = [
   ["fiber_g", ["291"], "g"],
   ["carbs_g", ["205", "205.2"], "g"],
   ["fat_g", ["204", "298"], "g"],
+  ["saturated_fat_g", ["606"], "g"],
   ["sugar_g", ["269", "269.3"], "g"],
   ["added_sugar_g", ["539"], "g"],
   ["sodium_mg", ["307"], "mg"],

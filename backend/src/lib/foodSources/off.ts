@@ -46,6 +46,7 @@ export function normalizeOff(p: any): SourceFood {
     ["fiber", "fiber_g"],
     ["carbohydrates", "carbs_g"],
     ["fat", "fat_g"],
+    ["saturated-fat", "saturated_fat_g"],
     ["sugars", "sugar_g"],
     ["added-sugars", "added_sugar_g"],
     ["polyols", "sugar_alcohol_g"],
