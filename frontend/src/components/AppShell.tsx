@@ -1,17 +1,19 @@
 import Navigation from "./Navigation";
 import TopBar from "./TopBar";
-import { LogPreview } from "./Placeholder";
+import LogPage from "./log/LogPage";
+import AddFoodSheet from "./log/AddFoodSheet";
+import { mealFor } from "../meals";
+import { useSettingsMe } from "../day";
 import Dashboard from "./dashboard/Dashboard";
 import GoalsPage from "./goals/GoalsPage";
 import PlanFlow from "./plan/PlanFlow";
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { todayIn } from "../selectedDay";
-import type { Targets } from "../types";
+import type { Meal, Targets } from "../types";
 import SettingsPage from "./settings/SettingsPage";
 import { pageFromHash, useHash, type Page } from "../routes";
 import { useSession } from "../session";
-import { SelectedDayProvider } from "../selectedDay";
+import { SelectedDayProvider, todayIn, useSelectedDay } from "../selectedDay";
 
 // The signed-in app: top bar (‹ day ›), the page for the address, and the bottom tab bar.
 // Mobile-first; on desktop the content stays a centered phone-width column.
@@ -43,12 +45,26 @@ export default function AppShell() {
         <TopBar />
         <main className="mx-auto max-w-[560px] px-3 pt-2 pb-32">
           {page === "dashboard" && <Dashboard />}
-          {page === "log" && <LogPreview />}
+          {page === "log" && <LogPage />}
           {page === "goals" && <GoalsPage />}
           {page === "settings" && <SettingsPage />}
         </main>
-        <Navigation page={page} />
+        <LogButton page={page} />
       </div>
     </SelectedDayProvider>
+  );
+}
+
+// The bottom tab bar's floating +: Add food for the meal of the moment (meal windows) on the day shown
+function LogButton({ page }: { page: Page }) {
+  const { user } = useSession();
+  const { day } = useSelectedDay();
+  const settings = useSettingsMe();
+  const [meal, setMeal] = useState<Meal | null>(null);
+  return (
+    <>
+      <Navigation page={page} onAdd={() => setMeal(mealFor(user.timezone, new Date(), settings.mealWindows))} />
+      {meal && <AddFoodSheet day={day} meal={meal} onClose={() => setMeal(null)} />}
+    </>
   );
 }
