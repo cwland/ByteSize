@@ -289,3 +289,44 @@ toggle, typed barcode lookup, photo upload (barcode decode + AI label extraction
 - Exact ring/bar styling within the Avocado theme, matching mockup option C.
 - Whether OAuth providers are wired in M1 or left disabled until needed (passwords + passkeys are required).
 - Mapping Culury custom meal-plan slots (e.g. "second-breakfast") onto ByteSize's five meals.
+
+## 8. Backlog (not scheduled)
+- **Restaurant menus (US chains)** — requested by Cory 2026-11-16. Search restaurant items by chain and log them.
+  Candidate sources to evaluate: Nutritionix API (restaurant/branded items, paid tiers), MenuStat (NYC Health's
+  free dataset of top US chains, but the public download looks dated — verify freshness), USDA FDC branded/restaurant
+  foods (already integrated), and AI estimation for local restaurants not in any database. Fits as another source
+  in the 6.4 search waterfall with results cached in `food_cache`.
+
+## 9. Addendum 2026-11-16 — Lose It! look and plans (decided by Cory)
+
+Supersedes the visual parts of 6.6 and the "goal calculator (M3)" non-goal.
+
+**Look and feel (Lose It!):** dark mode default (near-black page, charcoal rounded cards), light mode kept. Orange accent
+for actions (Add Food, Select, floating **+**), green for "under / in range". Top bar: ‹ date › with calendar and avatar.
+Bottom tab bar: Dashboard · Log · Goals · (later tabs) with a floating orange **+** to log. *(Claude's call)* Avocado green
+stays the brand/logo color; orange is the action color, as in Lose It!. Lose It! artwork is not copied.
+
+**Today card — option B (Cory):** "Budget: min–max cals" with a semicircle calorie gauge (Food left, Exercise right,
+remaining in the middle; green in range, amber over), and **rings kept** for protein, fiber and water beneath it.
+Replaces the calorie bar of 6.6 option C.
+
+**Log screen:** meal cards (Breakfast/Lunch/Dinner/Snacks) with "N calories suggested", items with a small icon,
+calories on the right, a one-line macro summary, and an Add Food button. "Done logging" switch with streak.
+Health cards: Weight, Water (tap glasses), GLP-1, Sleep (later milestones fill these).
+
+**Goals screen:** weight chart with projection to goal, Journey milestones, "Set another goal" categories (M3 analytics).
+
+**Food icons (M2):** every food has a category with an icon. Category from Open Food Facts tags / USDA food group /
+AI on save; user can change it. Start with an openly licensed emoji-style set (Twemoji or OpenMoji); 8-bit pixel food
+icons matching the logo are a later upgrade (could be generated on Cory's ComfyUI). Packaged foods may show the OFF
+product thumbnail.
+
+**Weight-loss plan picker (moved into M2, Cory):** first run (and Goals › Plan) asks height, current weight, goal weight,
+age, sex, activity level, on a GLP-1 (yes/no). Mifflin-St Jeor BMR × activity = TDEE. Four plans, swipeable cards:
+Relaxed ½ lb/wk (TDEE−250), Steady 1 lb/wk (−500), Accelerated 1½ lb/wk (−750), Vigorous 2 lb/wk (−1000); each shows
+cal/day, lb/week, weeks to goal. **GLP-1-aware recommendation (Cory):** the standard pick is Steady (Lose It!'s
+default). When on a GLP-1, recommend one step gentler than the standard pick. Never recommend a plan below
+max(1,200 cal, 0.65 × TDEE); such plans are tagged "Not recommended". If the standard pick is itself below the floor,
+recommend the fastest plan at or above it. The chosen plan sets targets: calories range = plan ± 150 (editable), protein floor 0.7 g/lb of goal weight
+(range to 1.0 g/lb), fiber 25–38 g, water 64 oz+. AI writes a one-to-two-sentence explanation of the recommendation and
+can suggest re-planning as weight changes.
