@@ -127,6 +127,36 @@ describe("GLP-1 settings and schedule", () => {
       { day: "2026-11-10", doseMg: 5, medication: "Mounjaro" },
     ]);
   });
+  it("editing an existing shot keeps its own dose, medication and note unless given", async () => {
+    await setup();
+    await shot("2026-10-27", { doseMg: 2.5, note: "first one" });
+    await shot("2026-11-10", { doseMg: 5 });
+    const before = (await glp1()).doseHistory;
+    await shot("2026-10-27", { site: "arm_left" }); // re-save the backdated shot with only a new site
+    const g = await glp1();
+    expect(g.shots.find((s: any) => s.day === "2026-10-27")).toEqual({ day: "2026-10-27", medication: "Mounjaro", doseMg: 2.5, site: "arm_left", note: "first one" });
+    expect(g.doseHistory).toEqual(before);
+    expect(g.settings.doseMg).toBe(5);
+    // an empty note clears it
+    await shot("2026-10-27", { site: "arm_left", note: "" });
+    expect((await glp1()).shots.find((s: any) => s.day === "2026-10-27").note).toBeNull();
+  });
+
+  it("deleting the latest shot puts the current dose back to the now-latest shot's", async () => {
+    await setup();
+    await shot("2026-11-03");
+    await shot("2026-11-10", { doseMg: 5, medication: "Zepbound" });
+    expect((await glp1()).settings).toMatchObject({ doseMg: 5, medication: "Zepbound" });
+    await t.api("DELETE", "/api/glp1/shots/2026-11-10");
+    expect((await glp1()).settings).toEqual({ ...mounjaro, doseMg: 2.5, medication: "Mounjaro" });
+    // deleting an older shot leaves the current dose alone
+    await shot("2026-11-10", { doseMg: 5 });
+    await t.api("DELETE", "/api/glp1/shots/2026-11-03");
+    expect((await glp1()).settings.doseMg).toBe(5);
+    // the last one gone: settings stay as they were
+    await t.api("DELETE", "/api/glp1/shots/2026-11-10");
+    expect((await glp1()).settings).toEqual({ ...mounjaro, doseMg: 5 });
+  });
 });
 
 describe("side effects", () => {
@@ -198,6 +228,23 @@ describe("after-injection averages", () => {
       { offset: 5, avgCalories: null, avgProtein: null, daysCounted: 0 },
       { offset: 6, avgCalories: null, avgProtein: null, daysCounted: 0 },
     ]);
+  });
+
+  it("leaves a day out of a nutrient's average when no food that day has that nutrient", async () => {
+    await setup();
+    const full = (await t.api("POST", "/api/my-foods", toast)).body.food;
+    const caloriesOnly = (await t.api("POST", "/api/my-foods", { name: "Mystery bar", servings: [{ label: "1 bar", grams: 40 }], nutrients: { calories: 200 } })).body.food;
+    const nothingKnown = (await t.api("POST", "/api/my-foods", { name: "Mystery soup", servings: [{ label: "1 bowl", grams: 300 }], nutrients: {} })).body.food;
+    await shot("2026-11-03");
+    await shot("2026-11-10");
+    await eat("2026-11-03", caloriesOnly); // offset 0: 200 kcal, protein unknown
+    await eat("2026-11-10", full); // offset 0: 160 / 6
+    await eat("2026-11-11", caloriesOnly); // offset 1: 200 kcal + toast → 360 / 6 (protein known from the toast)
+    await eat("2026-11-11", full);
+    await eat("2026-11-04", nothingKnown); // offset 1: food, but neither known
+    const days = (await after()).days;
+    expect(days[0]).toEqual({ offset: 0, avgCalories: 180, avgProtein: 6, daysCounted: 2 });
+    expect(days[1]).toEqual({ offset: 1, avgCalories: 360, avgProtein: 6, daysCounted: 2 });
   });
 
   it("isn't enough with fewer than 2 shots, and days before the first shot don't count", async () => {

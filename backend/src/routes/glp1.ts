@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, asc, eq, gt, gte, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, lte } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { glp1Settings, glp1Shots, logEntries, sideEffects, users } from "../db/schema.js";
 import { HttpError, badRequest, notFound } from "../lib/errors.js";
@@ -95,18 +95,21 @@ export default async function glp1Routes(app: FastifyInstance) {
     return glp1View(app, userId);
   });
 
-  // One shot per day (a second one that day replaces it). Dose and medication default to the settings;
-  // a different one on the latest shot becomes the current dose (a backdated shot leaves it alone).
+  // One shot per day (a second one that day replaces it). Left out, dose, medication and note keep that
+  // day's shot's own (a new shot: dose and medication from the settings). A different dose or medication
+  // on the latest shot becomes the current one (a backdated shot leaves it alone).
   app.put("/api/glp1/shots/:day", async (req) => {
     const userId = requireUser(req);
     const day = await pastDay(app, userId, (req.params as { day: string }).day);
     const b = shotBody.parse(req.body ?? {});
     const settings = await settingsFor(db, userId);
-    const doseMg = b.doseMg ?? settings?.doseMg;
-    const med = b.medication ?? settings?.medication;
+    const [existing] = await db.select().from(glp1Shots).where(and(eq(glp1Shots.userId, userId), eq(glp1Shots.day, day)));
+    const doseMg = b.doseMg ?? existing?.doseMg ?? settings?.doseMg;
+    const med = b.medication ?? existing?.medication ?? settings?.medication;
     if (doseMg === undefined || med === undefined) throw badRequest("Set up your medication and dose first");
+    const noteText = b.note === undefined ? (existing?.note ?? null) : b.note;
     await db.transaction(async (tx) => {
-      const values = { medication: med, doseMg, site: b.site, note: b.note ?? null };
+      const values = { medication: med, doseMg, site: b.site, note: noteText };
       await tx
         .insert(glp1Shots)
         .values({ userId, day, ...values })
@@ -122,8 +125,15 @@ export default async function glp1Routes(app: FastifyInstance) {
   app.delete("/api/glp1/shots/:day", async (req) => {
     const userId = requireUser(req);
     const day = DAY.parse((req.params as { day: string }).day);
-    const gone = await db.delete(glp1Shots).where(and(eq(glp1Shots.userId, userId), eq(glp1Shots.day, day))).returning({ id: glp1Shots.id });
-    if (!gone.length) throw notFound("Shot");
+    await db.transaction(async (tx) => {
+      const gone = await tx.delete(glp1Shots).where(and(eq(glp1Shots.userId, userId), eq(glp1Shots.day, day))).returning({ id: glp1Shots.id });
+      if (!gone.length) throw notFound("Shot");
+      // The latest shot gone: the current dose goes back to the now-latest shot's (none left: unchanged)
+      const [later] = await tx.select({ id: glp1Shots.id }).from(glp1Shots).where(and(eq(glp1Shots.userId, userId), gt(glp1Shots.day, day))).limit(1);
+      if (later) return;
+      const [latest] = await tx.select().from(glp1Shots).where(eq(glp1Shots.userId, userId)).orderBy(desc(glp1Shots.day)).limit(1);
+      if (latest) await tx.update(glp1Settings).set({ doseMg: latest.doseMg, medication: latest.medication, updatedAt: new Date() }).where(eq(glp1Settings.userId, userId));
+    });
     return glp1View(app, userId);
   });
 
@@ -142,17 +152,21 @@ export default async function glp1Routes(app: FastifyInstance) {
       .select({ day: logEntries.day, source: logEntries.source, nutrients: logEntries.nutrients })
       .from(logEntries)
       .where(and(eq(logEntries.userId, userId), gte(logEntries.day, from), lte(logEntries.day, today)));
-    const byDay = new Map<string, { food: boolean; nutrients: Nutrients[] }>();
+    const byDay = new Map<string, { food: boolean; nutrients: Nutrients[]; foods: Nutrients[] }>();
     for (const r of rows) {
-      const d = byDay.get(r.day) ?? { food: false, nutrients: [] };
-      if (r.source !== "water") d.food = true;
+      const d = byDay.get(r.day) ?? { food: false, nutrients: [], foods: [] };
+      if (r.source !== "water") {
+        d.food = true;
+        d.foods.push(r.nutrients as Nutrients);
+      }
       d.nutrients.push(r.nutrients as Nutrients);
       byDay.set(r.day, d);
     }
-    // Day totals the way the day view sums them
+    // Day totals the way the day view sums them, but a nutrient no food that day has stays unknown (null)
     const foodDays = [...byDay].filter(([, d]) => d.food).map(([day, d]) => {
       const s = sumNutrients(d.nutrients);
-      return { day, calories: s.calories ?? 0, protein: s.protein_g ?? 0 };
+      const known = (k: "calories" | "protein_g") => d.foods.some((n) => typeof n[k] === "number" && Number.isFinite(n[k]));
+      return { day, calories: known("calories") ? (s.calories ?? 0) : null, protein: known("protein_g") ? (s.protein_g ?? 0) : null };
     });
     return { enough: shots.length >= 2, days: afterInjection(shots.map((s) => s.day), foodDays) };
   });

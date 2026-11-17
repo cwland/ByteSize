@@ -65,11 +65,12 @@ export type AfterInjectionDay = { offset: number; avgCalories: number | null; av
 
 /**
  * Average calories and protein by days since the most recent shot on/before each day (0-6; later days
- * ignored), over the given days with food only. Days before the first shot don't count.
+ * ignored), over the given days with food only. Days before the first shot don't count. A day whose
+ * calories (or protein) is unknown (null) is left out of that average only; daysCounted counts every day with food.
  */
-export function afterInjection(shotDays: string[], foodDays: { day: string; calories: number; protein: number }[]): AfterInjectionDay[] {
+export function afterInjection(shotDays: string[], foodDays: { day: string; calories: number | null; protein: number | null }[]): AfterInjectionDay[] {
   const shots = [...shotDays].sort();
-  const buckets = Array.from({ length: SHOT_INTERVAL }, () => ({ calories: 0, protein: 0, n: 0 }));
+  const buckets = Array.from({ length: SHOT_INTERVAL }, () => ({ calories: 0, nCalories: 0, protein: 0, nProtein: 0, n: 0 }));
   for (const f of foodDays) {
     let last: string | null = null;
     for (const s of shots) {
@@ -79,14 +80,21 @@ export function afterInjection(shotDays: string[], foodDays: { day: string; calo
     if (!last) continue;
     const offset = daysBetween(last, f.day);
     if (offset >= SHOT_INTERVAL) continue;
-    buckets[offset].calories += f.calories;
-    buckets[offset].protein += f.protein;
-    buckets[offset].n++;
+    const b = buckets[offset];
+    b.n++;
+    if (f.calories !== null) {
+      b.calories += f.calories;
+      b.nCalories++;
+    }
+    if (f.protein !== null) {
+      b.protein += f.protein;
+      b.nProtein++;
+    }
   }
   return buckets.map((b, offset) => ({
     offset,
-    avgCalories: b.n ? Math.round(b.calories / b.n) : null,
-    avgProtein: b.n ? Math.round((b.protein / b.n) * 10) / 10 : null,
+    avgCalories: b.nCalories ? Math.round(b.calories / b.nCalories) : null,
+    avgProtein: b.nProtein ? Math.round((b.protein / b.nProtein) * 10) / 10 : null,
     daysCounted: b.n,
   }));
 }
