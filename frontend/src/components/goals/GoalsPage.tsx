@@ -78,6 +78,7 @@ export default function GoalsPage() {
           </button>
         </section>
       )}
+      <a href="#/glp1?from=/goals" className={`${secondaryButton} text-center`}>GLP-1 shots</a>
     </div>
   );
 }

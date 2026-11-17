@@ -32,6 +32,8 @@ export function useHash() {
 }
 
 // My Foods lives under the Log tab and remembers the route it was opened from, for Back
+// The GLP-1 page (#/glp1[?from=<route>]) sits under the Dashboard tab
+export const isGlp1 = (hash = window.location.hash) => /^#\/glp1(\?|$)/.test(hash);
 export const isMyFoods = (hash = window.location.hash) => /^#\/log\/my-foods(\?|$)/.test(hash);
 export function myFoodsFrom(hash = window.location.hash): string {
   const from = hash.match(/[?&]from=(.*)$/)?.[1] ?? "/log";

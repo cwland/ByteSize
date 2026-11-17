@@ -13,6 +13,7 @@ import AddFoodSheet from "../log/AddFoodSheet";
 import { usePhotoInput } from "../log/PhotoPicker";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { primaryButton, secondaryButton } from "../ui/styles";
+import Glp1Card from "../glp1/Glp1Card";
 
 // The selected day at a glance: calorie budget gauge, protein/fiber/water rings, water quick-add, streak
 export default function Dashboard() {
@@ -114,6 +115,7 @@ export default function Dashboard() {
           </button>
         ))}
       </section>
+      <Glp1Card />
       <Notice msg={msg} />
       {data && (
         <section aria-label="Streak" className="flex items-center gap-2 rounded-2xl bg-container px-4 py-3">
