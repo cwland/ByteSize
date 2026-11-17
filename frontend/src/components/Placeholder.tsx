@@ -1,4 +1,4 @@
-import { Plus, Target } from "lucide-react";
+import { Plus } from "lucide-react";
 
 // Visual previews of the screens that arrive in M2 (no data yet): the shapes, empty.
 
@@ -57,18 +57,6 @@ export function LogPreview() {
         </section>
       ))}
       <p className="px-1 text-center text-sm text-muted">Logging arrives in the next update</p>
-    </div>
-  );
-}
-
-export function GoalsPreview() {
-  return (
-    <div>
-      <h1 className="sr-only">Goals</h1>
-      <section aria-label="Goals" className="flex flex-col items-center rounded-2xl bg-container p-8 text-center">
-        <Target className="size-10 text-action" aria-hidden="true" />
-        <p className="mt-3 text-lg font-bold">Your goals and weight plan arrive in the next update</p>
-      </section>
     </div>
   );
 }
