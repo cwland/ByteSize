@@ -306,6 +306,7 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
 
 const SUGGEST_BELOW = 3; // "Did you mean" only when fewer foods than this were found
 const SUGGEST_MATCH = 0.5; // word_similarity a saved word needs to be offered
+const SUGGEST_SHORT = 5; // a search shorter than this is likely a real word ("beef", "pear"): it must also be similar as a whole (>= 0.5)
 
 /** The search's own plural / singular forms: offering one of these isn't a spelling fix. */
 function formsOf(q: string): Set<string> {
@@ -342,7 +343,8 @@ export async function suggestSpelling(db: Db, userId: number, q: string): Promis
       select ${split(sql`${userFoods.name}`)} from ${userFoods} where ${userFoods.userId} = ${userId} and ${userFoods.archived} = false
     )
     select w from words
-    where ${known} or (length(w) >= 3 and word_similarity(${lq}, w) >= ${SUGGEST_MATCH})
+    where ${known} or (length(w) >= 3 and word_similarity(${lq}, w) >= ${SUGGEST_MATCH}
+      and (${lq.length >= SUGGEST_SHORT} or similarity(${lq}, w) >= ${SUGGEST_MATCH}))
     order by ${known} desc, similarity(${lq}, w) desc, word_similarity(${lq}, w) desc, w
     limit 10`);
   if (rows.some(({ w }) => forms.has(w))) return undefined;

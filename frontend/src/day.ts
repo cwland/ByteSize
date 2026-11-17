@@ -52,14 +52,25 @@ export const DEFAULT_SETTINGS: SettingsMe = {
   weekStart: 0,
 };
 
-// Meal windows, water buttons and week start (defaults until the server answers, or if it can't)
+// The last settings the server gave (or that were saved): where a new mount starts, so the week
+// strip doesn't draw Sunday-first and re-layout every time it comes back
+let lastKnown: SettingsMe = DEFAULT_SETTINGS;
+/** For tests: forget the remembered settings. */
+export const resetSettingsCache = () => {
+  lastKnown = DEFAULT_SETTINGS;
+};
+
+// Meal windows, water buttons and week start (the last known ones until the server answers, or if it can't)
 export function useSettingsMe() {
-  const [s, setS] = useState<SettingsMe>(DEFAULT_SETTINGS);
+  const [s, setS] = useState<SettingsMe>(() => lastKnown);
   useEffect(() => {
     let live = true;
     const load = () =>
       api<SettingsMe>("GET", "/api/settings/me")
-        .then((r) => live && setS({ ...DEFAULT_SETTINGS, ...r }))
+        .then((r) => {
+          lastKnown = { ...DEFAULT_SETTINGS, ...r };
+          if (live) setS(lastKnown);
+        })
         .catch(() => {});
     load();
     window.addEventListener(SETTINGS_EVENT, load);

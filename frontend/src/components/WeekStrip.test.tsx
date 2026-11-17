@@ -30,6 +30,7 @@ function show(weekStart = 0, logged: string[] = []) {
   return server;
 }
 
+const utcDow = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay();
 const strip = () => screen.getByRole("group", { name: "Days" });
 const dayNames = (week: HTMLElement) => within(week).getAllByRole("button").map((b) => b.getAttribute("aria-label"));
 
@@ -49,6 +50,29 @@ describe("WeekStrip", () => {
     vi.setSystemTime(new Date("2026-11-17T19:00:00Z"));
   });
   afterEach(() => void vi.useRealTimers());
+
+  it("remembers a Monday-start week: coming back draws Monday first at once and never asks for Sunday-start weeks", async () => {
+    const server = fakeServer({
+      "GET /api/settings/me": () => ({ ...settingsMe, weekStart: 1 }),
+      "GET /api/days/logged": () => ({ days: [] }),
+    });
+    const ui = (
+      <SelectedDayProvider timeZone="America/Boise">
+        <WeekStrip />
+      </SelectedDayProvider>
+    );
+    const first = renderWithSession(ui);
+    await screen.findByRole("group", { name: "Week of Nov 16" });
+    first.unmount();
+    server.sent.length = 0;
+    renderWithSession(ui);
+    // First render, before any answer: already Monday first
+    expect(dayNames(screen.getByRole("group", { name: "Week of Nov 16" }))[0]).toBe("Mon 16");
+    expect(screen.queryByRole("group", { name: "Week of Nov 15" })).toBeNull();
+    await waitFor(() => expect(server.sent.some((s) => s.path.startsWith("/api/days/logged"))).toBe(true));
+    const starts = server.sent.filter((s) => s.path.startsWith("/api/days/logged")).map((s) => new URLSearchParams(s.path.split("?")[1]).get("from")!);
+    for (const from of starts) expect(utcDow(from), from).toBe(1);
+  });
 
   it("shows this week Sunday to Saturday with today selected and marked", async () => {
     show(0);

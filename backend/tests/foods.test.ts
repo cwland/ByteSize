@@ -312,6 +312,14 @@ describe("search forgives typos, puts basic foods first and suggests a spelling"
     expect((await search("sandwhich")).body.suggestion).toBe("sandwiches");
   });
 
+  it("a real word that was never saved isn't 'fixed' into a near miss (beef is not beer, pear is not peas)", async () => {
+    quietWeb();
+    await saved("Beer, lager", "1105330");
+    await saved("Peas, green", "1105331");
+    expect((await search("beef")).body).not.toHaveProperty("suggestion");
+    expect((await search("pear")).body).not.toHaveProperty("suggestion");
+  });
+
   it("my own foods' words count too", async () => {
     quietWeb();
     await custom("Blueberry muffin");

@@ -90,6 +90,18 @@ describe("recommendModels", () => {
     expect(recommendModels("gemini", ["gemini-2.0-flash-001", "gemini-2.0-flash"])).toEqual(["gemini-2.0-flash"]);
   });
 
+  it("Gemini: a size tag (-8b) isn't a version, and a sized model ranks below its plain sibling", () => {
+    expect(recommendModels("gemini", ["gemini-1.5-flash-8b", "gemini-1.5-flash", "gemini-1.5-pro"])).toEqual(["gemini-1.5-flash", "gemini-1.5-pro"]);
+    expect(recommendModels("gemini", ["gemini-1.5-flash", "gemini-1.5-flash-8b"])).toEqual(["gemini-1.5-flash"]);
+    // Still offered when it's all there is
+    expect(recommendModels("gemini", ["gemini-1.5-flash-8b"])).toEqual(["gemini-1.5-flash-8b"]);
+  });
+
+  it("Gemini: experimental models (-experimental, -exp-0827) are never suggested", () => {
+    expect(recommendModels("gemini", ["learnlm-2.0-flash-experimental", "gemini-2.0-flash", "gemini-exp-1206"])).toEqual(["gemini-2.0-flash"]);
+    expect(recommendModels("gemini", ["learnlm-2.0-flash-experimental"])).toEqual([]);
+  });
+
   it("OpenRouter: the same families by provider prefix, at most 2", () => {
     const list = [
       "anthropic/claude-3.5-haiku",

@@ -12,7 +12,7 @@ import type { AiProvider } from "./ai.js";
 const MAX = 2;
 
 // Never suggested: previews, experiments and models that aren't for chat (codex = coding models)
-const EXCLUDED = /(^|[-_/.:])(preview|exp|embed\w*|audio|tts|realtime|transcribe|image\w*|moderation|instruct|codex)(?=$|[-_/.:\d])/i;
+const EXCLUDED = /(^|[-_/.:])(preview|exp\w*|embed\w*|audio|tts|realtime|transcribe|image\w*|moderation|instruct|codex)(?=$|[-_/.:\d])/i;
 
 // A pin on the end of a name: a date (20251001 or 2025-08-07) or a revision (001)
 const PIN = /-(\d{8}|\d{4}-\d{2}-\d{2}|\d{3})$/;
@@ -21,13 +21,20 @@ interface Parsed {
   name: string;
   base: string; // without the pin
   version: number[]; // the numbers in the name, left to right
+  sized: boolean; // has a size tag (-8b, -70b): ranks below the plain model of the same version
   pin: number | null; // null = an alias (ranked above pinned names of the same version)
 }
+
+const SIZE = /^\d+b$/i;
 
 function parse(name: string): Parsed {
   const m = name.match(PIN);
   const base = m ? name.slice(0, m.index) : name;
-  return { name, base, version: (base.match(/\d+/g) ?? []).map(Number), pin: m ? Number(m[1].replace(/-/g, "")) : null };
+  // Size tags like "8b" are not part of the version
+  const parts = base.split(/[-_/.:]/);
+  const sized = parts.some((t) => SIZE.test(t));
+  const version = parts.filter((t) => !SIZE.test(t)).flatMap((t) => t.match(/\d+/g) ?? []).map(Number);
+  return { name, base, version, sized, pin: m ? Number(m[1].replace(/-/g, "")) : null };
 }
 
 // Newest first: higher version numbers, then an alias, then the later pin
@@ -36,6 +43,7 @@ function newer(a: Parsed, b: Parsed): number {
     const d = (b.version[i] ?? 0) - (a.version[i] ?? 0);
     if (d) return d;
   }
+  if (a.sized !== b.sized) return a.sized ? 1 : -1;
   if (a.pin !== b.pin) return a.pin === null ? -1 : b.pin === null ? 1 : b.pin - a.pin;
   return a.name.localeCompare(b.name);
 }
