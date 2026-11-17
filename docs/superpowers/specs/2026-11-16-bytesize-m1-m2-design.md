@@ -324,9 +324,15 @@ product thumbnail.
 **Weight-loss plan picker (moved into M2, Cory):** first run (and Goals › Plan) asks height, current weight, goal weight,
 age, sex, activity level, on a GLP-1 (yes/no). Mifflin-St Jeor BMR × activity = TDEE. Four plans, swipeable cards:
 Relaxed ½ lb/wk (TDEE−250), Steady 1 lb/wk (−500), Accelerated 1½ lb/wk (−750), Vigorous 2 lb/wk (−1000); each shows
-cal/day, lb/week, weeks to goal. **GLP-1-aware recommendation (Cory):** the standard pick is Steady (Lose It!'s
-default). When on a GLP-1, recommend one step gentler than the standard pick. Never recommend a plan below
-max(1,200 cal, 0.65 × TDEE); such plans are tagged "Not recommended". If the standard pick is itself below the floor,
-recommend the fastest plan at or above it. The chosen plan sets targets: calories range = plan ± 150 (editable), protein floor 0.7 g/lb of goal weight
+cal/day, lb/week, weeks to goal. **GLP-1-aware recommendation (Cory, 2026-11-16 23:20):** recommend Steady; on a
+GLP-1 never recommend faster than Accelerated. Never recommend a plan below max(1,200 cal, 0.65 × TDEE); such plans are
+tagged "Not recommended". If Steady is below that floor, recommend the fastest plan at or above it. The chosen plan sets targets: calories range = plan ± 150 (editable), protein floor 0.7 g/lb of goal weight
 (range to 1.0 g/lb), fiber 25–38 g, water 64 oz+. AI writes a one-to-two-sentence explanation of the recommendation and
 can suggest re-planning as weight changes.
+
+**More decisions (Cory, 2026-11-16 23:20):**
+- Exercise calories are shown on the Dashboard but do **not** raise the calorie budget.
+- Protein target from **goal weight**: floor 0.7 g/lb, top 1.0 g/lb.
+- Milestone 2 is split: **2a** = plan picker, food engine, Dashboard, Log; **2b** = My Foods polish (recipes, quick meals),
+  photo upload, Culury link. 2a is built unattended overnight and, when all tests and the final review pass, merged to main
+  and pushed.
