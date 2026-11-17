@@ -10,12 +10,17 @@ import { DEFAULT_RATE_LIMIT, rateLimits, securityHeaders, type RateLimitOptions 
 import healthRoutes from "./routes/health.js";
 import authRoutes from "./routes/auth.js";
 import adminUserRoutes from "./routes/admin-users.js";
+import { AiService, type AiFetch } from "./lib/ai.js";
+import { logEvent } from "./lib/appLog.js";
+import aiSettingsRoutes from "./routes/settings-ai.js";
+import logRoutes from "./routes/logs.js";
 
 declare module "fastify" {
   interface FastifyInstance {
     db: Db;
     jwtSecret: string;
     now: () => Date; // the clock (tests can set it)
+    ai: AiService;
   }
   interface FastifyRequest {
     auth?: { userId: number; sessionId: number; isAdmin: boolean };
@@ -39,6 +44,8 @@ export interface AppOptions {
   logger?: boolean;
   now?: () => Date;
   rateLimit?: RateLimitOptions | false; // tests turn it off
+  aiFetch?: AiFetch; // tests swap in a fake AI
+  aiTimeScale?: number; // tests shrink AI waits
 }
 
 export function buildApp(opts: AppOptions): FastifyInstance {
@@ -46,6 +53,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.decorate("db", opts.db);
   app.decorate("jwtSecret", opts.jwtSecret);
   app.decorate("now", opts.now ?? (() => new Date()));
+  app.decorate("ai", new AiService(opts.db, opts.jwtSecret, opts.aiFetch, opts.aiTimeScale ?? 1));
 
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof ZodError) {
@@ -55,6 +63,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     const status = (err as { statusCode?: number }).statusCode;
     if (status && status < 500) return reply.status(status).send({ error: (err as Error).message });
     req.log.error(err);
+    void logEvent(opts.db, { category: "api", level: "error", source: `${req.method} ${req.routeOptions.url ?? req.url.split("?")[0]}`, event: "Server error", detail: (err as Error).message, userId: req.auth?.userId ?? null });
     return reply.status(500).send({ error: "Something went wrong" });
   });
   app.setNotFoundHandler((req, reply) => reply.status(404).send({ error: `Not found: ${req.method} ${req.url.split("?")[0]}` }));
@@ -86,5 +95,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(healthRoutes);
   app.register(authRoutes);
   app.register(adminUserRoutes);
+  app.register(aiSettingsRoutes);
+  app.register(logRoutes);
   return app;
 }
