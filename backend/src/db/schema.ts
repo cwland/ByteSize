@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, date, doublePrecision, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, date, doublePrecision, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 // Shared tables. Every table that holds a person's own data has a user_id that cascades,
 // so deleting a user removes everything they own.
@@ -203,6 +203,7 @@ export const userFoods = pgTable(
     nutrients: jsonb("nutrients").$type<NutrientsJson>().notNull(),
     aiFields: text("ai_fields").array().notNull().default(sql`'{}'::text[]`), // nutrient keys the AI guessed
     notes: text("notes"),
+    imagePath: text("image_path"), // its photo: an upload's path under the uploads folder ("<user_id>/<upload id>.jpg")
     useCount: integer("use_count").notNull().default(0),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     archived: boolean("archived").notNull().default(false),
@@ -214,6 +215,20 @@ export const userFoods = pgTable(
     uniqueIndex("user_foods_user_barcode_idx").on(t.userId, t.barcode).where(sql`${t.barcode} is not null and ${t.archived} = false`),
     index("user_foods_name_trgm_idx").using("gin", sql`lower(${t.name} || ' ' || coalesce(${t.brand}, '')) gin_trgm_ops`),
   ]
+);
+
+// Uploaded photos (barcodes, labels), normalised to JPEG and kept as files under <data dir>/uploads/<path>.
+// linked_at: when a food was saved with it; photos never linked are deleted after 24 h.
+export const uploads = pgTable(
+  "uploads",
+  {
+    id: uuid("id").primaryKey(),
+    userId: userRef(),
+    path: text("path").notNull(), // "<user_id>/<id>.jpg"
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    linkedAt: timestamp("linked_at", { withTimezone: true }),
+  },
+  (t) => [index("uploads_user_idx").on(t.userId), index("uploads_unlinked_idx").on(t.createdAt).where(sql`${t.linkedAt} is null`)]
 );
 
 // What a person ate. Each entry keeps a snapshot (per_serving, servings, nutrients) so editing

@@ -15,6 +15,7 @@ import { usdaKey } from "./foodSources/settings.js";
 import { SourceError, type SourceFood } from "./foodSources/types.js";
 import { usdaByBarcode, usdaSearch } from "./foodSources/usda.js";
 import { NUTRIENT_KEYS, withLiquidVolumes, type NutrientKey, type Nutrients, type Serving } from "./nutrients.js";
+import { linkPhoto, photoForFood, photoUrl } from "./photos.js";
 
 export type FoodResult = {
   kind: "cache" | "user_food";
@@ -75,7 +76,7 @@ export function toResult(row: CacheRow | UserFoodRow, kind: "cache" | "user_food
   const keys = Object.keys(nutrients);
   // Every value is an untouched AI guess → "ai"; anything the person typed or corrected → "mine"
   const allAi = keys.length > 0 && aiFields.length === keys.length;
-  return { ...base, aiFields, imageUrl: null, override: u.kind === "override", source: allAi ? "ai" : "mine" };
+  return { ...base, aiFields, imageUrl: u.imagePath ? photoUrl(u.imagePath) : null, override: u.kind === "override", source: allAi ? "ai" : "mine" };
 }
 
 // ---------- cache ----------
@@ -378,6 +379,7 @@ export const foodFields = z.object({
   nutrients: nutrientsSchema,
   category: z.string().trim().max(100).nullable().optional(),
   aiFields: z.array(z.enum(NUTRIENT_KEYS)).max(NUTRIENT_KEYS.length).optional(),
+  photoId: z.string().max(40).optional(), // an upload from /api/photos/analyze: the food's photo from now on
 });
 export type FoodFields = z.infer<typeof foodFields>;
 export const overrideFields = z.object({
@@ -425,6 +427,7 @@ export async function createMyFood(app: FastifyInstance, userId: number, body: F
   const barcode = barcodeField(body.barcode) ?? null;
   if (await barcodeTaken(app.db, userId, barcode)) throw new HttpError(409, DUP_BARCODE);
   const nutrients = cleanNutrients(body.nutrients);
+  const imagePath = body.photoId ? await photoForFood(app, userId, body.photoId, null) : null;
   const [row] = await guardUnique(() =>
     app.db
       .insert(userFoods)
@@ -438,9 +441,11 @@ export async function createMyFood(app: FastifyInstance, userId: number, body: F
         servings: body.servings,
         nutrients,
         aiFields: presentAiFields(body.aiFields ?? [], nutrients),
+        imagePath,
       })
       .returning()
   );
+  if (body.photoId) await linkPhoto(app, userId, body.photoId);
   return toResult(row, "user_food");
 }
 
@@ -458,6 +463,7 @@ export async function updateMyFood(app: FastifyInstance, userId: number, id: num
   const barcode = barcodeField(body.barcode);
   if (barcode !== undefined && (await barcodeTaken(app.db, userId, barcode, id))) throw new HttpError(409, DUP_BARCODE);
   const nutrients = body.nutrients ? cleanNutrients(body.nutrients) : (row.nutrients as Nutrients);
+  const imagePath = body.photoId ? await photoForFood(app, userId, body.photoId, row.imagePath) : undefined;
   // Values the person changed are theirs now, not the AI's (unless the caller says which are AI)
   const old = row.nutrients as Nutrients;
   const aiFields = body.aiFields ?? row.aiFields.filter((k) => old[k as NutrientKey] === nutrients[k as NutrientKey]);
@@ -472,11 +478,13 @@ export async function updateMyFood(app: FastifyInstance, userId: number, id: num
         ...(body.servings !== undefined ? { servings: body.servings } : {}),
         nutrients,
         aiFields: presentAiFields(aiFields, nutrients),
+        ...(imagePath !== undefined ? { imagePath } : {}),
         updatedAt: new Date(),
       })
       .where(and(eq(userFoods.id, id), eq(userFoods.userId, userId)))
       .returning()
   );
+  if (body.photoId) await linkPhoto(app, userId, body.photoId);
   return toResult(updated, "user_food");
 }
 
@@ -570,12 +578,19 @@ export async function estimateFood(app: FastifyInstance, userId: number, text: s
     userId,
     `Estimate this food: ${JSON.stringify(text)}\n\nAnswer as JSON: {"name": string, "brand": string | null, "category": string, "servings": [{"label": string, "grams"?: number, "ml"?: number}], "nutrients": {<key>: number}}. servings[0] is the usual US serving and the nutrients are for it.`
   );
-  const parsed = aiFood.safeParse(json);
-  const nutrients = parsed.success ? cleanNutrients(parsed.data.nutrients) : {};
-  if (!parsed.success || !Object.keys(nutrients).length) {
+  const draft = aiDraft(json);
+  if (!draft) {
     await logEvent(app.db, { category: "ai", level: "warning", source: "AI estimate", event: "The AI's food estimate couldn't be used", detail: JSON.stringify(json).slice(0, 600), userId });
     throw new HttpError(502, "The AI's answer didn't look like a food. Try again, or describe it differently.");
   }
+  return draft;
+}
+
+/** An AI answer as a draft food (every value AI-estimated); null when it isn't a food with at least one nutrient. */
+export function aiDraft(json: unknown): AiDraft | null {
+  const parsed = aiFood.safeParse(json);
+  const nutrients = parsed.success ? cleanNutrients(parsed.data.nutrients) : {};
+  if (!parsed.success || !Object.keys(nutrients).length) return null;
   const f = parsed.data;
   const category = f.category || "";
   return {

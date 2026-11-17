@@ -1,4 +1,7 @@
 import "dotenv/config";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { createDb } from "../src/db/index.js";
@@ -98,7 +101,9 @@ export async function setupTestApp(
   }) as typeof fetch;
   // The app's clock: set clock.date to fix "now" (reset() clears it back to the real time)
   const clock = { date: null as Date | null };
-  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, foodFetch, now: () => clock.date ?? new Date(), ...opts });
+  // Files (uploads) go to a temp folder, removed on close
+  const dataDir = mkdtempSync(path.join(tmpdir(), "bytesize-test-"));
+  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, foodFetch, now: () => clock.date ?? new Date(), dataDir, ...opts });
   if (beforeReady) await beforeReady(app);
   await app.ready();
   let token = "";
@@ -135,6 +140,7 @@ export async function setupTestApp(
     resetLoginLockouts();
     resetSessionTouches();
     resetPasskeyChallenges();
+    rmSync(path.join(dataDir, "uploads"), { recursive: true, force: true });
   }
 
   // First-run setup as the admin "cory"; signs in as them
@@ -168,6 +174,7 @@ export async function setupTestApp(
     close: async () => {
       await app.close();
       await pool.end();
+      rmSync(dataDir, { recursive: true, force: true });
     },
   };
 }

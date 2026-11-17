@@ -3,6 +3,7 @@ import { setupTestApp, type TestApp } from "./helpers.js";
 import { twoUsers } from "./isolation.js";
 import { softPasskey } from "./softPasskey.js";
 import { aiSettings, offKnows, offProduct } from "./foodFakes.js";
+import { labelPhoto, photoUpload } from "./photoFakes.js";
 
 // Every route that reads or changes a person's data gets a case here (M2 adds foods, logs, targets...)
 let t: TestApp;
@@ -142,5 +143,22 @@ describe("per-user isolation", () => {
     const range = "/api/days/logged?from=2026-11-10&to=2026-11-20";
     expect((await b.as("GET", range)).body).toEqual({ days: [] });
     expect((await a.as("GET", range)).body).toEqual({ days: ["2026-11-17"] });
+  });
+  it("a user can't see or use another user's photos, and their foods' photos aren't shown to others", async () => {
+    const { a, b } = await twoUsers(t);
+    const { payload, headers } = photoUpload([await labelPhoto()]);
+    const up = await t.app.inject({ method: "POST", url: "/api/photos/analyze", payload, headers: { ...headers, authorization: `Bearer ${a.token}` } });
+    const id = up.json().photoIds[0];
+    expect((await a.as("GET", `/api/photos/${id}`)).status).toBe(200);
+    expect((await b.as("GET", `/api/photos/${id}`)).status).toBe(404);
+    const food = { name: "Anna's crackers", servings: [{ label: "2 crackers", grams: 30 }], nutrients: { calories: 140 } };
+    expect((await b.as("POST", "/api/my-foods", { ...food, photoId: id })).body).toEqual({ error: "That photo isn't available" });
+    const bens = (await b.as("POST", "/api/my-foods", food)).body.food;
+    expect((await b.as("PATCH", `/api/my-foods/${bens.id}`, { photoId: id })).status).toBe(400);
+    const annas = (await a.as("POST", "/api/my-foods", { ...food, photoId: id })).body.food;
+    expect(annas.imageUrl).toBe(`/api/photos/${id}`);
+    // Linked or not, still only anna's
+    expect((await b.as("GET", `/api/photos/${id}`)).status).toBe(404);
+    expect((await b.as("GET", "/api/my-foods")).body.foods.map((f: any) => f.imageUrl)).toEqual([null]);
   });
 });
