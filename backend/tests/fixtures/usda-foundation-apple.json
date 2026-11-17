@@ -1,0 +1,22 @@
+{
+  "fdcId": 1750340,
+  "description": "Apples, fuji, with skin, raw",
+  "dataType": "Foundation",
+  "publishedDate": "2020-10-30",
+  "foodCategory": "Fruits and Fruit Juices",
+  "ndbNumber": 9504,
+  "foodNutrients": [
+    { "nutrientId": 1003, "nutrientName": "Protein", "nutrientNumber": "203", "unitName": "G", "derivationCode": "NC", "value": 0.148 },
+    { "nutrientId": 1004, "nutrientName": "Total lipid (fat)", "nutrientNumber": "204", "unitName": "G", "derivationCode": "A", "value": 0.162 },
+    { "nutrientId": 1005, "nutrientName": "Carbohydrate, by difference", "nutrientNumber": "205", "unitName": "G", "derivationCode": "NC", "value": 15.7 },
+    { "nutrientId": 2047, "nutrientName": "Energy (Atwater General Factors)", "nutrientNumber": "957", "unitName": "KCAL", "derivationCode": "NC", "value": 64.6 },
+    { "nutrientId": 2048, "nutrientName": "Energy (Atwater Specific Factors)", "nutrientNumber": "958", "unitName": "KCAL", "derivationCode": "NC", "value": 63 },
+    { "nutrientId": 1051, "nutrientName": "Water", "nutrientNumber": "255", "unitName": "G", "derivationCode": "A", "value": 83.6 },
+    { "nutrientId": 1079, "nutrientName": "Fiber, total dietary", "nutrientNumber": "291", "unitName": "G", "derivationCode": "A", "value": 2.1 },
+    { "nutrientId": 1063, "nutrientName": "Sugars, Total", "nutrientNumber": "269.3", "unitName": "G", "derivationCode": "NC", "value": 13.3 },
+    { "nutrientId": 1090, "nutrientName": "Magnesium, Mg", "nutrientNumber": "304", "unitName": "MG", "derivationCode": "A", "value": 4.7 },
+    { "nutrientId": 1092, "nutrientName": "Potassium, K", "nutrientNumber": "306", "unitName": "MG", "derivationCode": "A", "value": 109 },
+    { "nutrientId": 1093, "nutrientName": "Sodium, Na", "nutrientNumber": "307", "unitName": "MG", "derivationCode": "A", "value": 0 }
+  ],
+  "score": 512.3
+}
