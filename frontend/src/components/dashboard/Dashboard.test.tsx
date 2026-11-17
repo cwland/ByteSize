@@ -64,6 +64,12 @@ describe("Dashboard", () => {
     expect(screen.getByText("2 foods missing fiber")).toBeInTheDocument();
   });
 
+  it("unknown calories are flagged on the gauge, not silently counted as 0", async () => {
+    show(dayJson({ totals: { ...totals, unknownCount: { calories: 1 } } }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Why are calories uncertain?" }));
+    expect(screen.getByText("1 food missing calories")).toBeInTheDocument();
+  });
+
   it("water button logs 8 fl oz (237 ml) for the selected day", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-11-17T03:00:00Z"));

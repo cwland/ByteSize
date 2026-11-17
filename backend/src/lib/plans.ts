@@ -95,10 +95,13 @@ function goalLbs(body: Body): number {
   return body.goalWeightKg / KG_PER_LB;
 }
 
-export function targetsForPlan(body: Body, planCalories: number): PlanTargets {
+// floor: the safe calorie floor (buildPlans().floor). The range never starts below it, even for a plan that was
+// chosen against advice; such a range is pulled up to the floor rather than left under it.
+export function targetsForPlan(body: Body, planCalories: number, floor = 0): PlanTargets {
   const lbs = goalLbs(body);
+  const min = Math.max(planCalories - 150, floor);
   return {
-    calories: { min: planCalories - 150, max: planCalories + 150 },
+    calories: { min, max: Math.max(planCalories + 150, min) },
     protein_g: { min: Math.round(0.7 * lbs), max: Math.round(1.0 * lbs) },
     fiber_g: { min: 25, max: 38 },
     water_ml: { min: 1893, max: 3785 },

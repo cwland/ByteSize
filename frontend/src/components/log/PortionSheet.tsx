@@ -22,7 +22,7 @@ function sizeIn(servings: Serving[], unit: Unit) {
 
 const preview = (n: Nutrients) =>
   [
-    `${fmt(n.calories ?? 0)} cal`,
+    n.calories === undefined ? "calories unknown" : `${fmt(n.calories)} cal`,
     n.protein_g === undefined ? "protein unknown" : `${n.protein_g} g protein`,
     n.fiber_g === undefined ? "fiber unknown" : `${n.fiber_g} g fiber`,
   ].join(" · ");

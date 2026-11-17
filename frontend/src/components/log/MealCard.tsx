@@ -46,7 +46,14 @@ function EntryRow({ entry, units, selecting, selected, onOpen, onLongPress }: { 
             {!water && entry.nutrients.fiber_g === undefined && <span className="text-muted"> · <span>fiber unknown</span></span>}
           </span>
         </span>
-        {!water && <span className="font-semibold tabular">{fmt(entry.nutrients.calories ?? 0)}</span>}
+        {!water &&
+          (entry.nutrients.calories === undefined ? (
+            <span aria-label="Calories unknown" className="font-semibold text-muted">
+              ?
+            </span>
+          ) : (
+            <span className="font-semibold tabular">{fmt(entry.nutrients.calories)}</span>
+          ))}
       </button>
     </li>
   );

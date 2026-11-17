@@ -13,8 +13,8 @@ export default async function foodRoutes(app: FastifyInstance) {
 
   app.get("/api/foods/barcode/:code", async (req) => {
     const userId = requireUser(req);
-    const { code, food } = await lookupBarcode(app, userId, String((req.params as { code: string }).code));
-    return { code, food };
+    const { code, food, errors } = await lookupBarcode(app, userId, String((req.params as { code: string }).code));
+    return { code, food, errors };
   });
 
   app.post("/api/ai/estimate", async (req) => {

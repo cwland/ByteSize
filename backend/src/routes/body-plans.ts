@@ -163,8 +163,9 @@ export default async function bodyPlanRoutes(app: FastifyInstance) {
     const { plan } = z.object({ plan: z.enum(PLAN_IDS, { error: "Choose one of the plans" }) }).parse(req.body ?? {});
     const body = await loadBody(db, userId);
     if (!body) throw new HttpError(409, NO_BODY);
-    const chosen = buildPlans(body, app.now()).plans.find((p) => p.id === plan)!;
-    return { targets: await saveTargets(db, userId, await today(app, userId), targetsForPlan(body, chosen.calories), plan) };
+    const built = buildPlans(body, app.now());
+    const chosen = built.plans.find((p) => p.id === plan)!;
+    return { targets: await saveTargets(db, userId, await today(app, userId), targetsForPlan(body, chosen.calories, built.floor), plan) };
   });
 
   app.get("/api/targets", async (req) => {

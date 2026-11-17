@@ -128,4 +128,12 @@ describe("plan calculator", () => {
     expect(r.plans.every((p) => !p.notRecommended)).toBe(true);
     expect(r.recommended).toBe("steady");
   });
+
+  it("the calorie range never starts below the safe floor", () => {
+    const r = buildPlans(C, today);
+    const relaxed = r.plans.find((p) => p.id === "relaxed")!;
+    expect(relaxed.calories).toBe(1297);
+    expect(targetsForPlan(C, relaxed.calories, r.floor).calories).toEqual({ min: 1200, max: 1447 });
+    expect(targetsForPlan(A, 1960, 1599).calories).toEqual({ min: 1810, max: 2110 }); // above the floor: unchanged
+  });
 });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LogPage from "./LogPage";
 import { SelectedDayProvider } from "../../selectedDay";
@@ -94,6 +94,24 @@ describe("Add food", () => {
     expect(server.sent.some((s) => s.path.startsWith("/api/foods/search"))).toBe(false);
     expect(within(sheet).getByRole("heading", { name: "New food" })).toBeInTheDocument();
     expect(within(sheet).getByLabelText("Barcode")).toHaveValue("0012345678905");
+  });
+
+  it("a barcode that couldn't be checked says so and offers to try again", async () => {
+    let calls = 0;
+    open({
+      "GET /api/foods/barcode/:code": () => {
+        calls++;
+        return { code: "0012345678905", food: null, errors: [{ source: "off", message: "Open Food Facts didn't answer in time" }] };
+      },
+    });
+    const user = userEvent.setup();
+    const sheet = await openSnacks(user);
+    await user.type(within(sheet).getByRole("searchbox", { name: "Search foods" }), "012345678905");
+    expect(await within(sheet).findByText(/Couldn't check Open Food Facts/)).toBeInTheDocument();
+    expect(within(sheet).queryByText(/Nothing has barcode/)).not.toBeInTheDocument();
+    await user.click(within(sheet).getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(calls).toBe(2));
+    expect(within(sheet).getByRole("button", { name: "Create it anyway" })).toBeInTheDocument();
   });
 
   it("edit on a database food saves an override", async () => {
