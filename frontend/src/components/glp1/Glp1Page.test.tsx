@@ -85,6 +85,58 @@ describe("Glp1Page", () => {
     expect(rows[1]).not.toHaveTextContent("Dose changed");
   });
 
+  it("Edit on a history row opens the shot sheet for that day, filled in", async () => {
+    const server = show(glp1View(), { "PUT /api/glp1/shots/:day": () => glp1View() });
+    const user = userEvent.setup();
+    const history = await screen.findByRole("region", { name: "History" });
+    await user.click(within(history).getByRole("button", { name: "Edit shot on Fri, Nov 6" }));
+    const sheet = screen.getByRole("dialog", { name: "Edit shot" });
+    expect(within(sheet).getByLabelText("Date")).toHaveValue("2026-11-06");
+    expect(within(sheet).getByLabelText("Dose (mg)")).toHaveValue(0.5);
+    expect(within(sheet).getByRole("radio", { name: "Belly, left" })).toHaveAttribute("aria-checked", "true");
+    expect(within(sheet).getByLabelText("Note")).toHaveValue("Felt fine");
+    await user.click(within(sheet).getByRole("radio", { name: "Arm, left" }));
+    await user.click(within(sheet).getByRole("button", { name: "Save shot" }));
+    await waitFor(() => expect(server.writes()).toHaveLength(1));
+    expect(server.writes()[0]).toMatchObject({ method: "PUT", path: "/api/glp1/shots/2026-11-06", body: { site: "arm_left", doseMg: 0.5, note: "Felt fine" } });
+  });
+
+  it("Delete on a history row asks first, deletes, then reloads the view from the server", async () => {
+    let view = glp1View();
+    const after = glp1View({
+      settings: { medication: "Ozempic", doseMg: 0.5, injectionWeekday: 5 },
+      lastShot: glp1View().shots[1],
+      shots: [glp1View().shots[1]],
+      doseHistory: [glp1View().doseHistory[0]],
+      nextDue: "2026-11-13",
+      status: "overdue",
+      overdueDays: 4,
+    });
+    const server = show(view, {
+      "GET /api/glp1": () => view,
+      "DELETE /api/glp1/shots/:day": () => {
+        view = after;
+        return after;
+      },
+    });
+    const user = userEvent.setup();
+    const history = await screen.findByRole("region", { name: "History" });
+    await user.click(within(history).getByRole("button", { name: "Delete shot on Fri, Nov 13" }));
+    const confirm = screen.getByRole("alertdialog", { name: "Delete the shot on Fri, Nov 13?" });
+    await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    expect(server.writes()).toHaveLength(0);
+    await user.click(within(history).getByRole("button", { name: "Delete shot on Fri, Nov 13" }));
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(server.writes()).toHaveLength(1));
+    expect(server.writes()[0]).toMatchObject({ method: "DELETE", path: "/api/glp1/shots/2026-11-13" });
+    await waitFor(() => expect(within(screen.getByRole("region", { name: "History" })).getAllByRole("listitem")).toHaveLength(1));
+    const gets = server.sent.filter((s) => s.method === "GET" && s.path === "/api/glp1");
+    expect(gets).toHaveLength(2);
+    expect(server.sent.indexOf(gets[1])).toBeGreaterThan(server.sent.indexOf(server.writes()[0]));
+    expect(screen.getByText("Ozempic 0.5 mg, Fridays")).toBeInTheDocument();
+    expect(screen.getByText("Injection overdue by 4 days")).toBeInTheDocument();
+  });
+
   it("with no shots, history says so", async () => {
     show(glp1View({ shots: [], lastShot: null, doseHistory: [] }));
     const history = await screen.findByRole("region", { name: "History" });
@@ -119,6 +171,25 @@ describe("Glp1Page", () => {
     expect(within(feel).getByText("Nausea: medium, Low appetite: strong")).toBeInTheDocument();
   });
 
+  it("clearing a check-in (all Off, blank note) sends nothing felt and goes back to Check in", async () => {
+    const server = show(glp1View(), {
+      "GET /api/side-effects": () => ({ days: [{ day: "2026-11-17", effects: { fatigue: 1 }, note: "Tired" }] }),
+      "PUT /api/side-effects/:day": () => ({ sideEffect: null }),
+    });
+    const user = userEvent.setup();
+    const feel = await screen.findByRole("region", { name: "How are you feeling?" });
+    await user.click(await within(feel).findByRole("button", { name: "Edit check-in" }));
+    const sheet = screen.getByRole("dialog", { name: "How are you feeling?" });
+    await user.click(within(within(sheet).getByRole("radiogroup", { name: "Fatigue" })).getByRole("radio", { name: "Off" }));
+    await user.clear(within(sheet).getByLabelText("Note"));
+    await user.click(within(sheet).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(server.writes()[0]).toMatchObject({ method: "PUT", path: "/api/side-effects/2026-11-17" });
+    expect(server.writes()[0].body).toEqual({ effects: {}, note: "" });
+    expect(within(feel).getByRole("button", { name: "Check in" })).toBeInTheDocument();
+    expect(within(feel).getByText("No side effects noted")).toBeInTheDocument();
+  });
+
   it("a day already checked in shows its effects and opens filled in", async () => {
     show(glp1View(), { "GET /api/side-effects": () => ({ days: [{ day: "2026-11-17", effects: { fatigue: 1 }, note: "Tired" }] }) });
     const feel = await screen.findByRole("region", { name: "How are you feeling?" });
@@ -145,6 +216,13 @@ describe("Glp1Page", () => {
     const after = await screen.findByRole("region", { name: "After your injection" });
     expect(await within(after).findByText("Log at least two shots to see how your eating changes after an injection")).toBeInTheDocument();
     expect(within(after).queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it("after-injection says so when it can't load, instead of loading forever", async () => {
+    show(glp1View(), { "GET /api/glp1/after-injection": () => ({ status: 500, json: { error: "Boom" } }) });
+    const after = await screen.findByRole("region", { name: "After your injection" });
+    expect(await within(after).findByText("Couldn't load this right now")).toBeInTheDocument();
+    expect(within(after).queryByText("Loading…")).not.toBeInTheDocument();
   });
 
   it("Back returns to where it was opened from", async () => {

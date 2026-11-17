@@ -89,7 +89,7 @@ describe("Glp1Card", () => {
     expect(screen.getByText("Next shot Tue")).toBeInTheDocument();
   });
 
-  it("a changed date, dose and site are what is sent", async () => {
+  it("a changed date (a day with no shot), dose and site are what is sent", async () => {
     const server = show(glp1View(), bodyA, { "PUT /api/glp1/shots/:day": () => glp1View() });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Log shot" }));
@@ -97,6 +97,10 @@ describe("Glp1Card", () => {
     const date = within(sheet).getByLabelText("Date");
     await user.clear(date);
     await user.type(date, "2026-11-15");
+    // No shot on Nov 15: still a new shot with the current dose and the suggested site
+    expect(screen.getByRole("dialog", { name: "Log shot" })).toBe(sheet);
+    expect(within(sheet).getByLabelText("Dose (mg)")).toHaveValue(1);
+    expect(within(sheet).getByRole("radio", { name: "Thigh, left" })).toHaveAttribute("aria-checked", "true");
     const dose = within(sheet).getByLabelText("Dose (mg)");
     await user.clear(dose);
     await user.type(dose, "1.7");
@@ -104,6 +108,38 @@ describe("Glp1Card", () => {
     await user.click(within(sheet).getByRole("button", { name: "Save shot" }));
     await waitFor(() => expect(server.writes()).toHaveLength(1));
     expect(server.writes()[0]).toMatchObject({ path: "/api/glp1/shots/2026-11-15", body: { site: "arm_left", doseMg: 1.7, note: "" } });
+  });
+
+  it("choosing a day that already has a shot edits it: its dose, site and note are sent back unless changed", async () => {
+    const server = show(glp1View(), bodyA, { "PUT /api/glp1/shots/:day": () => glp1View() });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Log shot" }));
+    const date = within(screen.getByRole("dialog", { name: "Log shot" })).getByLabelText("Date");
+    await user.clear(date);
+    await user.type(date, "2026-11-06");
+    const sheet = screen.getByRole("dialog", { name: "Edit shot" });
+    expect(within(sheet).getByLabelText("Dose (mg)")).toHaveValue(0.5);
+    expect(within(sheet).getByRole("radio", { name: "Belly, left" })).toHaveAttribute("aria-checked", "true");
+    expect(within(sheet).getByLabelText("Note")).toHaveValue("Felt fine");
+    await user.click(within(sheet).getByRole("button", { name: "Save shot" }));
+    await waitFor(() => expect(server.writes()).toHaveLength(1));
+    expect(server.writes()[0]).toMatchObject({ path: "/api/glp1/shots/2026-11-06", body: { site: "abdomen_left", doseMg: 0.5, note: "Felt fine" } });
+  });
+
+  it("moving off a day with a shot to one without goes back to a new shot", async () => {
+    show(glp1View());
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Log shot" }));
+    const date = screen.getByLabelText("Date");
+    await user.clear(date);
+    await user.type(date, "2026-11-06");
+    expect(screen.getByRole("dialog", { name: "Edit shot" })).toBeInTheDocument();
+    await user.clear(date);
+    await user.type(date, "2026-11-16");
+    const sheet = screen.getByRole("dialog", { name: "Log shot" });
+    expect(within(sheet).getByLabelText("Dose (mg)")).toHaveValue(1);
+    expect(within(sheet).getByRole("radio", { name: "Thigh, left" })).toHaveAttribute("aria-checked", "true");
+    expect(within(sheet).getByLabelText("Note")).toHaveValue("");
   });
 
   it("shows the server's error and keeps the sheet open", async () => {

@@ -9,14 +9,35 @@ import { field, label, primaryButton } from "../ui/styles";
 import SitePicker from "./SitePicker";
 
 // Log shot: the day (today unless changed), the dose (the current one), where it went (the suggested site
-// chosen, the last used marked) and a note. Saving upserts that day's shot and hands back the new view.
-export default function ShotSheet({ view, onClose, onSaved }: { view: Glp1View; onClose: () => void; onSaved: (v: Glp1View) => void }) {
+// chosen, the last used marked) and a note. A day that already has a shot ("Edit shot", also from history via
+// `day`) starts from that shot's dose, site and note, so saving without changes keeps them.
+// Saving upserts that day's shot and hands back the new view.
+export default function ShotSheet({ view, day: startDay, onClose, onSaved }: { view: Glp1View; day?: string; onClose: () => void; onSaved: (v: Glp1View) => void }) {
   const { user } = useSession();
   const today = todayIn(user.timezone);
-  const [day, setDay] = useState(today);
-  const [dose, setDose] = useState(String(view.settings?.doseMg ?? view.lastShot?.doseMg ?? ""));
-  const [site, setSite] = useState<Site>(view.suggestedSite);
-  const [note, setNote] = useState("");
+  const shotOn = (d: string) => view.shots.find((s) => s.day === d) ?? null;
+  const valuesFor = (d: string) => {
+    const shot = shotOn(d);
+    return shot
+      ? { dose: String(shot.doseMg), site: shot.site, note: shot.note ?? "" }
+      : { dose: String(view.settings?.doseMg ?? view.lastShot?.doseMg ?? ""), site: view.suggestedSite, note: "" };
+  };
+  const first = startDay ?? today;
+  const [day, setDay] = useState(first);
+  const [dose, setDose] = useState(() => valuesFor(first).dose);
+  const [site, setSite] = useState<Site>(() => valuesFor(first).site);
+  const [note, setNote] = useState(() => valuesFor(first).note);
+  const editing = shotOn(day) !== null;
+  // Moving onto a day with a shot loads it; moving off one goes back to a new shot's values
+  const changeDay = (d: string) => {
+    if (shotOn(d) || editing) {
+      const v = valuesFor(d);
+      setDose(v.dose);
+      setSite(v.site);
+      setNote(v.note);
+    }
+    setDay(d);
+  };
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
 
@@ -35,12 +56,12 @@ export default function ShotSheet({ view, onClose, onSaved }: { view: Glp1View; 
   };
 
   return (
-    <Sheet label="Log shot" onClose={onClose}>
+    <Sheet label={editing ? "Edit shot" : "Log shot"} onClose={onClose}>
       <div className="flex flex-col gap-4 pb-2">
         <div className="grid grid-cols-2 gap-3">
           <label className={label}>
             Date
-            <input aria-label="Date" type="date" value={day} max={today} onChange={(e) => setDay(e.target.value)} className={field} />
+            <input aria-label="Date" type="date" value={day} max={today} onChange={(e) => changeDay(e.target.value)} className={field} />
           </label>
           <label className={label}>
             Dose (mg)

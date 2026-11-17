@@ -5,6 +5,7 @@ import { useSession } from "../../session";
 import { dayLabel, todayIn, useSelectedDay } from "../../selectedDay";
 import { SIDE_EFFECTS, type AfterInjection as AfterData, type Glp1Settings, type Glp1View, type Shot, type SideEffectDay } from "../../types";
 import { Card } from "../ui/Card";
+import { Confirm } from "../ui/Confirm";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { field, label, linkButton, primaryButton, secondaryButton } from "../ui/styles";
 import AfterInjection from "./AfterInjection";
@@ -26,9 +27,25 @@ export default function Glp1Page() {
   const today = todayIn(user.timezone);
   const day = selected > today ? today : selected; // check-ins are for the day shown, never a future one
   const [view, setView] = useState<Glp1View | null>(null);
-  const [after, setAfter] = useState<AfterData | null>(null);
+  const [after, setAfter] = useState<AfterData | null | "error">(null);
   const [feeling, setFeeling] = useState<SideEffectDay | null | undefined>(undefined);
   const [sheet, setSheet] = useState<"shot" | "feel" | null>(null);
+  const [editDay, setEditDay] = useState<string | undefined>(undefined); // the history row whose shot is being edited
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const logShot = (d?: string) => {
+    setEditDay(d);
+    setSheet("shot");
+  };
+  // Deleting the latest shot can change the current dose: show what the server has now
+  const remove = async (d: string) => {
+    setDeleting(null);
+    try {
+      await api("DELETE", `/api/glp1/shots/${d}`);
+      setView(await api<Glp1View>("GET", "/api/glp1"));
+    } catch (e) {
+      setMsg(errorMsg(e));
+    }
+  };
   const [msg, setMsg] = useState<Msg>(null);
 
   useEffect(() => {
@@ -42,7 +59,7 @@ export default function Glp1Page() {
     if (shotKey === undefined) return;
     api<AfterData>("GET", "/api/glp1/after-injection")
       .then(setAfter)
-      .catch(() => {});
+      .catch(() => setAfter("error"));
   }, [shotKey]);
   useEffect(() => {
     setFeeling(undefined);
@@ -67,7 +84,7 @@ export default function Glp1Page() {
           {view.settings && (
             <section aria-label="Next shot" className="flex items-center gap-3 rounded-2xl bg-container p-5">
               <p className={`flex-1 text-lg font-bold ${view.status === "overdue" ? "text-action" : ""}`}>{status}</p>
-              <button type="button" onClick={() => setSheet("shot")} className={primaryButton}>
+              <button type="button" onClick={() => logShot()} className={primaryButton}>
                 Log shot
               </button>
             </section>
@@ -84,20 +101,24 @@ export default function Glp1Page() {
             )}
           </Card>
           <Card title="History">
-            <History shots={view.shots} doses={view.doseHistory} />
+            <History shots={view.shots} doses={view.doseHistory} onEdit={logShot} onDelete={setDeleting} />
           </Card>
-          <Card title="After your injection">{after ? <AfterInjection data={after} /> : <p className="text-subtle">Loading…</p>}</Card>
+          <Card title="After your injection">{after === "error" ? <p className="text-subtle">Couldn't load this right now</p> : after ? <AfterInjection data={after} /> : <p className="text-subtle">Loading…</p>}</Card>
         </>
       )}
       {view && sheet === "shot" && (
         <ShotSheet
           view={view}
+          day={editDay}
           onClose={() => setSheet(null)}
           onSaved={(v) => {
             setView(v);
             setSheet(null);
           }}
         />
+      )}
+      {deleting && (
+        <Confirm title={`Delete the shot on ${dayLabel(deleting)}?`} confirmLabel="Delete" onConfirm={() => remove(deleting)} onCancel={() => setDeleting(null)} />
       )}
       {sheet === "feel" && feeling !== undefined && (
         <SideEffectsSheet
@@ -200,8 +221,8 @@ function Setup({ settings, today, onSaved }: { settings: Glp1Settings | null; to
   );
 }
 
-// Shots newest first: date, dose, site, note; the first shot and each dose or medication change called out
-function History({ shots, doses }: { shots: Shot[]; doses: Glp1View["doseHistory"] }) {
+// Shots newest first: date, dose, site, note, Edit and Delete; the first shot and each dose or medication change called out
+function History({ shots, doses, onEdit, onDelete }: { shots: Shot[]; doses: Glp1View["doseHistory"]; onEdit: (day: string) => void; onDelete: (day: string) => void }) {
   if (shots.length === 0) return <p className="text-subtle">No shots logged yet</p>;
   const change = (s: Shot) => {
     const i = doses.findIndex((d) => d.day === s.day);
@@ -224,6 +245,14 @@ function History({ shots, doses }: { shots: Shot[]; doses: Glp1View["doseHistory
             <p className="text-sm text-subtle">{SITE_LABELS[s.site]}</p>
             {c && <p className="mt-0.5 text-sm font-semibold text-action">{c}</p>}
             {s.note && <p className="mt-0.5 text-sm text-muted">{s.note}</p>}
+            <div className="mt-1 flex gap-4">
+              <button type="button" aria-label={`Edit shot on ${dayLabel(s.day)}`} onClick={() => onEdit(s.day)} className={`${linkButton} text-sm`}>
+                Edit
+              </button>
+              <button type="button" aria-label={`Delete shot on ${dayLabel(s.day)}`} onClick={() => onDelete(s.day)} className="text-sm font-semibold text-error hover:underline">
+                Delete
+              </button>
+            </div>
           </li>
         );
       })}
