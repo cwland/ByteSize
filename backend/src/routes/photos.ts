@@ -70,7 +70,7 @@ export default async function photoRoutes(app: FastifyInstance) {
 
     // Every photo upright, ≤1600 px, JPEG, before anything else (one that isn't a picture stops it all)
     const normalised: Buffer[] = [];
-    for (const img of images) normalised.push(await normalisePhoto(img));
+    for (const img of images) normalised.push(await normalisePhoto(img, { db: app.db, userId }));
     const stored: { id: string; path: string }[] = [];
     for (const jpeg of normalised) stored.push(await storePhoto(app, userId, jpeg));
     const photoIds = stored.map((s) => s.id);
@@ -82,7 +82,7 @@ export default async function photoRoutes(app: FastifyInstance) {
     let barcodeAt = -1;
     if (mode !== "label") {
       for (const [i, jpeg] of normalised.entries()) {
-        const code = await decodeBarcode(jpeg);
+        const code = await decodeBarcode(jpeg, { db: app.db, userId });
         if (code) {
           [barcode, barcodeAt] = [code, i];
           break;

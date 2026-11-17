@@ -171,21 +171,48 @@ describe("Photo in Add Food", () => {
     expect(within(sheet).getByLabelText("Barcode")).toHaveValue("0099887766554");
   });
 
-  it("a label draft without a barcode offers a barcode photo, and sends both photos together", async () => {
+  it("a barcode photo on a label draft is sent alone (mode barcode) and only fills the barcode: your edits stay", async () => {
     const server = open({
       "POST /api/photos/analyze": (b: FormData) =>
-        b.getAll("images").length === 1
-          ? { photoIds: ["p-label"], draft: labelDraft, errors: [], labelReading: true }
-          : { photoIds: ["p4", "p5"], barcode: "0012345678905", food: barFood, errors: [], labelReading: true },
+        b.get("mode") === "barcode"
+          ? { photoIds: ["p4"], barcode: "0012345678905", food: barFood, errors: [], labelReading: true }
+          : { photoIds: ["p-label"], draft: labelDraft, errors: [], labelReading: true },
     });
     const user = userEvent.setup();
     const sheet = await choosePhoto(user, jpeg("label.jpg"));
     await within(sheet).findByRole("heading", { name: "New food" });
+    const name = within(sheet).getByLabelText("Name");
+    await user.clear(name);
+    await user.type(name, "Greek yogurt, plain");
     await user.click(within(sheet).getByRole("button", { name: "Add a barcode photo" }));
     await user.upload(within(sheet).getByLabelText("Photo file"), jpeg("barcode.jpg"));
-    expect(await within(sheet).findByRole("heading", { name: "Track food" })).toBeInTheDocument();
-    expect((analyzed(server)[1].body as FormData).getAll("images").map((f) => (f as File).name)).toEqual(["label.jpg", "barcode.jpg"]);
-    // two photos is the most: no further offer
+    await waitFor(() => expect(within(sheet).getByLabelText("Barcode")).toHaveValue("0012345678905"));
+    expect(within(sheet).getByRole("heading", { name: "New food" })).toBeInTheDocument();
+    expect(within(sheet).getByLabelText("Name")).toHaveValue("Greek yogurt, plain");
+    const calls = analyzed(server);
+    expect(calls).toHaveLength(2); // the label read, then the barcode photo alone
+    const second = calls[1].body as FormData;
+    expect(second.getAll("images").map((f) => (f as File).name)).toEqual(["barcode.jpg"]);
+    expect(second.get("mode")).toBe("barcode");
+    expect(within(sheet).queryByRole("button", { name: "Add a barcode photo" })).not.toBeInTheDocument();
+  });
+
+  it("a barcode photo with no barcode in it says so and keeps the draft as edited", async () => {
+    open({
+      "POST /api/photos/analyze": (b: FormData) =>
+        b.get("mode") === "barcode" ? { photoIds: ["p4"], errors: [], labelReading: true } : { photoIds: ["p-label"], draft: labelDraft, errors: [], labelReading: true },
+    });
+    const user = userEvent.setup();
+    const sheet = await choosePhoto(user, jpeg("label.jpg"));
+    await within(sheet).findByRole("heading", { name: "New food" });
+    const name = within(sheet).getByLabelText("Name");
+    await user.clear(name);
+    await user.type(name, "Yogurt");
+    await user.click(within(sheet).getByRole("button", { name: "Add a barcode photo" }));
+    await user.upload(within(sheet).getByLabelText("Photo file"), jpeg("blurry.jpg"));
+    expect(await within(sheet).findByText("No barcode found in that photo")).toBeInTheDocument();
+    expect(within(sheet).getByLabelText("Name")).toHaveValue("Yogurt");
+    expect(within(sheet).getByLabelText("Barcode")).toHaveValue("");
   });
 
   it("with two photos sent there is no offer to add another", async () => {

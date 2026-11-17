@@ -51,6 +51,19 @@ describe("My Foods", () => {
     await waitFor(() => expect(listPaths(server).at(-1)).toBe("/api/my-foods?kind=meals&sort=az&q=chi"));
   });
 
+  it("a search uses the best-match order unless a sort is picked", async () => {
+    const server = show();
+    const user = userEvent.setup();
+    await screen.findByRole("list", { name: "My foods" });
+    await user.type(screen.getByRole("searchbox", { name: "Search my foods" }), "chi");
+    await waitFor(() => expect(listPaths(server).at(-1)).toBe("/api/my-foods?kind=all&q=chi"));
+    expect(screen.getByRole("radio", { name: "Recent" })).toHaveAttribute("aria-checked", "false");
+    await user.click(screen.getByRole("radio", { name: "Most used" }));
+    await waitFor(() => expect(listPaths(server).at(-1)).toBe("/api/my-foods?kind=all&sort=used&q=chi"));
+    await user.clear(screen.getByRole("searchbox", { name: "Search my foods" }));
+    await waitFor(() => expect(listPaths(server).at(-1)).toBe("/api/my-foods?kind=all&sort=used"));
+  });
+
   it("New food, New recipe and New quick meal open their editors", async () => {
     show();
     const user = userEvent.setup();
@@ -79,7 +92,7 @@ describe("My Foods", () => {
     expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Peanut protein shake");
   });
 
-  it("delete: a food never logged is removed; one that's been logged is hidden", async () => {
+  it("delete: a food never logged is removed; one that's in use is hidden", async () => {
     let foods = [chili, breakfastMeal, shake];
     const server = show({
       "GET /api/my-foods": () => ({ foods }),
@@ -101,7 +114,7 @@ describe("My Foods", () => {
 
     await user.click(within(list).getByRole("button", { name: "Delete Chili" }));
     await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Hidden (it's been logged)"));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Hidden (it's in use)"));
     await waitFor(() => expect(within(list).queryByRole("button", { name: /^Chili/ })).toBeNull());
   });
 

@@ -2,7 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { eq } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { asUser } from "./isolation.js";
 import { aiAnswers, aiSettings, offKnows, offProduct } from "./foodFakes.js";
@@ -183,6 +183,23 @@ describe("photo analyze", () => {
     expect(await t.db.select().from(uploads)).toEqual([]);
   });
 
+  it("any other failure while converting a photo is a 400 'Use a JPEG or PNG photo', and is logged", async () => {
+    const photo = await plainPhoto(400, 300);
+    const spy = vi.spyOn(sharp.prototype, "toBuffer").mockRejectedValueOnce(new Error("vips_something: an odd new failure"));
+    try {
+      const r = await analyze([photo]);
+      expect([r.status, r.body.error]).toEqual([400, "Use a JPEG or PNG photo"]);
+    } finally {
+      spy.mockRestore();
+    }
+    const logged = await t.db.select().from(appLog).where(eq(appLog.category, "food"));
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({ level: "warning", source: "Photo upload", event: "A photo couldn't be converted" });
+    expect(logged[0].detail).toContain("an odd new failure");
+    expect(logged[0].userId).not.toBeNull();
+    expect(await t.db.select().from(uploads)).toEqual([]);
+  });
+
   it("normalises photos: turned upright, at most 1600 px, JPEG, kept under the person's own folder", async () => {
     const me = (await t.api("GET", "/api/auth/me")).body.user;
     // A sideways phone photo: stored 3200×1600 with "rotate 90°" in EXIF
@@ -249,6 +266,20 @@ describe("photo serving and linking", () => {
     // Outside photos (Open Food Facts) pass through as they are
     offKnows(t, { [CODE]: offProduct(CODE, "Crunchy bar", 400, { image_front_small_url: "https://images.openfoodfacts.org/x.jpg" }) });
     expect((await t.api("GET", `/api/foods/barcode/${CODE}`)).body.food.imageUrl).toBe("https://images.openfoodfacts.org/x.jpg");
+  });
+
+  it("a quick meal logged with a photo'd food stores the plain photo path, never a signature", async () => {
+    const id = (await analyze([await labelPhoto()])).body.photoIds[0];
+    const saved = (await t.api("POST", "/api/my-foods", { ...label, photoId: id })).body.food;
+    const meal = (await t.api("POST", "/api/my-foods/meals", { name: "Cracker snack", items: [{ food: { kind: "user_food", id: saved.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 }] })).body.food;
+    const logged = await t.api("POST", "/api/log/meal", { day: "2026-11-17", meal: "snacks", foodId: meal.id });
+    expect(logged.status).toBe(200);
+    const rows = await t.db.select().from(logEntries);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].imageUrl).toBe(`/api/photos/${id}`);
+    expect(rows[0].imageUrl).not.toMatch(/sig=/);
+    const day = (await t.api("GET", "/api/day/2026-11-17")).body;
+    expect(day.entries[0].imageUrl).toEqual(signed(id));
   });
 
   it("saving a food with photoId links the photo; search and the food show it", async () => {

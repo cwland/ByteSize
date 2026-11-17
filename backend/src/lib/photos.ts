@@ -10,6 +10,7 @@ import type { FastifyInstance } from "fastify";
 import { and, eq, inArray, isNull, lt } from "drizzle-orm";
 import sharp from "sharp";
 import { prepareZXingModule, readBarcodes } from "zxing-wasm/reader";
+import type { Db } from "../db/index.js";
 import { uploads, users } from "../db/schema.js";
 import { logEvent } from "./appLog.js";
 import { normalizeBarcode } from "./barcode.js";
@@ -37,7 +38,11 @@ export function wasmBinary(kind: "reader" | "writer"): ArrayBuffer {
   return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
 }
 
-let readerReady = false;
+let readerReady = false; // set only once the decoder has loaded
+let readerProblemLogged = false; // the decoder's first load or read failure is logged, once
+
+/** Where a photo problem is logged (Settings › Logs, category food), and whose upload it was. */
+export type PhotoLog = { db: Db; userId?: number | null };
 
 /** The URL a food's photo is stored as (unsigned), from its stored path ("<user_id>/<id>.jpg"). */
 export const photoUrl = (imagePath: string) => `/api/photos/${path.basename(imagePath, ".jpg")}`;
@@ -78,7 +83,7 @@ export function unsignImageUrl(url: string | null): string | null {
 }
 
 /** Upright (EXIF rotation applied), at most 1600 px on its longest side, JPEG, metadata (GPS...) dropped. Not an image → 400. */
-export async function normalisePhoto(input: Buffer): Promise<Buffer> {
+export async function normalisePhoto(input: Buffer, log?: PhotoLog): Promise<Buffer> {
   let meta: sharp.Metadata;
   try {
     meta = await sharp(input, { limitInputPixels: false }).metadata(); // the header only
@@ -90,11 +95,12 @@ export async function normalisePhoto(input: Buffer): Promise<Buffer> {
   try {
     return await sharp(input, { limitInputPixels: MAX_INPUT_PIXELS }).rotate().resize(MAX_SIDE, MAX_SIDE, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
   } catch (err) {
-    const message = (err as Error).message ?? "";
+    const message = (err as Error)?.message ?? String(err);
     if (/pixel limit/i.test(message)) throw new HttpError(413, PHOTO_TOO_LARGE);
-    // The picture's data can't be decoded (cut short, corrupt, a codec sharp lacks such as HEIC)
-    if (/unsupported image format|corrupt|premature|truncated|invalid|bad seek|heif:|Vips\w*(Jpeg|Png|Gif|Webp|Tiff|Load)/i.test(message)) throw badRequest(NOT_A_PHOTO);
-    throw err;
+    // Anything else: the picture's data couldn't be converted (cut short, corrupt, a codec sharp lacks
+    // such as HEIC...). The person is told plainly; the cause is kept in the log.
+    if (log) await logEvent(log.db, { category: "food", level: "warning", source: "Photo upload", event: "A photo couldn't be converted", detail: `${meta.format} ${meta.width ?? "?"}×${meta.height ?? "?"}: ${message}`, userId: log.userId ?? null });
+    throw badRequest(NOT_A_PHOTO);
   }
 }
 
@@ -111,11 +117,23 @@ export function expandUpcE(code: string): string | null {
   return ns + body + check;
 }
 
+async function logReaderProblem(log: PhotoLog | undefined, level: "warning" | "error", event: string, err: unknown) {
+  if (readerProblemLogged || !log) return;
+  readerProblemLogged = true;
+  await logEvent(log.db, { category: "food", level, source: "Barcode reader", event, detail: (err as Error)?.message ?? String(err), userId: log.userId ?? null });
+}
+
 /** The first retail barcode (EAN-13/8, UPC-A/E) in a picture, normalised; null when there's none. */
-export async function decodeBarcode(jpeg: Buffer): Promise<string | null> {
+export async function decodeBarcode(jpeg: Buffer, log?: PhotoLog): Promise<string | null> {
   if (!readerReady) {
-    prepareZXingModule({ overrides: { wasmBinary: wasmBinary("reader") } });
-    readerReady = true;
+    try {
+      await prepareZXingModule({ overrides: { wasmBinary: wasmBinary("reader") }, fireImmediately: true });
+      readerReady = true;
+    } catch (err) {
+      // Without the decoder no photo has a barcode: logged so that has a visible cause; tried again next time
+      await logReaderProblem(log, "error", "The barcode reader couldn't start", err);
+      return null;
+    }
   }
   try {
     const found = await readBarcodes(new Uint8Array(jpeg), { formats: ["EAN13", "EAN8", "UPCA", "UPCE"], tryHarder: true, maxNumberOfSymbols: 1 });
@@ -124,8 +142,9 @@ export async function decodeBarcode(jpeg: Buffer): Promise<string | null> {
       const code = normalizeBarcode(r.format === "UPCE" ? (expandUpcE(r.text) ?? r.text) : r.text);
       if (code) return code;
     }
-  } catch {
-    // an unreadable picture just has no barcode
+  } catch (err) {
+    // an unreadable picture just has no barcode (the first such failure is logged)
+    await logReaderProblem(log, "warning", "The barcode reader couldn't read a photo", err);
   }
   return null;
 }

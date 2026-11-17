@@ -40,7 +40,7 @@ export type FoodResult = {
 // like a typed one (food); otherwise a nutrition label is read by the photo AI into a draft (nothing saved).
 export type PhotoMode = "auto" | "barcode" | "label";
 export type SourceError = { source: string; message: string };
-export type PhotoDraft = Omit<FoodResult, "id" | "kind"> & { category: string; photoId: string };
+export type PhotoDraft = Omit<FoodResult, "id" | "kind" | "foodKind"> & { category: string; photoId: string }; // as the backend sends it: no foodKind
 export type PhotoResult = { photoIds: string[]; barcode?: string; food?: FoodResult; draft?: PhotoDraft; errors: SourceError[]; labelReading: boolean };
 export type FoodRef = { kind: "cache" | "user_food"; id: number };
 // One ingredient of a recipe or food of a quick meal, as sent to the API

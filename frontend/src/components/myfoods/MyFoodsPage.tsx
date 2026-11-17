@@ -37,7 +37,7 @@ export default function MyFoodsPage() {
   const from = myFoodsFrom(useHash());
   const [view, setView] = useState<View>({ k: "list" });
   const [kind, setKind] = useState<Kind>("all");
-  const [sort, setSort] = useState<Sort>("recent");
+  const [sort, setSort] = useState<Sort | null>(null); // null: not picked (Recent, or best match while searching)
   const [query, setQuery] = useState("");
   const [foods, setFoods] = useState<FoodResult[] | null>(null);
   const [reload, setReload] = useState(0);
@@ -47,11 +47,13 @@ export default function MyFoodsPage() {
   useEffect(() => {
     if (view.k !== "list") return;
     const q = query.trim();
+    // A search is in best-match order (no sort sent) unless the person picked a sort
+    const order = sort ?? (q ? null : "recent");
     let live = true;
     // typing waits a moment (one request per pause); chips and sort ask straight away
     const t = setTimeout(
       () =>
-        api<{ foods: FoodResult[] }>("GET", `/api/my-foods?kind=${kind}&sort=${sort}${q ? `&q=${encodeURIComponent(q)}` : ""}`).then(
+        api<{ foods: FoodResult[] }>("GET", `/api/my-foods?kind=${kind}${order ? `&sort=${order}` : ""}${q ? `&q=${encodeURIComponent(q)}` : ""}`).then(
           (r) => live && setFoods(r.foods),
           (e) => live && setMsg(errorMsg(e)),
         ),
@@ -77,8 +79,9 @@ export default function MyFoodsPage() {
     setDeleting(null);
     try {
       // The server deletes a food that was never logged or used ({ archived: false }) and hides one that was
+      // (logged, or an ingredient of a recipe or an item of a quick meal)
       const { archived } = await api<{ archived: boolean }>("DELETE", `/api/my-foods/${f.id}`);
-      setMsg({ ok: true, text: archived ? "Hidden (it's been logged)" : "Removed" });
+      setMsg({ ok: true, text: archived ? "Hidden (it's in use)" : "Removed" });
       setReload((n) => n + 1);
     } catch (e) {
       setMsg(errorMsg(e));
@@ -120,7 +123,7 @@ export default function MyFoodsPage() {
       <div className="mt-3 flex flex-col gap-2">
         <input type="search" aria-label="Search my foods" placeholder="Search my foods" value={query} onChange={(e) => setQuery(e.target.value)} className={`${field} mt-0 rounded-full`} />
         <Choice label="Show" value={kind} options={KINDS} onChange={setKind} />
-        <Choice label="Sort" value={sort} options={SORTS} onChange={setSort} />
+        <Choice label="Sort" value={sort ?? (query.trim() ? null : "recent")} options={SORTS} onChange={setSort} />
       </div>
 
       <Notice msg={msg} />

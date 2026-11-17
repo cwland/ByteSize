@@ -334,7 +334,7 @@ export default async function foodLogRoutes(app: FastifyInstance) {
             name: food.name,
             brand: food.brand,
             icon: food.icon,
-            imageUrl: food.imageUrl,
+            imageUrl: unsignImageUrl(food.imageUrl), // stored plain; signed again when handed out
             source: food.kind,
             sourceRef: `${food.kind}:${food.id}`,
             ...portion,

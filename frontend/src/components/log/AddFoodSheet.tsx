@@ -13,7 +13,7 @@ import FoodDetail, { defaultPortion, nutrientsFor, startingPortion } from "./Foo
 import FoodRow, { QuickAddButton, tagOf, useQuickAdd } from "./FoodRow";
 import { TrackMeal } from "../myfoods/QuickMealEditor";
 import Pills from "./Pills";
-import PhotoPicker, { MAX_PHOTOS, usePhotoInput } from "./PhotoPicker";
+import PhotoPicker, { MAX_PHOTOS, analyzePhotos, usePhotoInput } from "./PhotoPicker";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
 import { field, primaryButton, secondaryButton } from "../ui/styles";
@@ -24,7 +24,8 @@ type View =
   | { k: "describe" }
   | { k: "photo"; files: File[]; mode: PhotoMode }
   // photos: the photo(s) a label draft was read from, so a barcode photo can still be added
-  | { k: "form"; mode: FoodFormMode; draft: FoodDraft; fillRef?: { kind: "cache" | "user_food"; id: number }; photos?: File[] }
+  // barcodeFill: the barcode a barcode photo added to that draft found, merged into the form as it stands
+  | { k: "form"; mode: FoodFormMode; draft: FoodDraft; fillRef?: { kind: "cache" | "user_food"; id: number }; photos?: File[]; barcodeFill?: string }
   | { k: "detail"; food: FoodResult; initial: Portion }
   | { k: "meal"; food: FoodResult }; // a quick meal: adjust its foods, then Track
 
@@ -115,18 +116,36 @@ function MealTitle({ meal, day, onPick }: { meal: Meal; day: string; onPick: (m:
 }
 
 // A label draft from a photo as the New food form's draft: AI-estimated values, the photo to link on Save
-const photoDraft = (d: PhotoDraft): FoodDraft => ({ ...draftOf({ ...d, kind: "user_food", id: 0 }), photoId: d.photoId });
+const photoDraft = (d: PhotoDraft): FoodDraft => ({ ...draftOf(d), photoId: d.photoId });
 
-// "Add a barcode photo" over a label draft that has no barcode: both photos are sent again together
-function AddBarcodePhoto({ onFile }: { onFile: (f: File) => void }) {
-  const photo = usePhotoInput(onFile);
+// "Add a barcode photo" over a label draft that has no barcode: the barcode photo is sent alone (mode
+// barcode) and only the barcode it finds goes into the form, so the person's edits to the draft stay
+function AddBarcodePhoto({ onBarcode }: { onBarcode: (code: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<Msg>(null);
+  const photo = usePhotoInput(async (f) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await analyzePhotos([f], "barcode");
+      if (r.barcode) onBarcode(r.barcode);
+      else setMsg({ ok: false, text: "No barcode found in that photo" });
+    } catch (e) {
+      setMsg(errorMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  });
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl bg-pressed px-3 py-2 text-sm">
-      {photo.input}
-      <span className="flex-1 text-subtle">Has a barcode? Add its photo so scanning finds this food next time.</span>
-      <button type="button" onClick={photo.open} className="rounded-full px-2 py-1 font-semibold text-link hover:bg-strong">
-        Add a barcode photo
-      </button>
+    <div className="mb-3 flex flex-col gap-2 rounded-2xl bg-pressed px-3 py-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        {photo.input}
+        <span className="flex-1 text-subtle">Has a barcode? Add its photo so scanning finds this food next time.</span>
+        <button type="button" disabled={busy} onClick={photo.open} className="rounded-full px-2 py-1 font-semibold text-link hover:bg-strong">
+          {busy ? "Reading your photo…" : "Add a barcode photo"}
+        </button>
+      </div>
+      <Notice msg={msg} />
     </div>
   );
 }
@@ -206,7 +225,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
   const estimate = async () => {
     try {
       const out = await api<{ food: Omit<FoodResult, "id" | "kind"> & { category: string } }>("POST", "/api/ai/estimate", { text: describe });
-      setView({ k: "form", mode: { kind: "create" }, draft: draftOf({ ...out.food, kind: "user_food", id: 0 }) });
+      setView({ k: "form", mode: { kind: "create" }, draft: draftOf(out.food) });
       setMsg(null);
     } catch (e) {
       setMsg(errorMsg(e));
@@ -265,8 +284,8 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
     const heading = view.mode.kind === "override" ? "Correct this food" : view.mode.kind === "edit" ? "Edit food" : "New food";
     return (
       <Sheet tall label={label} heading={heading} onClose={onClose} onBack={back}>
-        {view.photos && view.photos.length < MAX_PHOTOS && !view.draft.barcode && <AddBarcodePhoto onFile={(f) => setView({ k: "photo", files: [...view.photos!, f], mode: "auto" })} />}
-        <FoodForm mode={view.mode} draft={view.draft} fillRef={view.fillRef} onSaved={(f) => pick(f, defaultPortion(f.servings, units))} />
+        {view.photos && view.photos.length < MAX_PHOTOS && !view.draft.barcode && !view.barcodeFill && <AddBarcodePhoto onBarcode={(code) => setView({ ...view, barcodeFill: code })} />}
+        <FoodForm mode={view.mode} draft={view.draft} fillRef={view.fillRef} barcodeFill={view.barcodeFill} onSaved={(f) => pick(f, defaultPortion(f.servings, units))} />
       </Sheet>
     );
   }
