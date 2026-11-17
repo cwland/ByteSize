@@ -9,6 +9,7 @@ import { sessionForToken } from "./lib/sessions.js";
 import { DEFAULT_RATE_LIMIT, rateLimits, securityHeaders, type RateLimitOptions } from "./lib/security.js";
 import healthRoutes from "./routes/health.js";
 import authRoutes from "./routes/auth.js";
+import adminUserRoutes from "./routes/admin-users.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -84,5 +85,6 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   app.register(healthRoutes);
   app.register(authRoutes);
+  app.register(adminUserRoutes);
   return app;
 }

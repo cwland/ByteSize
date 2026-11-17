@@ -56,12 +56,22 @@ export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}) {
     return res.body.user;
   }
 
+  // The admin adds a person (the TestApp must be signed in as an admin), then they sign in
+  async function createUser(username: string, opts: { isAdmin?: boolean; password?: string } = {}) {
+    const password = opts.password ?? "password123";
+    const made = await api("POST", "/api/admin/users", { username, password, isAdmin: opts.isAdmin ?? false });
+    if (made.status !== 200) throw new Error(`createUser ${username}: ${made.status} ${JSON.stringify(made.body)}`);
+    const res = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password } });
+    return { id: made.body.user.id as number, token: JSON.parse(res.body).token as string };
+  }
+
   return {
     app,
     db,
     api,
     reset,
     login,
+    createUser,
     setToken: (t: string) => (token = t),
     getToken: () => token,
     close: async () => {
