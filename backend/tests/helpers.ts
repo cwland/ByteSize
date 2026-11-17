@@ -17,12 +17,17 @@ if (!url.includes("test")) throw new Error("TEST_DATABASE_URL must point at a te
 export const TEST_SECRET = "test-secret-test-secret-test-secret-1234";
 
 // beforeReady: register extra plugins (e.g. the web app) before the app is ready
-export async function setupTestApp(opts: Partial<Omit<AppOptions, "db">> = {}, beforeReady?: (app: FastifyInstance) => Promise<void>) {
+// migrateWith: builds the schema in place of runMigrations (e.g. to test a migration on old-shape rows)
+export async function setupTestApp(
+  opts: Partial<Omit<AppOptions, "db">> = {},
+  beforeReady?: (app: FastifyInstance) => Promise<void>,
+  migrateWith?: (db: ReturnType<typeof createDb>["db"]) => Promise<void>,
+) {
   const { db, pool } = createDb(url);
   await db.execute(sql`drop schema if exists public cascade`);
   await db.execute(sql`drop schema if exists drizzle cascade`);
   await db.execute(sql`create schema public`);
-  await runMigrations(db);
+  await (migrateWith ?? runMigrations)(db);
   // Fake AI: records calls; answer with ai.respond(url, body, headers) -> { status, json }, or a
   // streamed reply: { status, sse: ["data: {...}", ...], gapMs?: pause between pieces, hang?: stop
   // sending after the pieces without closing }. down = unreachable.

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ACTIVITY,
   PLAN_DEFS,
+  age,
   bmr,
   buildPlans,
   planExplanation,
@@ -11,42 +12,87 @@ import {
   type PlanId,
 } from "../src/lib/plans.js";
 
-const today = new Date("2026-11-17T12:00:00Z");
+const today = "2026-11-17";
 
 // 6'0", 250 lb, goal 180 lb, 40 years old
 const A: Body = {
-  sex: "male", birthYear: 1986, heightCm: 177.8, weightKg: 113.3980925, goalWeightKg: 81.6466266,
-  activity: "sedentary", glp1: true,
+  sex: "male", birthDate: "1986-01-01", heightCm: 177.8, weightKg: 113.3980925, goalWeightKg: 81.6466266,
+  activity: "sitting", glp1: true,
 };
 // 5'0", 140 lb, goal 120 lb, 60 years old: no safe plan
 const B: Body = {
-  sex: "female", birthYear: 1966, heightCm: 152.4, weightKg: 63.50293, goalWeightKg: 54.43108,
-  activity: "sedentary", glp1: true,
+  sex: "female", birthDate: "1966-01-01", heightCm: 152.4, weightKg: 63.50293, goalWeightKg: 54.43108,
+  activity: "sitting", glp1: true,
 };
-// Steady is under the floor, Relaxed is above it
+// Steady is under the floor, Relaxed is above it (50 on 2026-11-17)
 const C: Body = {
-  sex: "female", birthYear: 1976, heightCm: 160, weightKg: 70, goalWeightKg: 60,
-  activity: "sedentary", glp1: false,
+  sex: "female", birthDate: "1976-06-01", heightCm: 160, weightKg: 70, goalWeightKg: 60,
+  activity: "sitting", glp1: false,
+};
+// Cory: 6'0", 226 lb → 180 lb, desk + daily walk, on a GLP-1 (52 on 2026-11-17)
+const CORY: Body = {
+  sex: "male", birthDate: "1974-06-01", heightCm: 182.88, weightKg: 102.51187562, goalWeightKg: 81.6466266,
+  activity: "some", glp1: true,
 };
 
 const byId = (r: ReturnType<typeof buildPlans>, id: PlanId) => r.plans.find((p) => p.id === id)!;
 
-describe("plan calculator", () => {
-  it("defines activity multipliers and the four plans", () => {
-    expect(ACTIVITY).toEqual({ sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very: 1.9 });
-    expect(PLAN_DEFS.map((p) => [p.id, p.name, p.lbsPerWeek, p.deficit])).toEqual([
-      ["relaxed", "Relaxed", 0.5, 250],
-      ["steady", "Steady", 1, 500],
-      ["accelerated", "Accelerated", 1.5, 750],
-      ["vigorous", "Vigorous", 2, 1000],
-    ]);
+describe("age", () => {
+  it("is exact on the day before and the day of a birthday", () => {
+    expect(age("1974-11-18", "2026-11-17")).toBe(51);
+    expect(age("1974-11-18", "2026-11-18")).toBe(52);
+    expect(age("1974-06-01", "2026-11-17")).toBe(52);
+    expect(age("1974-12-31", "2026-01-01")).toBe(51);
   });
 
-  it("computes Mifflin-St Jeor BMR and TDEE with age from the UTC year", () => {
+  it("counts a Feb 29 birthday from Mar 1 in non-leap years", () => {
+    expect(age("2000-02-29", "2027-02-28")).toBe(26);
+    expect(age("2000-02-29", "2027-03-01")).toBe(27);
+    expect(age("2000-02-29", "2028-02-28")).toBe(27);
+    expect(age("2000-02-29", "2028-02-29")).toBe(28);
+  });
+});
+
+describe("plan calculator", () => {
+  it("defines activity multipliers and the four plans", () => {
+    expect(ACTIVITY).toEqual({ sitting: 1.2, some: 1.3, most: 1.4, physical: 1.5 });
+    expect(PLAN_DEFS.map((p) => [p.id, p.name, p.lbsPerWeek, p.deficit, p.protein, p.fiber])).toEqual([
+      ["relaxed", "Relaxed", 0.5, 250, [0.8, 0.9], { min: 30, max: 35 }],
+      ["steady", "Steady", 1, 500, [0.9, 1.0], { min: 30, max: 35 }],
+      ["accelerated", "Accelerated", 1.5, 750, [0.95, 1.05], { min: 28, max: 32 }],
+      ["vigorous", "Vigorous", 2, 1000, [1.0, 1.1], { min: 25, max: 30 }],
+    ]);
+    for (const d of PLAN_DEFS) expect(d.bestFor.length).toBeGreaterThan(10);
+  });
+
+  it("computes Mifflin-St Jeor BMR and TDEE with the exact age", () => {
     expect(bmr(A, today)).toBeCloseTo(2050.23, 2);
     expect(tdee(A, today)).toBe(2460);
     expect(bmr(C, today)).toBeCloseTo(1289, 6);
     expect(tdee(C, today)).toBe(1547);
+    // A day before the 50th birthday is one year younger: +5 kcal BMR
+    expect(bmr(C, "2026-05-31")).toBeCloseTo(1294, 6);
+  });
+
+  it("Cory: tdee, floor, calories, weeks and per-plan targets", () => {
+    const r = buildPlans(CORY, today);
+    expect(r.tdee).toBe(2487);
+    expect(r.floor).toBe(1617);
+    expect(r.plans.map((p) => p.calories)).toEqual([2237, 1987, 1737, 1487]);
+    expect(r.recommended).toBe("steady");
+    expect(r.plans.map((p) => p.recommended)).toEqual([false, true, false, false]);
+    expect(r.plans.map((p) => p.notRecommended)).toEqual([false, false, false, true]);
+    expect(r.plans.map((p) => p.weeksToGoal)).toEqual([92, 46, 31, 23]);
+    const water = { min: 1893, max: 3785 };
+    expect(byId(r, "relaxed").targets).toEqual({ calories: { min: 2187, max: 2287 }, protein_g: { min: 144, max: 162 }, fiber_g: { min: 30, max: 35 }, water_ml: water });
+    expect(byId(r, "steady").targets).toEqual({ calories: { min: 1937, max: 2037 }, protein_g: { min: 162, max: 180 }, fiber_g: { min: 30, max: 35 }, water_ml: water });
+    expect(byId(r, "accelerated").targets).toEqual({ calories: { min: 1687, max: 1787 }, protein_g: { min: 171, max: 189 }, fiber_g: { min: 28, max: 32 }, water_ml: water });
+    // Not recommended: its own range, not pulled up to the floor
+    expect(byId(r, "vigorous").targets).toEqual({ calories: { min: 1437, max: 1537 }, protein_g: { min: 180, max: 198 }, fiber_g: { min: 25, max: 30 }, water_ml: water });
+    for (const p of r.plans) {
+      expect(typeof p.bestFor).toBe("string");
+      expect(p.bestFor).toBe(PLAN_DEFS.find((d) => d.id === p.id)!.bestFor);
+    }
   });
 
   it("body A: four plans, steady recommended, vigorous under the floor", () => {
@@ -61,19 +107,21 @@ describe("plan calculator", () => {
     expect(r.plans.map((p) => p.notRecommended)).toEqual([false, false, false, true]);
   });
 
-  it("body A: targets for the steady plan", () => {
-    expect(targetsForPlan(A, 1960)).toEqual({
-      calories: { min: 1810, max: 2110 },
-      protein_g: { min: 126, max: 180 },
-      fiber_g: { min: 25, max: 38 },
+  it("body A: targets for the steady plan (thin wrapper agrees with the card)", () => {
+    const steady = byId(buildPlans(A, today), "steady");
+    expect(steady.targets).toEqual({
+      calories: { min: 1910, max: 2010 },
+      protein_g: { min: 162, max: 180 },
+      fiber_g: { min: 30, max: 35 },
       water_ml: { min: 1893, max: 3785 },
     });
+    expect(targetsForPlan(A, today, "steady")).toEqual(steady.targets);
   });
 
   it("body A: explanation names the plan, calories, floor and GLP-1 protein advice", () => {
     expect(planExplanation(buildPlans(A, today), A)).toBe(
       "Steady keeps you at 1,960 calories, above your 1,599 floor, and loses about 1 lb a week. " +
-        "On a GLP-1, slower loss helps protect muscle — aim for at least 126 g of protein.",
+        "On a GLP-1, slower loss helps protect muscle — aim for at least 162 g of protein.",
     );
   });
 
@@ -85,8 +133,11 @@ describe("plan calculator", () => {
     expect(r.plans.every((p) => p.notRecommended)).toBe(true);
     expect(r.plans.some((p) => p.recommended)).toBe(false);
     expect(r.recommended).toBeNull();
+    // Every plan is not recommended: each keeps its own honest range
+    expect(r.plans.map((p) => p.targets.calories)).toEqual([
+      { min: 1052, max: 1152 }, { min: 802, max: 902 }, { min: 552, max: 652 }, { min: 302, max: 402 },
+    ]);
     const text = planExplanation(r, B);
-    expect(text).toContain("care team");
     expect(text).toBe(
       "Every plan here would put you under a safe calorie floor of 1,200. " +
         "Set your targets with your care team, then enter them under Goals.",
@@ -104,8 +155,24 @@ describe("plan calculator", () => {
     expect(r.recommended).toBe("relaxed");
     expect(planExplanation(r, C)).toBe(
       "Relaxed keeps you at 1,297 calories, above your 1,200 floor, and loses about ½ lb a week. " +
-        "Aim for at least 93 g of protein.",
+        "Aim for at least 106 g of protein.",
     );
+  });
+
+  it("the calorie range of a plan that isn't 'not recommended' never starts below the floor", () => {
+    const c = buildPlans(C, today);
+    expect(byId(c, "relaxed").recommended).toBe(true);
+    expect(byId(c, "relaxed").targets.calories).toEqual({ min: 1247, max: 1347 });
+    for (const p of c.plans.filter((p) => !p.notRecommended)) expect(p.targets.calories.min).toBeGreaterThanOrEqual(c.floor);
+    // Body C at 63 kg: relaxed is 1213, recommended, and 1213 − 50 would be under 1200 → pulled up
+    const d = buildPlans({ ...C, weightKg: 63, goalWeightKg: 55 }, today);
+    expect(d.floor).toBe(1200);
+    expect(byId(d, "relaxed").calories).toBe(1213);
+    expect(byId(d, "relaxed").recommended).toBe(true);
+    expect(byId(d, "relaxed").targets.calories).toEqual({ min: 1200, max: 1263 });
+    // ...while not-recommended steady keeps 963 ± 50
+    expect(byId(d, "steady").notRecommended).toBe(true);
+    expect(byId(d, "steady").targets.calories).toEqual({ min: 913, max: 1013 });
   });
 
   it("goal at or above current weight: no recommendation and no weeks to goal", () => {
@@ -123,17 +190,9 @@ describe("plan calculator", () => {
 
   it("on a GLP-1 the recommendation is never faster than accelerated", () => {
     // Very high TDEE so every plan clears the floor; the rule still picks steady, never vigorous.
-    const big: Body = { ...A, weightKg: 180, activity: "very" };
+    const big: Body = { ...A, weightKg: 180, activity: "physical" };
     const r = buildPlans(big, today);
     expect(r.plans.every((p) => !p.notRecommended)).toBe(true);
     expect(r.recommended).toBe("steady");
-  });
-
-  it("the calorie range never starts below the safe floor", () => {
-    const r = buildPlans(C, today);
-    const relaxed = r.plans.find((p) => p.id === "relaxed")!;
-    expect(relaxed.calories).toBe(1297);
-    expect(targetsForPlan(C, relaxed.calories, r.floor).calories).toEqual({ min: 1200, max: 1447 });
-    expect(targetsForPlan(A, 1960, 1599).calories).toEqual({ min: 1810, max: 2110 }); // above the floor: unchanged
   });
 });
