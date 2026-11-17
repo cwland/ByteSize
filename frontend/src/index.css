@@ -28,6 +28,9 @@
   --color-subtle: #a8a8ad;
   --color-muted: #8a8a90;
   --color-inactive: #66666c;
+  /* Nutrient pills: calories use primary; protein and fiber have their own hues (readable in light and dark) */
+  --color-protein: #5b9cf5;
+  --color-fiber: var(--color-success);
 }
 
 @layer base {

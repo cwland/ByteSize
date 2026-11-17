@@ -1,9 +1,10 @@
 import { useRef } from "react";
 import { Check, Plus } from "lucide-react";
 import { MEAL_NAMES } from "../../meals";
-import { portionText } from "../../nutrition";
+import { formatAmount } from "../../amounts";
 import type { LogEntry, Meal, MealTotals, Units } from "../../types";
 import { fmt } from "../../units";
+import Pills from "./Pills";
 
 const g = (n: number) => `${Math.round(n)}g`;
 
@@ -41,19 +42,13 @@ function EntryRow({ entry, units, selecting, selected, onOpen, onLongPress }: { 
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-semibold">{entry.name}</span>
-          <span className="block truncate text-sm text-subtle">
-            <span>{portionText(entry, units)}</span>
-            {!water && entry.nutrients.fiber_g === undefined && <span className="text-muted"> · <span>fiber unknown</span></span>}
-          </span>
-        </span>
-        {!water &&
-          (entry.nutrients.calories === undefined ? (
-            <span aria-label="Calories unknown" className="font-semibold text-muted">
-              ?
+          <span className="block truncate text-sm text-subtle">{formatAmount(entry.servings, entry.servingIndex, entry.unit, entry.quantity, entry.fraction, units)}</span>
+          {!water && (
+            <span className="mt-1 block">
+              <Pills n={entry.nutrients} />
             </span>
-          ) : (
-            <span className="font-semibold tabular">{fmt(entry.nutrients.calories)}</span>
-          ))}
+          )}
+        </span>
       </button>
     </li>
   );
