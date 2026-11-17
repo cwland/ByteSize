@@ -25,7 +25,8 @@
     { "nutrientId": 1079, "nutrientName": "Fiber, total dietary", "nutrientNumber": "291", "unitName": "G", "derivationCode": "LCCD", "value": 0 },
     { "nutrientId": 1087, "nutrientName": "Calcium, Ca", "nutrientNumber": "301", "unitName": "MG", "derivationCode": "LCCD", "value": 118 },
     { "nutrientId": 1092, "nutrientName": "Potassium, K", "nutrientNumber": "306", "unitName": "MG", "derivationCode": "LCCD", "value": 141 },
-    { "nutrientId": 1093, "nutrientName": "Sodium, Na", "nutrientNumber": "307", "unitName": "MG", "derivationCode": "LCCS", "value": 35 }
+    { "nutrientId": 1093, "nutrientName": "Sodium, Na", "nutrientNumber": "307", "unitName": "MG", "derivationCode": "LCCS", "value": 35 },
+    { "nutrientId": 1258, "nutrientName": "Fatty acids, total saturated", "nutrientNumber": "606", "unitName": "G", "derivationCode": "LCCS", "value": 0 }
   ],
   "score": 389.1
 }

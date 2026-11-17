@@ -119,6 +119,8 @@ describe("per-user isolation", () => {
     expect(bensDay.streak).toBe(0);
     expect((await b.as("GET", "/api/foods/recent")).body.foods).toEqual([]);
     expect((await b.as("GET", "/api/foods/frequent")).body.foods).toEqual([]);
+    expect((await b.as("GET", "/api/foods/recent?meal=breakfast")).body.foods).toEqual([]);
+    expect((await b.as("GET", "/api/foods/frequent?meal=breakfast")).body.foods).toEqual([]);
     for (const id of [entry.id, water.id]) {
       expect((await b.as("PATCH", `/api/log/${id}`, { servingIndex: 0, unit: "serving", quantity: 3, fraction: 1 })).status).toBe(404);
       expect((await b.as("DELETE", `/api/log/${id}`)).status).toBe(404);
