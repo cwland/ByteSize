@@ -28,7 +28,7 @@ the admin adds everyone else in Settings › Users.
 ### Locked out?
 
 ```
-docker compose exec bytesize npm run reset-password -- <username>
+docker compose exec -u node bytesize npm run reset-password -- <username>
 ```
 
 It asks for the new password and signs that account out everywhere.
