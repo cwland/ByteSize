@@ -204,7 +204,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
 
   if (view.k === "detail") {
     return (
-      <Sheet label={label} heading="Track food" onClose={onClose} onBack={back}>
+      <Sheet tall label={label} heading="Track food" onClose={onClose} onBack={back}>
         <FoodDetail
           food={view.food}
           initial={view.initial}
@@ -221,14 +221,14 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
   if (view.k === "form") {
     const heading = view.mode.kind === "override" ? "Correct this food" : view.mode.kind === "edit" ? "Edit food" : "New food";
     return (
-      <Sheet label={label} heading={heading} onClose={onClose} onBack={back}>
+      <Sheet tall label={label} heading={heading} onClose={onClose} onBack={back}>
         <FoodForm mode={view.mode} draft={view.draft} fillRef={view.fillRef} onSaved={(f) => pick(f, defaultPortion(f.servings))} />
       </Sheet>
     );
   }
   if (view.k === "describe") {
     return (
-      <Sheet label={label} heading="Describe it" onClose={onClose} onBack={back}>
+      <Sheet tall label={label} heading="Describe it" onClose={onClose} onBack={back}>
         <div className="flex flex-col gap-3">
           <textarea aria-label="Describe the food" autoFocus rows={3} placeholder="A large banana" value={describe} onChange={(e) => setDescribe(e.target.value)} className={field} />
           <Notice msg={msg} />
@@ -256,7 +256,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day:
   const sameMeal = yesterday.filter((e) => e.meal === meal);
 
   return (
-    <Sheet label={label} heading={<MealTitle meal={meal} day={day} onPick={setMeal} />} onClose={onClose}>
+    <Sheet tall label={label} heading={<MealTitle meal={meal} day={day} onPick={setMeal} />} onClose={onClose}>
       <div className="flex items-center gap-2">
         <input type="search" aria-label="Search foods" autoFocus placeholder="Search and track food" value={query} onChange={(e) => setQuery(e.target.value)} className={`${field} mt-0 flex-1 rounded-full`} />
         <button
