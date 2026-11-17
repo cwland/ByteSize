@@ -1,12 +1,16 @@
-import { useEffect, useState } from "react";
-import { Pencil, Plus, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, Plus, ScanBarcode, Sparkles } from "lucide-react";
 import { api } from "../../api";
+import { formatAmount } from "../../amounts";
 import { notifyDayChanged } from "../../day";
-import { MEAL_NAMES } from "../../meals";
-import type { FoodResult, Meal, Portion, RecentFood } from "../../types";
-import { fmt } from "../../units";
+import { MEALS, MEAL_NAMES } from "../../meals";
+import { addDays, dayLabel, todayIn } from "../../selectedDay";
+import { useSession } from "../../session";
+import type { Day, FoodResult, LogEntry, Meal, Nutrients, Portion, RecentFood } from "../../types";
 import FoodForm, { draftOf, emptyDraft, type FoodDraft, type FoodFormMode } from "./FoodForm";
-import PortionSheet, { defaultPortion } from "./PortionSheet";
+import FoodDetail, { defaultPortion, nutrientsFor } from "./FoodDetail";
+import FoodRow, { QuickAddButton, useQuickAdd } from "./FoodRow";
+import Pills from "./Pills";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
 import { field, primaryButton, secondaryButton } from "../ui/styles";
@@ -18,7 +22,7 @@ type View =
   | { k: "search" }
   | { k: "describe" }
   | { k: "form"; mode: FoodFormMode; draft: FoodDraft; fillRef?: { kind: "cache" | "user_food"; id: number } }
-  | { k: "portion"; food: FoodResult; initial: Portion };
+  | { k: "detail"; food: FoodResult; initial: Portion };
 
 // Digits, spaces and dashes only: someone typing a barcode. Lookup only at a barcode's length.
 const barcodeLike = (q: string) => /^[\d\s-]+$/.test(q);
@@ -27,52 +31,122 @@ const barcodeDigits = (q: string) => {
   return [8, 12, 13, 14].includes(d.length) ? d : null;
 };
 
-function FoodRow({ food, onPick, onEdit }: { food: FoodResult; onPick: () => void; onEdit?: () => void }) {
+const amountOf = (servings: FoodResult["servings"], p: Portion) => formatAmount(servings, p.servingIndex, p.unit, p.quantity, p.fraction);
+
+// Totals of several entries; a nutrient any of them doesn't know stays unknown (never a partial sum)
+function totalOf(entries: LogEntry[]): Nutrients {
+  const out: Nutrients = {};
+  for (const k of ["calories", "protein_g", "fiber_g"] as const) {
+    if (entries.every((e) => e.nutrients[k] !== undefined)) out[k] = entries.reduce((s, e) => s + (e.nutrients[k] as number), 0);
+  }
+  return out;
+}
+
+// "Same as yesterday?": yesterday's entries of this meal, one + copies them all into this day and meal
+function SameAsYesterday({ entries, onAdd }: { entries: LogEntry[]; onAdd: () => Promise<void> }) {
+  const quick = useQuickAdd(onAdd);
   return (
-    <li className="flex items-center gap-2">
-      <button type="button" onClick={onPick} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-pressed">
-        {food.imageUrl ? (
-          <img src={food.imageUrl} alt="" aria-hidden="true" className="size-9 shrink-0 rounded-lg object-cover" />
-        ) : (
-          <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center text-2xl">
-            {food.icon}
-          </span>
+    <section aria-labelledby="same-as-yesterday" className="mt-4">
+      <h3 id="same-as-yesterday" className="px-1 text-xs font-bold tracking-wide text-muted uppercase">
+        Same as yesterday?
+      </h3>
+      <div className="mt-2 rounded-2xl bg-pressed p-3">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="line-clamp-3 font-semibold">{entries.map((e) => e.name).join(", ")}</p>
+            <div className="mt-1.5">
+              <Pills n={totalOf(entries)} />
+            </div>
+          </div>
+          <QuickAddButton label="Quick add same as yesterday" added={quick.added} onClick={quick.run} />
+        </div>
+        {quick.error && (
+          <p role="alert" className="mt-2 rounded-xl bg-error-subtle px-3 py-1.5 text-sm text-error">
+            {quick.error}
+          </p>
         )}
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-semibold">{food.name}</span>
-          <span className="block truncate text-sm text-subtle">
-            {[food.brand, `${food.nutrients.calories === undefined ? "?" : fmt(food.nutrients.calories)} cal · ${food.servings[0]?.label ?? ""}`].filter(Boolean).join(" · ")}
-          </span>
-        </span>
-      </button>
-      {onEdit && (
-        <button type="button" aria-label={`Edit ${food.name}`} title="Edit" onClick={onEdit} className="flex size-9 shrink-0 items-center justify-center rounded-full text-subtle hover:bg-pressed hover:text-ink">
-          <Pencil className="size-4" />
-        </button>
-      )}
-    </li>
+      </div>
+    </section>
   );
 }
 
-// One sheet for finding a food (recent, frequent, search, typed barcode, describe it, create) and logging it
-export default function AddFoodSheet({ day, meal, onClose }: { day: string; meal: Meal; onClose: () => void }) {
+// The title: the meal as a dropdown (changes where food goes), the day under it
+function MealTitle({ meal, day, onPick }: { meal: Meal; day: string; onPick: (m: Meal) => void }) {
+  const { user } = useSession();
+  const [open, setOpen] = useState(false);
+  const short = new Date(`${day}T00:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" });
+  const when = day === todayIn(user.timezone) ? `Today, ${short}` : dayLabel(day);
+  const choose = (m: Meal) => {
+    onPick(m);
+    setOpen(false);
+  };
+  return (
+    <div className="relative text-center">
+      <h2 className="text-xl font-bold">
+        <button type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-1 rounded-full px-2 hover:bg-pressed">
+          {MEAL_NAMES[meal]}
+          <ChevronDown aria-hidden="true" className="size-5" />
+        </button>
+      </h2>
+      <p className="text-sm text-subtle">{when}</p>
+      {open && (
+        <ul role="listbox" aria-label="Meal" className="absolute top-full left-1/2 z-10 mt-1 w-56 -translate-x-1/2 rounded-2xl border border-line bg-container p-1 text-left shadow-lg">
+          {MEALS.map((m) => (
+            <li
+              key={m}
+              role="option"
+              aria-selected={m === meal}
+              tabIndex={0}
+              onClick={() => choose(m)}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), choose(m))}
+              className={`cursor-pointer rounded-xl px-3 py-2 font-semibold hover:bg-pressed ${m === meal ? "text-link" : ""}`}
+            >
+              {MEAL_NAMES[m]}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// One sheet for finding a food (same as yesterday, recently tracked for this meal, search, barcode,
+// describe it, create) and tracking it. Quick add (+) logs as shown and keeps the sheet open.
+export default function AddFoodSheet({ day, meal: initialMeal, onClose }: { day: string; meal: Meal; onClose: () => void }) {
+  const [meal, setMeal] = useState<Meal>(initialMeal);
   const [view, setView] = useState<View>({ k: "search" });
   const [query, setQuery] = useState("");
+  const [barcodeOpen, setBarcodeOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const codeRef = useRef<HTMLInputElement>(null);
   const [found, setFound] = useState<Found | null>(null);
   const [recent, setRecent] = useState<RecentFood[]>([]);
-  const [frequent, setFrequent] = useState<RecentFood[]>([]);
+  const [yesterday, setYesterday] = useState<LogEntry[]>([]);
   const [describe, setDescribe] = useState("");
   const [msg, setMsg] = useState<Msg>(null);
   const [attempt, setAttempt] = useState(0); // "Try again" re-runs the lookup
 
   useEffect(() => {
-    api<{ foods: RecentFood[] }>("GET", "/api/foods/recent").then((r) => setRecent(r.foods), () => {});
-    api<{ foods: RecentFood[] }>("GET", "/api/foods/frequent").then((r) => setFrequent(r.foods), () => {});
-  }, []);
+    let live = true;
+    setRecent([]);
+    api<{ foods: RecentFood[] }>("GET", `/api/foods/recent?meal=${meal}`).then((r) => live && setRecent(r.foods), () => {});
+    return () => void (live = false);
+  }, [meal]);
+
+  useEffect(() => {
+    let live = true;
+    api<Day>("GET", `/api/day/${addDays(day, -1)}`).then((d) => live && setYesterday(d.entries), () => {});
+    return () => void (live = false);
+  }, [day]);
+
+  useEffect(() => {
+    if (barcodeOpen) codeRef.current?.focus();
+  }, [barcodeOpen]);
 
   // Debounced (250 ms) search or barcode lookup
+  const lookup = barcodeOpen && code.trim() ? code : query;
   useEffect(() => {
-    const q = query.trim();
+    const q = lookup.trim();
     const code = barcodeLike(q) ? barcodeDigits(q) : null;
     if (barcodeLike(q) ? !code : q.length < 2) return setFound(null);
     let live = true;
@@ -93,9 +167,11 @@ export default function AddFoodSheet({ day, meal, onClose }: { day: string; meal
       live = false;
       clearTimeout(t);
     };
-  }, [query, attempt]);
+  }, [lookup, attempt]);
 
-  const pick = (food: FoodResult, initial = defaultPortion(food.servings)) => setView({ k: "portion", food, initial });
+  // The portion a food starts at: the last one used for this meal, else its own serving
+  const startPortion = (food: FoodResult) => recent.find((r) => r.kind === food.kind && r.id === food.id)?.last ?? defaultPortion(food.servings);
+  const pick = (food: FoodResult, initial = startPortion(food)) => setView({ k: "detail", food, initial });
   const edit = (food: FoodResult) =>
     setView({
       k: "form",
@@ -114,19 +190,31 @@ export default function AddFoodSheet({ day, meal, onClose }: { day: string; meal
     }
   };
 
-  const log = async (food: FoodResult, p: Portion, m: Meal) => {
-    await api("POST", "/api/log", { day, meal: m, food: { kind: food.kind, id: food.id }, servingIndex: p.servingIndex, unit: p.unit, quantity: p.quantity, fraction: p.fraction });
+  const log = async (food: FoodResult, p: Portion) => {
+    await api("POST", "/api/log", { day, meal, food: { kind: food.kind, id: food.id }, servingIndex: p.servingIndex, unit: p.unit, quantity: p.quantity, fraction: p.fraction });
     notifyDayChanged();
-    onClose();
+  };
+  const copyYesterday = async (entries: LogEntry[]) => {
+    await api("POST", "/api/log/move", { ids: entries.map((e) => e.id), day, meal, copy: true });
+    notifyDayChanged();
   };
 
   const label = `Add food to ${MEAL_NAMES[meal]}`;
   const back = () => setView({ k: "search" });
 
-  if (view.k === "portion") {
+  if (view.k === "detail") {
     return (
-      <Sheet label={label} heading="Log it" onClose={onClose} onBack={back}>
-        <PortionSheet food={view.food} initial={view.initial} meal={meal} submitLabel="Log" onSubmit={(p, m) => log(view.food, p, m)} />
+      <Sheet label={label} heading="Track food" onClose={onClose} onBack={back}>
+        <FoodDetail
+          food={view.food}
+          initial={view.initial}
+          submitLabel="Track"
+          onEditFood={() => edit(view.food)}
+          onSubmit={async (p) => {
+            await log(view.food, p);
+            onClose();
+          }}
+        />
       </Sheet>
     );
   }
@@ -134,7 +222,7 @@ export default function AddFoodSheet({ day, meal, onClose }: { day: string; meal
     const heading = view.mode.kind === "override" ? "Correct this food" : view.mode.kind === "edit" ? "Edit food" : "New food";
     return (
       <Sheet label={label} heading={heading} onClose={onClose} onBack={back}>
-        <FoodForm mode={view.mode} draft={view.draft} fillRef={view.fillRef} onSaved={(f) => pick(f)} />
+        <FoodForm mode={view.mode} draft={view.draft} fillRef={view.fillRef} onSaved={(f) => pick(f, defaultPortion(f.servings))} />
       </Sheet>
     );
   }
@@ -152,21 +240,47 @@ export default function AddFoodSheet({ day, meal, onClose }: { day: string; meal
     );
   }
 
-  const list = (title: string, foods: RecentFood[]) =>
-    foods.length > 0 && (
-      <section className="mt-3">
-        <h3 className="px-2 text-sm font-bold text-muted uppercase">{title}</h3>
-        <ul>
-          {foods.map((f) => (
-            <FoodRow key={`${f.kind}${f.id}`} food={f} onPick={() => pick(f, f.last)} onEdit={() => edit(f)} />
-          ))}
-        </ul>
-      </section>
-    );
+  const row = (f: FoodResult, p: Portion) => (
+    <FoodRow
+      key={`${f.kind}${f.id}`}
+      name={f.name}
+      icon={f.icon}
+      imageUrl={f.imageUrl}
+      amount={amountOf(f.servings, p)}
+      brand={f.brand}
+      nutrients={nutrientsFor(f, p)}
+      onOpen={() => pick(f, p)}
+      onQuickAdd={() => log(f, p)}
+    />
+  );
+  const sameMeal = yesterday.filter((e) => e.meal === meal);
 
   return (
-    <Sheet label={label} onClose={onClose}>
-      <input type="search" aria-label="Search foods" autoFocus placeholder="Search foods or type a barcode" value={query} onChange={(e) => setQuery(e.target.value)} className={field} />
+    <Sheet label={label} heading={<MealTitle meal={meal} day={day} onPick={setMeal} />} onClose={onClose}>
+      <div className="flex items-center gap-2">
+        <input type="search" aria-label="Search foods" autoFocus placeholder="Search and track food" value={query} onChange={(e) => setQuery(e.target.value)} className={`${field} mt-0 flex-1 rounded-full`} />
+        <button
+          type="button"
+          aria-label="Barcode"
+          aria-pressed={barcodeOpen}
+          onClick={() => setBarcodeOpen((o) => !o)}
+          className={`flex size-11 shrink-0 items-center justify-center rounded-full border border-line ${barcodeOpen ? "bg-active text-link" : "text-ink hover:bg-pressed"}`}
+        >
+          <ScanBarcode aria-hidden="true" className="size-5" />
+        </button>
+      </div>
+      {barcodeOpen && (
+        <input
+          ref={codeRef}
+          type="text"
+          inputMode="numeric"
+          aria-label="Barcode number"
+          placeholder="Type the barcode number"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          className={`${field} mt-2 tabular`}
+        />
+      )}
       <div className="mt-3 flex gap-2">
         <button type="button" onClick={() => setView({ k: "describe" })} className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}>
           <Sparkles className="size-4" /> Describe it
@@ -178,15 +292,20 @@ export default function AddFoodSheet({ day, meal, onClose }: { day: string; meal
       <Notice msg={msg} />
       {!found && (
         <>
-          {list("Recent", recent)}
-          {list("Frequent", frequent)}
+          {sameMeal.length > 0 && <SameAsYesterday key={meal} entries={sameMeal} onAdd={() => copyYesterday(sameMeal)} />}
+          {recent.length > 0 && (
+            <section aria-labelledby="recently-tracked" className="mt-4">
+              <h3 id="recently-tracked" className="px-1 text-xs font-bold tracking-wide text-muted uppercase">
+                Recently tracked
+              </h3>
+              <ul className="mt-2 flex flex-col gap-2">{recent.map((f) => row(f, f.last))}</ul>
+            </section>
+          )}
         </>
       )}
       {found?.kind === "barcode" &&
         (found.food ? (
-          <ul className="mt-3">
-            <FoodRow food={found.food} onPick={() => pick(found.food!)} onEdit={() => edit(found.food!)} />
-          </ul>
+          <ul className="mt-3 flex flex-col gap-2">{row(found.food, startPortion(found.food))}</ul>
         ) : (
           <div className="mt-4 flex flex-col items-start gap-2 px-2">
             {found.errors?.length ? (
@@ -218,12 +337,8 @@ export default function AddFoodSheet({ day, meal, onClose }: { day: string; meal
         <>
           {found.groups.map((g) => (
             <section key={g.source} className="mt-3">
-              <h3 className="px-2 text-sm font-bold text-muted uppercase">{g.label}</h3>
-              <ul>
-                {g.foods.map((f) => (
-                  <FoodRow key={`${f.kind}${f.id}`} food={f} onPick={() => pick(f)} onEdit={() => edit(f)} />
-                ))}
-              </ul>
+              <h3 className="px-1 text-xs font-bold tracking-wide text-muted uppercase">{g.label}</h3>
+              <ul className="mt-2 flex flex-col gap-2">{g.foods.map((f) => row(f, startPortion(f)))}</ul>
             </section>
           ))}
           {found.groups.length === 0 && <p className="mt-4 px-2 text-subtle">No foods found. Try other words, or create it.</p>}
