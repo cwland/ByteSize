@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Camera, ChevronDown, Plus, ScanBarcode, Sparkles } from "lucide-react";
+import { BookOpen, Camera, ChevronDown, Plus, ScanBarcode, Sparkles, Utensils } from "lucide-react";
 import { api } from "../../api";
 import { formatAmount } from "../../amounts";
 import { notifyDayChanged } from "../../day";
@@ -7,12 +7,13 @@ import { MEALS, MEAL_NAMES } from "../../meals";
 import { isMyFoods, myFoodsHref } from "../../routes";
 import { addDays, dayLabel, todayIn } from "../../selectedDay";
 import { useSession } from "../../session";
-import type { Day, FoodResult, Item, LogEntry, Meal, Nutrients, PhotoDraft, PhotoMode, Portion, RecentFood, SearchResult, SourceError } from "../../types";
+import type { Day, FoodResult, Item, LogEntry, Meal, Nutrients, PhotoDraft, PhotoMode, Portion, RecentFood, RestaurantStatus, SearchResult, SourceError } from "../../types";
 import FoodForm, { draftOf, emptyDraft, type FoodDraft, type FoodFormMode } from "./FoodForm";
 import FoodDetail, { defaultPortion, nutrientsFor, startingPortion } from "./FoodDetail";
 import FoodRow, { QuickAddButton, tagOf, useQuickAdd } from "./FoodRow";
 import { TrackMeal } from "../myfoods/QuickMealEditor";
 import Pills from "./Pills";
+import RestaurantsView, { newRestaurantsMemo } from "./RestaurantsView";
 import PhotoPicker, { MAX_PHOTOS, analyzePhotos, usePhotoInput } from "./PhotoPicker";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
@@ -26,7 +27,8 @@ type View =
   // photos: the photo(s) a label draft was read from, so a barcode photo can still be added
   // barcodeFill: the barcode a barcode photo added to that draft found, merged into the form as it stands
   | { k: "form"; mode: FoodFormMode; draft: FoodDraft; fillRef?: { kind: "cache" | "user_food"; id: number }; photos?: File[]; barcodeFill?: string }
-  | { k: "detail"; food: FoodResult; initial: Portion }
+  | { k: "detail"; food: FoodResult; initial: Portion; from?: "restaurants" } // from: where Back goes
+  | { k: "restaurants" }
   | { k: "meal"; food: FoodResult }; // a quick meal: adjust its foods, then Track
 
 // Digits, spaces and dashes only: someone typing a barcode. Lookup only at a barcode's length.
@@ -154,7 +156,8 @@ function AddBarcodePhoto({ onBarcode }: { onBarcode: (code: string) => void }) {
 // photo, describe it, create) and tracking it. Quick add (+) logs as shown and keeps the sheet open.
 // photo: a photo already chosen (Dashboard's Photo button) opens straight on the photo step with it.
 export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }: { day: string; meal: Meal; photo?: File; onClose: () => void }) {
-  const units = useSession().user?.units ?? "imperial";
+  const { user } = useSession();
+  const units = user?.units ?? "imperial";
   const [meal, setMeal] = useState<Meal>(initialMeal);
   const [view, setView] = useState<View>(() => (photo ? { k: "photo", files: [photo], mode: "auto" } : { k: "search" }));
   const [query, setQuery] = useState("");
@@ -167,6 +170,10 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
   const [describe, setDescribe] = useState("");
   const [msg, setMsg] = useState<Msg>(null);
   const [attempt, setAttempt] = useState(0); // "Try again" re-runs the lookup
+  const [restaurants, setRestaurants] = useState<RestaurantStatus | null>(null);
+  const restaurantsMemo = useRef(newRestaurantsMemo());
+
+  useEffect(() => void api<RestaurantStatus>("GET", "/api/restaurants/status").then(setRestaurants, () => {}), []);
 
   useEffect(() => {
     let live = true;
@@ -248,7 +255,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
   };
 
   const label = `Add food to ${MEAL_NAMES[meal]}`;
-  const back = () => setView({ k: "search" });
+  const back = () => setView(view.k === "detail" && view.from ? { k: view.from } : { k: "search" });
 
   if (view.k === "detail") {
     return (
@@ -264,6 +271,13 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
             onClose();
           }}
         />
+      </Sheet>
+    );
+  }
+  if (view.k === "restaurants" && restaurants) {
+    return (
+      <Sheet tall label={label} heading="Restaurants" onClose={onClose} onBack={back}>
+        <RestaurantsView status={restaurants} memo={restaurantsMemo.current} onDescribe={() => setView({ k: "describe" })} onPick={(food) => setView({ k: "detail", food, initial: startPortion(food), from: "restaurants" })} />
       </Sheet>
     );
   }
@@ -392,7 +406,13 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
         >
           <BookOpen className="size-4" /> My Foods
         </button>
+        {!!restaurants?.sources.length && (
+          <button type="button" onClick={() => setView({ k: "restaurants" })} className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}>
+            <Utensils className="size-4" /> Restaurants
+          </button>
+        )}
       </div>
+      {restaurants?.sources.length === 0 && user?.isAdmin && <p className="mt-2 px-1 text-xs text-muted">Add a restaurant data key in Settings › Food sources to search restaurant menus.</p>}
       <Notice msg={msg} />
         </>
       }

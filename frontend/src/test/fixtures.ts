@@ -135,3 +135,11 @@ export const m3Routes = {
   "GET /api/trends/weekly": () => ({ weeks: [] }),
   "GET /api/vacations": () => ({ vacations: [] }),
 };
+
+// Restaurants (§14 B): Add Food asks for the status on open; answered as nothing set up, so a test that
+// isn't about restaurants renders no notice. The Restaurants view's own GETs, empty.
+export const restaurantRoutes = {
+  "GET /api/restaurants/status": () => ({ sources: [], lookupsLeft: null }),
+  "GET /api/restaurants/favourites": () => ({ chains: [] }),
+  "GET /api/restaurants/recent-chains": () => ({ chains: [] }),
+};

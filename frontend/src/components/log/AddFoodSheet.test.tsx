@@ -5,7 +5,7 @@ import LogPage from "./LogPage";
 import { SelectedDayProvider } from "../../selectedDay";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
-import { barFood, dayJson, entryJson, settingsMe } from "../../test/fixtures";
+import { barFood, dayJson, entryJson, restaurantRoutes, settingsMe } from "../../test/fixtures";
 import { breakfastDetail, breakfastMeal, chili } from "../../test/myFoodsFixtures";
 
 const myShake = { ...barFood, kind: "user_food", id: 5, name: "Peanut protein shake", brand: null, icon: "🥤", barcode: null, source: "mine" };
@@ -25,6 +25,7 @@ function open(routes: Record<string, (b: any, path: string) => unknown> = {}) {
     "GET /api/settings/me": () => settingsMe,
     "GET /api/foods/recent": () => ({ foods: [] }),
     "GET /api/foods/search": () => search,
+    ...restaurantRoutes,
     ...routes,
   });
   renderWithSession(

@@ -14,7 +14,7 @@ const TABS = [
   { id: "security", label: "Security", hint: "Password, passkeys, devices", admin: false, Icon: Shield, Panel: SecuritySettings },
   { id: "users", label: "Users", hint: "Add and manage people", admin: true, Icon: Users, Panel: UsersSettings },
   { id: "ai", label: "AI services", hint: "Providers and failover order", admin: true, Icon: Bot, Panel: AiSettings },
-  { id: "food-sources", label: "Food sources", hint: "Open Food Facts and USDA", admin: true, Icon: Database, Panel: FoodSourcesSettings },
+  { id: "food-sources", label: "Food sources", hint: "Open Food Facts, USDA, restaurants", admin: true, Icon: Database, Panel: FoodSourcesSettings },
   { id: "logs", label: "Logs", hint: "What ByteSize has been doing", admin: true, Icon: ScrollText, Panel: LogsSettings },
 ] as const;
 

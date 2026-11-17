@@ -6,7 +6,7 @@ import { SelectedDayProvider } from "../../selectedDay";
 import TopBar from "../TopBar";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
-import { barFood, dayJson, m3Routes, settingsMe } from "../../test/fixtures";
+import { barFood, dayJson, m3Routes, restaurantRoutes, settingsMe } from "../../test/fixtures";
 import { glp1View } from "../../test/glp1Fixtures";
 import { weightJson } from "../../test/weightFixtures";
 
@@ -117,6 +117,7 @@ describe("Dashboard", () => {
     vi.setSystemTime(new Date("2026-11-16T19:00:00Z")); // noon in Boise: lunch
     const server = show(dayJson({ totals }), {
       "GET /api/foods/recent": () => ({ foods: [] }),
+      ...restaurantRoutes,
       "POST /api/photos/analyze": () => ({ photoIds: ["p1"], barcode: "0012345678905", food: barFood, errors: [], labelReading: true }),
     });
     const user = userEvent.setup();
