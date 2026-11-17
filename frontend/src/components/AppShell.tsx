@@ -1,6 +1,7 @@
 import Navigation from "./Navigation";
 import TopBar from "./TopBar";
-import { DashboardPreview, LogPreview } from "./Placeholder";
+import { LogPreview } from "./Placeholder";
+import Dashboard from "./dashboard/Dashboard";
 import GoalsPage from "./goals/GoalsPage";
 import PlanFlow from "./plan/PlanFlow";
 import { useEffect, useState } from "react";
@@ -41,7 +42,7 @@ export default function AppShell() {
       <div className="min-h-screen bg-page">
         <TopBar />
         <main className="mx-auto max-w-[560px] px-3 pt-2 pb-32">
-          {page === "dashboard" && <DashboardPreview />}
+          {page === "dashboard" && <Dashboard />}
           {page === "log" && <LogPreview />}
           {page === "goals" && <GoalsPage />}
           {page === "settings" && <SettingsPage />}

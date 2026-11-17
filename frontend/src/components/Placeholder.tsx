@@ -2,39 +2,6 @@ import { Plus } from "lucide-react";
 
 // Visual previews of the screens that arrive in M2 (no data yet): the shapes, empty.
 
-const RINGS = ["Protein", "Fiber", "Water"];
-
-export function DashboardPreview() {
-  return (
-    <div>
-      <h1 className="sr-only">Dashboard</h1>
-      <section aria-label="Budget" className="rounded-2xl bg-container p-5">
-        <h2 className="text-lg font-bold">Budget</h2>
-        <div className="mx-auto mt-3 max-w-72">
-          <svg viewBox="0 0 200 110" className="w-full" aria-hidden="true">
-            <path d="M 15 100 A 85 85 0 0 1 185 100" fill="none" stroke="var(--color-line)" strokeWidth="14" strokeLinecap="round" />
-          </svg>
-          <div className="-mt-12 text-center">
-            <p className="text-4xl font-bold leading-none text-inactive tabular">—</p>
-            <p className="mt-1 text-sm text-muted">calories left</p>
-          </div>
-        </div>
-        <div className="mt-6 grid grid-cols-3 gap-2">
-          {RINGS.map((name) => (
-            <div key={name} className="flex flex-col items-center">
-              <svg viewBox="0 0 64 64" className="size-16" aria-hidden="true">
-                <circle cx="32" cy="32" r="26" fill="none" stroke="var(--color-line)" strokeWidth="7" />
-              </svg>
-              <p className="mt-1.5 text-sm font-semibold">{name}</p>
-            </div>
-          ))}
-        </div>
-        <p className="mt-5 text-center text-subtle">Set up your goals to see your budget</p>
-      </section>
-    </div>
-  );
-}
-
 const MEALS = ["Breakfast", "Lunch", "Dinner", "Snacks"];
 
 export function LogPreview() {
