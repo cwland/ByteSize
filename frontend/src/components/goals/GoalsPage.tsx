@@ -8,9 +8,9 @@ import { fmt, waterUnit, waterValue } from "../../units";
 import PlanFlow from "../plan/PlanFlow";
 import TargetsEditor from "./TargetsEditor";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { primaryButton, secondaryButton } from "../ui/styles";
+import { linkButton, primaryButton, secondaryButton } from "../ui/styles";
 
-type Mode = "view" | "plan" | "edit";
+type Mode = "view" | "plan" | "details" | "edit";
 const planName = (t: Targets) => (t.plan ? `${t.plan[0].toUpperCase()}${t.plan.slice(1)} plan` : "Your own targets");
 
 // Goals: today's plan and target ranges, with Change plan and Edit targets.
@@ -34,6 +34,7 @@ export default function GoalsPage() {
   };
 
   if (mode === "plan") return <PlanFlow onDone={saved} onCancel={() => setMode("view")} cancelLabel="Cancel" />;
+  if (mode === "details") return <PlanFlow startAtDetails onDone={saved} onCancel={() => setMode("view")} cancelLabel="Cancel" />;
   if (mode === "edit") return <TargetsEditor initial={targets ?? null} onSaved={saved} onCancel={() => setMode("view")} />;
 
   const water = (v: number) => waterValue(v, user.units);
@@ -72,6 +73,9 @@ export default function GoalsPage() {
               Edit targets
             </button>
           </div>
+          <button type="button" onClick={() => setMode("details")} className={`${linkButton} mt-4`}>
+            Edit my details
+          </button>
         </section>
       )}
     </div>

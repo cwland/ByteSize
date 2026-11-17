@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../../api";
-import type { Body, PlansResponse, Targets } from "../../types";
+import type { Body, PlansResponse, SavedBody, Targets } from "../../types";
 import BodyForm from "./BodyForm";
 import PlanPicker from "./PlanPicker";
 import TargetsEditor, { defaultsFor } from "../goals/TargetsEditor";
@@ -9,9 +9,24 @@ import { linkButton } from "../ui/styles";
 
 type Step = { name: "loading" } | { name: "body" } | { name: "plans"; data: PlansResponse } | { name: "targets" };
 
-// About you → plans → (or) your own targets. Used on first run and from Goals › Change plan.
-export default function PlanFlow({ onDone, onCancel, cancelLabel = "Not now" }: { onDone: (t: Targets) => void; onCancel?: () => void; cancelLabel?: string }) {
+export const REVIEW_MESSAGE = "We've updated a couple of questions — check your details";
+
+// About you → plans → (or) your own targets. Used on first run, from Goals › Change plan and
+// Goals › Edit my details (startAtDetails), and when saved details need a review (asked once,
+// before plans; saving clears it on the server).
+export default function PlanFlow({
+  onDone,
+  onCancel,
+  cancelLabel = "Not now",
+  startAtDetails = false,
+}: {
+  onDone: (t: Targets) => void;
+  onCancel?: () => void;
+  cancelLabel?: string;
+  startAtDetails?: boolean;
+}) {
   const [body, setBody] = useState<Body | null>(null);
+  const [review, setReview] = useState(false);
   const [step, setStep] = useState<Step>({ name: "loading" });
   const [msg, setMsg] = useState<Msg>(null);
 
@@ -25,10 +40,11 @@ export default function PlanFlow({ onDone, onCancel, cancelLabel = "Not now" }: 
   };
 
   useEffect(() => {
-    api<{ body: Body | null }>("GET", "/api/body")
+    api<{ body: SavedBody | null }>("GET", "/api/body")
       .then((r) => {
         setBody(r.body);
-        if (r.body) void loadPlans();
+        setReview(!!r.body?.needsReview);
+        if (r.body && !r.body.needsReview && !startAtDetails) void loadPlans();
         else setStep({ name: "body" });
       })
       .catch((e) => {
@@ -39,11 +55,17 @@ export default function PlanFlow({ onDone, onCancel, cancelLabel = "Not now" }: 
 
   return (
     <div className="flex flex-col gap-3">
+      {step.name === "body" && review && (
+        <p role="status" className="rounded-2xl bg-active px-4 py-3 font-semibold text-ink">
+          {REVIEW_MESSAGE}
+        </p>
+      )}
       {step.name === "body" && (
         <BodyForm
           initial={body}
           onSaved={(b) => {
             setBody(b);
+            setReview(false);
             void loadPlans();
           }}
         />

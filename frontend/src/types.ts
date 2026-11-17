@@ -57,10 +57,23 @@ export type Range = { min: number; max: number };
 export type PlanId = "relaxed" | "steady" | "accelerated" | "vigorous";
 export type Targets = { calories: Range; protein_g: Range; fiber_g: Range; water_ml: Range; plan: PlanId | null; effectiveFrom: string };
 export type TargetRanges = Pick<Targets, "calories" | "protein_g" | "fiber_g" | "water_ml">;
-export type Plan = { id: PlanId; name: string; lbsPerWeek: number; calories: number; weeksToGoal: number | null; recommended: boolean; notRecommended: boolean };
+export type Plan = {
+  id: PlanId;
+  name: string;
+  lbsPerWeek: number;
+  calories: number;
+  weeksToGoal: number | null;
+  recommended: boolean;
+  notRecommended: boolean;
+  bestFor: string;
+  targets: TargetRanges; // exactly what selecting this plan sets
+};
 export type PlansResponse = { tdee: number; floor: number; plans: Plan[]; explanation: string; current: PlanId | null };
-export type Activity = "sedentary" | "light" | "moderate" | "active" | "very";
-export type Body = { sex: "male" | "female"; birthYear: number; heightCm: number; weightKg: number; goalWeightKg: number; activity: Activity; glp1: boolean };
+// How active the day is, not counting workouts (×1.2 / 1.3 / 1.4 / 1.5)
+export type Activity = "sitting" | "some" | "most" | "physical";
+export type Body = { sex: "male" | "female"; birthDate: string /* YYYY-MM-DD */; heightCm: number; weightKg: number; goalWeightKg: number; activity: Activity; glp1: boolean };
+// GET/PUT /api/body: needsReview is set on bodies saved before the questions changed (cleared by PUT)
+export type SavedBody = Body & { needsReview: boolean };
 export type MealTotals = { calories: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number; suggested: number | null };
 export type Day = {
   day: string;
