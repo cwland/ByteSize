@@ -4,6 +4,7 @@ import { HttpError } from "../lib/errors.js";
 import { requireAdmin, requireUser } from "../lib/guards.js";
 import { logEvent } from "../lib/appLog.js";
 import { AI_PROVIDERS, AiError, type AiConfig } from "../lib/ai.js";
+import { recommendModels } from "../lib/aiModels.js";
 
 const optionalText = (max: number) =>
   z
@@ -124,6 +125,7 @@ export default async function aiSettingsRoutes(app: FastifyInstance) {
   app.post("/api/settings/ai/models", async (req) => {
     requireAdmin(req);
     const c = await aiConfigFrom(req.body);
-    return { models: await aiErrors(() => app.ai.models(c)) };
+    const models = await aiErrors(() => app.ai.models(c));
+    return { models, recommended: recommendModels(c.provider, models) };
   });
 }
