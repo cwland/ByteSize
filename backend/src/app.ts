@@ -11,6 +11,7 @@ import healthRoutes from "./routes/health.js";
 import authRoutes from "./routes/auth.js";
 import adminUserRoutes from "./routes/admin-users.js";
 import profileRoutes from "./routes/profile.js";
+import passkeyRoutes from "./routes/passkeys.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -88,5 +89,6 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(authRoutes);
   app.register(adminUserRoutes);
   app.register(profileRoutes);
+  app.register(passkeyRoutes);
   return app;
 }

@@ -28,8 +28,8 @@ export const DEFAULT_RATE_LIMIT: RateLimitOptions = { max: 10, windowMs: 60_000 
 export const SENSITIVE_ROUTES = new Set([
   "POST /api/auth/setup",
   "POST /api/auth/login",
-  "POST /api/auth/passkey/login/options",
-  "POST /api/auth/passkey/login/verify",
+  "POST /api/passkeys/login/options",
+  "POST /api/passkeys/login/verify",
   "POST /api/auth/password",
 ]);
 
