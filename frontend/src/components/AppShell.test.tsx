@@ -24,3 +24,28 @@ describe("AppShell day switcher", () => {
     expect(screen.getByRole("button", { name: "Go to today" })).toHaveTextContent("Mon, Nov 16");
   });
 });
+
+describe("AppShell first run", () => {
+  it("with no targets yet shows the plan flow before the tabs", async () => {
+    fakeServer({
+      "GET /api/targets": () => ({ targets: null }),
+      "GET /api/body": () => ({ body: null }),
+    });
+    renderWithSession(<AppShell />);
+    expect(await screen.findByRole("heading", { name: "Tell us about yourself" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Main" })).not.toBeInTheDocument();
+  });
+});
+
+describe("AppShell log button", () => {
+  afterEach(() => void vi.useRealTimers());
+
+  it("the floating + opens Add food for the meal of the moment on the selected day", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-16T19:00:00Z")); // noon in Denver → lunch
+    fakeServer({ "GET /api/foods/recent": () => ({ foods: [] }), "GET /api/foods/frequent": () => ({ foods: [] }) });
+    renderWithSession(<AppShell />, { timezone: "America/Denver" });
+    await userEvent.setup().click(screen.getByRole("button", { name: "Log food" }));
+    expect(await screen.findByRole("dialog", { name: "Add food to Lunch" })).toBeInTheDocument();
+  });
+});

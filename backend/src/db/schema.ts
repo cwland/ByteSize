@@ -1,4 +1,5 @@
-import { boolean, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, date, doublePrecision, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 // Shared tables. Every table that holds a person's own data has a user_id that cascades,
 // so deleting a user removes everything they own.
@@ -100,4 +101,141 @@ export const appLog = pgTable(
     detail: text("detail"),
   },
   (t) => [index("app_log_at_idx").on(t.at), index("app_log_user_at_idx").on(t.userId, t.at)]
+);
+
+// ---- Milestone 2a: body, targets, foods, log ----
+// Everything is metric inside (cm, kg, g, ml, kcal). Nutrient jsonb is per serving, keyed like
+// { calories, protein_g, fiber_g, ... }; a missing key means unknown, never 0.
+
+export type NutrientsJson = Partial<Record<string, number>>;
+export type ServingJson = { label: string; grams?: number; ml?: number };
+export type MealWindows = { breakfast: string; lunch: string; snacks: string; dinner: string };
+
+const userRef = () =>
+  integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" });
+
+// What the plan picker needs to know about a person (one row each)
+export const userBody = pgTable("user_body", {
+  userId: userRef().primaryKey(),
+  sex: text("sex").$type<"male" | "female">().notNull(),
+  birthYear: integer("birth_year").notNull(),
+  heightCm: doublePrecision("height_cm").notNull(),
+  weightKg: doublePrecision("weight_kg").notNull(),
+  goalWeightKg: doublePrecision("goal_weight_kg").notNull(),
+  activity: text("activity").$type<"sedentary" | "light" | "moderate" | "active" | "very">().notNull(),
+  glp1: boolean("glp1").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// A person's own settings (one row each; missing row = defaults)
+export const userSettings = pgTable("user_settings", {
+  userId: userRef().primaryKey(),
+  // Meal time windows decide the default meal when logging (local times, end of each window)
+  mealWindows: jsonb("meal_windows")
+    .$type<MealWindows>()
+    .notNull()
+    .default({ breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" }),
+  waterButtonsMl: jsonb("water_buttons_ml").$type<number[]>().notNull().default([237, 473]),
+  culuryUrl: text("culury_url"),
+  culuryKeyEnc: text("culury_key_enc"), // encrypted
+});
+
+// Daily targets. The targets in force on day D: the latest effective_from <= D (ties: highest id).
+export const targets = pgTable(
+  "targets",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    effectiveFrom: date("effective_from").notNull(), // YYYY-MM-DD in the user's timezone
+    plan: text("plan"), // relaxed, steady, accelerated, vigorous; null: set by hand
+    caloriesMin: integer("calories_min").notNull(),
+    caloriesMax: integer("calories_max").notNull(),
+    proteinMin: doublePrecision("protein_min").notNull(),
+    proteinMax: doublePrecision("protein_max").notNull(),
+    fiberMin: doublePrecision("fiber_min").notNull(),
+    fiberMax: doublePrecision("fiber_max").notNull(),
+    waterMin: doublePrecision("water_min").notNull(),
+    waterMax: doublePrecision("water_max").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("targets_user_from_idx").on(t.userId, t.effectiveFrom)]
+);
+
+// Foods fetched from outside sources (Open Food Facts, USDA), shared by everyone
+export const foodCache = pgTable(
+  "food_cache",
+  {
+    id: serial("id").primaryKey(),
+    source: text("source").notNull(), // off, usda
+    sourceId: text("source_id").notNull(),
+    barcode: text("barcode"), // normalized (EAN-13)
+    name: text("name").notNull(),
+    brand: text("brand"),
+    category: text("category"),
+    servings: jsonb("servings").$type<ServingJson[]>().notNull(),
+    nutrients: jsonb("nutrients").$type<NutrientsJson>().notNull(),
+    imageUrl: text("image_url"),
+    raw: jsonb("raw"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("food_cache_source_idx").on(t.source, t.sourceId), index("food_cache_barcode_idx").on(t.barcode)]
+);
+
+// A person's own foods: custom foods, AI estimates they saved, and corrections (overrides) of cached foods
+export const userFoods = pgTable(
+  "user_foods",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    kind: text("kind").notNull(), // custom, ai, override
+    name: text("name").notNull(),
+    brand: text("brand"),
+    barcode: text("barcode"), // normalized; one active food per barcode per person
+    baseCacheId: integer("base_cache_id").references(() => foodCache.id, { onDelete: "set null" }),
+    category: text("category"),
+    servings: jsonb("servings").$type<ServingJson[]>().notNull(),
+    nutrients: jsonb("nutrients").$type<NutrientsJson>().notNull(),
+    aiFields: text("ai_fields").array().notNull().default(sql`'{}'::text[]`), // nutrient keys the AI guessed
+    notes: text("notes"),
+    useCount: integer("use_count").notNull().default(0),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    archived: boolean("archived").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("user_foods_user_idx").on(t.userId),
+    uniqueIndex("user_foods_user_barcode_idx").on(t.userId, t.barcode).where(sql`${t.barcode} is not null and ${t.archived} = false`),
+    index("user_foods_name_trgm_idx").using("gin", sql`lower(${t.name} || ' ' || coalesce(${t.brand}, '')) gin_trgm_ops`),
+  ]
+);
+
+// What a person ate. Each entry keeps a snapshot (per_serving, servings, nutrients) so editing
+// it never re-reads the food it came from.
+export const logEntries = pgTable(
+  "log_entries",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    day: date("day").notNull(), // YYYY-MM-DD in the user's timezone
+    meal: text("meal").notNull(), // breakfast, lunch, dinner, snacks, supplements
+    name: text("name").notNull(),
+    brand: text("brand"),
+    icon: text("icon").notNull(),
+    source: text("source").notNull(), // cache, user_food, water
+    sourceRef: text("source_ref"),
+    servingIndex: integer("serving_index").notNull().default(0),
+    unit: text("unit").notNull(), // serving, g, oz, ml, fl_oz, cup, tbsp, tsp
+    quantity: doublePrecision("quantity").notNull(),
+    fraction: doublePrecision("fraction").notNull().default(1),
+    perServing: jsonb("per_serving").$type<NutrientsJson>().notNull(),
+    servings: jsonb("servings").$type<ServingJson[]>().notNull(),
+    nutrients: jsonb("nutrients").$type<NutrientsJson>().notNull(), // for the amount logged
+    aiEstimated: boolean("ai_estimated").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("log_entries_user_day_idx").on(t.userId, t.day)]
 );

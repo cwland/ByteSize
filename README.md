@@ -3,9 +3,18 @@
 A self-hosted nutrition tracker built for people on a GLP-1: a calorie *range* instead of a hard cap, and
 protein, fiber and water floors front and center. Single server, separate data for every person on it.
 
-**Milestone 1 (this version):** sign-in (password and passkeys), admin-managed accounts, profile settings,
-AI services with automatic failover, activity logs, Docker image. Food logging, goals and the weight-loss
-plan picker arrive in Milestone 2.
+**What it does now:**
+- **Plan picker:** tell it your height, weight, goal, age and activity (and whether you're on a GLP-1) and it offers four
+  plans — Relaxed to Vigorous — with a safe, GLP-1-aware "Recommended for you". Your plan sets a calorie *range* plus
+  protein, fiber and water targets (editable under Goals).
+- **Dashboard:** calorie gauge counting down to the top of your range, protein/fiber/water rings that fill to their
+  minimums, quick water buttons, logging streak.
+- **Log:** Lose It!-style meal cards with food icons; add food from recents, search (your foods → saved foods → Open Food
+  Facts → USDA), a typed barcode, or an AI estimate; ¼ ⅓ ½ ¾ portions; move or copy entries to another day or meal.
+- **Your foods:** create foods (with a barcode), and fix any database food — your correction sticks to that barcode.
+- Sign-in with passwords and passkeys, admin-managed accounts, AI services with failover, activity logs.
+
+USDA search needs a free key from https://fdc.nal.usda.gov/api-key-signup — add it in Settings › Food sources (admin).
 
 ## Run it (Docker)
 
@@ -28,7 +37,7 @@ the admin adds everyone else in Settings › Users.
 ### Locked out?
 
 ```
-docker compose exec bytesize npm run reset-password -- <username>
+docker compose exec -u node bytesize npm run reset-password -- <username>
 ```
 
 It asks for the new password and signs that account out everywhere.

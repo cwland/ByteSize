@@ -8,6 +8,20 @@
       "when": 1794891782417,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794896980821,
+      "tag": "0001_m2a_food",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794897635673,
+      "tag": "0002_double_precision",
+      "breakpoints": true
     }
   ]
 }
