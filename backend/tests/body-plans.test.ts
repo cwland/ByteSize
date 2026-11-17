@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { buildPlans, planExplanation } from "../src/lib/plans.js";
 import { localDay } from "../src/lib/days.js";
+import { userBody } from "../src/db/schema.js";
 
 let t: TestApp;
 beforeAll(async () => (t = await setupTestApp()));
@@ -12,8 +13,8 @@ beforeEach(async () => {
 afterAll(async () => t.close());
 
 // Body A from the plan tests (240 lb → 180 lb, 5'10", sedentary man on a GLP-1)
-const A = { sex: "male", birthYear: 1986, heightCm: 177.8, weightKg: 113.3980925, goalWeightKg: 81.6466266, activity: "sedentary", glp1: true } as const;
-const STEADY = { calories: { min: 1810, max: 2110 }, protein_g: { min: 126, max: 180 }, fiber_g: { min: 25, max: 38 }, water_ml: { min: 1893, max: 3785 } };
+const A = { sex: "male", birthDate: "1986-01-01", heightCm: 177.8, weightKg: 113.3980925, goalWeightKg: 81.6466266, activity: "sitting", glp1: true } as const;
+const STEADY = { calories: { min: 1910, max: 2010 }, protein_g: { min: 162, max: 180 }, fiber_g: { min: 30, max: 35 }, water_ml: { min: 1893, max: 3785 } };
 
 // 05:30 UTC on Nov 18 is still Nov 17 in Boise (UTC−7)
 const DAY1 = new Date("2026-11-18T05:30:00Z");
@@ -35,7 +36,7 @@ describe("body and plans", () => {
     expect(put.status).toBe(200);
     // Height and weights are stored as float4: equal to about 5 significant digits
     const close = (b: any) => ({ ...b, heightCm: expect.closeTo(A.heightCm, 3), weightKg: expect.closeTo(A.weightKg, 3), goalWeightKg: expect.closeTo(A.goalWeightKg, 3) });
-    expect(put.body).toEqual({ body: close(A) });
+    expect(put.body).toEqual({ body: { ...close(A), needsReview: false } });
     expect((await t.api("GET", "/api/body")).body).toEqual(put.body);
 
     const res = await t.api("GET", "/api/plans");
@@ -43,6 +44,8 @@ describe("body and plans", () => {
     expect(res.body.tdee).toBe(2460);
     expect(res.body.floor).toBe(1599);
     expect(res.body.current).toBeNull();
+    expect(res.body.plans.find((p: any) => p.id === "steady").targets).toEqual(STEADY);
+    expect(res.body.plans.every((p: any) => typeof p.bestFor === "string" && p.bestFor.length > 0)).toBe(true);
     expect(res.body.plans.map((p: any) => [p.id, p.calories, p.recommended, p.notRecommended])).toEqual([
       ["relaxed", 2210, false, false],
       ["steady", 1960, true, false],
@@ -51,7 +54,7 @@ describe("body and plans", () => {
     ]);
     expect(Object.keys(res.body).sort()).toEqual(["current", "explanation", "floor", "plans", "tdee"]);
     // AI isn't set up: the fixed explanation
-    expect(res.body.explanation).toBe(planExplanation(buildPlans(put.body.body, DAY1), put.body.body));
+    expect(res.body.explanation).toBe(planExplanation(buildPlans(put.body.body, "2026-11-17"), put.body.body));
     expect(res.body.explanation).toContain("Steady keeps you at 1,960 calories, above your 1,599 floor");
     expect(t.ai.calls).toHaveLength(0);
   });
@@ -81,13 +84,46 @@ describe("body and plans", () => {
   });
 
   it("rejects nonsense bodies", async () => {
-    t.clock.date = DAY1;
-    for (const bad of [{ heightCm: 20 }, { weightKg: 1000 }, { goalWeightKg: 10 }, { birthYear: 1800 }, { birthYear: 2020 }, { activity: "couch" }, { sex: "other" }]) {
+    t.clock.date = DAY1; // Nov 17 in Boise, already Nov 18 in UTC
+    for (const bad of [
+      { heightCm: 20 }, { weightKg: 1000 }, { goalWeightKg: 10 }, { activity: "couch" }, { activity: "moderate" }, { sex: "other" },
+      { birthDate: "1990-02-30" }, { birthDate: "2001-02-29" }, { birthDate: "1990-1-5" }, { birthDate: "yesterday" }, { birthDate: undefined },
+      { birthYear: 1986, birthDate: undefined },
+      { birthDate: "2013-11-18" }, // 12 in Boise today (13 in UTC)
+      { birthDate: "1915-11-17" }, // 111
+      { birthDate: "2030-01-01" }, // not born yet
+    ]) {
       const res = await t.api("PUT", "/api/body", { ...A, ...bad });
       expect(res.status, JSON.stringify(bad)).toBe(400);
     }
-    expect((await t.api("PUT", "/api/body", { ...A, birthYear: 2013 })).status).toBe(200); // 13 this year is fine
-    expect((await t.api("GET", "/api/body")).body.body.birthYear).toBe(2013);
+    expect((await t.api("PUT", "/api/body", { ...A, birthDate: "2013-11-17" })).status).toBe(200); // 13 today is fine
+    expect((await t.api("GET", "/api/body")).body.body.birthDate).toBe("2013-11-17");
+    expect((await t.api("PUT", "/api/body", { ...A, birthDate: "1916-11-16" })).status).toBe(200); // 110
+    expect((await t.api("PUT", "/api/body", { ...A, birthDate: "2000-02-29" })).status).toBe(200); // a real leap day
+  });
+
+  it("age for the plans comes from the person's own day", async () => {
+    t.clock.date = DAY1; // Boise: Nov 17, so someone born Nov 18 1986 is still 39 (UTC would say 40)
+    await t.api("PUT", "/api/body", { ...A, birthDate: "1986-11-18" });
+    expect((await t.api("GET", "/api/plans")).body.tdee).toBe(2466);
+    at("2026-11-18T18:00:00Z");
+    expect((await t.api("GET", "/api/plans")).body.tdee).toBe(2460);
+  });
+
+  it("asks once to check details: plans are 409 while needsReview, saving clears it", async () => {
+    t.clock.date = DAY1;
+    await t.api("PUT", "/api/body", A);
+    await t.db.update(userBody).set({ needsReview: true });
+    expect((await t.api("GET", "/api/body")).body.body.needsReview).toBe(true);
+    const blocked = await t.api("GET", "/api/plans");
+    expect(blocked.status).toBe(409);
+    expect(blocked.body).toEqual({ error: "Check your details first" });
+    expect((await t.api("POST", "/api/plans/select", { plan: "steady" })).status).toBe(409);
+    const put = await t.api("PUT", "/api/body", A);
+    expect(put.body.body.needsReview).toBe(false);
+    expect((await t.api("GET", "/api/body")).body.body.needsReview).toBe(false);
+    expect((await t.api("GET", "/api/plans")).status).toBe(200);
+    expect((await t.api("GET", "/api/plans")).status).toBe(200); // no loop: stays answered
   });
 });
 
@@ -103,6 +139,20 @@ describe("targets", () => {
     expect((await t.api("GET", "/api/targets")).body).toEqual(res.body);
     expect((await t.api("GET", "/api/plans")).body.current).toBe("steady");
     expect((await t.api("POST", "/api/plans/select", { plan: "fastest" })).status).toBe(400);
+  });
+
+  it("selecting any plan sets exactly the targets on its card, even a not-recommended one", async () => {
+    t.clock.date = DAY1;
+    await t.api("PUT", "/api/body", A);
+    const cards = (await t.api("GET", "/api/plans")).body.plans;
+    for (const card of cards) {
+      const res = await t.api("POST", "/api/plans/select", { plan: card.id });
+      expect(res.status).toBe(200);
+      expect(res.body.targets).toEqual({ ...card.targets, plan: card.id, effectiveFrom: "2026-11-17" });
+    }
+    const vigorous = cards.find((c: any) => c.id === "vigorous");
+    expect(vigorous.notRecommended).toBe(true);
+    expect(vigorous.targets.calories).toEqual({ min: 1410, max: 1510 }); // under the 1,599 floor, shown honestly
   });
 
   it("manual targets replace plan targets from today on, older days keep theirs", async () => {

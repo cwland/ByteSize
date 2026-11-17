@@ -10,7 +10,7 @@ afterAll(async () => t.close());
 describe("m2a schema", () => {
   it("user-owned food tables cascade with their user", async () => {
     const [u] = await t.db.insert(users).values({ username: "cory", passwordHash: "x" }).returning();
-    await t.db.insert(userBody).values({ userId: u.id, sex: "male", birthYear: 1980, heightCm: 180, weightKg: 100, goalWeightKg: 85, activity: "light", glp1: true });
+    await t.db.insert(userBody).values({ userId: u.id, sex: "male", birthDate: "1980-01-01", heightCm: 180, weightKg: 100, goalWeightKg: 85, activity: "some", glp1: true });
     const [s] = await t.db.insert(userSettings).values({ userId: u.id }).returning();
     expect(s.mealWindows).toEqual({ breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" });
     expect(s.waterButtonsMl).toEqual([237, 473]);
