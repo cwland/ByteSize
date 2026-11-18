@@ -1,19 +1,20 @@
-import { House, NotebookPen, Plus, Settings, Target } from "lucide-react";
-import { PAGES, type Page } from "../routes";
+import { BookOpen, House, Plus, Settings, Target } from "lucide-react";
+import { PAGES, myFoodsHref, type Page } from "../routes";
 
 const ICONS: Record<Page, JSX.Element> = {
   dashboard: <House className="size-6" />,
-  log: <NotebookPen className="size-6" />,
+  myfoods: <BookOpen className="size-6" />,
   goals: <Target className="size-6" />,
   settings: <Settings className="size-6" />,
 };
 
-// The bottom tab bar (phones and desktop alike), with the floating orange + in the middle
+// The bottom tab bar (phones and narrow windows): Dashboard, Goals, the floating orange + in the middle, My foods,
+// Settings — the rail's pages (no Log page, §28)
 export default function Navigation({ page, onAdd }: { page: Page; onAdd: () => void }) {
   const tab = (p: (typeof PAGES)[number]) => (
     <a
       key={p.id}
-      href={p.href}
+      href={p.id === "myfoods" ? myFoodsHref() : p.href}
       aria-current={page === p.id ? "page" : undefined}
       className={`flex flex-1 flex-col items-center justify-center gap-0.5 pt-2 pb-1.5 text-[11px] font-semibold ${page === p.id ? "text-action" : "text-muted hover:text-ink"}`}
     >

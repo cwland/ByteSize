@@ -19,7 +19,7 @@ describe("App", () => {
     expect(screen.queryByRole("link", { name: /sign up|create account|register/i })).not.toBeInTheDocument();
   });
 
-  it("signed in shows Dashboard, Log, Goals and Settings, and a Log food button", async () => {
+  it("signed in shows Dashboard, Goals, My foods and Settings (no Log), and a Log food button", async () => {
     setToken("t0k");
     fakeServer({
       "GET /api/auth/status": () => ({ setupRequired: false, passwords: true }),
@@ -27,10 +27,11 @@ describe("App", () => {
     });
     render(<App />);
     const nav = await screen.findByRole("navigation", { name: "Main" });
-    for (const name of ["Dashboard", "Log", "Goals", "Settings"]) {
+    expect(screen.queryByRole("link", { name: "Log" })).not.toBeInTheDocument();
+    for (const name of ["Dashboard", "Goals", "My foods", "Settings"]) {
       expect(within(nav).getByRole("link", { name })).toBeInTheDocument();
     }
-    expect(within(nav).queryByRole("link", { name: "My foods" })).not.toBeInTheDocument();
+    // My foods is in the bar too (§28 ruling: the rail's pages, with Log gone)
     expect(screen.getByRole("button", { name: "Log food" })).toBeInTheDocument();
   });
 });

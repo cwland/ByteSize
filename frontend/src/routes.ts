@@ -1,21 +1,25 @@
 import { useEffect, useState } from "react";
 
-// Hash routes: #/ Dashboard, #/log Log (#/log/my-foods?from=<route> My Foods), #/goals Goals,
-// #/settings[/<section>]
-export type Page = "dashboard" | "log" | "goals" | "settings";
+// Hash routes: #/ Dashboard, #/log/my-foods?from=<route> My Foods, #/goals Goals, #/settings[/<section>].
+// There is no Log page (§28): #/log (and old links to it) open the Dashboard.
+export type Page = "dashboard" | "myfoods" | "goals" | "settings";
 
 export const PAGES: { id: Page; label: string; href: string }[] = [
   { id: "dashboard", label: "Dashboard", href: "#/" },
-  { id: "log", label: "Log", href: "#/log" },
   { id: "goals", label: "Goals", href: "#/goals" },
+  { id: "myfoods", label: "My foods", href: "#/log/my-foods?from=/" },
   { id: "settings", label: "Settings", href: "#/settings" },
 ];
 
 export function pageFromHash(hash = window.location.hash): Page {
   const first = hash.replace(/^#\/?/, "").split(/[/?]/)[0];
-  if (first === "log" || first === "goals" || first === "settings") return first;
+  if (first === "goals" || first === "settings") return first;
+  if (isMyFoods(hash)) return "myfoods";
   return "dashboard";
 }
+
+// The old Log page's address (#/log, #/log/, #/log?…): the Dashboard now
+export const isOldLog = (hash = window.location.hash) => /^#\/log\/?(\?|$)/.test(hash);
 
 // "#/settings/security" -> "security"
 export const settingsSectionFromHash = (hash = window.location.hash) => hash.split("?")[0].split("/")[2] ?? "";
@@ -31,12 +35,12 @@ export function useHash() {
   return hash;
 }
 
-// My Foods lives under the Log tab and remembers the route it was opened from, for Back
+// My Foods remembers the route it was opened from, for Back (its address keeps the old /log prefix, so saved links work)
 // The GLP-1 page (#/glp1[?from=<route>]) sits under the Dashboard tab
 export const isGlp1 = (hash = window.location.hash) => /^#\/glp1(\?|$)/.test(hash);
 export const isMyFoods = (hash = window.location.hash) => /^#\/log\/my-foods(\?|$)/.test(hash);
 export function myFoodsFrom(hash = window.location.hash): string {
-  const from = hash.match(/[?&]from=(.*)$/)?.[1] ?? "/log";
-  return from.startsWith("/") && !isMyFoods(`#${from}`) ? from : "/log";
+  const from = hash.match(/[?&]from=(.*)$/)?.[1] ?? "/";
+  return from.startsWith("/") && !isMyFoods(`#${from}`) && !isOldLog(`#${from}`) ? from : "/";
 }
 export const myFoodsHref = (from = window.location.hash.replace(/^#/, "") || "/") => `#/log/my-foods?from=${isMyFoods(`#${from}`) ? myFoodsFrom() : from}`;

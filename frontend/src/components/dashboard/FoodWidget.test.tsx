@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import LogPage from "./LogPage";
+import FoodHost from "../../test/FoodHost";
 import { SelectedDayProvider } from "../../selectedDay";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
@@ -37,7 +37,7 @@ function show(routes: Record<string, (b: any) => unknown> = {}) {
   const server = fakeServer({ ...culuryOff, "GET /api/day/:date": () => bothInBreakfast, "GET /api/settings/me": () => settingsMe, ...routes });
   renderWithSession(
     <SelectedDayProvider timeZone="America/Boise">
-      <LogPage />
+      <FoodHost />
     </SelectedDayProvider>,
   );
   return server;
@@ -51,7 +51,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-describe("Log", () => {
+describe("Food widget (everything the Log page did)", () => {
   it("meal cards show entries with icons, portions and totals", async () => {
     show();
     const breakfast = await screen.findByRole("region", { name: "Breakfast" });
@@ -163,9 +163,9 @@ describe("Log", () => {
     expect(cal).toHaveTextContent("?");
     expect(cal).not.toHaveTextContent("0");
   });
-  it("My Foods is a link from the Log page", async () => {
+  it("My foods is a link from the Food widget, back to the Dashboard", async () => {
     show();
-    expect(await screen.findByRole("link", { name: "My Foods" })).toHaveAttribute("href", "#/log/my-foods?from=/log");
+    expect(await screen.findByRole("link", { name: "My foods" })).toHaveAttribute("href", "#/log/my-foods?from=/");
   });
 
   it("Save as a meal: posts the meal's entries and lists what was left out", async () => {

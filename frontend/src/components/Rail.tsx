@@ -1,12 +1,12 @@
-import { BookOpen, House, NotebookPen, Settings, Target } from "lucide-react";
+import { BookOpen, House, Settings, Target } from "lucide-react";
 import { myFoodsHref, type Page } from "../routes";
 import { initialsOf, useSession } from "../session";
 import { Logo } from "./ui/Logo";
 
 // Wide screens: the side rail in place of the top bar and bottom tab bar. Logo (home), the pages with My
-// foods, and Settings and the account at the bottom (no +: food is added from Today's food and the Log). Stays in view. It comes
+// foods, and Settings and the account at the bottom (no +: food is added from the Food widget; no Log page). Stays in view. It comes
 // after the page in the DOM (the shell keeps one tree for both layouts) and is drawn first with order-first.
-export default function Rail({ page, myFoods }: { page: Page; myFoods: boolean }) {
+export default function Rail({ page }: { page: Page }) {
   const { user } = useSession();
   const item = (label: string, href: string, current: boolean, icon: JSX.Element) => (
     <a
@@ -25,9 +25,8 @@ export default function Rail({ page, myFoods }: { page: Page; myFoods: boolean }
       </a>
       <div className="mt-3.5 flex flex-col gap-1.5">
         {item("Dashboard", "#/", page === "dashboard", <House aria-hidden="true" className="size-[22px]" />)}
-        {item("Log", "#/log", page === "log" && !myFoods, <NotebookPen aria-hidden="true" className="size-[22px]" />)}
         {item("Goals", "#/goals", page === "goals", <Target aria-hidden="true" className="size-[22px]" />)}
-        {item("My foods", myFoodsHref(), myFoods, <BookOpen aria-hidden="true" className="size-[22px]" />)}
+        {item("My foods", myFoodsHref(), page === "myfoods", <BookOpen aria-hidden="true" className="size-[22px]" />)}
       </div>
       <div className="mt-auto flex flex-col items-center gap-3">
         {item("Settings", "#/settings", page === "settings", <Settings aria-hidden="true" className="size-[22px]" />)}

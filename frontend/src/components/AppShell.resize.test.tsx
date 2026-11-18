@@ -5,7 +5,6 @@ import AppShell from "./AppShell";
 import { fakeServer } from "../test/fakeServer";
 import { renderWithSession } from "../test/renderWithSession";
 import { wideScreen } from "../test/wide";
-import { keepDayOnNextPage } from "../selectedDay";
 import { culuryOff, dayJson, entryJson, m3Routes, restaurantRoutes, settingsMe, steadyTargets } from "../test/fixtures";
 
 const routes = {
@@ -45,20 +44,19 @@ describe("Crossing 1024 px", () => {
     expect(screen.getByRole("searchbox", { name: "Search foods" })).toHaveValue("apple");
   });
 
-  it("keeps the Dashboard's Add food (Today's food) open with what was typed", async () => {
+  it("keeps the Dashboard's Add food (the Food widget) open with what was typed", async () => {
     const size = wideScreen();
     fakeServer(routes);
     renderWithSession(<AppShell />, { timezone: "America/Boise" });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Add food to Lunch" }));
+    await user.click(within(await screen.findByRole("region", { name: "Lunch" })).getByRole("button", { name: "Add Food" }));
     await user.type(await screen.findByRole("searchbox", { name: "Search foods" }), "pear");
     size.set(false);
     expect(screen.getByRole("dialog", { name: "Add food to Lunch" })).toBeInTheDocument();
     expect(screen.getByRole("searchbox", { name: "Search foods" })).toHaveValue("pear");
   });
 
-  it("keeps the Log's Add Food sheet open with what was typed", async () => {
-    window.location.hash = "#/log";
+  it("keeps the Food widget's Add Food sheet open with what was typed, from a phone", async () => {
     const size = wideScreen(false);
     fakeServer(routes);
     renderWithSession(<AppShell />, { timezone: "America/Boise" });
@@ -86,47 +84,6 @@ describe("Crossing 1024 px", () => {
     expect(screen.getByLabelText("Name")).toHaveValue("Cory L");
     size.set(true);
     expect(screen.getByLabelText("Name")).toHaveValue("Cory L");
-  });
-});
-
-describe("Open the log", () => {
-  it("from the Dashboard keeps the day picked there", async () => {
-    wideScreen();
-    fakeServer(routes);
-    renderWithSession(<AppShell />, { timezone: "America/Boise" });
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /^Sun 15/ }));
-    expect(screen.getByRole("button", { name: /^Sun 15/ })).toHaveAttribute("aria-pressed", "true");
-    await user.click(await screen.findByRole("link", { name: "Open the log" }));
-    act(() => void window.dispatchEvent(new HashChangeEvent("hashchange")));
-    expect(await screen.findByRole("heading", { level: 1, name: "Log" })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("button", { name: /^Sun 15/ })).toHaveAttribute("aria-pressed", "true"));
-    // The rail's Log still starts on today
-    await user.click(within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", { name: "Dashboard" }));
-    act(() => void window.dispatchEvent(new HashChangeEvent("hashchange")));
-    await user.click(within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", { name: "Log" }));
-    act(() => void window.dispatchEvent(new HashChangeEvent("hashchange")));
-    await waitFor(() => expect(screen.getByRole("button", { name: /^Mon 16/ })).toHaveAttribute("aria-pressed", "true"));
-  });
-});
-
-describe("The keep-day flag", () => {
-  it("is used up by any page change: a click that didn't navigate doesn't keep an old day later", async () => {
-    wideScreen();
-    fakeServer(routes);
-    renderWithSession(<AppShell />, { timezone: "America/Boise" });
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /^Sun 15/ }));
-    keepDayOnNextPage(); // e.g. a Cmd-click on "Open the log" that opened a new tab instead
-    act(() => {
-      window.location.hash = "#/goals";
-      window.dispatchEvent(new HashChangeEvent("hashchange"));
-    });
-    act(() => {
-      window.location.hash = "#/";
-      window.dispatchEvent(new HashChangeEvent("hashchange"));
-    });
-    await waitFor(() => expect(screen.getByRole("button", { name: /^Mon 16/ })).toHaveAttribute("aria-pressed", "true"));
   });
 });
 
