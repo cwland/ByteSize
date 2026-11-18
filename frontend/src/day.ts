@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
+import { DEFAULT_DATE_FORMAT } from "./dateFormat";
 import type { Day, SettingsMe } from "./types";
 
 // Something changed the log (food, water, move): every screen showing a day reloads it
@@ -50,6 +51,7 @@ export const DEFAULT_SETTINGS: SettingsMe = {
   mealWindows: { breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" },
   waterButtonsMl: [237, 473],
   weekStart: 0,
+  dateFormat: DEFAULT_DATE_FORMAT,
 };
 
 // The last settings the server gave (or that were saved): where a new mount starts, so the week

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ProfileSettings from "./ProfileSettings";
 import { fakeServer, userJson } from "../../test/fakeServer";
@@ -39,5 +39,43 @@ describe("ProfileSettings week start", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("Saved")).toBeInTheDocument();
     expect(server.writes().some((w) => w.path === "/api/settings/me")).toBe(false);
+  });
+});
+
+describe("ProfileSettings date format (§33)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-18T19:00:00Z")); // Wednesday noon in Boise
+  });
+  afterEach(() => void vi.useRealTimers());
+
+  it("a dropdown beside the units previews today's date in each of the ten formats; today's look is the default", async () => {
+    fakeServer({ "GET /api/settings/me": () => settingsMe, "PATCH /api/profile": (b) => ({ user: userJson(b) }) });
+    renderWithSession(<ProfileSettings />, { timezone: "America/Boise" });
+    const select = screen.getByRole("combobox", { name: "Date format" });
+    await waitFor(() => expect(select).toHaveValue("weekday-long-month-short"));
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Wednesday, Nov 18", "Wed, Nov 18", "Wednesday, November 18", "11/18/2026", "Wednesday 18 Nov", "Wed 18 Nov", "Wednesday 18 November", "18/11/2026", "18.11.2026", "2026-11-18",
+    ]);
+  });
+
+  it("saves the choice with the rest, and an unchanged one isn't sent", async () => {
+    const server = fakeServer({ "GET /api/settings/me": () => settingsMe, "PATCH /api/profile": (b) => ({ user: userJson(b) }), "PUT /api/settings/me": (b) => b });
+    renderWithSession(<ProfileSettings />, { timezone: "America/Boise" });
+    const select = screen.getByRole("combobox", { name: "Date format" });
+    await waitFor(() => expect(select).toHaveValue("weekday-long-month-short"));
+    const user = userEvent.setup({ advanceTimers: () => {} });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    expect(server.writes().some((w) => w.path === "/api/settings/me")).toBe(false);
+    await user.selectOptions(select, "dmy-dot");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(server.writes().find((w) => w.path === "/api/settings/me")).toMatchObject({ method: "PUT", body: { mealWindows: settingsMe.mealWindows, waterButtonsMl: settingsMe.waterButtonsMl, weekStart: 0, dateFormat: "dmy-dot" } }));
+  });
+
+  it("shows the saved choice", async () => {
+    fakeServer({ "GET /api/settings/me": () => ({ ...settingsMe, dateFormat: "iso" }) });
+    renderWithSession(<ProfileSettings />, { timezone: "America/Boise" });
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Date format" })).toHaveValue("iso"));
   });
 });

@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../../api";
 import { notifySettingsChanged } from "../../day";
+import { DATE_FORMATS, DEFAULT_DATE_FORMAT, formatDate } from "../../dateFormat";
+import { todayIn } from "../../selectedDay";
 import type { SettingsMe } from "../../types";
 import { useSession, type User } from "../../session";
 import { THEMES, applyMode, applyTheme, useTheme, type ColorMode } from "../../themes";
@@ -29,16 +31,19 @@ function AboutYou() {
   const [email, setEmail] = useState(user.email ?? "");
   const [units, setUnits] = useState<User["units"]>(user.units);
   const [timezone, setTimezone] = useState(user.timezone);
+  const today = todayIn(timezone); // the options preview today's date
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
   // The saved settings (null until loaded: nothing is sent for them before then)
   const [settings, setSettings] = useState<SettingsMe | null>(null);
   const [weekStart, setWeekStart] = useState(0);
+  const [dateFormat, setDateFormat] = useState<string>(DEFAULT_DATE_FORMAT);
   useEffect(() => {
     api<SettingsMe>("GET", "/api/settings/me")
       .then((s) => {
         setSettings(s);
         setWeekStart(s.weekStart);
+        setDateFormat(s.dateFormat ?? DEFAULT_DATE_FORMAT);
       })
       .catch(() => {});
   }, []);
@@ -50,8 +55,8 @@ function AboutYou() {
     try {
       const r = await api<{ user: User }>("PATCH", "/api/profile", { displayName: displayName.trim() || null, email: email.trim() || null, units, timezone });
       setUser(r.user);
-      if (settings && weekStart !== settings.weekStart) {
-        const saved = await api<SettingsMe>("PUT", "/api/settings/me", { mealWindows: settings.mealWindows, waterButtonsMl: settings.waterButtonsMl, weekStart });
+      if (settings && (weekStart !== settings.weekStart || dateFormat !== (settings.dateFormat ?? DEFAULT_DATE_FORMAT))) {
+        const saved = await api<SettingsMe>("PUT", "/api/settings/me", { mealWindows: settings.mealWindows, waterButtonsMl: settings.waterButtonsMl, weekStart, dateFormat });
         setSettings(saved);
         notifySettingsChanged();
       }
@@ -74,6 +79,16 @@ function AboutYou() {
             <Choice label="Units" value={units} options={UNIT_OPTIONS} onChange={setUnits} />
           </div>
         </div>
+        <label className={`${label} mt-4`}>
+          Date format
+          <select aria-label="Date format" value={dateFormat} disabled={!settings} onChange={(e) => setDateFormat(e.target.value)} className={field}>
+            {DATE_FORMATS.map((f) => (
+              <option key={f.key} value={f.key}>
+                {formatDate(today, f.key)}
+              </option>
+            ))}
+          </select>
+        </label>
         <TimezoneSelect value={timezone} onChange={setTimezone} />
         <label className={`${label} mt-4`}>
           Week starts on

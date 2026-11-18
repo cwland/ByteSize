@@ -119,7 +119,7 @@ export type Day = {
   streak: number;
 };
 export type MealWindows = { breakfast: string; lunch: string; snacks: string; dinner: string };
-export type SettingsMe = { mealWindows: MealWindows; waterButtonsMl: number[]; weekStart: number /* 0 = Sunday … 6 = Saturday */ };
+export type SettingsMe = { mealWindows: MealWindows; waterButtonsMl: number[]; weekStart: number /* 0 = Sunday … 6 = Saturday */; dateFormat?: string /* a key of dateFormat.ts */ };
 export type Units = "imperial" | "metric";
 // GET /api/weight: kg, unrounded. trendKg is the smoothed weight; projection.kgPerWeek > 0 means losing.
 export type WeighIn = { day: string; weightKg: number; trendKg: number; note: string | null };

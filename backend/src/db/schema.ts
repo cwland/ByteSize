@@ -184,6 +184,8 @@ export const userSettings = pgTable("user_settings", {
   waterButtonsMl: jsonb("water_buttons_ml").$type<number[]>().notNull().default([237, 473]),
   // First day of the week in the day strip: 0 = Sunday ... 6 = Saturday
   weekStart: integer("week_start").notNull().default(0),
+  // How the date at the top of the app is written (a key of lib/dateFormats.ts)
+  dateFormat: text("date_format").notNull().default("weekday-long-month-short"),
   culuryUrl: text("culury_url"),
   culuryKeyEnc: text("culury_key_enc"), // encrypted
   // The person's Culury switch (Settings › Integrations); null = never switched: on when linked

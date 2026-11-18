@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { useSettingsMe } from "../day";
+import { formatDate } from "../dateFormat";
 import { useSelectedDay } from "../selectedDay";
 import WeekStrip from "./WeekStrip";
 
@@ -24,16 +26,17 @@ export default function PageHeader({ title, note, sub, children }: { title: Reac
 // for screen readers, when the day isn't the page's heading (Log). children: links at the top right.
 export function DayHeader({ title, sub, children }: { title?: string; sub?: ReactNode; children?: ReactNode }) {
   const { day } = useSelectedDay();
+  const date = formatDate(day, useSettingsMe().dateFormat); // the way this person chose (Settings › Profile)
   const dateClass = "text-lg leading-6 font-bold";
   return (
     <header aria-label="Day" className="relative flex flex-col items-center gap-1 text-center">
       {title ? (
         <>
           <h1 className="sr-only">{title}</h1>
-          <p className={dateClass}>{shortDate(day)}</p>
+          <p className={dateClass}>{date}</p>
         </>
       ) : (
-        <h1 className={dateClass}>{shortDate(day)}</h1>
+        <h1 className={dateClass}>{date}</h1>
       )}
       <div className="w-[23rem] max-w-full">
         <WeekStrip compact />

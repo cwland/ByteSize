@@ -127,6 +127,12 @@ describe("GET /api/export", () => {
     expect(json.tables.passkeys).toBeUndefined();
   });
 
+  it("the json carries the date format choice with the rest of the person's settings", async () => {
+    await t.api("PUT", "/api/settings/me", { mealWindows: { breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" }, waterButtonsMl: [237], dateFormat: "dmy-dot" });
+    const json = JSON.parse((await download()).text("bytesize-export.json"));
+    expect(json.tables.user_settings).toMatchObject([{ dateFormat: "dmy-dot" }]);
+  });
+
   it("includes the person's photo, byte for byte", async () => {
     const { photo, userId } = await seed();
     const { files } = await download();

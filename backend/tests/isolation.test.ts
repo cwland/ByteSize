@@ -71,17 +71,17 @@ describe("per-user isolation", () => {
     expect((await a.as("PUT", "/api/body", body)).status).toBe(200);
     expect((await a.as("POST", "/api/plans/select", { plan: "steady" })).status).toBe(200);
     const windows = { breakfast: "08:00", lunch: "12:00", snacks: "15:00", dinner: "19:00" };
-    expect((await a.as("PUT", "/api/settings/me", { mealWindows: windows, waterButtonsMl: [300], weekStart: 2 })).status).toBe(200);
+    expect((await a.as("PUT", "/api/settings/me", { mealWindows: windows, waterButtonsMl: [300], weekStart: 2, dateFormat: "iso" })).status).toBe(200);
 
     expect((await b.as("GET", "/api/body")).body).toEqual({ body: null });
     expect((await b.as("GET", "/api/plans")).status).toBe(409);
     expect((await b.as("GET", "/api/targets")).body).toEqual({ targets: null });
-    expect((await b.as("GET", "/api/settings/me")).body).toMatchObject({ waterButtonsMl: [237, 473], weekStart: 0 });
+    expect((await b.as("GET", "/api/settings/me")).body).toMatchObject({ waterButtonsMl: [237, 473], weekStart: 0, dateFormat: "weekday-long-month-short" }); // anna's date format is hers
     // ben's own changes don't touch anna's
     expect((await b.as("PUT", "/api/targets", { calories: { min: 1000, max: 1100 }, protein_g: { min: 1, max: 2 }, fiber_g: { min: 1, max: 2 }, water_ml: { min: 1, max: 2 } })).status).toBe(200);
     expect((await a.as("GET", "/api/targets")).body.targets.plan).toBe("steady");
     expect((await a.as("GET", "/api/body")).body).toEqual({ body: { ...body, needsReview: false } });
-    expect((await a.as("GET", "/api/settings/me")).body).toEqual({ mealWindows: windows, waterButtonsMl: [300], weekStart: 2 });
+    expect((await a.as("GET", "/api/settings/me")).body).toEqual({ mealWindows: windows, waterButtonsMl: [300], weekStart: 2, dateFormat: "iso" });
   });
 
   it("a user can't see, edit or archive another user's foods or overrides, and lookups never return them", async () => {
