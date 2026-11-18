@@ -31,6 +31,11 @@ type KeyField = "usdaApiKey" | "spoonacularApiKey" | "fatsecretClientId" | "fats
 export type SourceKeys = Partial<Record<KeyField, string | null>>;
 export type RestaurantKeys = { spoonacular: string | null; fatsecret: { clientId: string; clientSecret: string } | null };
 
+/** The keys as stored (encrypted), for the eye and copy buttons to open one at a time. */
+export async function savedSourceKeys(app: FastifyInstance): Promise<SourceKeys> {
+  return (await stored(app)) as SourceKeys;
+}
+
 /** The restaurant credentials that are set (FatSecret only counts with both its id and secret). */
 export async function restaurantKeys(app: FastifyInstance): Promise<RestaurantKeys> {
   const s = (await stored(app)) as Stored & SourceKeys;

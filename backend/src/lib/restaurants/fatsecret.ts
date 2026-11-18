@@ -23,7 +23,7 @@ const list = (v: unknown): any[] => (Array.isArray(v) ? v : v && typeof v === "o
 
 const err = (message: string, kind: SourceError["kind"]) => new SourceError("fatsecret", message, kind);
 const badData = () => err("FatSecret sent something unexpected", "bad_data");
-const badKey = () => err("FatSecret refused the client ID or secret — check them in Settings › Food sources", "bad_key");
+const badKey = () => err("FatSecret refused the client ID or secret — check them in Settings › Integrations", "bad_key");
 
 // API error codes: 13/14 an invalid or expired token (renewed once); 21 this server's IP isn't allowed;
 // 2–9 and 12 missing or refused credentials / permission; 106/107 an unknown food id.

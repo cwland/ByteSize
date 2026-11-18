@@ -654,3 +654,40 @@ person's data or any readable secret. A restore file that can write outside the 
 **Builder's calls.** CSV dates are the person's local days; nutrient columns are blank (never 0) when unknown.
 The export leaves out other people's data, password hash, passkeys and sessions. New dependencies allowed: `tar`
 and one small zip writer.
+
+## 16. One Integrations tab; show and copy saved keys (Cory, 2026-11-17)
+
+**Asked for.** "All API keys should have an eyeball next to them so I can see them if needed and a copy to
+clipboard button." and "Put all integrations under one tab in settings under Integrations, in their own sections
+with a title."
+
+**This changes an earlier rule.** Until now a saved key never left the server (§ secrets: only `hasKey`). Cory
+wants to see and copy them. The rule becomes: a saved key is never sent with a page or a list; it is sent only when
+the person who may see it presses the eye or copy button, one key at a time.
+
+**Integrations tab** (Settings › Integrations, shown to everyone; replaces the "AI services" and "Food sources"
+tabs). Sections, each a card with a title, in this order:
+1. **AI services** (admin) — the existing AI services editor, unchanged in behaviour.
+2. **Food databases** (admin) — Open Food Facts (no key needed) and the USDA key.
+3. **Restaurant menus** (admin) — Spoonacular key, FatSecret ID and secret, the credits line.
+4. **Culury** (everyone, their own link) — the existing address + key form.
+Members see only Culury. Old addresses `#/settings/ai` and `#/settings/food-sources` open Integrations. Every
+piece of wording that said "Settings › Food sources" or "Settings › AI services" says "Settings › Integrations".
+
+**Eye and copy** on every key field (AI service keys, USDA, Spoonacular, FatSecret ID and secret, Culury key):
+- Eye: shows what is typed; when nothing is typed and a key is saved, fetches the saved key and shows it. Pressing
+  it again hides it. A shown saved key that hasn't been edited is not treated as a new key to save.
+- Copy: copies what is typed, or else the saved key (fetched, not displayed). The button reads "Copied" for two
+  seconds. Works on plain-http home-network addresses too (fallback when the browser's clipboard API is refused);
+  if copying is impossible: "Couldn't copy. Show the key and copy it by hand."
+- Who: server-wide keys — admin only. Culury key — only its owner. Nobody can fetch another person's.
+- Each fetch is written to the activity log (who, which key — never the key), is rate-limited, and is answered
+  with `Cache-Control: no-store`.
+- A saved key that can't be read (the server's `JWT_SECRET` changed): "This key can't be read. Enter it again."
+
+**Routes.** `GET /api/settings/ai/:id/key` (admin) → `{ key }` · `GET /api/admin/food-sources/:source/key` (admin;
+`usda`, `spoonacular` → `{ key }`; `fatsecret` → `{ clientId, clientSecret }`) · `GET /api/settings/culury/key`
+(the caller's own) → `{ key }`. 404 when none is saved, 409 with the message above when unreadable.
+
+**Later (M4b).** ByteSize's own personal API keys will be stored encrypted rather than one-way hashed so they get
+the same eye and copy; the cost is that a backup plus the server's `JWT_SECRET` can read them.

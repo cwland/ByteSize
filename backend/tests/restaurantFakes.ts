@@ -7,7 +7,7 @@ export const FS_TOKEN = "https://oauth.fatsecret.com/connect/token";
 export const FS_API = "https://platform.fatsecret.com/rest/server.api";
 
 export const QUOTA_MESSAGE = "Today's restaurant lookups are used up. They reset at midnight UTC — or use Describe it.";
-export const NO_KEY_MESSAGE = "Add a restaurant data key in Settings › Food sources";
+export const NO_KEY_MESSAGE = "Add a restaurant data key in Settings › Integrations";
 
 /** A Spoonacular menu item as search (with addMenuItemInformation) and Get Menu Item Information send it. */
 export function spoonItem(id: number, title: string, chain: string, kcal?: number, extra: Record<string, unknown> = {}) {

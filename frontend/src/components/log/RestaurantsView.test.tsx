@@ -49,7 +49,7 @@ async function search(user: ReturnType<typeof userEvent.setup>, text: string) {
 describe("Restaurants tab", () => {
   it("is hidden when no restaurant source is set up; an admin sees how to add one", async () => {
     const { server } = open({ "GET /api/restaurants/status": () => ({ sources: [], lookupsLeft: null }) });
-    expect(await screen.findByText(/Add a restaurant data key in Settings › Food sources/)).toBeInTheDocument();
+    expect(await screen.findByText(/Add a restaurant data key in Settings › Integrations to search restaurant menus/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Restaurants" })).not.toBeInTheDocument();
     expect(server.sent.some((s) => s.path.startsWith("/api/restaurants/search"))).toBe(false);
   });
@@ -57,7 +57,7 @@ describe("Restaurants tab", () => {
   it("tells someone who can't add a key to ask an admin", async () => {
     open({ "GET /api/restaurants/status": () => ({ sources: [], lookupsLeft: null }) }, false);
     expect(await screen.findByText(/Ask an admin to add a restaurant data key/)).toBeInTheDocument();
-    expect(screen.queryByText(/Settings › Food sources/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Settings › Integrations/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Restaurants" })).not.toBeInTheDocument();
   });
 

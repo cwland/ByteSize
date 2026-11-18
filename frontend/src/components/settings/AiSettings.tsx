@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { api } from "../../api";
 import { Card } from "../ui/Card";
+import { KeyField } from "../ui/KeyField";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Toggle } from "../ui/Toggle";
 import { field, label, linkButton, primaryButton, secondaryButton } from "../ui/styles";
@@ -16,7 +17,8 @@ const PROVIDERS: { id: Provider; name: string; label: string; hint: string; keyU
   { id: "local", name: "Home AI", label: "Home AI (Ollama, LM Studio…)", hint: "Ollama, LM Studio, LocalAI, vLLM… on your own network. Nothing leaves your network." },
 ];
 
-// A service as GET /api/settings/ai sends it: the key itself never comes back, only hasKey
+// A service as GET /api/settings/ai sends it: the key itself never comes with it, only hasKey (the eye and
+// copy buttons fetch it on their own, from /api/settings/ai/:id/key)
 interface SavedService {
   id: string;
   name: string;
@@ -62,7 +64,7 @@ const wire = (d: Draft) => ({
   ...(d.apiKey.trim() ? { apiKey: d.apiKey.trim() } : d.removeKey ? { apiKey: "" } : {}),
 });
 
-// Settings › AI services (admins): tried in order, the next one is the backup
+// Settings › Integrations › AI services (admins): tried in order, the next one is the backup
 export default function AiSettings() {
   const [enabled, setEnabled] = useState(true);
   const [services, setServices] = useState<Draft[] | null>(null);
@@ -230,7 +232,6 @@ function ServiceForm({
   const [models, setModels] = useState<{ all: string[]; recommended: string[] } | null>(null);
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
-  const [showKey, setShowKey] = useState(false);
 
   // Another service kind has other models (the model itself is cleared when the kind changes)
   const provider = useRef(d.provider);
@@ -360,34 +361,24 @@ function ServiceForm({
             </label>
           )}
 
-          {/* The key, with show / hide, and Validate right beside it */}
+          {/* The key (eye and copy inside it), and Validate: beside it from sm up, under it on a phone */}
           <div role="group" aria-label="API key and Validate">
             <label htmlFor={`ai-key-${d.key}`} className={sub}>
               API key {d.provider === "local" && <span className="font-normal">(optional)</span>}
             </label>
-            <div className="mt-1 flex items-center gap-2">
-              <div className="relative flex-1">
-                <input
+            <div className="mt-1 flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+              <div className="w-full min-w-0 sm:flex-1">
+                <KeyField
                   id={`ai-key-${d.key}`}
-                  aria-label="API key"
-                  type={showKey ? "text" : "password"}
-                  autoComplete="off"
-                  spellCheck={false}
+                  label="API key"
+                  keyName={`${title} key`}
+                  showLabel={false}
                   value={d.apiKey}
+                  onChange={(v) => onChange({ apiKey: v, removeKey: false })}
+                  saved={!!d.id && d.hasKey && !d.removeKey}
+                  fetchSaved={async () => (await api<{ key: string }>("GET", `/api/settings/ai/${encodeURIComponent(d.id!)}/key`)).key}
                   placeholder={d.hasKey && !d.removeKey ? "••••••••" : d.provider === "local" ? "Only if your server needs one" : "Paste your API key"}
-                  onChange={(e) => onChange({ apiKey: e.target.value, removeKey: false })}
-                  className={`${field} mt-0 pr-11 font-mono`}
                 />
-                <button
-                  type="button"
-                  aria-label={showKey ? "Hide key" : "Show key"}
-                  title={showKey ? "Hide key" : "Show key"}
-                  aria-pressed={showKey}
-                  onClick={() => setShowKey((v) => !v)}
-                  className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-subtle hover:text-ink"
-                >
-                  {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                </button>
               </div>
               <button type="button" onClick={validate} disabled={busy} className={`${secondaryButton} shrink-0 py-2 text-sm`}>
                 {busy ? "Checking…" : "Validate"}

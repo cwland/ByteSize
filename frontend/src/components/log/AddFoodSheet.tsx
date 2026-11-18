@@ -489,7 +489,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
         )}
       </div>
       {restaurants?.sources.length === 0 && (
-        <p className="mt-2 px-1 text-xs text-muted">{user?.isAdmin ? "Add a restaurant data key in Settings › Food sources to search restaurant menus." : "Ask an admin to add a restaurant data key to search restaurant menus."}</p>
+        <p className="mt-2 px-1 text-xs text-muted">{user?.isAdmin ? "Add a restaurant data key in Settings › Integrations to search restaurant menus." : "Ask an admin to add a restaurant data key to search restaurant menus."}</p>
       )}
       <Notice msg={msg} />
         </>

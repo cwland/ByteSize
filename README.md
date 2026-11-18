@@ -14,7 +14,7 @@ protein, fiber and water floors front and center. Single server, separate data f
 - **Your foods:** create foods (with a barcode), and fix any database food — your correction sticks to that barcode.
 - Sign-in with passwords and passkeys, admin-managed accounts, AI services with failover, activity logs.
 
-USDA search needs a free key from https://fdc.nal.usda.gov/api-key-signup — add it in Settings › Food sources (admin).
+USDA search needs a free key from https://fdc.nal.usda.gov/api-key-signup — add it in Settings › Integrations › Food databases (admin).
 
 ## Run it (Docker)
 

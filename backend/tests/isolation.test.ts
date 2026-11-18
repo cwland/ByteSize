@@ -343,6 +343,21 @@ describe("per-user isolation", () => {
     expect((await b.as("GET", "/api/day/2026-11-17")).body.entries).toEqual([]);
   });
 
+  it("a person can only fetch their own saved Culury key", async () => {
+    const { a, b } = await twoUsers(t);
+    expect((await a.as("PUT", "/api/settings/culury", { url: CULURY, apiKey: "annas-key" })).status).toBe(200);
+    const bens = await b.as("GET", "/api/settings/culury/key");
+    expect(bens.status).toBe(404); // ben has none; anna's is never his
+    expect(JSON.stringify(bens.body)).not.toContain("annas-key");
+    expect((await b.as("GET", "/api/settings/culury/key?userId=" + a.id)).status).toBe(404);
+    expect((await a.as("GET", "/api/settings/culury/key")).body).toEqual({ key: "annas-key" });
+    expect((await b.as("PUT", "/api/settings/culury", { url: CULURY, apiKey: "bens-key" })).status).toBe(200);
+    expect((await b.as("GET", "/api/settings/culury/key")).body).toEqual({ key: "bens-key" });
+    expect((await a.as("GET", "/api/settings/culury/key")).body).toEqual({ key: "annas-key" });
+    // and neither member can fetch a server-wide key
+    expect((await b.as("GET", "/api/admin/food-sources/usda/key")).status).toBe(403);
+  });
+
   it("a user's restaurant favourites and recent chains are their own", async () => {
     await setRestaurantKeys(t, { spoonacular: "spoon-key" });
     restaurantWeb(t, { spoonItem: (id) => ({ status: 200, json: spoonItem(Number(id), "Chicken Bowl", "Chipotle", 655) }) });

@@ -15,7 +15,7 @@ import { spoonacular } from "./spoonacular.js";
 import { RESTAURANT_SOURCES, type MenuHit, type RestaurantAdapter, type RestaurantSource } from "./types.js";
 
 export const QUOTA_MESSAGE = "Today's restaurant lookups are used up. They reset at midnight UTC — or use Describe it.";
-export const NO_KEY_MESSAGE = "Add a restaurant data key in Settings › Food sources";
+export const NO_KEY_MESSAGE = "Add a restaurant data key in Settings › Integrations";
 export const MIN_QUERY_MESSAGE = "Type at least 3 letters";
 const SEARCH_FRESH_MS = 24 * 60 * 60 * 1000;
 const SPACING_MS = 1000; // Spoonacular free plan: 1 request a second
@@ -255,7 +255,7 @@ export async function restaurantItem(app: FastifyInstance, userId: number, sourc
 
 // ---------- admin Test ----------
 
-/** Settings › Food sources › Test: one small search. Spoonacular's costs about 1 point. */
+/** Settings › Integrations › Test: one small search. Spoonacular's costs about 1 point. */
 export async function testRestaurantSource(app: FastifyInstance, userId: number, source: RestaurantSource): Promise<{ ok: true; lookupsLeft?: number | null } | { ok: false; error: string }> {
   const keys = await restaurantKeys(app);
   const adapter = adapterFor(app, keys, source);

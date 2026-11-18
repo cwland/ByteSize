@@ -1,9 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import AiSettings from "./AiSettings";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
+import { restoreClipboard, stubClipboard } from "../../test/clipboard";
+
+afterEach(restoreClipboard);
 
 // A service exactly as GET /api/settings/ai sends it
 const svc = (over: Record<string, unknown> = {}) => ({
@@ -296,9 +299,86 @@ describe("AiSettings", () => {
     const key = within(row).getByLabelText("API key");
     await userEvent.type(key, "sk-abc");
     expect(key).toHaveAttribute("type", "password");
-    await userEvent.click(within(row).getByRole("button", { name: "Show key" }));
+    await userEvent.click(within(row).getByRole("button", { name: "Show Claude key" }));
     expect(key).toHaveAttribute("type", "text");
-    await userEvent.click(within(row).getByRole("button", { name: "Hide key" }));
+    await userEvent.click(within(row).getByRole("button", { name: "Hide Claude key" }));
     expect(key).toHaveAttribute("type", "password");
+  });
+
+  it("the eye on a saved key fetches that service's key; Save then sends no key and isn't held back", async () => {
+    const server = fakeServer({
+      "GET /api/settings/ai": () => settings([svc(), svc({ id: "s2", provider: "openai", name: "OpenAI backup", model: "gpt-5-mini" })]),
+      "GET /api/settings/ai/s2/key": () => ({ key: "sk-saved-backup" }),
+      "PUT /api/settings/ai": (b: any) => settings(b.services.map((x: any) => svc(x))),
+    });
+    renderWithSession(<AiSettings />);
+    const row = await expand(/Backup 1: OpenAI backup/);
+    const key = within(row).getByLabelText("API key");
+    await userEvent.click(within(row).getByRole("button", { name: "Show OpenAI backup key" }));
+    expect(await within(row).findByDisplayValue("sk-saved-backup")).toBe(key);
+    expect(server.sent.filter((r) => r.path.endsWith("/key")).map((r) => r.path)).toEqual(["/api/settings/ai/s2/key"]);
+    expect(screen.queryByText("Validate each new or changed service before saving.")).not.toBeInTheDocument();
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save).toBeEnabled();
+    await userEvent.click(save);
+    const sent = server.writes().at(-1)!.body.services;
+    expect(sent[1]).not.toHaveProperty("apiKey");
+    expect(JSON.stringify(sent)).not.toContain("sk-saved-backup");
+  });
+
+  it("hiding a shown saved key goes back to the saved placeholder; collapsing the service drops it", async () => {
+    fakeServer({
+      "GET /api/settings/ai": () => settings([svc()]),
+      "GET /api/settings/ai/s1/key": () => ({ key: "sk-saved-main" }),
+    });
+    renderWithSession(<AiSettings />);
+    const row = await expand(/Main: Claude/);
+    await userEvent.click(within(row).getByRole("button", { name: "Show Claude key" }));
+    await within(row).findByDisplayValue("sk-saved-main");
+    await userEvent.click(within(row).getByRole("button", { name: "Hide Claude key" }));
+    expect(within(row).getByLabelText("API key")).toHaveValue("");
+    expect(within(row).getByLabelText("API key")).toHaveAttribute("placeholder", "••••••••");
+    await userEvent.click(within(row).getByRole("button", { name: "Show Claude key" }));
+    await within(row).findByDisplayValue("sk-saved-main");
+    await userEvent.click(within(row).getByRole("button", { name: "Hide Claude settings" }));
+    await userEvent.click(within(row).getByRole("button", { name: "Show Claude settings" }));
+    expect(within(row).getByLabelText("API key")).toHaveValue("");
+    expect(screen.queryByDisplayValue("sk-saved-main")).not.toBeInTheDocument();
+  });
+
+  it("editing a shown saved key makes it a new key that needs Validate", async () => {
+    const server = fakeServer({
+      "GET /api/settings/ai": () => settings([svc()]),
+      "GET /api/settings/ai/s1/key": () => ({ key: "sk-saved-main" }),
+    });
+    renderWithSession(<AiSettings />);
+    const row = await expand(/Main: Claude/);
+    await userEvent.click(within(row).getByRole("button", { name: "Show Claude key" }));
+    await userEvent.type(await within(row).findByDisplayValue("sk-saved-main"), "X");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(server.writes()).toHaveLength(0);
+  });
+
+  it("copy puts a saved service's key on the clipboard without showing it", async () => {
+    const writeText = vi.fn(async () => {});
+    stubClipboard({ writeText });
+    fakeServer({
+      "GET /api/settings/ai": () => settings([svc()]),
+      "GET /api/settings/ai/s1/key": () => ({ key: "sk-saved-main" }),
+    });
+    renderWithSession(<AiSettings />);
+    const row = await expand(/Main: Claude/);
+    await userEvent.click(within(row).getByRole("button", { name: "Copy Claude key" }));
+    expect(await within(row).findByText("Copied")).toBeInTheDocument();
+    expect(writeText).toHaveBeenCalledWith("sk-saved-main");
+    expect(screen.queryByDisplayValue("sk-saved-main")).not.toBeInTheDocument();
+  });
+
+  it("a new service (not saved yet) has no saved key to fetch", async () => {
+    const server = fakeServer({ "GET /api/settings/ai": () => settings([]) });
+    renderWithSession(<AiSettings />);
+    const row = await screen.findByRole("listitem", { name: /Main: OpenAI/ });
+    expect(within(row).getByRole("button", { name: "Show OpenAI key" })).toBeDisabled();
+    expect(server.sent.filter((r) => r.path.endsWith("/key"))).toHaveLength(0);
   });
 });
