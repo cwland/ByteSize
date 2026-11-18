@@ -15,6 +15,7 @@ import { resetRestaurantState } from "../src/lib/restaurants/index.js";
 import type { EmailConfig, MailMessage, TransportFactory } from "../src/lib/mail.js";
 import { resetForgotLimits } from "../src/routes/password-reset.js";
 import { resetOAuthCache } from "../src/lib/oauth.js";
+import { usageSettled } from "../src/lib/usage.js";
 
 // Tests use their own database so they never touch real data.
 // Create it once with: createdb bytesize_test (docker-compose.dev.yml does this for you)
@@ -170,6 +171,7 @@ export async function setupTestApp(
     mail.failNext = null;
     mail.gate = null;
     await app.mail.idle();
+    await usageSettled(); // counts still being written would land after the truncate
     app.mail.forgetTests();
     resetForgotLimits();
     resetOAuthCache();

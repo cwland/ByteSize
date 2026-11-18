@@ -471,3 +471,16 @@ export const fatsecretBarcodes = pgTable("fatsecret_barcodes", {
   foodId: text("food_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// What a person has done with ByteSize that nothing else records (Settings › App info): barcodes scanned, photos
+// read, AI estimates, lookups answered from a saved copy, outside calls per source. One row per person and key,
+// counted from the day this shipped. Their own data: backed up, in "Download my data", gone with the person.
+export const usageCounts = pgTable(
+  "usage_counts",
+  {
+    userId: userRef(),
+    key: text("key").notNull(), // see lib/usage.ts USAGE_KEYS
+    count: integer("count").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.key] })]
+);

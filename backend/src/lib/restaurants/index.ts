@@ -13,6 +13,7 @@ import { restaurantKeys, restaurantKeysInUse, sourceHours, type RestaurantKeys }
 import { SOURCE_NAMES, SourceError } from "../foodSources/types.js";
 import { fatsecret, type FatSecretAdapter, type FatSecretToken } from "./fatsecret.js";
 import { spoonacular } from "./spoonacular.js";
+import { countUsage } from "../usage.js";
 import { RESTAURANT_SOURCES, type MenuHit, type RestaurantAdapter, type RestaurantSource } from "./types.js";
 
 export const QUOTA_MESSAGE = "Today's restaurant lookups are used up. They reset at midnight UTC — or use Describe it.";
@@ -77,12 +78,13 @@ export async function fatsecretInUse(app: FastifyInstance): Promise<FatSecretAda
 }
 
 /** A queued Spoonacular item fetch (Check for changes), or null when Spoonacular isn't in use. */
-export async function spoonacularItem(app: FastifyInstance, sourceId: string) {
+export async function spoonacularItem(app: FastifyInstance, sourceId: string, userId?: number) {
   const adapter = adapterFor(app, await restaurantKeysInUse(app), "spoonacular");
   if (!adapter) return null;
   if (await outOfPoints(app)) throw new SourceError("spoonacular", QUOTA_MESSAGE, "quota");
   return spoonQueued(app, async () => {
     await stillHasPoints(app);
+    if (userId !== undefined) countUsage(app, userId, "outside_spoonacular");
     const r = await adapter.item(sourceId);
     if (r.quota) await savePoints(app, r.quota.left);
     return r.food;
@@ -214,8 +216,11 @@ export async function searchRestaurants(app: FastifyInstance, userId: number, ra
   const fs = adapterFor(app, keys, "fatsecret");
   if (fs) {
     const kept = await keptSearch(app, "fatsecret", query);
-    if (kept) items = kept;
-    else {
+    if (kept) {
+      items = kept;
+      countUsage(app, userId, "lookups_saved");
+    } else {
+      countUsage(app, userId, "outside_fatsecret");
       try {
         items = (await fs.search(q)).items;
         await keepSearch(app, "fatsecret", query, items);
@@ -228,8 +233,10 @@ export async function searchRestaurants(app: FastifyInstance, userId: number, ra
   const spoon = items.length ? null : adapterFor(app, keys, "spoonacular");
   if (spoon) {
     const kept = await keptSearch(app, "spoonacular", query);
-    if (kept) items = kept;
-    else if (await outOfPoints(app)) errors.push({ source: "spoonacular", message: QUOTA_MESSAGE });
+    if (kept) {
+      items = kept;
+      countUsage(app, userId, "lookups_saved");
+    } else if (await outOfPoints(app)) errors.push({ source: "spoonacular", message: QUOTA_MESSAGE });
     else {
       try {
         // Re-checked in the queue: the same search waiting behind another is answered from the kept answer
@@ -237,6 +244,7 @@ export async function searchRestaurants(app: FastifyInstance, userId: number, ra
           const again = await keptSearch(app, "spoonacular", query);
           if (again) return again;
           await stillHasPoints(app);
+          countUsage(app, userId, "outside_spoonacular");
           const r = await spoon.search(q);
           if (r.quota) await savePoints(app, r.quota.left);
           await keepSearch(app, "spoonacular", query, r.items);
@@ -270,7 +278,10 @@ export async function restaurantItem(app: FastifyInstance, userId: number, sourc
     await touchUsed(app.db, [kept!.id], app.now());
     return { food: toResult(kept!, "cache"), lookupsLeft: await lookupsLeft(app, keys) };
   };
-  if (kept && kept.fetchedAt.getTime() >= since) return keptCopy();
+  if (kept && kept.fetchedAt.getTime() >= since) {
+    countUsage(app, userId, "lookups_saved");
+    return keptCopy();
+  }
 
   // Past its hours, a kept copy is still used when the source can't be asked (off, out of points) or fails
   const adapter = adapterFor(app, keys, source);
@@ -288,6 +299,7 @@ export async function restaurantItem(app: FastifyInstance, userId: number, sourc
   if (!pending) {
     pending = (async () => {
       let fetched;
+      if (source === "fatsecret") countUsage(app, userId, "outside_fatsecret"); // (Spoonacular's is counted when its turn in the queue comes)
       try {
         fetched =
           source === "spoonacular"
@@ -295,6 +307,7 @@ export async function restaurantItem(app: FastifyInstance, userId: number, sourc
                 const [meanwhile] = await find(); // fetched by a queued open of the same item
                 if (meanwhile && !isSummary(meanwhile) && meanwhile.fetchedAt.getTime() >= since && (!have || meanwhile.fetchedAt > have.fetchedAt)) return null;
                 await stillHasPoints(app);
+                countUsage(app, userId, "outside_spoonacular");
                 return adapter.item(sourceId);
               })
             : await adapter.item(sourceId);

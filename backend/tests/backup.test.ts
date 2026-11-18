@@ -35,6 +35,7 @@ import {
   userFoods,
   userSettings,
   users,
+  usageCounts,
   vacations,
   weighIns,
 } from "../src/db/schema.js";
@@ -103,6 +104,7 @@ async function seed() {
     await t.db.insert(sideEffects).values({ userId: u.id, day: "2026-11-13", effects: { nausea: 2 }, note: null });
     await t.db.insert(badges).values({ userId: u.id, badge: "first_log", earnedOn: "2026-11-10", seen: i === 1 });
     await t.db.insert(vacations).values({ userId: u.id, fromDay: "2026-12-20", toDay: "2026-12-27" });
+    await t.db.insert(usageCounts).values([{ userId: u.id, key: "barcodes_scanned", count: 3 + i }, { userId: u.id, key: "outside_off", count: 1 }]); // App info's numbers are the person's own data
     await t.db.insert(restaurantFavourites).values({ userId: u.id, cacheId: cache.id, chain: "Acme Diner" });
     await t.db.insert(passkeys).values({ userId: u.id, credentialId: `cred-${u.id}`, publicKey: "pk", transports: ["internal"], rpId: "localhost", name: "Phone" });
   }

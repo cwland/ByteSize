@@ -5,6 +5,7 @@ import { requireUser } from "../lib/guards.js";
 import { AiError, LABEL_ASK, LABEL_SYSTEM } from "../lib/ai.js";
 import { logEvent } from "../lib/appLog.js";
 import { HttpError, badRequest } from "../lib/errors.js";
+import { countUsage } from "../lib/usage.js";
 import { aiDraft, lookupBarcode, type AiDraft, type FoodResult, type SearchResult } from "../lib/foods.js";
 import { MAX_PHOTOS, MAX_PHOTO_BYTES, MAX_REQUEST_BYTES, decodeBarcode, normalisePhoto, photoUrl, readPhoto, signImageUrl, storePhoto } from "../lib/photos.js";
 
@@ -71,6 +72,7 @@ export default async function photoRoutes(app: FastifyInstance) {
     // Every photo upright, ≤1600 px, JPEG, before anything else (one that isn't a picture stops it all)
     const normalised: Buffer[] = [];
     for (const img of images) normalised.push(await normalisePhoto(img, { db: app.db, userId }));
+    countUsage(app, userId, "photos_read", normalised.length);
     const stored: { id: string; path: string }[] = [];
     for (const jpeg of normalised) stored.push(await storePhoto(app, userId, jpeg));
     const photoIds = stored.map((s) => s.id);

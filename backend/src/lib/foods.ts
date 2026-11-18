@@ -16,6 +16,7 @@ import { fatsecretPlan, setBarcodeScopeMissing, sourceHours, sourceSwitches, usd
 import { fatsecretInUse } from "./restaurants/index.js";
 import { SourceError, type SourceFood } from "./foodSources/types.js";
 import { usdaByBarcode, usdaSearch } from "./foodSources/usda.js";
+import { countUsage } from "./usage.js";
 import { NUTRIENT_KEYS, withLiquidVolumes, type NutrientKey, type Nutrients, type Serving } from "./nutrients.js";
 import { linkPhoto, photoForFood, photoUrl, signImageUrl } from "./photos.js";
 
@@ -208,6 +209,7 @@ export async function lookupBarcode(app: FastifyInstance, userId: number, raw: s
   const code = normalizeBarcode(raw);
   if (!code) throw badRequest(NOT_A_BARCODE);
   const { db } = app;
+  countUsage(app, userId, "barcodes_scanned");
 
   const [mine] = await db
     .select()
@@ -222,6 +224,7 @@ export async function lookupBarcode(app: FastifyInstance, userId: number, raw: s
   const kept = await db.select().from(foodCache).where(eq(foodCache.barcode, code)).orderBy(desc(foodCache.fetchedAt));
   const keptFresh = kept.find((r) => fresh(r, hours, now));
   if (keptFresh) {
+    countUsage(app, userId, "lookups_saved");
     await touchUsed(db, [keptFresh.id], now);
     return { code, food: toResult(keptFresh, "cache"), from: "cache", errors };
   }
@@ -235,6 +238,7 @@ export async function lookupBarcode(app: FastifyInstance, userId: number, raw: s
     return row;
   };
   const tryFatSecret = async (what: string, run: () => Promise<SourceFood | null>) => {
+    countUsage(app, userId, "outside_fatsecret");
     try {
       return await run();
     } catch (err) {
@@ -257,6 +261,7 @@ export async function lookupBarcode(app: FastifyInstance, userId: number, raw: s
 
   let found: SourceFood | null = null;
   if (switches.off) {
+    countUsage(app, userId, "outside_off");
     try {
       found = await offByBarcode(app.foodFetch, code, SOURCE_TIMEOUT_MS);
     } catch (err) {
@@ -278,6 +283,7 @@ export async function lookupBarcode(app: FastifyInstance, userId: number, raw: s
   if (!found) {
     const key = await usdaKeyInUse(app);
     if (key) {
+      countUsage(app, userId, "outside_usda");
       try {
         found = await usdaByBarcode(app.foodFetch, key, code, SOURCE_TIMEOUT_MS);
       } catch (err) {
@@ -365,6 +371,8 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
       .select()
       .from(foodSearches)
       .where(and(eq(foodSearches.source, source), eq(foodSearches.query, query), gte(foodSearches.fetchedAt, new Date(now.getTime() - hours[source] * HOUR_MS))));
+    if (kept) countUsage(app, userId, "lookups_saved");
+    else countUsage(app, userId, `outside_${source}`);
     const run = kept ? null : call();
     run?.catch(() => {}); // handled below
     outside.push({ source, kept: kept ? kept.results : null, run });
@@ -771,6 +779,7 @@ export async function estimateFood(app: FastifyInstance, userId: number, text: s
     throw new HttpError(502, AI_COULDNT_ESTIMATE);
   }
   // Read on their own: a wrong-shaped answer here only means nothing to confirm
+  countUsage(app, userId, "ai_estimates");
   const assumed = z.boolean().safeParse(json.assumed).data === true;
   const interpretedAs = z.string().trim().min(1).max(200).safeParse(json.interpretedAs).data;
   return assumed ? { food, assumed, interpretedAs: interpretedAs ?? food.name } : { food, assumed };

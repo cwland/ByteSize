@@ -11,6 +11,7 @@ import { offByBarcode } from "./foodSources/off.js";
 import { SWITCHED_SOURCES, sourceHours, sourceSwitches, usdaKeyInUse, type SourceHours } from "./foodSources/settings.js";
 import { SOURCE_NAMES, SourceError, type SourceFood, type SourceName } from "./foodSources/types.js";
 import { usdaById } from "./foodSources/usda.js";
+import { countUsage } from "./usage.js";
 import { QUOTA_MESSAGE, fatsecretInUse, spoonacularItem } from "./restaurants/index.js";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -90,25 +91,28 @@ const sorted = (v: unknown): unknown =>
 const shown = (r: { name: string; brand: string | null; servings: unknown; nutrients: unknown }) => JSON.stringify(sorted([r.name, r.brand, r.servings, r.nutrients]));
 
 /** The kept food as its source has it now; null when the source no longer knows it. */
-async function fetchAgain(app: FastifyInstance, row: CacheRow): Promise<SourceFood | null> {
+async function fetchAgain(app: FastifyInstance, userId: number, row: CacheRow): Promise<SourceFood | null> {
   const source = row.source as SourceName;
   if (source === "off") {
     // A kept food of a source that is off can't be checked (its switch means: never call it)
     if (!(await sourceSwitches(app)).off) throw badRequest(TURN_ON("off"));
+    countUsage(app, userId, "outside_off");
     return offByBarcode(app.foodFetch, row.sourceId, SOURCE_TIMEOUT_MS);
   }
   if (source === "usda") {
     const key = await usdaKeyInUse(app);
     if (!key) throw badRequest(TURN_ON("usda"));
+    countUsage(app, userId, "outside_usda");
     return usdaById(app.foodFetch, key, row.sourceId, SOURCE_TIMEOUT_MS);
   }
   if (source === "fatsecret") {
     const fs = await fatsecretInUse(app);
     if (!fs) throw badRequest(TURN_ON("fatsecret"));
+    countUsage(app, userId, "outside_fatsecret");
     return (await fs.item(row.sourceId)).food;
   }
   if (source === "spoonacular") {
-    const food = await spoonacularItem(app, row.sourceId);
+    const food = await spoonacularItem(app, row.sourceId, userId);
     if (!food) throw badRequest(TURN_ON("spoonacular"));
     return food;
   }
@@ -129,7 +133,7 @@ export async function refreshKept(app: FastifyInstance, userId: number, cacheId:
   }
   let food: SourceFood | null;
   try {
-    food = await fetchAgain(app, row);
+    food = await fetchAgain(app, userId, row);
   } catch (err) {
     if (!(err instanceof SourceError)) throw err;
     await logEvent(app.db, { category: "food", level: "warning", source: SOURCE_NAMES[err.source], event: `${SOURCE_NAMES[err.source]} check for changes failed`, detail: `${err.kind}: ${err.message}`, userId });

@@ -33,6 +33,8 @@ import restaurantRoutes from "./routes/restaurants.js";
 import backupRoutes from "./routes/backups.js";
 import { scheduleBackups } from "./lib/backup.js";
 import exportRoutes from "./routes/export.js";
+import appInfoRoutes from "./routes/app-info.js";
+import { scheduleCountingSince } from "./lib/usage.js";
 import { scheduleLookupCleanup } from "./lib/lookups.js";
 import { scheduleUploadCleanup, setPhotoSecret } from "./lib/photos.js";
 import { MailService, type EmailConfig, type TransportFactory } from "./lib/mail.js";
@@ -171,7 +173,9 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(restaurantRoutes); // restaurant menus (Spoonacular, FatSecret)
   app.register(backupRoutes); // admin: whole-server backups and restore
   app.register(exportRoutes); // Download my data
+  app.register(appInfoRoutes); // Settings › App info: fun usage numbers
   scheduleUploadCleanup(app);
+  scheduleCountingSince(app); // the day usage counting began
   scheduleLookupCleanup(app); // kept foods and searches past their source's hours (foods in use stay)
   if (opts.backupSchedule ?? true) scheduleBackups(app); // daily backup after BACKUP_HOUR
   return app;
