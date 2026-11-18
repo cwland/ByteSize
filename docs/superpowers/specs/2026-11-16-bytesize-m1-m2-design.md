@@ -727,3 +727,55 @@ spacing: Main = Dashboard, OptionA-Log, OptionA-Goals, Settings-Integrations for
 
 **Not in this step.** New data or routes; the Log mockup's Shortcuts box; the Email and App info tabs (their own
 steps); option C's docked Add food panel.
+
+## 19. Import weight history from a CSV file (Cory, 2026-11-18)
+
+**Asked for.** "Ability to import weight data. I'm switching apps so I want to load a CSV file of my weight loss
+history into my new app. Add that as an option in setup as a weight data import option." Cory went to bed after
+asking; the calls below are the builder's, to be shown to him in the morning.
+
+**Where.** Settings › Data, a new card for everyone: **Import weight history**. It adds weigh-ins to the person's
+own history only.
+
+**Flow.**
+1. **Choose a CSV file** (up to 5 MB). Nothing is saved yet.
+2. **Preview.** ByteSize reads the file in the browser-independent server step (`POST /api/weight/import/preview`,
+   multipart) and shows:
+   - the column it picked for the **date** and for the **weight** (each a dropdown of the file's columns, so the
+     person can correct a wrong guess);
+   - **units**: lb or kg — guessed from the header ("lb", "lbs", "pounds", "kg", "kilograms") and otherwise from
+     the person's own units setting — changeable;
+   - **date format** when it can't be told apart (e.g. 03/04/2025 could be March 4 or April 3): "Month/Day/Year" or
+     "Day/Month/Year", guessed from the file (a first number above 12 settles it), defaulting to Month/Day/Year;
+   - a summary: "214 weigh-ins from Jan 3, 2025 to Nov 16, 2026", how many days already have a weigh-in in
+     ByteSize, how many rows can't be read (with the first few line numbers and why), and the first 10 rows as they
+     will be saved (date, weight in the person's units).
+3. **Days that already have a weigh-in**: "Keep what's in ByteSize" (default) or "Replace with the file's".
+4. **Import** (`POST /api/weight/import`, the same file plus the chosen options) → "Imported 214 weigh-ins".
+   Weight charts, trend, projection, goals and badges then include them (they already read the weigh-ins table).
+
+**Reading rules.**
+- Separator: comma, semicolon or tab (detected); quoted fields; a UTF-8 byte-order mark; Windows line ends.
+- Date: YYYY-MM-DD, YYYY/MM/DD, M/D/YYYY or D/M/YYYY (per the chosen format), with or without a time after it,
+  and month-name forms like "Jan 3, 2025" / "3 Jan 2025". A date with a time keeps its calendar day as written
+  (no time-zone shifting).
+- Weight: a number (a decimal comma like "98,4" is accepted when the separator isn't a comma); text after the
+  number such as "lb"/"kg" is ignored; must be 20–700 lb (9–318 kg) or the row is skipped as unreadable.
+- Several rows for the same day: the last one in the file wins (most apps export one per day; Withings-style
+  exports can have more).
+- Future dates are skipped. Blank lines are ignored.
+- Column guess: date = first column whose header contains "date"/"day"/"time" (else the first column whose values
+  parse as dates); weight = first column whose header contains "weight"/"wt"/"body mass" (else the first numeric
+  column that isn't the date). Known exports this should handle without changes: Lose It (Date, Weight),
+  MyFitnessPal measurement export (Date, Weight), Happy Scale, Libra (semicolon), Withings ("Date","Weight (lb)" /
+  "Weight (kg)"), Fitbit (Date, Weight), a hand-made two-column sheet.
+- Stored as kilograms like every weigh-in (exact conversion 0.45359237); notes from a "note"/"notes"/"comment"
+  column if there is one, otherwise none.
+
+**Safety.** The whole import is one transaction; nothing is saved if it fails. Rate-limited (10 a minute per
+person). Each import is written to the activity log (who, how many rows, date range — not the file). The file is
+not kept.
+
+**Not in this step.** Importing food logs, body-fat or other measurements; Apple Health's XML export (CSV only —
+the README can say how to get a CSV from Apple Health via a third-party app); undo (a person can delete weigh-ins
+as today).
