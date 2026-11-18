@@ -167,3 +167,8 @@ export type RestaurantStatus = { sources: RestaurantSource[]; lookupsLeft: numbe
 export type MenuHit = { source: RestaurantSource; sourceId: string; chain: string; name: string; calories: number | null; cacheId: number | null; imageUrl: string | null };
 export type MenuSearch = { items: MenuHit[]; lookupsLeft: number | null; errors: { source: RestaurantSource; message: string }[] };
 export type RestaurantFavourites = { chains: { chain: string; foods: FoodResult[] }[] };
+
+// Backups (Settings › Data), as GET /api/admin/backups sends them
+export type Backup = { name: string; size: number; createdAt: string };
+export type BackupList = { backups: Backup[]; keep: number; unreadableKeys: string[] };
+export type RestoreResult = { restored: { schema: number; users: number; photos: number }; unreadableKeys: string[] };

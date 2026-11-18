@@ -1,8 +1,9 @@
-import { Bot, ChevronLeft, ChevronRight, LogOut, ScrollText, Shield, User, Users, Database, Link2 } from "lucide-react";
+import { Bot, ChevronLeft, ChevronRight, LogOut, ScrollText, Shield, User, Users, Database, HardDrive, Link2 } from "lucide-react";
 import { settingsSectionFromHash, useHash } from "../../routes";
 import { useSession } from "../../session";
 import AiSettings from "./AiSettings";
 import LogsSettings from "./LogsSettings";
+import DataSettings from "./DataSettings";
 import FoodSourcesSettings from "./FoodSourcesSettings";
 import IntegrationsSettings from "./IntegrationsSettings";
 import ProfileSettings from "./ProfileSettings";
@@ -14,6 +15,7 @@ const TABS = [
   { id: "profile", label: "Profile", hint: "Name, units, time zone, appearance", admin: false, Icon: User, Panel: ProfileSettings },
   { id: "security", label: "Security", hint: "Password, passkeys, devices", admin: false, Icon: Shield, Panel: SecuritySettings },
   { id: "integrations", label: "Integrations", hint: "Culury meal plan and recipes", admin: false, Icon: Link2, Panel: IntegrationsSettings },
+  { id: "data", label: "Data", hint: "Download your data", adminHint: "Your data and backups", admin: false, Icon: HardDrive, Panel: DataSettings },
   { id: "users", label: "Users", hint: "Add and manage people", admin: true, Icon: Users, Panel: UsersSettings },
   { id: "ai", label: "AI services", hint: "Providers and failover order", admin: true, Icon: Bot, Panel: AiSettings },
   { id: "food-sources", label: "Food sources", hint: "Open Food Facts, USDA, restaurants", admin: true, Icon: Database, Panel: FoodSourcesSettings },
@@ -56,7 +58,7 @@ export default function SettingsPage() {
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block font-semibold">{t.label}</span>
-                <span className="block truncate text-sm text-muted">{t.hint}</span>
+                <span className="block truncate text-sm text-muted">{user.isAdmin && "adminHint" in t ? t.adminHint : t.hint}</span>
               </span>
               <ChevronRight className="size-5 shrink-0 text-inactive" aria-hidden="true" />
             </a>
