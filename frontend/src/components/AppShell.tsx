@@ -62,16 +62,17 @@ export default function AppShell() {
 
   // One tree for both layouts, so crossing 1024 px (an iPad turned, a window resized) keeps the page and
   // any open sheet with what was typed: only classes change, the top bar's slot empties, and LogButton
-  // draws the rail or the bottom tab bar in the same place.
+  // draws the rail or the bottom tab bar in the same place (after main).
   return (
     <SelectedDayProvider timeZone={user.timezone}>
       <div className={wide ? "flex min-h-screen bg-page" : "min-h-screen bg-page"}>
         <TodayOnEnter page={page} />
         {!wide && <TopBar days={(page === "dashboard" && !isGlp1(hash)) || (page === "log" && !myFoods)} />}
-        <LogButton page={page} myFoods={myFoods} wide={wide} />
         <main className={wide ? "min-w-0 flex-1 px-9 pt-7 pb-12" : "mx-auto max-w-[560px] px-3 pt-2 pb-32"}>
           <div className={wide ? "mx-auto max-w-[1180px]" : undefined}>{content}</div>
         </main>
+        {/* After the page, as on phones (tab and screen-reader order); the rail moves itself first (order-first) */}
+        <LogButton page={page} myFoods={myFoods} wide={wide} />
       </div>
     </SelectedDayProvider>
   );
@@ -84,7 +85,9 @@ function TodayOnEnter({ page }: { page: Page }) {
   const was = useRef(page);
   useEffect(() => {
     if (page === was.current) return;
-    if ((page === "dashboard" || page === "log") && !takeKeepDay()) today();
+    // Used up by every page change, so a click that set it without navigating can't keep a day later
+    const keep = takeKeepDay();
+    if ((page === "dashboard" || page === "log") && !keep) today();
     was.current = page;
   }, [page, today]);
   return null;

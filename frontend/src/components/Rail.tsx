@@ -4,7 +4,8 @@ import { initialsOf, useSession } from "../session";
 import { Logo } from "./ui/Logo";
 
 // Wide screens: the side rail in place of the top bar and bottom tab bar. Logo (home), the orange +
-// (log food), the pages with My foods, and Settings and the account at the bottom. Stays in view.
+// (log food), the pages with My foods, and Settings and the account at the bottom. Stays in view. It comes
+// after the page in the DOM (the shell keeps one tree for both layouts) and is drawn first with order-first.
 export default function Rail({ page, myFoods, onAdd }: { page: Page; myFoods: boolean; onAdd: () => void }) {
   const { user } = useSession();
   const item = (label: string, href: string, current: boolean, icon: JSX.Element) => (
@@ -18,7 +19,7 @@ export default function Rail({ page, myFoods, onAdd }: { page: Page; myFoods: bo
     </a>
   );
   return (
-    <nav aria-label="Main" className="sticky top-0 flex h-screen w-[84px] shrink-0 flex-col items-center gap-2.5 bg-container py-5">
+    <nav aria-label="Main" className="sticky top-0 order-first flex h-screen w-[84px] shrink-0 flex-col items-center gap-2.5 bg-container py-5">
       <a href="#/" aria-label="ByteSize home" className="shrink-0 rounded-xl">
         <Logo className="size-11 rounded-xl" />
       </a>

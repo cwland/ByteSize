@@ -5,6 +5,7 @@ import AppShell from "./AppShell";
 import { fakeServer } from "../test/fakeServer";
 import { renderWithSession } from "../test/renderWithSession";
 import { wideScreen } from "../test/wide";
+import { keepDayOnNextPage } from "../selectedDay";
 import { culuryOff, dayJson, entryJson, m3Routes, restaurantRoutes, settingsMe, steadyTargets } from "../test/fixtures";
 
 const routes = {
@@ -106,5 +107,42 @@ describe("Open the log", () => {
     await user.click(within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", { name: "Log" }));
     act(() => void window.dispatchEvent(new HashChangeEvent("hashchange")));
     await waitFor(() => expect(screen.getByRole("button", { name: /^Mon 16/ })).toHaveAttribute("aria-pressed", "true"));
+  });
+});
+
+describe("The keep-day flag", () => {
+  it("is used up by any page change: a click that didn't navigate doesn't keep an old day later", async () => {
+    wideScreen();
+    fakeServer(routes);
+    renderWithSession(<AppShell />, { timezone: "America/Boise" });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /^Sun 15/ }));
+    keepDayOnNextPage(); // e.g. a Cmd-click on "Open the log" that opened a new tab instead
+    act(() => {
+      window.location.hash = "#/goals";
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    act(() => {
+      window.location.hash = "#/";
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Mon 16/ })).toHaveAttribute("aria-pressed", "true"));
+  });
+});
+
+describe("Document order", () => {
+  it("on phones the page comes before the bottom tab bar (tab and screen-reader order)", () => {
+    fakeServer(routes);
+    renderWithSession(<AppShell />, { timezone: "America/Boise" });
+    const main = screen.getByRole("main");
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    expect(main.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("on wide screens the rail is drawn first", () => {
+    wideScreen();
+    fakeServer(routes);
+    renderWithSession(<AppShell />, { timezone: "America/Boise" });
+    expect(screen.getByRole("navigation", { name: "Main" })).toHaveClass("order-first");
   });
 });
