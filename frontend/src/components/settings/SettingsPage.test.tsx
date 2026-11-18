@@ -14,7 +14,7 @@ describe("SettingsPage", () => {
     expect(screen.getByText("Culury meal plan and recipes")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Data" })).toBeInTheDocument(); // everyone can download their own data
     expect(screen.getByText("Download your data")).toBeInTheDocument();
-    for (const name of ["Users", "AI services", "Food sources", "Logs"]) {
+    for (const name of ["Users", "AI services", "Food sources", "Logs", "Email"]) {
       expect(screen.queryByRole("tab", { name })).not.toBeInTheDocument();
     }
   });
@@ -22,8 +22,9 @@ describe("SettingsPage", () => {
   it("admins see Users, Integrations and Logs; AI and food sources are inside Integrations", async () => {
     fakeServer({});
     renderWithSession(<SettingsPage />, { isAdmin: true });
-    expect((await screen.findAllByRole("tab")).map((t) => t.getAttribute("aria-label"))).toEqual(["Profile", "Security", "Integrations", "Data", "Users", "Logs"]);
+    expect((await screen.findAllByRole("tab")).map((t) => t.getAttribute("aria-label"))).toEqual(["Profile", "Security", "Integrations", "Email", "Data", "Users", "Logs"]);
     expect(screen.getByText("Your data and backups")).toBeInTheDocument();
+    expect(screen.getByText("Sending email, forgot password")).toBeInTheDocument();
     expect(screen.getByText("AI, food data, restaurants, Culury")).toBeInTheDocument();
   });
 
@@ -39,6 +40,34 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Integrations");
     expect(await screen.findByRole("region", { name: "USDA" })).toBeInTheDocument();
     expect(await screen.findByRole("switch", { name: "Culury on" })).toBeInTheDocument();
+  });
+
+  it("Security: an admin sets up OAuth sign-in there; everyone can link their account when it's on", async () => {
+    window.location.hash = "#/settings/security";
+    fakeServer({
+      "GET /api/passkeys": () => [],
+      "GET /api/auth/sessions": () => [],
+      "GET /api/auth/logins": () => [],
+      "GET /api/auth/oauth": () => ({ available: true, providerName: "Authentik", linked: null }),
+      "GET /api/settings/oauth": () => ({ settings: { enabled: true, providerName: "Authentik", issuerUrl: "https://auth.lan", clientId: "c", clientSecretSet: true, clientSecretUnreadable: false, oauthOnly: false, ready: true } }),
+    });
+    renderWithSession(<SettingsPage />, { isAdmin: true });
+    expect(await screen.findByRole("region", { name: "OAuth sign-in" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Link my account" })).toBeInTheDocument();
+  });
+
+  it("Security for a member: Link my account, never the OAuth settings", async () => {
+    window.location.hash = "#/settings/security";
+    const server = fakeServer({
+      "GET /api/passkeys": () => [],
+      "GET /api/auth/sessions": () => [],
+      "GET /api/auth/logins": () => [],
+      "GET /api/auth/oauth": () => ({ available: true, providerName: "Authentik", linked: null }),
+    });
+    renderWithSession(<SettingsPage />, { isAdmin: false });
+    expect(await screen.findByRole("region", { name: "Link my account" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "OAuth sign-in" })).not.toBeInTheDocument();
+    expect(server.sent.some((s) => s.path === "/api/settings/oauth")).toBe(false);
   });
 
   it("an old address opens Integrations for a member too, with only Culury", async () => {

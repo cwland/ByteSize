@@ -13,7 +13,8 @@
     "db:migrate": "tsx src/db/run-migrations.ts",
     "db:studio": "drizzle-kit studio",
     "test": "vitest run",
-    "reset-password": "tsx src/cli/reset-password.ts"
+    "reset-password": "tsx src/cli/reset-password.ts",
+    "auth:reset": "tsx src/cli/auth-reset.ts"
   },
   "dependencies": {
     "@fastify/multipart": "^9.4.0",

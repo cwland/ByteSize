@@ -838,15 +838,23 @@ Resetting ends the person's other sessions (like a password change) and is writt
 the code). A disabled account can't reset. Accounts without an email never get a code.
 
 **Command line.** `npm run reset-password -- <username>` (without a username: the first admin) prints a new random
-password once, or takes `--password` from a prompt; ends that account's sessions; logged. `npm run auth:reset`
+password once, or takes `--password` from a prompt (or `NEW_PASSWORD`; never as an argument); ends that account's sessions; logged. `npm run auth:reset`
 turns OAuth-only off and OAuth sign-in off (locked-out escape). `EMERGENCY_DISABLE_OAUTH=true` in `.env` does the
 same at start. README "Locked out?" section with the Docker and Mac commands.
 
 **OAuth / OpenID Connect sign-in (Settings › Security, admin config).** Copied from Culury: on/off, button name,
 issuer/discovery URL, client ID, client secret (encrypted, eye + copy), redirect URI shown to copy, **Test
-connection**, **Link my account** for each person, sign-in with a verified email that matches a profile, optional
-**OAuth only** (hides the password form; not allowed until the admin's own account is linked). PKCE + state + nonce
-as Culury. New accounts are not created by OAuth (admins add people as today).
+connection**, **Link my account** for each person, optional **OAuth only** (hides the password form; not allowed
+until the admin's own account is linked at that provider; turns itself off when the provider or client ID changes). PKCE + state +
+nonce as Culury, and each sign-in is tied to the browser that started it. New accounts are not created by OAuth
+(admins add people as today).
+
+*Ruling (review, 2026-11-18): no email matching.* An OAuth sign-in only works for an account its owner linked with
+**Link my account** while signed in. Profile emails are never verified, and self-hosted providers often let people
+change their email while still calling it verified, so matching on email could hand over any account, an admin's
+included. An unlinked sign-in says: "This sign-in isn't linked to a ByteSize account yet. Sign in with your password,
+then use Link my account in Settings › Security." The redirect URI uses ByteSize's configured address (Settings ›
+Email's app address, `APP_URL`, `PASSKEY_ORIGINS`) when one is set; a request from another address is refused.
 
 **Not in this step.** Invite-by-email for new people (later), email for anything else.
 

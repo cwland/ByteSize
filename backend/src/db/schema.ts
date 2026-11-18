@@ -20,13 +20,53 @@ export const users = pgTable("users", {
   timezone: text("timezone").notNull().default("America/Boise"), // decides where a day starts and ends
   setupDoneAt: timestamp("setup_done_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  // The OAuth / OpenID Connect identity linked to this account (Settings › Security › Link my account)
+  oauthIssuer: text("oauth_issuer"),
+  oauthSubject: text("oauth_subject"),
+  oauthEmail: text("oauth_email"), // what the provider called it, shown in Settings
+}, (t) => [uniqueIndex("users_oauth_identity_idx").on(t.oauthIssuer, t.oauthSubject)]);
 
 // App-wide settings (AI services, food source keys). Secrets inside are encrypted.
 export const appSettings = pgTable("app_settings", {
   key: text("key").primaryKey(),
   value: jsonb("value").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Forgot password: one 6-digit code per account at a time, emailed. Only a keyed hash of the code is kept.
+// Good for 15 minutes, once; 5 wrong tries end it. Never backed up.
+export const passwordResetCodes = pgTable("password_reset_codes", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .unique() // a new request replaces the old code
+    .references(() => users.id, { onDelete: "cascade" }),
+  codeHash: text("code_hash").notNull(),
+  wrongTries: integer("wrong_tries").notNull().default(0),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// OAuth sign-ins on their way: from the button to the provider and back (10 minutes). Never backed up.
+export const oauthFlows = pgTable("oauth_flows", {
+  state: text("state").primaryKey(),
+  purpose: text("purpose").$type<"login" | "link">().notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }), // Link my account: who
+  verifier: text("verifier").notNull(), // PKCE
+  nonce: text("nonce").notNull(),
+  redirectUri: text("redirect_uri").notNull(),
+  appOrigin: text("app_origin").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+// After an OAuth sign-in the browser comes back with a one-time ticket (never the login token itself),
+// which the page swaps for its token within a minute. Only a hash of the ticket is kept. Never backed up.
+export const oauthTickets = pgTable("oauth_tickets", {
+  ticketHash: text("ticket_hash").primaryKey(),
+  sessionId: integer("session_id")
+    .notNull()
+    .references(() => sessions.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
 
 // Signed-in devices: one row per sign-in (each login token carries its row's tokenId).

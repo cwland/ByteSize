@@ -12,6 +12,9 @@ import { resetSessionTouches } from "../src/lib/sessions.js";
 import { resetPasskeyChallenges } from "../src/routes/passkeys.js";
 import type { AiFetch } from "../src/lib/ai.js";
 import { resetRestaurantState } from "../src/lib/restaurants/index.js";
+import type { EmailConfig, MailMessage, TransportFactory } from "../src/lib/mail.js";
+import { resetForgotLimits } from "../src/routes/password-reset.js";
+import { resetOAuthCache } from "../src/lib/oauth.js";
 
 // Tests use their own database so they never touch real data.
 // Create it once with: createdb bytesize_test (docker-compose.dev.yml does this for you)
@@ -110,9 +113,28 @@ export async function setupTestApp(
     sleeps.push(ms);
     if (clock.date) clock.date = new Date(clock.date.getTime() + ms);
   };
+  // Fake email: nothing is ever sent. mail.sent records each message (with the settings it went out with);
+  // mail.failNext makes the next send (or connection check) fail with that message.
+  // mail.gate: while set, each send waits for it (a slow mail server).
+  const mail = { sent: [] as (MailMessage & { from: string; config: EmailConfig })[], failNext: null as string | null, gate: null as Promise<void> | null };
+  const failing = () => {
+    const why = mail.failNext;
+    mail.failNext = null;
+    if (why) throw new Error(why);
+  };
+  const mailTransport: TransportFactory = (config) => ({
+    async verify() {
+      failing();
+    },
+    async sendMail(m) {
+      if (mail.gate) await mail.gate;
+      failing();
+      mail.sent.push({ ...m, config });
+    },
+  });
   // Files (uploads, backups) go to a temp folder, removed on close. The daily backup is off unless a test asks for it.
   const dataDir = mkdtempSync(path.join(tmpdir(), "bytesize-test-"));
-  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, foodFetch, now: () => clock.date ?? new Date(), sleep, dataDir, backupSchedule: false, ...opts });
+  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, foodFetch, now: () => clock.date ?? new Date(), sleep, dataDir, backupSchedule: false, mailTransport, emailEnv: null, appOrigins: [], ...opts });
   if (beforeReady) await beforeReady(app);
   await app.ready();
   let token = "";
@@ -144,6 +166,13 @@ export async function setupTestApp(
     foodWeb.down = false;
     foodWeb.respond = notFoundReply;
     sleeps.length = 0;
+    mail.sent.length = 0;
+    mail.failNext = null;
+    mail.gate = null;
+    await app.mail.idle();
+    app.mail.forgetTests();
+    resetForgotLimits();
+    resetOAuthCache();
     resetRestaurantState(app);
     const rows = await db.execute<{ tablename: string }>(sql`select tablename from pg_tables where schemaname = 'public'`);
     const names = rows.rows.map((r) => `"${r.tablename}"`);
@@ -178,6 +207,7 @@ export async function setupTestApp(
     foodWeb,
     clock,
     sleeps,
+    mail,
     reset,
     login,
     createUser,

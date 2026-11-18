@@ -9,7 +9,8 @@ import { appLog } from "../db/schema.js";
 //  - auth:     sign-in events
 //  - schedule: scheduled task runs (backups, reminders)
 //  - food:     food lookups
-export const LOG_CATEGORIES = ["ai", "api", "auth", "schedule", "food"] as const;
+//  - email:    emails sent (only the subject, never a code)
+export const LOG_CATEGORIES = ["ai", "api", "auth", "schedule", "food", "email"] as const;
 export type LogCategory = (typeof LOG_CATEGORIES)[number];
 export type LogLevel = "info" | "warning" | "error";
 export const LOG_DAYS = 30;

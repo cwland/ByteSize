@@ -35,6 +35,10 @@ import { scheduleBackups } from "./lib/backup.js";
 import exportRoutes from "./routes/export.js";
 import { scheduleRestaurantCleanup } from "./lib/restaurants/index.js";
 import { scheduleUploadCleanup, setPhotoSecret } from "./lib/photos.js";
+import { MailService, type EmailConfig, type TransportFactory } from "./lib/mail.js";
+import emailSettingsRoutes from "./routes/settings-email.js";
+import passwordResetRoutes from "./routes/password-reset.js";
+import oauthRoutes, { appOriginsFromEnv } from "./routes/oauth.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -45,6 +49,9 @@ declare module "fastify" {
     foodFetch: typeof fetch; // Open Food Facts / USDA (tests swap in a fake food web)
     dataDir: string; // where ByteSize keeps files (uploads/...)
     sleep: (ms: number) => Promise<void>; // waits (the restaurant queue); tests record instead of waiting
+    mail: MailService; // Settings › Email: forgot-password codes
+    oauthFetch?: typeof fetch; // the OAuth provider (tests swap in a pretend one)
+    appOrigins: string[]; // the app's own addresses from .env (APP_URL, PASSKEY_ORIGINS)
   }
   interface FastifyRequest {
     auth?: { userId: number; sessionId: number; isAdmin: boolean };
@@ -60,6 +67,11 @@ const PUBLIC_ROUTES = new Set([
   "POST /api/auth/logout",
   "POST /api/passkeys/login/options",
   "POST /api/passkeys/login/verify",
+  "POST /api/auth/forgot",
+  "POST /api/auth/reset",
+  "POST /api/auth/oauth/start",
+  "GET /api/auth/oauth/callback",
+  "POST /api/auth/oauth/finish",
   "GET /api/photos/:id", // the owner's login or the URL's signature (an <img> can't send the token)
 ]);
 
@@ -75,6 +87,10 @@ export interface AppOptions {
   dataDir?: string; // default: DATA_DIR, else ./data/app (tests use a temp folder)
   sleep?: (ms: number) => Promise<void>;
   backupSchedule?: boolean; // the daily backup (default on; tests turn it off)
+  emailEnv?: EmailConfig | null; // email settings from .env (used when none are saved in the app)
+  mailTransport?: TransportFactory; // tests swap in a fake: no email is ever sent
+  oauthFetch?: typeof fetch; // tests: a pretend OAuth provider
+  appOrigins?: string[]; // default: APP_URL and PASSKEY_ORIGINS from .env
 }
 
 export function buildApp(opts: AppOptions): FastifyInstance {
@@ -85,6 +101,10 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.decorate("ai", new AiService(opts.db, opts.jwtSecret, opts.aiFetch, opts.aiTimeScale ?? 1));
   app.decorate("foodFetch", opts.foodFetch ?? ((input: Parameters<typeof fetch>[0], init?: RequestInit) => fetch(input, init)));
   app.decorate("sleep", opts.sleep ?? ((ms: number) => new Promise<void>((res) => setTimeout(res, ms))));
+  app.decorate("mail", new MailService(opts.db, opts.jwtSecret, opts.emailEnv ?? null, opts.mailTransport, app.now));
+  app.decorate("oauthFetch", opts.oauthFetch);
+  app.decorate("appOrigins", opts.appOrigins ?? appOriginsFromEnv(process.env));
+  app.addHook("onClose", async () => app.mail.idle()); // emails still on their way go out first
   setPhotoSecret(opts.jwtSecret);
   app.decorate("dataDir", path.resolve(opts.dataDir ?? process.env.DATA_DIR ?? "data/app"));
 
@@ -128,6 +148,9 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   app.register(healthRoutes);
   app.register(authRoutes);
+  app.register(passwordResetRoutes); // forgot password: an emailed 6-digit code
+  app.register(oauthRoutes); // sign in with OAuth / OpenID Connect, Link my account
+  app.register(emailSettingsRoutes); // Settings › Email (admin)
   app.register(adminUserRoutes);
   app.register(profileRoutes);
   app.register(passkeyRoutes);
