@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { offKnows, offProduct } from "./foodFakes.js";
 import { logEntries } from "../src/db/schema.js";
+import { logHooks } from "../src/routes/log.js";
 
 // §28: adding the same food twice to a day and meal grows the entry already there (done here, in the
 // log routes, so every way of adding follows it), and says so, with what Undo needs to split it back.
@@ -296,14 +297,60 @@ describe("combining when requests race", () => {
     }
   });
 
-  it("Undo racing a new add of the same food leaves the amounts adding up", async () => {
+  it("Undo and a new add of the same food into that meal go one at a time: the add waits for Undo's lock", async () => {
     const food = await mine(egg);
     await log(food);
     const { combined } = (await log(food)).body;
-    const [u, more] = await Promise.all([undo(combined), log(food)]);
-    expect(more.status).toBe(200);
-    const total = (await getDay()).entries.reduce((n: number, e: any) => n + e.quantity, 0);
-    expect([200, 409]).toContain(u.status);
-    expect(total).toBe(3);
+    // Undo is held once it has its locks; the add must wait for it, so the outcome is always the same
+    let entered!: () => void;
+    const inside = new Promise<void>((r) => (entered = r));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    logHooks.undoLocked = async () => {
+      entered();
+      await gate;
+    };
+    try {
+      const u = undo(combined);
+      await inside;
+      let added = false;
+      const more = log(food).then((r) => ((added = true), r));
+      await new Promise((r) => setTimeout(r, 300));
+      expect(added).toBe(false); // waiting for the meal's lock
+      release();
+      expect((await u).status).toBe(200);
+      const m = await more;
+      expect(m.status).toBe(200);
+      expect(m.body.combined.before.quantity).toBe(1); // grew the entry Undo had just put back to 1
+    } finally {
+      release();
+      logHooks.undoLocked = async () => {};
+    }
+    expect((await getDay()).entries.map((e: any) => e.quantity)).toEqual([2, 1]);
+  });
+
+  it("Undo racing a delete of the entry never fails: one wins cleanly, the other is told", async () => {
+    const food = await mine(egg);
+    for (let round = 0; round < 6; round++) {
+      const day = `2026-11-${10 + round}`;
+      await log(food, {}, "breakfast", day);
+      const { combined } = (await log(food, {}, "breakfast", day)).body;
+      const [u, d] = await Promise.all([undo(combined), t.api("DELETE", `/api/log/${combined.entry.id}`)]);
+      expect(d.status, JSON.stringify(d.body)).toBe(204);
+      expect([200, 409], JSON.stringify(u.body)).toContain(u.status);
+      // Undo first: the split-off one is left; the delete first: nothing is
+      expect((await getDay(day)).entries.map((e: any) => e.quantity)).toEqual(u.status === 200 ? [1] : []);
+    }
+  });
+
+  it("Undo after the one day a combine is kept is a 409, and changes nothing", async () => {
+    const food = await mine(egg);
+    await log(food);
+    const { combined } = (await log(food)).body;
+    t.clock.date = new Date(t.clock.date!.getTime() + 24 * 60 * 60 * 1000 + 1000);
+    const late = await undo(combined);
+    expect(late.status).toBe(409);
+    expect(late.body.error).toBe("This entry changed since — undo isn't possible");
+    expect((await getDay()).entries.map((e: any) => e.quantity)).toEqual([2]);
   });
 });

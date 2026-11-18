@@ -254,6 +254,8 @@ type FoodSnapshot = { source: string; sourceRef: string | null; name: string; pe
 export type Combined = { id: number; entry: LogEntry; before: Portion; added: Portion; splitTo: { day: string; meal: Meal } };
 // A combine can be undone for this long (the note offering Undo shows for seconds)
 const COMBINE_KEPT_MS = 24 * 60 * 60 * 1000;
+/** Test hooks: undoLocked runs once Undo holds its locks (tests hold it there to show who waits). */
+export const logHooks = { undoLocked: async (): Promise<void> => {} };
 
 const portionOf = (r: Row): Portion => ({ servingIndex: r.servingIndex, unit: r.unit as Unit, quantity: r.quantity, fraction: r.fraction });
 const snapshotOf = (r: Row): FoodSnapshot => ({ source: r.source, sourceRef: r.sourceRef, name: r.name, perServing: r.perServing as Nutrients, servings: r.servings as Serving[] });
@@ -615,18 +617,20 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     const { id: combineId } = idParam.parse(req.params);
     const now = app.now();
     const rows = await db.transaction(async (tx) => {
-      const [c] = await tx
-        .select()
-        .from(logCombines)
-        .where(and(eq(logCombines.id, combineId), eq(logCombines.userId, userId)))
-        .for("update");
-      if (!c) throw new HttpError(404, NOT_FOUND);
-      if (c.undoneAt || c.entryId === null) throw new HttpError(409, CHANGED_SINCE);
-      const splitTo = { day: c.splitDay, meal: c.splitMeal as Meal };
-      // The meal the addition goes back to, then the rows, as every combining path takes them
+      const mine = and(eq(logCombines.id, combineId), eq(logCombines.userId, userId));
+      const usable = (c: typeof logCombines.$inferSelect | undefined): c is typeof logCombines.$inferSelect => !!c && !c.undoneAt && c.entryId !== null && now.getTime() - c.createdAt.getTime() <= COMBINE_KEPT_MS;
+      // Read first (no lock) for where the addition goes back to; then the locks in the order every combining
+      // path takes them (the meal, then rows in id order); only then the record itself, checked again under its
+      // lock: a delete of the entry (which locks the entry, then nulls this record) can't cross it
+      const [seen] = await tx.select().from(logCombines).where(mine);
+      if (!seen) throw new HttpError(404, NOT_FOUND);
+      if (!usable(seen)) throw new HttpError(409, CHANGED_SINCE);
+      const splitTo = { day: seen.splitDay, meal: seen.splitMeal as Meal };
       await lockMeal(tx, userId, splitTo);
-      const [row] = (await lockRows(tx, userId, [c.entryId], splitTo)).filter((r) => r.id === c.entryId);
-      if (!row || !samePortion(portionOf(row), c.after as Portion)) throw new HttpError(409, CHANGED_SINCE);
+      const [row] = (await lockRows(tx, userId, [seen.entryId!], splitTo)).filter((r) => r.id === seen.entryId);
+      const [c] = await tx.select().from(logCombines).where(mine).for("update");
+      if (!usable(c) || c.entryId !== seen.entryId || !row || !samePortion(portionOf(row), c.after as Portion)) throw new HttpError(409, CHANGED_SINCE);
+      await logHooks.undoLocked();
       const per = row.perServing as Nutrients;
       const before = c.before as Portion;
       const added = c.added as Portion;
