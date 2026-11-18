@@ -39,7 +39,8 @@ export function usePhotoInput(onFile: (f: File) => void): { open: () => void; in
   return { open: () => ref.current?.click(), input };
 }
 
-// The photo step of Add Food. With no photo yet: choose one (barcode or label) or "Read a label".
+// The photo step of Add Food. With no photo yet: choose one (barcode or label) or "Read a label"; the
+// photo chosen is sent in the step's mode ("auto", or "barcode"/"label" from the wide Dashboard's buttons).
 // With photos: sends them; a found food or a label draft is handed back, anything else is explained
 // here with the next steps (add a second photo, try another, or create the food by hand).
 export default function PhotoPicker({
@@ -117,7 +118,7 @@ export default function PhotoPicker({
         <>
           <p className="text-subtle">Take or choose a photo of a barcode or a nutrition label.</p>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => again("auto")} className={`${primaryButton} inline-flex items-center gap-1.5`}>
+            <button type="button" onClick={() => again(mode)} className={`${primaryButton} inline-flex items-center gap-1.5`}>
               <Camera aria-hidden="true" className="size-5" /> Choose a photo
             </button>
             {photosOn && (

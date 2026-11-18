@@ -15,6 +15,8 @@ import { linkButton, primaryButton, secondaryButton } from "../ui/styles";
 import WeightSection from "../weight/WeightSection";
 import type { ChartMarker } from "../weight/WeightChart";
 import { mg } from "../glp1/glp1";
+import PageHeader from "../PageHeader";
+import { useWide } from "../../wide";
 
 type Mode = "view" | "plan" | "details" | "edit";
 const planName = (t: Targets) => (t.plan ? `${t.plan[0].toUpperCase()}${t.plan.slice(1)} plan` : "Your own targets");
@@ -22,8 +24,10 @@ const planName = (t: Targets) => (t.plan ? `${t.plan[0].toUpperCase()}${t.plan.s
 // Goals: today's plan and target ranges (Change plan, Edit targets), then weight (with GLP-1 dose markers),
 // weekly trends, badges, vacation mode and the GLP-1 link.
 // "#/goals/plan" opens the plan picker straight away (the Dashboard's "Pick a plan").
+// Wide screens: a title, plan and weight side by side, trends as a table, badges beside vacation mode.
 export default function GoalsPage() {
   const { user } = useSession();
+  const wide = useWide();
   const [targets, setTargets] = useState<Targets | null | undefined>(undefined);
   const [mode, setMode] = useState<Mode>(() => (window.location.hash.startsWith("#/goals/plan") ? "plan" : "view"));
   const [msg, setMsg] = useState<Msg>(null);
@@ -55,10 +59,8 @@ export default function GoalsPage() {
   if (mode === "edit") return <TargetsEditor initial={targets ?? null} onSaved={saved} onCancel={() => setMode("view")} />;
 
   const water = (v: number) => waterValue(v, user.units);
-  return (
-    <div className="flex flex-col gap-3">
-      <h1 className="sr-only">Goals</h1>
-      <Notice msg={msg} />
+  const planCard = (
+    <>
       {targets === null && (
         <section aria-label="Plan" className="flex flex-col items-center rounded-2xl bg-container p-8 text-center">
           <Target className="size-10 text-action" aria-hidden="true" />
@@ -95,11 +97,46 @@ export default function GoalsPage() {
           </button>
         </section>
       )}
-      <WeightSection onReplan={() => setMode("plan")} markers={doseMarkers} />
+    </>
+  );
+  const weight = <WeightSection onReplan={() => setMode("plan")} markers={doseMarkers} />;
+  const glp1Link = (
+    <a href="#/glp1?from=/goals" className={`${secondaryButton} text-center`}>
+      GLP-1 shots
+    </a>
+  );
+
+  if (wide) {
+    return (
+      <div className="flex flex-col gap-5">
+        <PageHeader title="Goals" />
+        <Notice msg={msg} />
+        <div data-testid="goals-top" className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+          {planCard}
+          <div className="min-w-0 lg:col-start-2">{weight}</div>
+        </div>
+        <WeeklyTrends />
+        <div data-testid="goals-bottom" className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <Badges />
+          <div className="flex flex-col gap-5">
+            <VacationMode />
+            {glp1Link}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <h1 className="sr-only">Goals</h1>
+      <Notice msg={msg} />
+      {planCard}
+      {weight}
       <WeeklyTrends />
       <Badges />
       <VacationMode />
-      <a href="#/glp1?from=/goals" className={`${secondaryButton} text-center`}>GLP-1 shots</a>
+      {glp1Link}
     </div>
   );
 }

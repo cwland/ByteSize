@@ -75,7 +75,7 @@ export default function Badges() {
       <h2 className="text-lg font-bold">Badges</h2>
       <Notice msg={msg} />
       {badges && (
-        <ul className="mt-3 grid grid-cols-2 gap-2">
+        <ul className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-4">
           {badges.map((b) => (
             <BadgeTile key={b.id} badge={b} units={user.units} thisYear={thisYear} />
           ))}
