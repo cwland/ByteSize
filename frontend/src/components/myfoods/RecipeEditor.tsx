@@ -4,7 +4,7 @@ import { api } from "../../api";
 import type { MyFood } from "../../types";
 import { Field } from "../ui/Field";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { field, label as labelClass, primaryButton, secondaryButton } from "../ui/styles";
+import { field, label as labelClass, noAutofill, primaryButton, secondaryButton } from "../ui/styles";
 import { EditorHeader, FoodPicker, type EditItem, ItemList, Totals, addButton, divideNutrients, itemBody, itemFromFood, itemFromView, sumNutrients, useItems } from "./items";
 
 // Everything the person can change, to tell whether the form differs from what was loaded
@@ -106,11 +106,11 @@ export default function RecipeEditor({ id, onDone, onBack }: { id?: number; onDo
           <div className="grid grid-cols-2 items-end gap-3 rounded-2xl bg-container p-4">
             <label className={labelClass}>
               Number of servings
-              <input aria-label="Number of servings" type="number" inputMode="decimal" min="0" step="any" value={servings} onChange={(e) => setServings(e.target.value)} className={field} />
+              <input {...noAutofill} aria-label="Number of servings" type="number" inputMode="decimal" min="0" step="any" value={servings} onChange={(e) => setServings(e.target.value)} className={field} />
             </label>
             <label className={labelClass}>
               Weight of one serving (g)
-              <input aria-label="Weight of one serving (g)" type="number" inputMode="decimal" min="0" step="any" placeholder="Optional" value={weight} onChange={(e) => setWeight(e.target.value)} className={field} />
+              <input {...noAutofill} aria-label="Weight of one serving (g)" type="number" inputMode="decimal" min="0" step="any" placeholder="Optional" value={weight} onChange={(e) => setWeight(e.target.value)} className={field} />
             </label>
             <p className="col-span-2 text-xs text-muted">With a weight you can log it in grams or ounces too; without one, by servings.</p>
           </div>
@@ -120,7 +120,7 @@ export default function RecipeEditor({ id, onDone, onBack }: { id?: number; onDo
           <div className="rounded-2xl bg-container p-4">
             <label className={labelClass}>
               Notes
-              <textarea aria-label="Notes" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} className={field} />
+              <textarea {...noAutofill} aria-label="Notes" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} className={field} />
             </label>
           </div>
 

@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Copy, Eye, EyeOff } from "lucide-react";
-import { field, label as labelClass } from "./styles";
+import { field, label as labelClass, noAutofill } from "./styles";
 
 export const COPY_FAILED = "Couldn't copy. Show the key and copy it by hand.";
 
@@ -182,6 +182,7 @@ export function KeyField({
   const box = (
     <div className={`relative ${showLabel ? "mt-1" : ""}`}>
       <input
+        {...noAutofill}
         id={boxId}
         aria-label={label}
         type={shown ? "text" : "password"}

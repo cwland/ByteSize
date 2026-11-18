@@ -5,7 +5,7 @@ import { todayIn } from "../../selectedDay";
 import type { Glp1View, Site } from "../../types";
 import { Sheet } from "../ui/Sheet";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { field, label, primaryButton } from "../ui/styles";
+import { field, label, noAutofill, primaryButton } from "../ui/styles";
 import SitePicker from "./SitePicker";
 
 // Log shot: the day (today unless changed), the dose (the current one), where it went (the suggested site
@@ -61,11 +61,11 @@ export default function ShotSheet({ view, day: startDay, onClose, onSaved }: { v
         <div className="grid grid-cols-2 gap-3">
           <label className={label}>
             Date
-            <input aria-label="Date" type="date" value={day} max={today} onChange={(e) => changeDay(e.target.value)} className={field} />
+            <input {...noAutofill} aria-label="Date" type="date" value={day} max={today} onChange={(e) => changeDay(e.target.value)} className={field} />
           </label>
           <label className={label}>
             Dose (mg)
-            <input aria-label="Dose (mg)" type="number" inputMode="decimal" min="0" step="any" value={dose} onChange={(e) => setDose(e.target.value)} className={field} />
+            <input {...noAutofill} aria-label="Dose (mg)" type="number" inputMode="decimal" min="0" step="any" value={dose} onChange={(e) => setDose(e.target.value)} className={field} />
           </label>
         </div>
         <div>
@@ -76,7 +76,7 @@ export default function ShotSheet({ view, day: startDay, onClose, onSaved }: { v
         </div>
         <label className={label}>
           Note
-          <input aria-label="Note" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="Optional" className={field} />
+          <input {...noAutofill} aria-label="Note" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="Optional" className={field} />
         </label>
         <Notice msg={msg} />
         <button type="button" onClick={save} disabled={busy} className={primaryButton}>

@@ -4,7 +4,7 @@ import { api } from "../../api";
 import { IntegrationCard } from "./IntegrationCard";
 import { KeyField } from "../ui/KeyField";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { field, label, linkButton, primaryButton, secondaryButton } from "../ui/styles";
+import { field, label, linkButton, noAutofill, primaryButton, secondaryButton } from "../ui/styles";
 
 type Provider = "openai" | "anthropic" | "gemini" | "openrouter" | "local";
 // label: shown in the Provider list; name: the service's default name; hint/keyUrl: where its key comes from
@@ -322,6 +322,7 @@ function ServiceForm({
       <div className="flex flex-wrap items-center gap-2">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-on-primary">{index + 1}</span>
         <input
+          {...noAutofill}
           aria-label="Service name"
           value={d.name}
           placeholder={info.name}
@@ -368,7 +369,7 @@ function ServiceForm({
           {(d.provider === "local" || d.baseUrl) && (
             <label className={sub}>
               Server address
-              <input aria-label="Address" placeholder="http://192.168.1.20:11434/v1" value={d.baseUrl ?? ""} onChange={(e) => onChange({ baseUrl: e.target.value })} className={field} />
+              <input {...noAutofill} aria-label="Address" placeholder="http://192.168.1.20:11434/v1" value={d.baseUrl ?? ""} onChange={(e) => onChange({ baseUrl: e.target.value })} className={field} />
             </label>
           )}
 
@@ -411,7 +412,7 @@ function ServiceForm({
           {!models?.all.length ? (
             <label className={sub}>
               Model
-              <input aria-label="Model" value={d.model} placeholder="Validate to choose from a list, or type a name" onChange={(e) => onChange({ model: e.target.value })} className={`${field} font-mono`} />
+              <input {...noAutofill} aria-label="Model" value={d.model} placeholder="Validate to choose from a list, or type a name" onChange={(e) => onChange({ model: e.target.value })} className={`${field} font-mono`} />
             </label>
           ) : (
             <label className={sub}>

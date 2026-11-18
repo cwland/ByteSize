@@ -7,7 +7,7 @@ import { SIDE_EFFECTS, type AfterInjection as AfterData, type Glp1Settings, type
 import { Card } from "../ui/Card";
 import { Confirm } from "../ui/Confirm";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { field, label, linkButton, primaryButton, secondaryButton } from "../ui/styles";
+import { field, label, linkButton, noAutofill, primaryButton, secondaryButton } from "../ui/styles";
 import AfterInjection from "./AfterInjection";
 import ShotSheet from "./ShotSheet";
 import SideEffectsSheet from "./SideEffectsSheet";
@@ -187,12 +187,12 @@ function Setup({ settings, today, onSaved }: { settings: Glp1Settings | null; to
       <div className="flex flex-col gap-3">
         <label className={label}>
           Medication
-          <input aria-label="Medication" value={medication} maxLength={60} onChange={(e) => setMedication(e.target.value)} placeholder="e.g. Ozempic" className={field} />
+          <input {...noAutofill} aria-label="Medication" value={medication} maxLength={60} onChange={(e) => setMedication(e.target.value)} placeholder="e.g. Ozempic" className={field} />
         </label>
         <div className="grid grid-cols-2 gap-3">
           <label className={label}>
             Dose (mg)
-            <input aria-label="Dose (mg)" type="number" inputMode="decimal" min="0" step="any" value={dose} onChange={(e) => setDose(e.target.value)} className={field} />
+            <input {...noAutofill} aria-label="Dose (mg)" type="number" inputMode="decimal" min="0" step="any" value={dose} onChange={(e) => setDose(e.target.value)} className={field} />
           </label>
           <label className={label}>
             Injection day

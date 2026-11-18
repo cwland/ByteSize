@@ -8,7 +8,7 @@ import { notifyWeightChanged } from "../../weight";
 import { Confirm } from "../ui/Confirm";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
-import { field, label as labelClass, primaryButton, secondaryButton } from "../ui/styles";
+import { field, label as labelClass, noAutofill, primaryButton, secondaryButton } from "../ui/styles";
 
 // The server's range (PUT /api/weigh-ins), as the person sees it: rounded inward to 0.1 so that every
 // value the message allows is accepted (30 kg = 66.14 lb -> 66.2; 350 kg = 771.62 lb -> 771.6)
@@ -95,12 +95,13 @@ export default function WeighInSheet({ initial, onClose }: { initial?: WeighIn; 
       >
         <label className={labelClass}>
           Date
-          <input type="date" aria-label="Date" value={day} max={today} disabled={!!initial} onChange={(e) => setDay(e.target.value)} className={`${field} disabled:opacity-70`} />
+          <input {...noAutofill} type="date" aria-label="Date" value={day} max={today} disabled={!!initial} onChange={(e) => setDay(e.target.value)} className={`${field} disabled:opacity-70`} />
         </label>
         {!initial && base && <p className="-mt-1 text-sm text-subtle">You already weighed in that day — saving replaces it</p>}
         <label className={labelClass}>
           {`Weight (${unit})`}
           <input
+            {...noAutofill}
             type="number"
             inputMode="decimal"
             step="0.1"
@@ -116,7 +117,7 @@ export default function WeighInSheet({ initial, onClose }: { initial?: WeighIn; 
         </label>
         <label className={labelClass}>
           Note (optional)
-          <input type="text" aria-label="Note (optional)" maxLength={500} value={note} onChange={(e) => {
+          <input {...noAutofill} type="text" aria-label="Note (optional)" maxLength={500} value={note} onChange={(e) => {
               touched.current.note = true;
               setNote(e.target.value);
             }} className={field} />

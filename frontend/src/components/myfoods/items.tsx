@@ -13,7 +13,7 @@ import FoodRow, { Tag, tagOf } from "../log/FoodRow";
 import Pills from "../log/Pills";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
-import { field } from "../ui/styles";
+import { field, noAutofill } from "../ui/styles";
 
 // The pieces the recipe and quick meal editors share (and Add Food's "Track meal"): an editable list of
 // foods with amounts, live totals, and a food search to add one.
@@ -210,7 +210,7 @@ export function FoodPicker({ title, allowed, onAdd, onClose }: { title: string; 
       bodyLabel="Foods"
       top={
         <>
-          <input type="search" aria-label="Search foods" autoFocus placeholder="Search foods" value={query} onChange={(e) => setQuery(e.target.value)} className={`${field} mt-0 rounded-full`} />
+          <input {...noAutofill} type="search" aria-label="Search foods" autoFocus placeholder="Search foods" value={query} onChange={(e) => setQuery(e.target.value)} className={`${field} mt-0 rounded-full`} />
           <Notice msg={msg} />
         </>
       }

@@ -5,7 +5,7 @@ import type { FoodResult, MenuHit, MenuSearch, RestaurantFavourites, RestaurantS
 import FoodPic from "./FoodPic";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
-import { field, secondaryButton } from "../ui/styles";
+import { field, noAutofill, secondaryButton } from "../ui/styles";
 
 // What the Restaurants view keeps while the person opens an item and comes back (owned by Add Food):
 // the words, the last answer, and every item already fetched, so nothing is looked up twice.
@@ -195,6 +195,7 @@ export default function RestaurantsView({
           }}
         >
           <input
+            {...noAutofill}
             type="search"
             aria-label="Search restaurants"
             autoFocus

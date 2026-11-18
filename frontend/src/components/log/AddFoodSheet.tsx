@@ -454,7 +454,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
     return (
       <Sheet tall label={label} heading="Describe it" onClose={onClose} onBack={back}>
         <div className="flex flex-col gap-3">
-          <textarea aria-label="Describe the food" autoFocus rows={3} placeholder="A large banana" value={describe} onChange={(e) => setDescribe(e.target.value)} className={field} />
+          <textarea {...noAutofill} aria-label="Describe the food" autoFocus rows={3} placeholder="A large banana" value={describe} onChange={(e) => setDescribe(e.target.value)} className={field} />
           <Notice msg={msg} />
           <div className="flex flex-wrap items-center gap-3">
             <button type="button" disabled={!describe.trim() || !!estimating.step} onClick={() => void estimate(from)} className={primaryButton}>
@@ -498,7 +498,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
       top={
         <>
       <div className="flex items-center gap-2">
-        <input type="search" aria-label="Search foods" autoFocus placeholder="Search and track food" value={query} onChange={(e) => setQuery(e.target.value)} className={`${field} mt-0 flex-1 rounded-full`} />
+        <input {...noAutofill} type="search" aria-label="Search foods" autoFocus placeholder="Search and track food" value={query} onChange={(e) => setQuery(e.target.value)} className={`${field} mt-0 flex-1 rounded-full`} />
         <button
           type="button"
           aria-label="Barcode"

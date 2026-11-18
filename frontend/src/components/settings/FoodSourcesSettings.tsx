@@ -5,7 +5,7 @@ import { IntegrationCard } from "./IntegrationCard";
 import { KeyField } from "../ui/KeyField";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Choice } from "../ui/Choice";
-import { field, primaryButton, secondaryButton } from "../ui/styles";
+import { field, noAutofill, primaryButton, secondaryButton } from "../ui/styles";
 
 type Source = "usda" | "spoonacular" | "fatsecret";
 export type AnySource = Source | "off";
@@ -251,6 +251,7 @@ function HoursField({ source, sources }: { source: AnySource; sources: SourceKey
           Keep results for
         </label>
         <input
+          {...noAutofill}
           id={id}
           type="number"
           inputMode="numeric"
