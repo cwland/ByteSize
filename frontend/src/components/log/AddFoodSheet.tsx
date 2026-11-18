@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CalendarDays, Camera, ChevronDown, ImageUp, Plus, ScanBarcode, Sparkles, Utensils } from "lucide-react";
 import { ApiError, api } from "../../api";
 import { formatAmount } from "../../amounts";
@@ -19,7 +19,7 @@ import CuluryTrack from "./CuluryTrack";
 import RestaurantsView, { newRestaurantsMemo } from "./RestaurantsView";
 import PhotoPicker, { MAX_PHOTOS, analyzePhotos, usePhotoInput } from "./PhotoPicker";
 import FoodPic from "./FoodPic";
-import { AiWorking, useEstimate, type Estimate } from "./useEstimate";
+import { AiWorking, useEstimate, worthAsking, type Estimate } from "./useEstimate";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
 import { field, noAutofill, primaryButton, secondaryButton } from "../ui/styles";
@@ -125,6 +125,17 @@ function MealTitle({ meal, day, onPick }: { meal: Meal; day: string; onPick: (m:
         </ul>
       )}
     </div>
+  );
+}
+
+// A heading that takes focus when it appears ("Did you mean …?"), so screen readers read the question
+function FocusedHeading({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLHeadingElement>(null);
+  useEffect(() => ref.current?.focus(), []);
+  return (
+    <h3 ref={ref} tabIndex={-1} className="text-lg font-bold outline-none">
+      {children}
+    </h3>
   );
 }
 
@@ -296,7 +307,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
     try {
       const out = await estimating.run(describe);
       if (!out) return; // cancelled
-      setView(out.assumed ? { k: "describe", from, guess: out } : { k: "form", mode: { kind: "create" }, draft: draftOf(out.food) });
+      setView(worthAsking(describe, out) ? { k: "describe", from, guess: out } : { k: "form", mode: { kind: "create" }, draft: draftOf(out.food) });
     } catch (e) {
       setMsg(errorMsg(e));
     }
@@ -419,7 +430,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
     return (
       <Sheet tall label={label} heading="Describe it" onClose={onClose} onBack={back}>
         <div className="flex flex-col gap-3">
-          <h3 className="text-lg font-bold">Did you mean {interpretedAs ?? food.name}?</h3>
+          <FocusedHeading>Did you mean {interpretedAs ?? food.name}?</FocusedHeading>
           <div className="flex items-center gap-3 rounded-2xl bg-pressed p-3">
             <FoodPic icon={food.icon} imageUrl={food.imageUrl} />
             <div className="min-w-0 flex-1">

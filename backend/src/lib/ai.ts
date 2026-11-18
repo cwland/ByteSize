@@ -120,7 +120,8 @@ export type AiProgress =
   | { kind: "failover"; from: string; to: string; reason: string };
 // reasoning: how much an OpenRouter model may think first ("low" leaves the room for the answer)
 // userId: whose request it was, so their AI failures show in their own Settings › Logs
-type StreamOpts = { stream?: boolean; signal?: AbortSignal; onProgress?: (p: AiProgress) => void; reasoning?: "low"; userId?: number | null };
+// moreLeft: other services are still to be asked after these (a second try): a failure here isn't the last word
+type StreamOpts = { stream?: boolean; signal?: AbortSignal; onProgress?: (p: AiProgress) => void; reasoning?: "low"; userId?: number | null; moreLeft?: boolean };
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
 const trimSlash = (s: string) => s.replace(/\/+$/, "");
@@ -284,9 +285,9 @@ export class AiService {
         if (next) onProgress?.({ kind: "failover", from: sv.name, to: next.name, reason: (e as Error).message });
         await logEvent(this.db, {
           category: "ai",
-          level: next ? "warning" : "error",
+          level: next || opts.moreLeft ? "warning" : "error",
           source: sv.name,
-          event: next ? `${sv.name} didn't answer, asking ${next.name} instead` : services.length > 1 ? `${sv.name} didn't answer, and no AI service is left to ask` : `${sv.name} didn't answer`,
+          event: next ? `${sv.name} didn't answer, asking ${next.name} instead` : opts.moreLeft ? `${sv.name} didn't answer the second try` : services.length > 1 ? `${sv.name} didn't answer, and no AI service is left to ask` : `${sv.name} didn't answer`,
           detail: (e as Error).message,
           userId: opts.userId ?? null,
         });
@@ -547,7 +548,8 @@ export class AiService {
       let json = readable(text);
       if (!json && isCutOff(stop)) {
         try {
-          ({ text, stop } = await this.chatWithFailover([service], system, user, maxTokens * 2, waitMs, opts.images, undefined, how));
+          const moreLeft = left.findIndex((sv) => sv.id === service.id) < left.length - 1;
+          ({ text, stop } = await this.chatWithFailover([service], system, user, maxTokens * 2, waitMs, opts.images, opts.onProgress, { ...how, moreLeft }));
           json = readable(text);
         } catch (e) {
           if (e instanceof AiStopped || !(e instanceof AiError)) throw e;

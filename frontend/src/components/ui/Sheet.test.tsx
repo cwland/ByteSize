@@ -58,4 +58,13 @@ describe("Sheet", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
+
+  it("Escape cancels an are-you-sure, as Cancel does", async () => {
+    const onCancel = vi.fn();
+    const onConfirm = vi.fn();
+    render(<Confirm title="Delete entry?" confirmLabel="Delete" onConfirm={onConfirm} onCancel={onCancel} />);
+    await userEvent.setup().keyboard("{Escape}");
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
 });

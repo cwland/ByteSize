@@ -176,7 +176,18 @@ export async function setupTestApp(
     resetRestaurantState(app);
     const rows = await db.execute<{ tablename: string }>(sql`select tablename from pg_tables where schemaname = 'public'`);
     const names = rows.rows.map((r) => `"${r.tablename}"`);
-    if (names.length) await db.execute(sql.raw(`truncate ${names.join(", ")} restart identity cascade`));
+    // A fire-and-forget write from the test before (a session touch, a log line) can still be running and
+    // deadlock with the truncate (Postgres 40P01): Postgres cancels one side, so try again
+    for (let attempt = 1; names.length; attempt++) {
+      try {
+        await db.execute(sql.raw(`truncate ${names.join(", ")} restart identity cascade`));
+        break;
+      } catch (e) {
+        const code = (e as { code?: string; cause?: { code?: string } }).cause?.code ?? (e as { code?: string }).code;
+        if (code !== "40P01" || attempt >= 5) throw e;
+        await new Promise((r) => setTimeout(r, 50 * attempt));
+      }
+    }
     resetLoginLockouts();
     resetSessionTouches();
     resetPasskeyChallenges();

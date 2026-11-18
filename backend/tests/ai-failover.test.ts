@@ -166,6 +166,36 @@ describe("an answer that can't be read", () => {
     ]);
   });
 
+  it("a streamed ask keeps showing progress while the cut-off answer is asked again", async () => {
+    await t.api("PUT", "/api/settings/ai", settings());
+    let n = 0;
+    const piece = (content: string, finish: string | null = null) => `data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: finish }] })}`;
+    t.ai.respond = (() =>
+      n++ === 0 ? { status: 200, sse: [piece('{"items": ['), piece("", "length")] } : { status: 200, sse: [piece('{"ok": '), piece("true}"), piece("", "stop")] }) as any;
+    const seen: string[] = [];
+    const r = await t.app.ai.ask("food", "system", "hello", { stream: true, maxTokens: 100, onProgress: (p) => seen.push(p.kind) });
+    expect(r.json).toEqual({ ok: true });
+    expect(t.ai.calls.map((c) => c.body.max_tokens)).toEqual([100, 200]);
+    // the second try is announced and its writing shown too
+    expect(seen.filter((k) => k === "asking")).toHaveLength(2);
+    expect(seen.lastIndexOf("writing")).toBeGreaterThan(seen.lastIndexOf("asking"));
+  });
+
+  it("a second try that fails is logged as a warning when another service is still to be asked", async () => {
+    await t.api("PUT", "/api/settings/ai", settings());
+    let n = 0;
+    t.ai.respond = ((url: string) =>
+      serverOf(url) === "home"
+        ? n++ === 0
+          ? { status: 200, json: { choices: [{ finish_reason: "length", message: { content: "" } }] } }
+          : { status: 503, json: { error: { message: "loading model" } } }
+        : { status: 200, json: { choices: [{ finish_reason: "stop", message: { content: '{"ok": true}' } }] } }) as any;
+    const r = await t.app.ai.ask("food", "system", "hello");
+    expect(r.service.name).toBe("Cloud backup");
+    const logs = (await t.app.db.execute(sql`select level, source, event from app_log where category = 'ai' order by id`)).rows as { level: string; source: string; event: string }[];
+    expect(logs.filter((l) => l.source === "Home AI").map((l) => l.level)).toEqual(["warning", "warning"]);
+  });
+
   it("not JSON but not cut off: the same service isn't asked again", async () => {
     await t.api("PUT", "/api/settings/ai", settings());
     t.ai.respond = ((url: string) =>

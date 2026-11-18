@@ -101,7 +101,12 @@ export async function apiLines<T = unknown>(method: string, path: string, body: 
   let answer: Record<string, unknown> | null = null;
   const take = (text: string) => {
     if (!text.trim()) return;
-    const line = JSON.parse(text) as Record<string, unknown>;
+    let line: Record<string, unknown>;
+    try {
+      line = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      throw unreachable(); // not ByteSize's answer (e.g. a proxy's error page)
+    }
     if ("progress" in line) opts.onLine?.(line);
     else answer = line;
   };

@@ -67,7 +67,8 @@ export default async function foodRoutes(app: FastifyInstance) {
         line({ error: "Something went wrong", status: 500 });
       })
       .finally(() => out.end());
-    return reply.type("application/x-ndjson").header("cache-control", "no-store").send(out);
+    // x-accel-buffering: nginx-style reverse proxies pass each line on at once instead of holding the answer back
+    return reply.type("application/x-ndjson").header("cache-control", "no-store").header("x-accel-buffering", "no").send(out);
   });
 
   app.post("/api/ai/fill-gaps", async (req) => {

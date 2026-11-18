@@ -47,18 +47,28 @@ export function useEstimate() {
 }
 
 // The line beside the estimate button while it works: a turning wheel (a pulse with reduced motion), what
-// it's doing (never which AI service), and Cancel
+// it's doing (never which AI service), and Cancel. The status region is always there (empty when idle), so
+// screen readers announce the text when it appears.
 export function AiWorking({ step, onCancel }: { step: EstimateStep | null; onCancel: () => void }) {
-  if (!step) return null;
   return (
     <div className="flex flex-wrap items-center gap-2">
       <p role="status" className="flex items-center gap-2 text-sm font-semibold text-subtle">
-        <Loader2 aria-hidden="true" className="size-5 shrink-0 animate-spin text-action motion-reduce:animate-pulse" />
-        {step === "another" ? "Still estimating… trying another AI" : "Estimating… asking AI"}
+        {step && (
+          <>
+            <Loader2 aria-hidden="true" className="size-5 shrink-0 animate-spin text-action motion-reduce:animate-pulse" />
+            {step === "another" ? "Still estimating… trying another AI" : "Estimating… asking AI"}
+          </>
+        )}
       </p>
-      <button type="button" onClick={onCancel} className={`${secondaryButton} px-4 py-1.5 text-sm`}>
-        Cancel
-      </button>
+      {step && (
+        <button type="button" onClick={onCancel} className={`${secondaryButton} px-4 py-1.5 text-sm`}>
+          Cancel
+        </button>
+      )}
     </div>
   );
 }
+
+// "Cherios!" and "  cherios " are the same words: only a real change of words is worth a "Did you mean"
+const wordsOf = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+export const worthAsking = (typed: string, out: Estimate) => !!out.assumed && wordsOf(out.interpretedAs ?? out.food.name) !== wordsOf(typed);

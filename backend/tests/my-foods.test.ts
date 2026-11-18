@@ -194,6 +194,9 @@ describe("AI estimate", () => {
     const r = await t.api("POST", "/api/ai/estimate", { text: "a chicken burrito" }, { accept: "application/x-ndjson" });
     expect(r.status).toBe(200);
     expect(r.headers["content-type"]).toMatch(/application\/x-ndjson/);
+    // not held back by a reverse proxy (nginx buffers answers unless told not to), never cached
+    expect(r.headers["x-accel-buffering"]).toBe("no");
+    expect(r.headers["cache-control"]).toBe("no-store");
     const lines = String(r.body).trim().split("\n").map((l) => JSON.parse(l));
     expect(lines).toEqual([{ progress: "another" }, { food: expect.objectContaining({ name: "Chicken burrito" }), assumed: false }]);
     expect(String(r.body)).not.toMatch(/Home AI|Cloud/); // no service names

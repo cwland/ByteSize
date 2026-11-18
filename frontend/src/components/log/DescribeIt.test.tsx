@@ -98,7 +98,7 @@ describe("Describe it", () => {
     await user.click(within(sheet).getByRole("button", { name: "Cancel" }));
 
     expect(server.sent.find((s) => s.path === "/api/ai/estimate")!.signal?.aborted).toBe(true);
-    expect(within(sheet).queryByRole("status")).not.toBeInTheDocument();
+    expect(within(sheet).getByRole("status")).toBeEmptyDOMElement(); // the live region stays, emptied
     expect(within(sheet).queryByRole("alert")).not.toBeInTheDocument();
     expect(within(sheet).getByRole("textbox", { name: "Describe the food" })).toHaveValue("cherios");
     expect(within(sheet).getByRole("button", { name: "Estimate" })).toBeEnabled();
@@ -109,12 +109,37 @@ describe("Describe it", () => {
     open(() => ({ food: cheerios, assumed: true, interpretedAs: "Cheerios" }));
     const user = userEvent.setup();
     const sheet = await describeIt(user, "cherios");
-    expect(await within(sheet).findByRole("heading", { name: "Did you mean Cheerios?" })).toBeInTheDocument();
+    const question = await within(sheet).findByRole("heading", { name: "Did you mean Cheerios?" });
+    expect(question).toHaveFocus(); // screen readers hear the question at once
+    expect(question).toHaveAttribute("tabindex", "-1");
     expect(sheet).toHaveTextContent("1 cup"); // the estimate is shown under the question
     expect(sheet).toHaveTextContent("100");
     await user.click(within(sheet).getByRole("button", { name: "Yes" }));
     expect(await within(sheet).findByRole("heading", { name: "New food" })).toBeInTheDocument();
     expect(within(sheet).getByLabelText("Name")).toHaveValue("Cheerios");
+  });
+
+  it("the status line is there before it starts (an empty live region), so screen readers announce the change", async () => {
+    open(() => new Promise(() => {}));
+    const user = userEvent.setup();
+    const card = await screen.findByRole("region", { name: "Snacks" });
+    await user.click(within(card).getByRole("button", { name: "Add Food" }));
+    const sheet = screen.getByRole("dialog", { name: "Add food to Snacks" });
+    await user.click(within(sheet).getByRole("button", { name: "Describe it" }));
+    const status = within(sheet).getByRole("status");
+    expect(status).toBeEmptyDOMElement();
+    await user.type(within(sheet).getByRole("textbox", { name: "Describe the food" }), "toast");
+    await user.click(within(sheet).getByRole("button", { name: "Estimate" }));
+    expect(within(sheet).getByRole("status")).toBe(status); // the same element, now with the text
+    expect(status).toHaveTextContent("Estimating… asking AI");
+  });
+
+  it("no Did you mean when the AI only tidied what was typed (case, spacing, punctuation)", async () => {
+    open(() => ({ food: { ...cheerios, name: "Cherios" }, assumed: true, interpretedAs: "Cherios!" }));
+    const user = userEvent.setup();
+    const sheet = await describeIt(user, "  cherios ");
+    expect(await within(sheet).findByRole("heading", { name: "New food" })).toBeInTheDocument();
+    expect(within(sheet).queryByRole("heading", { name: /Did you mean/ })).not.toBeInTheDocument();
   });
 
   it("No, change it: back to the text box with the person's words, ready to edit", async () => {
@@ -137,7 +162,7 @@ describe("Describe it", () => {
     answer.send({ error: "Couldn't work out what that is. Try describing it differently.", status: 422 });
     answer.end();
     expect(await within(sheet).findByRole("alert")).toHaveTextContent("Couldn't work out what that is. Try describing it differently.");
-    expect(within(sheet).queryByRole("status")).not.toBeInTheDocument();
+    expect(within(sheet).getByRole("status")).toBeEmptyDOMElement();
     expect(within(sheet).getByRole("button", { name: "Estimate" })).toBeEnabled();
   });
 

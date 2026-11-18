@@ -948,7 +948,7 @@ it differently."
 loosely, missing words); only give up when nothing sensible fits. The answer says what it took the text to mean
 (`name`) and whether that differs from what was typed in a way worth confirming (`assumed: true` plus
 `interpretedAs`, e.g. "Cheerios"). When `assumed` is true, the estimate is shown with **Did you mean Cheerios?**
-above it and two buttons: **Yes** (carries on to Track food with that estimate) and **No, change it** (back to the
+above it and two buttons: **Yes** (Yes carries on with that estimate the same way as any estimate: the New food form filled in, then Track food) and **No, change it** (back to the
 text box with the person's words, ready to edit). When the AI truly can't guess, it answers so and the person sees
 "Couldn't work out what that is. Try describing it differently."
 

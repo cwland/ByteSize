@@ -148,7 +148,7 @@ describe("Add food with Culury", () => {
     expect(within(sheet).getByRole("button", { name: "Estimate with AI" })).toBeDisabled();
     await user.click(within(sheet).getByRole("button", { name: "Cancel" }));
     expect(server.sent.find((s) => s.path === "/api/ai/estimate")!.signal?.aborted).toBe(true);
-    expect(within(sheet).queryByRole("status")).toBeNull();
+    expect(within(sheet).getByRole("status")).toBeEmptyDOMElement();
     expect(within(sheet).queryByRole("alert")).toBeNull();
     expect(within(sheet).getByRole("button", { name: "Estimate with AI" })).toBeEnabled();
   });
