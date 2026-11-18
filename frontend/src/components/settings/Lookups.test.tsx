@@ -101,9 +101,9 @@ describe("Keep results for (hours) and the FatSecret plan", () => {
     const fs = await screen.findByRole("region", { name: "FatSecret" });
     const group = within(fs).getByRole("radiogroup", { name: "FatSecret plan" });
     expect(within(group).getByRole("radio", { name: "Basic (free)" })).toHaveAttribute("aria-checked", "true");
-    await userEvent.click(within(group).getByRole("radio", { name: "Premier (adds barcodes)" }));
+    await userEvent.click(within(group).getByRole("radio", { name: "Premier (barcodes)" }));
     expect(server.writes().at(-1)).toMatchObject({ body: { fatsecretPlan: "premier" } });
-    await waitFor(() => expect(within(group).getByRole("radio", { name: "Premier (adds barcodes)" })).toHaveAttribute("aria-checked", "true"));
+    await waitFor(() => expect(within(group).getByRole("radio", { name: "Premier (barcodes)" })).toHaveAttribute("aria-checked", "true"));
     await waitFor(() => expect(cells(orderRow("Barcode"))).toEqual(["Open Food Facts", "FatSecret", "USDA"]));
   });
 
@@ -135,6 +135,8 @@ describe("Saved barcodes (admin)", () => {
     expect(within(card).getByText("Page 1 of 2")).toBeInTheDocument();
     await userEvent.click(within(card).getByRole("button", { name: "Next page" }));
     expect(await within(card).findByText("Snack 50")).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 400)); // past the search box's pause: the page stays
+    expect(within(card).getByText("Snack 50")).toBeInTheDocument();
     expect(server.sent.at(-1)!.path).toBe("/api/admin/saved-barcodes?page=2");
     expect(within(card).getByRole("button", { name: "Next page" })).toBeDisabled();
   });

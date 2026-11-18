@@ -260,7 +260,7 @@ function HoursField({ source, sources }: { source: AnySource; sources: SourceKey
           aria-label={`${title}: keep results for (hours)`}
           value={shown}
           onChange={(e) => setValue(e.target.value)}
-          className={`${field} mt-0 w-24`}
+          className={`${field.replace("w-full", "")} mt-0 w-24`}
         />
         <span className="text-sm">hours</span>
         <button type="submit" aria-label={`Save ${title} hours`} className={secondaryButton} disabled={busy || value === null}>
@@ -293,7 +293,7 @@ function FatSecretPlanChoice({ sources }: { sources: SourceKeys }) {
         value={fs?.plan ?? null}
         options={[
           { value: "basic", label: "Basic (free)" },
-          { value: "premier", label: "Premier (adds barcodes)" },
+          { value: "premier", label: "Premier (barcodes)" },
         ]}
         onChange={(p) => void choose(p)}
       />

@@ -26,12 +26,14 @@ export function SavedBarcodes() {
 
   // The search waits for a pause in typing, and starts again at page 1
   useEffect(() => {
+    const next = typed.trim();
+    if (next === q) return; // nothing new to search (e.g. on first show): the page stays
     const t = setTimeout(() => {
-      setQ(typed.trim());
+      setQ(next);
       setPage(1);
     }, 250);
     return () => clearTimeout(t);
-  }, [typed]);
+  }, [typed, q]);
 
   useEffect(() => {
     let live = true;
