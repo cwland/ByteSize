@@ -38,7 +38,7 @@ import { scheduleUploadCleanup, setPhotoSecret } from "./lib/photos.js";
 import { MailService, type EmailConfig, type TransportFactory } from "./lib/mail.js";
 import emailSettingsRoutes from "./routes/settings-email.js";
 import passwordResetRoutes from "./routes/password-reset.js";
-import oauthRoutes from "./routes/oauth.js";
+import oauthRoutes, { appOriginsFromEnv } from "./routes/oauth.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -51,6 +51,7 @@ declare module "fastify" {
     sleep: (ms: number) => Promise<void>; // waits (the restaurant queue); tests record instead of waiting
     mail: MailService; // Settings › Email: forgot-password codes
     oauthFetch?: typeof fetch; // the OAuth provider (tests swap in a pretend one)
+    appOrigins: string[]; // the app's own addresses from .env (APP_URL, PASSKEY_ORIGINS)
   }
   interface FastifyRequest {
     auth?: { userId: number; sessionId: number; isAdmin: boolean };
@@ -89,6 +90,7 @@ export interface AppOptions {
   emailEnv?: EmailConfig | null; // email settings from .env (used when none are saved in the app)
   mailTransport?: TransportFactory; // tests swap in a fake: no email is ever sent
   oauthFetch?: typeof fetch; // tests: a pretend OAuth provider
+  appOrigins?: string[]; // default: APP_URL and PASSKEY_ORIGINS from .env
 }
 
 export function buildApp(opts: AppOptions): FastifyInstance {
@@ -101,6 +103,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.decorate("sleep", opts.sleep ?? ((ms: number) => new Promise<void>((res) => setTimeout(res, ms))));
   app.decorate("mail", new MailService(opts.db, opts.jwtSecret, opts.emailEnv ?? null, opts.mailTransport, app.now));
   app.decorate("oauthFetch", opts.oauthFetch);
+  app.decorate("appOrigins", opts.appOrigins ?? appOriginsFromEnv(process.env));
+  app.addHook("onClose", async () => app.mail.idle()); // emails still on their way go out first
   setPhotoSecret(opts.jwtSecret);
   app.decorate("dataDir", path.resolve(opts.dataDir ?? process.env.DATA_DIR ?? "data/app"));
 

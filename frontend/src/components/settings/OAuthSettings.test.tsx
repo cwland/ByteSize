@@ -53,6 +53,26 @@ describe("Settings › Security › OAuth sign-in (admin)", () => {
     expect(server.writes().find((w) => w.method === "PUT")?.body).not.toHaveProperty("clientSecret");
   });
 
+  it("with the app's address set on the server, the redirect URI uses it", async () => {
+    fakeServer({ "GET /api/settings/oauth": () => ({ settings: on, redirectUri: "https://food.example.com/api/auth/oauth/callback" }) });
+    renderWithSession(<OAuthSettings />);
+    expect(await screen.findByText("https://food.example.com/api/auth/oauth/callback")).toBeInTheDocument();
+    expect(screen.queryByText(`${window.location.origin}/api/auth/oauth/callback`)).not.toBeInTheDocument();
+  });
+
+  it("a new provider: says OAuth only was turned off", async () => {
+    fakeServer({
+      "GET /api/settings/oauth": () => ({ settings: { ...on, oauthOnly: true } }),
+      "PUT /api/settings/oauth": () => ({ settings: { ...on, issuerUrl: "https://new.lan/o/bs", oauthOnly: false }, message: "The provider changed, so OAuth only is off. Link your account there, then turn OAuth only on again." }),
+    });
+    renderWithSession(<OAuthSettings />);
+    await userEvent.clear(await screen.findByLabelText("Issuer URL"));
+    await userEvent.type(screen.getByLabelText("Issuer URL"), "https://new.lan/o/bs");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(/The provider changed, so OAuth only is off/)).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "OAuth only" })).toHaveAttribute("aria-checked", "false");
+  });
+
   it("OAuth only: the server's refusal (link your account first) is shown", async () => {
     fakeServer({
       "GET /api/settings/oauth": () => ({ settings: on }),

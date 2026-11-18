@@ -455,7 +455,7 @@ describe("per-user isolation", () => {
     const origin = "https://bytesize.example.com";
     const start = await t.app.inject({ method: "POST", url: "/api/auth/oauth/link/start", payload: {}, headers: { origin, authorization: `Bearer ${a.token}` } });
     const back = idp.approve(start.json().url, { sub: "anna-at-idp", email: "anna@corp.example" });
-    await t.app.inject({ method: "GET", url: back.pathname + back.search });
+    await t.app.inject({ method: "GET", url: back.pathname + back.search, headers: { cookie: String(start.headers["set-cookie"]).split(";")[0] } });
     expect((await a.as("GET", "/api/auth/oauth")).body.linked).toMatchObject({ email: "anna@corp.example" });
     expect((await b.as("GET", "/api/auth/oauth")).body.linked).toBeNull();
     await b.as("POST", "/api/auth/oauth/unlink");
@@ -465,6 +465,7 @@ describe("per-user isolation", () => {
     await b.as("PATCH", "/api/profile", { email: "ben@example.com" });
     t.mail.sent.length = 0;
     await t.app.inject({ method: "POST", url: "/api/auth/forgot", payload: { email: "ben@example.com" } });
+    await t.app.mail.idle();
     const code = /(\d{6})/.exec(t.mail.sent[0].subject)![1];
     const r = await t.app.inject({ method: "POST", url: "/api/auth/reset", payload: { email: "anna@example.com", code, newPassword: "taken-over-1" } });
     expect(r.statusCode).toBe(400);

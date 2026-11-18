@@ -2,6 +2,7 @@
 //   npm run reset-password                       the first admin: prints a new random password once
 //   npm run reset-password -- <username>         that person
 //   npm run reset-password -- <username> --password   type the new password instead (or set NEW_PASSWORD)
+// A password is never given as an argument (it would stay in the shell history), and arguments are never printed.
 //   docker compose exec bytesize npm run reset-password -- <username>
 // Signs that person out everywhere, and goes in Settings › Logs.
 import "dotenv/config";
@@ -17,6 +18,19 @@ import { logEvent } from "../lib/appLog.js";
 import { revokeAll } from "../lib/sessions.js";
 import { normalizeUsername } from "../lib/users.js";
 
+export const USAGE =
+  "Usage: npm run reset-password -- [username] [--password]\n" +
+  "Without a username: the first admin. Without --password: a new random password is printed once.\n" +
+  "The new password is never given as an argument: --password asks for it, or set NEW_PASSWORD.";
+
+/** At most one username and --password; anything else is refused (without repeating it: it may be a password). */
+export function parseResetArgs(args: string[]) {
+  const names = args.filter((a) => !a.startsWith("-"));
+  const flags = args.filter((a) => a.startsWith("-"));
+  if (names.length > 1 || flags.some((f) => f !== "--password")) throw new Error(USAGE);
+  return { username: names[0] as string | undefined, typePassword: flags.includes("--password") };
+}
+
 /** Sets a new password (the one given, or a random one) and ends the account's sessions. */
 export async function resetPassword(db: Db, opts: { username?: string; password?: string }) {
   const all = await db.select().from(users).orderBy(asc(users.id));
@@ -24,7 +38,7 @@ export async function resetPassword(db: Db, opts: { username?: string; password?
   const user = wanted ? all.find((u) => u.username === wanted) : all.find((u) => u.isAdmin);
   if (!user) {
     if (!wanted) throw new Error("No admin account yet. Open ByteSize to set one up.");
-    throw new Error(`No account "${wanted}". Accounts: ${all.map((u) => u.username).join(", ") || "none yet"}`);
+    throw new Error(`No account has that username. Accounts: ${all.map((u) => u.username).join(", ") || "none yet"}`);
   }
   const generated = opts.password === undefined;
   const password = opts.password ?? crypto.randomBytes(15).toString("base64url");
@@ -58,13 +72,19 @@ async function main() {
     console.error("DATABASE_URL is not set");
     process.exit(1);
   }
-  const args = process.argv.slice(2);
-  const username = args.find((a) => !a.startsWith("--"));
+  let args: ReturnType<typeof parseResetArgs>;
+  try {
+    args = parseResetArgs(process.argv.slice(2));
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exit(1);
+  }
+  const { username, typePassword } = args;
   const { db, pool } = createDb(process.env.DATABASE_URL);
   try {
     await runMigrations(db);
     let password: string | undefined;
-    if (args.includes("--password")) {
+    if (typePassword) {
       password = process.env.NEW_PASSWORD;
       if (password === undefined) {
         password = await ask("New password: ");

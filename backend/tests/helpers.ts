@@ -115,7 +115,8 @@ export async function setupTestApp(
   };
   // Fake email: nothing is ever sent. mail.sent records each message (with the settings it went out with);
   // mail.failNext makes the next send (or connection check) fail with that message.
-  const mail = { sent: [] as (MailMessage & { from: string; config: EmailConfig })[], failNext: null as string | null };
+  // mail.gate: while set, each send waits for it (a slow mail server).
+  const mail = { sent: [] as (MailMessage & { from: string; config: EmailConfig })[], failNext: null as string | null, gate: null as Promise<void> | null };
   const failing = () => {
     const why = mail.failNext;
     mail.failNext = null;
@@ -126,13 +127,14 @@ export async function setupTestApp(
       failing();
     },
     async sendMail(m) {
+      if (mail.gate) await mail.gate;
       failing();
       mail.sent.push({ ...m, config });
     },
   });
   // Files (uploads, backups) go to a temp folder, removed on close. The daily backup is off unless a test asks for it.
   const dataDir = mkdtempSync(path.join(tmpdir(), "bytesize-test-"));
-  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, foodFetch, now: () => clock.date ?? new Date(), sleep, dataDir, backupSchedule: false, mailTransport, emailEnv: null, ...opts });
+  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, foodFetch, now: () => clock.date ?? new Date(), sleep, dataDir, backupSchedule: false, mailTransport, emailEnv: null, appOrigins: [], ...opts });
   if (beforeReady) await beforeReady(app);
   await app.ready();
   let token = "";
@@ -166,6 +168,8 @@ export async function setupTestApp(
     sleeps.length = 0;
     mail.sent.length = 0;
     mail.failNext = null;
+    mail.gate = null;
+    await app.mail.idle();
     app.mail.forgetTests();
     resetForgotLimits();
     resetOAuthCache();

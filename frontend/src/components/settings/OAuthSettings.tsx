@@ -23,7 +23,8 @@ interface OAuthView {
   ready: boolean;
 }
 
-const redirectUri = () => `${window.location.origin}/api/auth/oauth/callback`;
+// The server's, when ByteSize's address is set (Settings › Email, APP_URL); otherwise this browser's address
+const ownRedirectUri = () => `${window.location.origin}/api/auth/oauth/callback`;
 
 /** The provider's details (admin only). */
 export function OAuthSettings() {
@@ -37,6 +38,7 @@ export function OAuthSettings() {
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [redirectUri, setRedirectUri] = useState<string | null>(null);
 
   const show = (s: OAuthView) => {
     setSaved(s);
@@ -48,7 +50,13 @@ export function OAuthSettings() {
     setOauthOnly(s.oauthOnly);
   };
   useEffect(() => {
-    api<{ settings: OAuthView }>("GET", "/api/settings/oauth").then((r) => show(r.settings), (e) => setMsg(errorMsg(e)));
+    api<{ settings: OAuthView; redirectUri?: string | null }>("GET", "/api/settings/oauth").then(
+      (r) => {
+        setRedirectUri(r.redirectUri ?? null);
+        show(r.settings);
+      },
+      (e) => setMsg(errorMsg(e))
+    );
   }, []);
 
   async function run(work: () => Promise<Msg>) {
@@ -67,13 +75,14 @@ export function OAuthSettings() {
     e.preventDefault();
     void run(async () => {
       const body = { enabled, providerName: name.trim(), issuerUrl: issuer.trim() || null, clientId: clientId.trim(), ...(secret ? { clientSecret: secret } : {}), oauthOnly };
-      show((await api<{ settings: OAuthView }>("PUT", "/api/settings/oauth", body)).settings);
-      return { ok: true, text: "Saved" };
+      const r = await api<{ settings: OAuthView; message?: string }>("PUT", "/api/settings/oauth", body);
+      show(r.settings);
+      return { ok: true, text: r.message ?? "Saved" };
     });
   };
   const test = () => run(async () => ({ ok: true, text: (await api<{ message: string }>("POST", "/api/settings/oauth/test")).message }));
   const copyUri = async () => {
-    if (await copyText(redirectUri())) {
+    if (await copyText(redirectUri ?? ownRedirectUri())) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -106,7 +115,7 @@ export function OAuthSettings() {
           <div>
             <p className={labelClass}>Redirect URI (add it at your provider)</p>
             <div className="mt-1 flex items-center gap-2 rounded-xl bg-page px-3 py-2">
-              <code className="min-w-0 flex-1 truncate font-mono text-sm">{redirectUri()}</code>
+              <code className="min-w-0 flex-1 truncate font-mono text-sm">{redirectUri ?? ownRedirectUri()}</code>
               <button type="button" aria-label="Copy redirect URI" onClick={() => void copyUri()} className="text-subtle hover:text-ink">
                 {copied ? <span className="text-xs font-semibold text-success">Copied</span> : <Copy className="size-4" />}
               </button>

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { asUser } from "./isolation.js";
-import { resetPassword } from "../src/cli/reset-password.js";
+import { parseResetArgs, resetPassword } from "../src/cli/reset-password.js";
 import { authReset } from "../src/cli/auth-reset.js";
 import { applyEmergencyOAuthSwitch, getOAuth, saveOAuth, OAUTH_DEFAULTS } from "../src/lib/oauth.js";
 
@@ -39,8 +39,25 @@ describe("npm run reset-password", () => {
   });
 
   it("says which accounts exist when the name is wrong, and checks the password", async () => {
-    await expect(resetPassword(t.db, { username: "nobody" })).rejects.toThrow('No account "nobody". Accounts: cory');
+    await expect(resetPassword(t.db, { username: "nobody" })).rejects.toThrow("No account has that username. Accounts: cory");
     await expect(resetPassword(t.db, { username: "cory", password: "short" })).rejects.toThrow(/at least 8 characters/);
+  });
+
+  it("takes one username and --password at most; a password is never an argument, and no argument is printed back", () => {
+    expect(parseResetArgs([])).toEqual({ username: undefined, typePassword: false });
+    expect(parseResetArgs(["sam"])).toEqual({ username: "sam", typePassword: false });
+    expect(parseResetArgs(["sam", "--password"])).toEqual({ username: "sam", typePassword: true });
+    for (const bad of [["sam", "hunter2-secret"], ["--password=hunter2-secret"], ["sam", "--pw", "hunter2-secret"]]) {
+      let message = "";
+      try {
+        parseResetArgs(bad);
+      } catch (e) {
+        message = (e as Error).message;
+      }
+      expect(message).toMatch(/never given as an argument/);
+      expect(message).toMatch(/NEW_PASSWORD/);
+      expect(message).not.toContain("hunter2");
+    }
   });
 
   it("is logged (who, never the password)", async () => {

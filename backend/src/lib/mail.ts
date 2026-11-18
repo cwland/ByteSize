@@ -174,6 +174,23 @@ export class MailService {
     if (t.verify) await t.verify();
   }
 
+  // ---------- work done after the answer (forgot-password emails) ----------
+
+  private pending = new Set<Promise<void>>();
+
+  /** Runs work without the caller waiting for it (errors go to onError). */
+  background(work: () => Promise<void>, onError: (err: unknown) => void | Promise<void>) {
+    const p: Promise<void> = work()
+      .catch(onError)
+      .finally(() => this.pending.delete(p));
+    this.pending.add(p);
+  }
+
+  /** Resolves once no background work is left (tests, and shutting down). */
+  async idle() {
+    while (this.pending.size) await Promise.allSettled([...this.pending]);
+  }
+
   // ---------- Save needs a test email that went through ----------
 
   noteTested(config: EmailConfig) {

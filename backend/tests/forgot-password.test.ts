@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { setupTestApp, TEST_SECRET, type TestApp } from "./helpers.js";
 import { asUser } from "./isolation.js";
 import { buildApp } from "../src/app.js";
+import { resetForgotLimits } from "../src/routes/password-reset.js";
 import { passwordResetCodes, users } from "../src/db/schema.js";
 
 // Forgot password on the sign-in screen: an emailed 6-digit code, then a new password
@@ -29,7 +30,12 @@ beforeEach(async () => {
   t.setToken("");
 });
 
-const forgot = (email: string) => t.api("POST", "/api/auth/forgot", { email });
+// Asks for a code, then waits for the email that goes out in the background
+const forgot = async (email: string) => {
+  const r = await t.api("POST", "/api/auth/forgot", { email });
+  await t.app.mail.idle();
+  return r;
+};
 const reset = (email: string, code: string, newPassword = "brand-new-pass") => t.api("POST", "/api/auth/reset", { email, code, newPassword });
 const codeIn = (i = -1) => /\b(\d{6})\b/.exec(t.mail.sent.at(i)!.subject)![1];
 const login = (username: string, password: string) => t.api("POST", "/api/auth/login", { username, password });
@@ -199,5 +205,39 @@ describe("forgot password", () => {
     } finally {
       await app2.close();
     }
+  });
+  it("answers at once: the code is made and mailed in the background, so a match takes no longer than a miss", async () => {
+    let release!: () => void;
+    t.mail.gate = new Promise<void>((r) => (release = r));
+    const r = await t.api("POST", "/api/auth/forgot", { email: "sam@example.com" });
+    expect(r.body).toEqual({ ok: true, message: SAME_ANSWER });
+    expect(t.mail.sent).toHaveLength(0); // still on its way
+    release();
+    await t.app.mail.idle();
+    expect(t.mail.sent).toHaveLength(1);
+    expect((await reset("sam@example.com", codeIn())).status).toBe(200);
+  });
+
+  it("5 wrong tries can't be beaten by trying many at once", async () => {
+    await forgot("sam@example.com");
+    const code = codeIn();
+    const wrong = Array.from({ length: 40 }, (_, i) => String((Number(code) + 1 + i) % 1_000_000).padStart(6, "0"));
+    const results = await Promise.all(wrong.map((c) => reset("sam@example.com", c)));
+    expect(results.every((r) => r.status === 400 || r.status === 429)).toBe(true);
+    const [row] = await t.db.select().from(passwordResetCodes);
+    expect(row.wrongTries).toBeLessThanOrEqual(5);
+    resetForgotLimits(); // only the code's own limit is left
+    expect((await reset("sam@example.com", code)).status).toBe(400);
+    expect((await login("sam", "password123")).status).toBe(200);
+  });
+
+  it("10 code checks an hour per email, for an email no account uses too", async () => {
+    t.clock.date = new Date("2026-11-18T12:00:00Z");
+    for (const email of ["sam@example.com", "nobody@example.com"]) {
+      for (let i = 0; i < 10; i++) expect((await reset(email, "000000")).status).toBe(400);
+      expect((await reset(email, "000000")).status).toBe(429);
+    }
+    t.clock.date = new Date("2026-11-18T13:00:01Z");
+    expect((await reset("sam@example.com", "000000")).status).toBe(400);
   });
 });

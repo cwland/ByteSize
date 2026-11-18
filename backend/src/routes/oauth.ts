@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { and, eq, gt, lt, sql } from "drizzle-orm";
+import { and, eq, gt, lt } from "drizzle-orm";
 import * as client from "openid-client";
 import { oauthFlows, oauthTickets, sessions, users } from "../db/schema.js";
 import { signToken } from "../lib/auth.js";
@@ -19,23 +19,51 @@ import { checkLockout, clearFailures, recordFailure } from "./auth.js";
 //  2. the provider sends the browser back to GET /api/auth/oauth/callback
 //  3. that redirects into the app with a one-time ticket (never the login token itself),
 //     which the page swaps for its token at POST /api/auth/oauth/finish
-// The redirect URI to register at the provider: {app address}/api/auth/oauth/callback
-// OAuth never makes an account: it signs in a linked account, or one whose email matches a verified email.
+// The redirect URI to register at the provider: {app address}/api/auth/oauth/callback. The app address is
+// the configured one (Settings › Email's app address, APP_URL, PASSKEY_ORIGINS) when there is one: a
+// request from any other address is refused. Without one, the browser's own address (its Origin).
+// Each flow belongs to the browser that started it: a short-lived HttpOnly cookie holds a hash of the state.
+// OAuth never makes an account, and only signs in an account its owner linked (Link my account, signed in).
+// Emails are never matched: profile emails aren't verified, and a provider may let people change theirs.
 
 const FLOW_MS = 10 * 60 * 1000;
 const TICKET_MS = 60 * 1000;
-const hashTicket = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
+const sha256 = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
+const hashTicket = sha256;
+const NOT_LINKED = "This sign-in isn't linked to a ByteSize account yet. Sign in with your password, then use Link my account in Settings › Security.";
+const OTHER_BROWSER = "That sign-in was started in another browser (or its cookie is gone). Start again here.";
 
-// The address the browser is on (the page calls /start with fetch, so Origin is set)
-function appOrigin(req: FastifyRequest) {
-  const o = req.headers.origin;
-  try {
-    if (typeof o === "string" && o) return new URL(o).origin;
-  } catch {
-    // below
+// The flow's cookie: only sent back to the OAuth routes, gone after 10 minutes, unreadable by scripts.
+// SameSite=Lax still comes along when the provider sends the browser back (a top-level GET).
+const COOKIE = "bytesize_oauth";
+const flowCookie = (value: string, origin: string, maxAge: number) =>
+  `${COOKIE}=${value}; Path=/api/auth/oauth; Max-Age=${maxAge}; HttpOnly; SameSite=Lax${origin.startsWith("https:") ? "; Secure" : ""}`;
+function cookieOf(req: FastifyRequest) {
+  for (const part of (req.headers.cookie ?? "").split(";")) {
+    const [k, ...v] = part.trim().split("=");
+    if (k === COOKIE) return v.join("=");
   }
-  throw new HttpError(400, "Start OAuth sign-in from ByteSize in a browser.");
+  return null;
 }
+const same = (a: string, b: string) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+const originOf = (u: string | null | undefined) => {
+  try {
+    return u ? new URL(u.trim()).origin : null;
+  } catch {
+    return null;
+  }
+};
+
+/** APP_URL and PASSKEY_ORIGINS from .env, as origins. */
+export function appOriginsFromEnv(env: NodeJS.ProcessEnv) {
+  const all = [env.APP_URL ?? "", ...(env.PASSKEY_ORIGINS ?? "").split(",")].map(originOf).filter((o): o is string => !!o);
+  return [...new Set(all)];
+}
+
+// The issuer as written (with or without a trailing slash or its discovery address) is one provider
+const sameIssuer = (u: string | null | undefined) => (u ? u.trim().replace(/\/\.well-known\/openid-configuration\/?$/, "").replace(/\/+$/, "") : null);
+
 export const callbackUri = (origin: string) => `${origin}/api/auth/oauth/callback`;
 
 // The settings as Settings › Security sees them (the secret only as "saved or not")
@@ -50,11 +78,30 @@ export default async function oauthRoutes(app: FastifyInstance) {
   const { db } = app;
   const fetchImpl = app.oauthFetch; // tests use a pretend provider
 
+  // The app's own addresses: Settings › Email's app address first, then .env's
+  const configuredOrigins = async () => {
+    const all = [originOf((await app.mail.stored())?.appUrl), ...app.appOrigins].filter((o): o is string => !!o);
+    return [...new Set(all)];
+  };
+  // Where the browser comes back to: a configured address (the browser's, when it's one of them), else the browser's own
+  async function appOrigin(req: FastifyRequest) {
+    const allowed = await configuredOrigins();
+    const o = typeof req.headers.origin === "string" ? originOf(req.headers.origin) : null;
+    if (allowed.length) {
+      if (!o) return allowed[0];
+      if (allowed.includes(o)) return o;
+      throw new HttpError(400, `Sign in from ByteSize's own address: ${allowed[0]}`);
+    }
+    if (!o) throw new HttpError(400, "Start OAuth sign-in from ByteSize in a browser.");
+    return o;
+  }
+
   // ---------- Settings › Security (admin) ----------
 
   app.get("/api/settings/oauth", async (req) => {
     requireAdmin(req);
-    return { settings: view(await getOAuth(db), app.jwtSecret) };
+    const [origin] = await configuredOrigins();
+    return { settings: view(await getOAuth(db), app.jwtSecret), redirectUri: origin ? callbackUri(origin) : null }; // null: the browser's own address
   });
 
   app.put("/api/settings/oauth", async (req) => {
@@ -80,14 +127,21 @@ export default async function oauthRoutes(app: FastifyInstance) {
     };
     if (next.enabled && !next.clientId) throw new HttpError(400, "Enter the Client ID");
     if (next.enabled && !next.issuerUrl) throw new HttpError(400, "Enter the provider's issuer (discovery) URL");
-    // Lockout prevention: OAuth only needs OAuth on, and this admin's account linked (which proves it works)
+    // A new provider: nobody's link works there yet, so OAuth only goes off until it's chosen again
+    let message: string | undefined;
+    if (next.oauthOnly && sameIssuer(current.issuerUrl) !== sameIssuer(next.issuerUrl)) {
+      next.oauthOnly = false;
+      message = "The provider changed, so OAuth only is off. Link your account there, then turn OAuth only on again.";
+    }
+    // Lockout prevention: OAuth only needs OAuth on, and this admin's account linked at this provider (which proves it works)
     if (next.oauthOnly) {
       if (!next.enabled) throw new HttpError(400, "Turn OAuth on before choosing OAuth only.");
-      const [me] = await db.select({ linked: users.oauthSubject }).from(users).where(eq(users.id, userId));
-      if (!me?.linked) throw new HttpError(400, "Link your account first (Link my account): that signs in with the provider once, so you know it works before passwords are turned off.");
+      const [me] = await db.select({ subject: users.oauthSubject, issuer: users.oauthIssuer }).from(users).where(eq(users.id, userId));
+      if (!me?.subject || sameIssuer(me.issuer) !== sameIssuer(next.issuerUrl))
+        throw new HttpError(400, "Link your account first (Link my account): that signs in with the provider once, so you know it works before passwords are turned off.");
     }
     await saveOAuth(db, next);
-    return { settings: view(next, app.jwtSecret) };
+    return { settings: view(next, app.jwtSecret), ...(message ? { message } : {}) };
   });
 
   // The eye and copy buttons
@@ -131,10 +185,10 @@ export default async function oauthRoutes(app: FastifyInstance) {
 
   // ---------- the flow ----------
 
-  async function begin(req: FastifyRequest, purpose: "login" | "link", userId?: number) {
+  async function begin(req: FastifyRequest, reply: FastifyReply, purpose: "login" | "link", userId?: number) {
     const s = await getOAuth(db);
     if (!oauthReady(s)) throw new HttpError(400, "OAuth sign-in isn't set up.");
-    const origin = appOrigin(req);
+    const origin = await appOrigin(req);
     const now = app.now();
     await db.delete(oauthFlows).where(lt(oauthFlows.expiresAt, now));
     let config;
@@ -158,14 +212,15 @@ export default async function oauthRoutes(app: FastifyInstance) {
       ...(purpose === "link" ? { prompt: "login" } : {}),
     });
     await db.insert(oauthFlows).values({ state, purpose, userId: userId ?? null, verifier, nonce, redirectUri, appOrigin: origin, expiresAt: new Date(now.getTime() + FLOW_MS) });
+    reply.header("set-cookie", flowCookie(sha256(state), origin, FLOW_MS / 1000));
     return { url: authUrl.href };
   }
 
-  app.post("/api/auth/oauth/start", async (req) => {
+  app.post("/api/auth/oauth/start", async (req, reply) => {
     checkLockout(req);
-    return begin(req, "login");
+    return begin(req, reply, "login");
   });
-  app.post("/api/auth/oauth/link/start", async (req) => begin(req, "link", requireUser(req)));
+  app.post("/api/auth/oauth/link/start", async (req, reply) => begin(req, reply, "link", requireUser(req)));
 
   // Where the provider sends the browser back. Always ends with a redirect into the app.
   app.get("/api/auth/oauth/callback", async (req, reply) => {
@@ -175,6 +230,8 @@ export default async function oauthRoutes(app: FastifyInstance) {
     const [flow] = q.state ? await db.delete(oauthFlows).where(eq(oauthFlows.state, q.state)).returning() : [];
     const back = (origin: string, path: string, params: Record<string, string>) => reply.redirect(`${origin}/#${path}?${new URLSearchParams(params)}`);
     if (!flow || flow.expiresAt <= now) return reply.redirect(`/#/?${new URLSearchParams({ oauth_error: "That sign-in took too long or was already used. Try again." })}`);
+    const fromCookie = cookieOf(req);
+    reply.header("set-cookie", flowCookie("", flow.appOrigin, 0)); // used: cleared
     const fail = async (message: string, logReason: string): Promise<FastifyReply> => {
       if (flow.purpose === "login") {
         recordFailure(req);
@@ -183,6 +240,8 @@ export default async function oauthRoutes(app: FastifyInstance) {
       }
       return back(flow.appOrigin, "/settings/security", { oauth_error: message });
     };
+    // Only the browser that started it may finish it
+    if (!fromCookie || !same(fromCookie, sha256(flow.state))) return fail(OTHER_BROWSER, "OAuth: started in another browser");
     if (q.error) return fail(q.error_description || q.error, `OAuth: ${q.error}`);
 
     const s = await getOAuth(db);
@@ -208,6 +267,8 @@ export default async function oauthRoutes(app: FastifyInstance) {
     const identity = and(eq(users.oauthIssuer, claims.iss), eq(users.oauthSubject, claims.sub));
 
     if (flow.purpose === "link") {
+      const [owner] = await db.select({ disabled: users.disabled }).from(users).where(eq(users.id, flow.userId!));
+      if (!owner || owner.disabled) return fail("This account is turned off. Ask your ByteSize admin.", "");
       const [taken] = await db.select({ id: users.id }).from(users).where(identity);
       if (taken && taken.id !== flow.userId) return fail("That identity is linked to another account.", "");
       const [u] = await db.update(users).set({ oauthIssuer: claims.iss, oauthSubject: claims.sub, oauthEmail: claims.email ?? null }).where(eq(users.id, flow.userId!)).returning();
@@ -215,21 +276,9 @@ export default async function oauthRoutes(app: FastifyInstance) {
       return back(flow.appOrigin, "/settings/security", { oauth: "linked" });
     }
 
-    // Sign in: the linked identity, or the one profile whose email matches a verified email (which then links it)
-    let [user] = await db.select().from(users).where(identity);
-    if (!user && claims.email && claims.email_verified === true) {
-      const same = await db.select().from(users).where(sql`lower(trim(${users.email})) = ${claims.email.trim().toLowerCase()}`);
-      // Two profiles with that email, or one already linked to another identity: not a match
-      if (same.length === 1 && !same[0].oauthSubject) {
-        [user] = await db.update(users).set({ oauthIssuer: claims.iss, oauthSubject: claims.sub, oauthEmail: claims.email }).where(eq(users.id, same[0].id)).returning();
-      }
-    }
-    if (!user) {
-      return fail(
-        `This ${s.providerName} account isn't linked to ByteSize. Sign in another way, then use Settings › Security › Link my account.`,
-        `OAuth: no matching account (${claims.email ?? claims.sub})`
-      );
-    }
+    // Sign in: only the account linked to this identity
+    const [user] = await db.select().from(users).where(identity);
+    if (!user) return fail(NOT_LINKED, `OAuth: no linked account (${claims.email ?? claims.sub})`);
     if (user.disabled) return fail("This account is turned off. Ask your ByteSize admin.", `OAuth: account turned off (${user.username})`);
     clearFailures(req);
     const { session } = await startSession(db, app.jwtSecret, req, user, s.providerName, now); // "Authentik" in Signed-in devices
