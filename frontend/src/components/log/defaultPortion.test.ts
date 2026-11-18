@@ -28,6 +28,12 @@ describe("defaultPortion", () => {
     }
     expect(defaultPortion([{ label: "100 ml", ml: 100 }], "metric")).toEqual({ servingIndex: 0, unit: "ml", quantity: 240, fraction: 1 });
   });
+  it("kitchen measures ('1 cup', '2 tbsp', '1 tsp') aren't bare amounts: the only serving starts at 1 of it (§37)", () => {
+    for (const label of ["1 cup", "2 tbsp", "1 tsp", "1/2 cup"]) {
+      expect(defaultPortion([{ label, grams: 240, ml: 240 }], "imperial")).toEqual({ servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
+      expect(defaultPortion([{ label, ml: 240 }], "metric")).toEqual({ servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
+    }
+  });
   it("solid foods keep their own serving", () => {
     expect(defaultPortion([{ label: "100 g", grams: 100 }, { label: "1 bar", grams: 40 }], "imperial")).toEqual({ servingIndex: 1, unit: "serving", quantity: 1, fraction: 1 });
   });
