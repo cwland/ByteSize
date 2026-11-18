@@ -174,10 +174,10 @@ describe("barcodes: saved copy first, then Open Food Facts → FatSecret (Premie
     const r = await scan();
     expect(r.body.food.source).toBe("usda"); // skipped, not an error
     expect(r.body.errors).toEqual([]);
-    expect(fsCalls(t, "food.find_id_for_barcode")).toHaveLength(1);
+    expect(fsCalls(t, "food.find_id_for_barcode")).toHaveLength(2); // once more with a token asking for the barcode scope
     expect((await t.api("GET", "/api/admin/food-sources")).body.fatsecret.barcodeScopeMissing).toBe(true);
     await scan("0000000000017");
-    expect(fsCalls(t)).toHaveLength(1); // not asked again
+    expect(fsCalls(t)).toHaveLength(2); // not asked again
     // Choosing the plan again (e.g. after adding the scope) tries again
     expect((await settings({ fatsecretPlan: "premier" })).body.fatsecret.barcodeScopeMissing).toBe(false);
   });
@@ -191,7 +191,7 @@ describe("barcodes: saved copy first, then Open Food Facts → FatSecret (Premie
     later(24 * H - 1000);
     expect((await scan()).body.food.name).toBe("Granola Bar");
     expect(fsCalls(t)).toHaveLength(2); // within 24 h: nothing
-    later(2000);
+    later(H + 2000); // past its 24 h, and an hour after it was last scanned
     await cleanupLookups(t.app);
     expect(await count("food_cache")).toBe(0);
     expect((await t.db.execute(sql`select barcode, food_id from fatsecret_barcodes`)).rows).toEqual([{ barcode: CODE, food_id: "555" }]);
@@ -447,6 +447,7 @@ describe("Check for changes: refresh one kept item from its source", () => {
     expect(fsr.body.result).toBe("up_to_date");
     expect(fsr.body.food.barcode).toBe(CODE.replace("5", "6"));
     const bowl = (await t.api("POST", "/api/restaurants/item", { source: "spoonacular", sourceId: "1001" })).body.food;
+    later(H + 1000); // Spoonacular's copy is checked only after its hours
     expect((await check(bowl.id)).body.result).toBe("up_to_date");
   });
 
@@ -560,5 +561,133 @@ describe("Saved barcodes (admin)", () => {
     const mine = (await asUser(t, sam.token)("GET", `/api/foods/barcode/${CODE}`)).body.food;
     expect(mine).toMatchObject({ id: admin.id, savedAt: START.toISOString() });
     expect(offCalls()).toHaveLength(1);
+  });
+});
+
+describe("fix round 1", () => {
+  beforeEach(() => {
+    t.clock.date = START;
+  });
+  const fsFull = fsFood(31, "Granola Clusters", "Bear Naked", [{ serving_description: "1/4 cup", metric_serving_amount: "30.000", metric_serving_unit: "g", calories: "140", fat: "6.00", carbohydrate: "20.00", protein: "3.00", fiber: "2.0" }]);
+  const fsSearchOne = () => ({ status: 200, json: { foods: { food: [fsHit(31, "Granola Clusters", "Bear Naked", 140, "1/4 cup")] } } });
+  const logIt = (id: number) => t.api("POST", "/api/log", { day: "2026-11-18", meal: "snacks", food: { kind: "cache", id }, unit: "serving", quantity: 1 });
+
+  it("an item opened near the end of its hours isn't cleaned up before it is tracked", async () => {
+    await setRestaurantKeys(t, { spoonacular: "spoon-key" });
+    web({ fs: { spoonItem: (id) => ({ status: 200, json: spoonItem(Number(id), "Bowl", "Chipotle", 655), headers: quota(30) }) } });
+    const open = (sourceId = "1001") => t.api("POST", "/api/restaurants/item", { source: "spoonacular", sourceId });
+    const id = (await open()).body.food.id;
+    const other = (await open("1002")).body.food.id; // opened once, never again
+    later(59 * 60_000);
+    const again = await open();
+    expect(again.body.food.savedAt).toBe(START.toISOString()); // "Saved copy from" still reads the fetch time
+    later(2 * 60_000);
+    await cleanupLookups(t.app);
+    const left = (await t.db.execute<{ id: number }>(sql`select id from food_cache`)).rows.map((r) => r.id);
+    expect(left).toEqual([id]); // the other went an hour after its last use
+    expect(left).not.toContain(other);
+    expect((await logIt(id)).status).toBe(200);
+  });
+
+  it("a kept food found by search or barcode counts as used too", async () => {
+    web({ off: { [CODE]: granola } });
+    const id = (await scan()).body.food.id;
+    later(10000 * H);
+    await settings({ enabled: { off: false } }); // the kept copy is old: served as it is, and used now
+    expect((await scan()).body.food.id).toBe(id);
+    await cleanupLookups(t.app);
+    expect(await count("food_cache")).toBe(1);
+  });
+
+  it("a FatSecret search row is fetched whole when tracked (quick add) or opened", async () => {
+    await setRestaurantKeys(t, { fatsecret: FS });
+    web({ fs: { fsSearch: fsSearchOne, fsGet: () => ({ status: 200, json: { food: fsFull } }) } });
+    const row = (await search("granola")).body.groups.find((g: any) => g.source === "fatsecret").foods[0];
+    expect(row.nutrients.fiber_g).toBeUndefined();
+    const logged = await logIt(row.id);
+    expect(logged.status).toBe(200);
+    expect(logged.body.entry.nutrients).toMatchObject({ calories: 140, fiber_g: 2 });
+    expect(logged.body.entry.servings[0]).toMatchObject({ label: "1/4 cup", grams: 30 });
+    expect(fsCalls(t, "food.get.v2")).toHaveLength(1);
+    const opened = await t.api("GET", `/api/foods/cache/${row.id}`);
+    expect(opened.body.food).toMatchObject({ id: row.id, nutrients: { fiber_g: 2 } });
+    expect(fsCalls(t, "food.get.v2")).toHaveLength(1); // already whole
+  });
+
+  it("opening a FatSecret search row fetches it whole (one call), marked as a summary until then", async () => {
+    await setRestaurantKeys(t, { fatsecret: FS });
+    web({ fs: { fsSearch: fsSearchOne, fsGet: () => ({ status: 200, json: { food: fsFull } }) } });
+    const row = (await search("granola")).body.groups.find((g: any) => g.source === "fatsecret").foods[0];
+    expect(row.summary).toBe(true);
+    const opened = await t.api("GET", `/api/foods/cache/${row.id}`);
+    expect(opened.body.food).toMatchObject({ id: row.id, summary: false, nutrients: { fiber_g: 2 }, servings: [{ grams: 30 }], savedAt: null });
+    expect((await t.api("GET", "/api/foods/cache/999999")).status).toBe(404);
+  });
+
+  it("barcodes go to FatSecret as 13 digits; longer codes are skipped", async () => {
+    await setRestaurantKeys(t, { fatsecret: FS });
+    await settings({ enabled: { off: false }, fatsecretPlan: "premier" });
+    web({ fs: { fsBarcode: () => ({ status: 200, json: { food_id: { value: "0" } } }) } });
+    await scan("96385074"); // EAN-8
+    expect(new URLSearchParams(String(fsCalls(t, "food.find_id_for_barcode")[0].body)).get("barcode")).toBe("0000096385074");
+    await scan("12345678901231"); // a GTIN-14 case code
+    expect(fsCalls(t, "food.find_id_for_barcode")).toHaveLength(1);
+  });
+
+  it("FatSecret error 14 outside barcodes is a plain source error", async () => {
+    await setRestaurantKeys(t, { fatsecret: FS });
+    web({ fs: { fsSearch: () => ({ status: 200, json: { error: { code: 14, message: "Missing scope" } } }) } });
+    const r = await search("granola");
+    const err = r.body.errors.find((e: any) => e.source === "fatsecret");
+    expect(err.message).toBe("FatSecret answered with an error (code 14)");
+    expect((await t.api("GET", "/api/admin/food-sources")).body.fatsecret.barcodeScopeMissing).toBe(false);
+  });
+
+  it("a missing scope on a barcode asks once for a token with the barcode scope and tries again", async () => {
+    await setRestaurantKeys(t, { fatsecret: FS });
+    await settings({ enabled: { off: false }, fatsecretPlan: "premier" });
+    web({
+      fs: {
+        fsToken: (call) => ({ status: 200, json: { access_token: String(call.body).includes("scope=") ? "scoped" : "plain", expires_in: 86400 } }),
+        fsBarcode: (_code, call) => (call.headers.authorization === "Bearer scoped" ? fsFound() : { status: 200, json: { error: { code: 14, message: "Missing scope" } } }),
+        fsGet: () => ({ status: 200, json: { food: fsGranola } }),
+      },
+    });
+    const r = await scan();
+    expect(r.body.food).toMatchObject({ name: "Granola Bar", source: "fatsecret" });
+    const scoped = t.foodWeb.calls.filter((c) => c.url.includes("oauth.fatsecret.com") && String(c.body).includes("scope="));
+    expect(scoped).toHaveLength(1);
+    expect(new URLSearchParams(String(scoped[0].body)).get("scope")).toBe("basic premier barcode");
+    expect((await t.api("GET", "/api/admin/food-sources")).body.fatsecret.barcodeScopeMissing).toBe(false);
+  });
+
+  it("a typed search is capped at 100 characters, for the kept answer and the outside call", async () => {
+    web({ offSearch: () => [] });
+    const long = "granola ".repeat(25).trim(); // 199 characters
+    expect((await search(long)).status).toBe(200);
+    const q = new URL(t.foodWeb.calls.find((c) => c.url.startsWith(OFF_SEARCH))!.url).searchParams.get("q")!;
+    expect(q.length).toBe(100);
+    const [kept] = (await t.db.execute<{ query: string }>(sql`select query from food_searches`)).rows;
+    expect(kept.query.length).toBe(100);
+  });
+
+  it("Check for changes on a Spoonacular item waits for its hours (members can't spend the points)", async () => {
+    await setRestaurantKeys(t, { spoonacular: "spoon-key" });
+    web({ fs: { spoonItem: (id) => ({ status: 200, json: spoonItem(Number(id), "Bowl", "Chipotle", 655), headers: quota(30) }) } });
+    const id = (await t.api("POST", "/api/restaurants/item", { source: "spoonacular", sourceId: "1001" })).body.food.id;
+    later(30 * 60_000);
+    const early = await t.api("POST", "/api/foods/refresh", { cacheId: id });
+    expect(early.status).toBe(409);
+    expect(early.body.error).toMatch(/^This copy is already up to date — Spoonacular lets ByteSize check again after /);
+    expect(spoonCalls(t)).toHaveLength(1);
+    later(31 * 60_000);
+    expect((await t.api("POST", "/api/foods/refresh", { cacheId: id })).body.result).toBe("up_to_date");
+    expect(spoonCalls(t)).toHaveLength(2);
+  });
+
+  it("every column a backup counts as using a kept food is also in use for the cleanup", async () => {
+    const { CACHE_REFERENCES } = await import("../src/lib/backup.js");
+    const { IN_USE_REFS } = await import("../src/lib/lookups.js");
+    for (const ref of CACHE_REFERENCES) expect(IN_USE_REFS, ref).toContain(ref);
   });
 });

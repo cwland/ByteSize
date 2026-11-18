@@ -35,6 +35,7 @@ export type FoodResult = {
   override: boolean;
   source: "off" | "usda" | "mine" | "ai" | "culury" | RestaurantSource;
   foodKind: FoodKind;
+  summary?: boolean; // a FatSecret search summary (calories, fat, carbs, protein): fetched whole when opened
   savedAt?: string | null; // a kept copy of an outside food: when it was fetched ("Saved copy from …"); null: fetched just now
 };
 // POST /api/photos/analyze (multipart: images 1–2, mode). A barcode found in the photo is looked up

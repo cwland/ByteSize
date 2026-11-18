@@ -272,6 +272,15 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
   };
   const pick = (food: FoodResult, initial = startPortion(food), from?: "restaurants") => {
     if (food.kind === "culury") return void openRow(food).catch((e) => setMsg(errorMsg(e)));
+    // A FatSecret search summary: the whole food (fiber, the serving's weight…) is fetched once before it opens
+    if (food.summary)
+      return void api<{ food: FoodResult }>("GET", `/api/foods/cache/${food.id}`).then(
+        ({ food: whole }) => {
+          checked(whole);
+          setView({ k: "detail", food: whole, initial: startPortion(whole), from });
+        },
+        (e) => setMsg(errorMsg(e)),
+      );
     setView(food.foodKind === "quick_meal" ? { k: "meal", food } : { k: "detail", food, initial, from });
   };
   const edit = (food: FoodResult, from?: "restaurants") =>

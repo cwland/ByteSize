@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireUser } from "../lib/guards.js";
 import { estimateFood, fillGaps, lookupBarcode, searchFoods } from "../lib/foods.js";
 import { refreshKept, refreshRateLimit } from "../lib/lookups.js";
+import { wholeKeptFood } from "../lib/restaurants/index.js";
 
 const cacheRef = z.object({ cacheId: z.number().int().positive().max(2147483647) });
 
@@ -18,6 +19,13 @@ export default async function foodRoutes(app: FastifyInstance) {
     const userId = requireUser(req);
     const { code, food, errors } = await lookupBarcode(app, userId, String((req.params as { code: string }).code));
     return { code, food, errors };
+  });
+
+  // One kept food as it is now, whole (opening a FatSecret search row fetches the whole food once)
+  app.get("/api/foods/cache/:id", async (req) => {
+    const userId = requireUser(req);
+    const { id } = z.object({ id: z.coerce.number().int().positive().max(2147483647) }).parse(req.params);
+    return { food: await wholeKeptFood(app, userId, id) };
   });
 
   // Check for changes: the kept copy the person is looking at, fetched again from its source (rate-limited per person)

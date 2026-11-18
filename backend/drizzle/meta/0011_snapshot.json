@@ -1,5 +1,5 @@
 {
-  "id": "2a52b421-0a27-4631-9e99-eae1675c06c2",
+  "id": "db3818ac-4759-4fc7-bfe9-9ac2b3843e76",
   "prevId": "9cdf8774-cccf-4a03-a47e-126b5743408d",
   "version": "7",
   "dialect": "postgresql",
@@ -317,6 +317,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {

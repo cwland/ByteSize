@@ -8,7 +8,7 @@ import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { appSettings, foodCache, logEntries, restaurantFavourites, restaurantSearches } from "../../db/schema.js";
 import { logEvent } from "../appLog.js";
 import { HttpError, badRequest, notFound } from "../errors.js";
-import { cacheUpsert, SOURCE_TIMEOUT_MS, toResult, type FoodResult } from "../foods.js";
+import { cacheUpsert, SOURCE_TIMEOUT_MS, toResult, touchUsed, type FoodResult } from "../foods.js";
 import { restaurantKeys, restaurantKeysInUse, sourceHours, type RestaurantKeys } from "../foodSources/settings.js";
 import { SOURCE_NAMES, SourceError } from "../foodSources/types.js";
 import { fatsecret, type FatSecretAdapter, type FatSecretToken } from "./fatsecret.js";
@@ -265,7 +265,11 @@ export async function restaurantItem(app: FastifyInstance, userId: number, sourc
   const since = app.now().getTime() - (await sourceHours(app))[source] * HOUR_MS;
   const [have] = await find();
   const kept = have && !isSummary(have) ? have : null;
-  const keptCopy = async () => ({ food: toResult(kept!, "cache"), lookupsLeft: await lookupsLeft(app, keys) });
+  // Opened: used now, so the hourly cleanup leaves it while it is being tracked ("Saved copy from" stays the fetch time)
+  const keptCopy = async () => {
+    await touchUsed(app.db, [kept!.id], app.now());
+    return { food: toResult(kept!, "cache"), lookupsLeft: await lookupsLeft(app, keys) };
+  };
   if (kept && kept.fetchedAt.getTime() >= since) return keptCopy();
 
   // Past its hours, a kept copy is still used when the source can't be asked (off, out of points) or fails
@@ -311,6 +315,7 @@ export async function restaurantItem(app: FastifyInstance, userId: number, sourc
     throw err;
   }
   const [row] = await find();
+  await touchUsed(app.db, [row.id], app.now());
   return { food: { ...toResult(row, "cache"), savedAt: null }, lookupsLeft: await lookupsLeft(app, keys) };
 }
 
@@ -386,4 +391,23 @@ export async function recentChains(app: FastifyInstance, userId: number, limit =
     .orderBy(desc(last))
     .limit(limit);
   return { chains: rows.map((r) => r.chain!) };
+}
+
+/**
+ * A kept food about to be shown whole or tracked: a FatSecret typed-search summary is fetched whole first (one
+ * call, then kept); anything else as kept. Either way it counts as used now. When FatSecret can't be asked (off,
+ * failing) the summary is used as it is.
+ */
+export async function wholeKeptFood(app: FastifyInstance, userId: number, cacheId: number): Promise<FoodResult> {
+  const [row] = await app.db.select().from(foodCache).where(eq(foodCache.id, cacheId));
+  if (!row) throw notFound("Food");
+  if (row.source === "fatsecret" && isSummary(row)) {
+    try {
+      return (await restaurantItem(app, userId, "fatsecret", row.sourceId)).food;
+    } catch {
+      // FatSecret off or failing: the summary is better than nothing
+    }
+  }
+  await touchUsed(app.db, [row.id], app.now());
+  return toResult(row, "cache");
 }

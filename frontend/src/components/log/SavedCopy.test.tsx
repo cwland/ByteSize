@@ -21,7 +21,7 @@ const search = {
   errors: [],
 };
 
-function open(refresh: (b: any) => unknown) {
+function open(refresh: (b: any) => unknown, routes: Record<string, (b: any, path: string) => unknown> = {}) {
   const server = fakeServer({
     ...culuryOff,
     "GET /api/day/:date": () => dayJson(),
@@ -30,6 +30,7 @@ function open(refresh: (b: any) => unknown) {
     "GET /api/foods/search": () => search,
     "POST /api/foods/refresh": refresh,
     ...restaurantRoutes,
+    ...routes,
   });
   renderWithSession(
     <SelectedDayProvider timeZone="America/Boise">
@@ -86,5 +87,27 @@ describe("Saved copy note", () => {
     await user.click(within(row).getByRole("button", { name: "Check Peanut butter bar for changes" }));
     expect(await within(row).findByText(/Turn on Open Food Facts/)).toBeInTheDocument();
     expect(within(row).getByText("Saved copy from Nov 17, 2026")).toBeInTheDocument();
+  });
+});
+
+describe("FatSecret search rows", () => {
+  const summary = { ...barFood, id: 31, name: "Peanut granola clusters", brand: "Bear Naked", barcode: null, source: "fatsecret", servings: [{ label: "1/4 cup" }], nutrients: { calories: 140, protein_g: 3 }, savedAt: null, summary: true };
+  const whole = { ...summary, servings: [{ label: "1/4 cup", grams: 30 }], nutrients: { calories: 140, protein_g: 3, fiber_g: 2 }, summary: false };
+
+  it("opening one fetches the whole food first (fiber, grams)", async () => {
+    const user = userEvent.setup();
+    const server = open(() => ({}), {
+      "GET /api/foods/search": () => ({ groups: [{ source: "fatsecret", label: "FatSecret", foods: [summary] }], errors: [] }),
+      "GET /api/foods/cache/:id": () => ({ food: whole }),
+    });
+    const card = await screen.findByRole("region", { name: "Snacks" });
+    await user.click(within(card).getByRole("button", { name: "Add Food" }));
+    const sheet = screen.getByRole("dialog", { name: "Add food to Snacks" });
+    await user.type(within(sheet).getByRole("searchbox", { name: "Search foods" }), "peanut");
+    await user.click(await within(sheet).findByText("Peanut granola clusters"));
+    expect(await within(sheet).findByRole("heading", { name: "Track food" })).toBeInTheDocument();
+    expect(server.sent.some((r) => r.path === "/api/foods/cache/31")).toBe(true);
+    const fiber = within(within(sheet).getByRole("region", { name: "Summary" })).getByText("Fiber", { exact: true }).parentElement!;
+    expect(fiber).toHaveTextContent("2 g");
   });
 });

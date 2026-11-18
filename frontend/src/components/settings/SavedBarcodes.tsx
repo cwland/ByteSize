@@ -38,7 +38,13 @@ export function SavedBarcodes() {
   useEffect(() => {
     let live = true;
     api<Page>("GET", `/api/admin/saved-barcodes?page=${page}${q ? `&q=${encodeURIComponent(q)}` : ""}`).then(
-      (p) => live && setData(p),
+      (p) => {
+        if (!live) return;
+        // Past the last page (its last rows were deleted): back to the last page there is
+        const last = Math.max(1, Math.ceil(p.total / p.pageSize));
+        if (page > last) setPage(last);
+        else setData(p);
+      },
       (e) => live && setMsg(errorMsg(e)),
     );
     return () => void (live = false);
@@ -75,7 +81,7 @@ export function SavedBarcodes() {
       <h2 className="text-lg font-bold">Saved barcodes</h2>
       <p className="mt-1 text-sm text-subtle">Every barcode ByteSize keeps a copy of. Each is deleted when its source's hours run out, unless something uses it.</p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <input type="search" aria-label="Search saved barcodes" placeholder="Search by name or barcode" value={typed} onChange={(e) => setTyped(e.target.value)} className={`${field} mt-0 max-w-xs flex-1 rounded-full`} />
+        <input type="search" aria-label="Search saved barcodes" placeholder="Search by name or barcode" value={typed} onChange={(e) => setTyped(e.target.value)} className={`${field} mt-0 basis-full rounded-full sm:max-w-xs sm:flex-1 sm:basis-auto`} />
         <button type="button" className={secondaryButton} disabled={busy !== null || !data?.total} onClick={() => setAsking(true)}>
           Delete all not in use
         </button>

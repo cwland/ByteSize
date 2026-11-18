@@ -2,7 +2,7 @@
 // kept food fetched again from its source), and the admin's Saved barcodes list. Kept foods (food_cache) are
 // shared public data, not anyone's own.
 import type { FastifyInstance } from "fastify";
-import { and, desc, eq, ilike, isNotNull, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, ilike, isNotNull, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { foodCache, foodSearches, restaurantSearches } from "../db/schema.js";
 import { logEvent } from "./appLog.js";
 import { HttpError, badRequest, notFound } from "./errors.js";
@@ -18,14 +18,20 @@ const CLEANUP_EVERY_MS = HOUR_MS;
 type CacheRow = typeof foodCache.$inferSelect;
 
 /**
- * A kept food something uses: a recipe or quick-meal ingredient, a starred restaurant item, a "My foods" edit
- * based on it, or a logged entry (entries keep their own copy, but recent chains and backups read the kept food).
+ * A kept food something uses, by the "table.column" that points at it: a starred restaurant item, a logged entry
+ * (entries keep their own copy, but recent chains and backups read the kept food), a recipe or quick-meal
+ * ingredient, or a "My foods" edit based on it. Every column a backup counts (backup.ts CACHE_REFERENCES) is here.
  */
-export const IN_USE: SQL = sql`(
-  exists (select 1 from restaurant_favourites f where f.cache_id = ${foodCache.id})
-  or exists (select 1 from log_entries le where le.source_ref = 'cache:' || ${foodCache.id})
-  or exists (select 1 from recipe_items ri where ri.food_kind = 'cache' and ri.food_id = ${foodCache.id})
-  or exists (select 1 from user_foods uf where uf.base_cache_id = ${foodCache.id}))`;
+const USES: Record<string, SQL> = {
+  "restaurant_favourites.cache_id": sql`exists (select 1 from restaurant_favourites f where f.cache_id = ${foodCache.id})`,
+  "log_entries.source_ref": sql`exists (select 1 from log_entries le where le.source_ref = 'cache:' || ${foodCache.id})`,
+  "recipe_items.food_id": sql`exists (select 1 from recipe_items ri where ri.food_kind = 'cache' and ri.food_id = ${foodCache.id})`,
+  "user_foods.base_cache_id": sql`exists (select 1 from user_foods uf where uf.base_cache_id = ${foodCache.id})`,
+};
+export const IN_USE_REFS = Object.keys(USES);
+export const IN_USE: SQL = sql`(${sql.join(Object.values(USES), sql` or `)})`;
+/** Found, opened or tracked this recently: kept, so a food someone is about to track isn't cleaned up under them. */
+const RECENT_USE_MS = HOUR_MS;
 
 // ---------- cleanup (on start, then hourly; logged under "schedule") ----------
 
@@ -39,7 +45,9 @@ export async function cleanupLookups(app: FastifyInstance): Promise<{ foods: num
   let searches = 0;
   for (const source of SWITCHED_SOURCES) {
     const cutoff = new Date(app.now().getTime() - hours[source] * HOUR_MS);
-    foods += (await app.db.delete(foodCache).where(and(eq(foodCache.source, source), lt(foodCache.fetchedAt, cutoff), sql`not ${IN_USE}`)).returning({ id: foodCache.id })).length;
+    const usedSince = new Date(app.now().getTime() - RECENT_USE_MS);
+    const notRecent = or(isNull(foodCache.lastUsedAt), lt(foodCache.lastUsedAt, usedSince));
+    foods += (await app.db.delete(foodCache).where(and(eq(foodCache.source, source), lt(foodCache.fetchedAt, cutoff), notRecent, sql`not ${IN_USE}`)).returning({ id: foodCache.id })).length;
     searches += (await app.db.delete(foodSearches).where(and(eq(foodSearches.source, source), lt(foodSearches.fetchedAt, cutoff))).returning({ id: foodSearches.id })).length;
     searches += (await app.db.delete(restaurantSearches).where(and(eq(restaurantSearches.source, source), lt(restaurantSearches.fetchedAt, cutoff))).returning({ id: restaurantSearches.id })).length;
   }
@@ -114,6 +122,11 @@ async function fetchAgain(app: FastifyInstance, row: CacheRow): Promise<SourceFo
 export async function refreshKept(app: FastifyInstance, userId: number, cacheId: number): Promise<RefreshResult> {
   const [row] = await app.db.select().from(foodCache).where(eq(foodCache.id, cacheId));
   if (!row) throw notFound("Food");
+  // Spoonacular's daily points are the server's: a copy younger than its hours isn't fetched again
+  if (row.source === "spoonacular") {
+    const again = new Date(row.fetchedAt.getTime() + (await sourceHours(app)).spoonacular * HOUR_MS);
+    if (again > app.now()) throw new HttpError(409, `This copy is already up to date — Spoonacular lets ByteSize check again after ${again.toISOString().slice(11, 16)} UTC`);
+  }
   let food: SourceFood | null;
   try {
     food = await fetchAgain(app, row);

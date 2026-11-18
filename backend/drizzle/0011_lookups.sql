@@ -12,4 +12,5 @@ CREATE TABLE "food_searches" (
 	"fetched_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+ALTER TABLE "food_cache" ADD COLUMN "last_used_at" timestamp with time zone;--> statement-breakpoint
 CREATE UNIQUE INDEX "food_searches_source_query_idx" ON "food_searches" USING btree ("source","query");

@@ -36,6 +36,8 @@ export type FoodResult = {
   foodKind: FoodKind;
   /** A kept copy of an outside food: when it was fetched ("Saved copy from …"); null when fetched just now. Absent for the person's own foods. */
   savedAt?: string | null;
+  /** A FatSecret typed-search summary (calories, fat, carbs, protein only): fetched whole when opened or tracked. */
+  summary?: boolean;
 };
 export type FoodKind = "custom" | "override" | "recipe" | "quick_meal";
 export const COMPOUND_KINDS = ["recipe", "quick_meal"] as const;
@@ -82,7 +84,7 @@ export function toResult(row: CacheRow | UserFoodRow, kind: "cache" | "user_food
   const base = { kind, id: row.id, name: row.name, brand: row.brand, icon: iconFor(row.category, row.name), barcode: row.barcode, servings: withLiquidVolumes(row.servings as Serving[], row.category, row.name), nutrients };
   if (kind === "cache") {
     const c = row as CacheRow;
-    return { ...base, aiFields: [], imageUrl: signImageUrl(c.imageUrl), override: false, source: CACHE_SOURCES.has(c.source) ? (c.source as FoodResult["source"]) : "off", foodKind: "custom", savedAt: c.fetchedAt.toISOString() };
+    return { ...base, aiFields: [], imageUrl: signImageUrl(c.imageUrl), override: false, source: CACHE_SOURCES.has(c.source) ? (c.source as FoodResult["source"]) : "off", foodKind: "custom", savedAt: c.fetchedAt.toISOString(), summary: (c.raw as { summary?: unknown } | null)?.summary === true };
   }
   const u = row as UserFoodRow;
   const aiFields = presentAiFields(u.aiFields, nutrients);
@@ -163,6 +165,11 @@ async function upsertMany(db: Db, foods: SourceFood[], now: Date): Promise<Cache
   return unique.map((f) => byKey.get(`${f.source}:${f.sourceId}`)!).filter(Boolean);
 }
 
+/** Marks kept foods as used now (found, opened or tracked): the cleanup leaves them an hour. */
+export async function touchUsed(db: Db, ids: number[], now: Date) {
+  if (ids.length) await db.update(foodCache).set({ lastUsedAt: now }).where(inArray(foodCache.id, ids));
+}
+
 /** Whether a kept food is fresher than its source's hours. */
 const fresh = (row: CacheRow, hours: SourceHours, now: Date) => row.fetchedAt.getTime() >= now.getTime() - (hours[row.source as keyof SourceHours] ?? 0) * HOUR_MS;
 /** A food fetched just now: no "Saved copy" note. */
@@ -213,13 +220,17 @@ export async function lookupBarcode(app: FastifyInstance, userId: number, raw: s
   const hours = await sourceHours(app);
   const kept = await db.select().from(foodCache).where(eq(foodCache.barcode, code)).orderBy(desc(foodCache.fetchedAt));
   const keptFresh = kept.find((r) => fresh(r, hours, now));
-  if (keptFresh) return { code, food: toResult(keptFresh, "cache"), from: "cache", errors };
+  if (keptFresh) {
+    await touchUsed(db, [keptFresh.id], now);
+    return { code, food: toResult(keptFresh, "cache"), from: "cache", errors };
+  }
   const cached = kept[0];
 
   const switches = await sourceSwitches(app);
   const fs = await fatsecretInUse(app);
   const keep = async (found: SourceFood) => {
     const [row] = await upsertMany(db, [{ ...found, barcode: found.barcode ?? code }], app.now());
+    await touchUsed(db, [row.id], app.now());
     return row;
   };
   const tryFatSecret = async (what: string, run: () => Promise<SourceFood | null>) => {
@@ -253,9 +264,11 @@ export async function lookupBarcode(app: FastifyInstance, userId: number, raw: s
     }
   }
   const plan = await fatsecretPlan(app);
-  if (!found && fs && !link && plan.plan === "premier" && !plan.barcodeScopeMissing) {
+  // FatSecret takes GTIN-13: EAN-8 is padded with zeros; a longer code (a GTIN-14 case code) isn't asked
+  const fsCode = code.length <= 13 ? code.padStart(13, "0") : null;
+  if (!found && fs && fsCode && !link && plan.plan === "premier" && !plan.barcodeScopeMissing) {
     found = await tryFatSecret("barcode lookup", async () => {
-      const id = await fs.barcode(code);
+      const id = await fs.barcode(fsCode);
       if (!id) return null;
       await db.insert(fatsecretBarcodes).values({ barcode: code, foodId: id, createdAt: app.now() }).onConflictDoUpdate({ target: fatsecretBarcodes.barcode, set: { foodId: id } });
       return (await fs.item(id)).food;
@@ -273,7 +286,10 @@ export async function lookupBarcode(app: FastifyInstance, userId: number, raw: s
     }
   }
   if (found) return { code, food: justFetched(await keep(found)), from: found.source as GroupSource, errors };
-  if (cached) return { code, food: toResult(cached, "cache"), from: "cache", errors };
+  if (cached) {
+    await touchUsed(db, [cached.id], now);
+    return { code, food: toResult(cached, "cache"), from: "cache", errors };
+  }
   return { code, food: null, from: null, errors };
 }
 
@@ -322,8 +338,10 @@ export async function findMyFoods(db: Db, userId: number, q: string | null, limi
 
 const DIGITS = /^[\d\s-]+$/;
 
+export const MAX_QUERY = 100; // a typed search's length, for its kept answer and the outside calls
+
 export async function searchFoods(app: FastifyInstance, userId: number, raw: string | undefined): Promise<SearchResult> {
-  const q = (raw ?? "").trim().replace(/\s+/g, " ");
+  const q = (raw ?? "").trim().replace(/\s+/g, " ").slice(0, MAX_QUERY).trim();
   if (q.length < 2) throw badRequest("Type at least 2 characters");
 
   // A typed barcode: the same answer as a scan
@@ -433,6 +451,7 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
   }
   // Kept foods that match the words (or a typo of them), from earlier searches and scans
   for (const r of cache) place(r, false);
+  await touchUsed(db, [...shown], now);
 
   const lq = q.toLowerCase();
   const startsFirst = (foods: FoodResult[]) => [...foods].sort((a, b) => Number(b.name.toLowerCase().startsWith(lq)) - Number(a.name.toLowerCase().startsWith(lq)));

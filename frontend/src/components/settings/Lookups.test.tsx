@@ -141,6 +141,24 @@ describe("Saved barcodes (admin)", () => {
     expect(within(card).getByRole("button", { name: "Next page" })).toBeDisabled();
   });
 
+  it("after deleting the last row of the last page, the list goes back a page", async () => {
+    let items = Array.from({ length: 51 }, (_, i) => savedRow(i));
+    admin({
+      "GET /api/admin/saved-barcodes": (_b, path) => {
+        const n = Number(/page=(\d+)/.exec(path)![1]);
+        return page(items.slice((n - 1) * 50, n * 50), items.length, n);
+      },
+      "DELETE /api/admin/saved-barcodes/:id": () => ((items = items.slice(0, 50)), { deleted: 1 }),
+    });
+    renderWithSession(<IntegrationsSettings />, { isAdmin: true });
+    const card = await screen.findByRole("region", { name: "Saved barcodes" });
+    await within(card).findByText("51 saved barcodes");
+    await userEvent.click(within(card).getByRole("button", { name: "Next page" }));
+    await userEvent.click(await within(card).findByRole("button", { name: "Delete Snack 50" }));
+    expect(await within(card).findByText("Snack 0")).toBeInTheDocument();
+    expect(within(card).getByText("50 saved barcodes")).toBeInTheDocument();
+  });
+
   it("searches by name or barcode", async () => {
     const server = admin({ "GET /api/admin/saved-barcodes": (_b, path) => (path.includes("q=") ? page([savedRow(3, { name: "Granola" })]) : page([savedRow(1), savedRow(2)])) });
     renderWithSession(<IntegrationsSettings />, { isAdmin: true });

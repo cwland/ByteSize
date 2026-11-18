@@ -187,6 +187,8 @@ export const foodCache = pgTable(
     imageUrl: text("image_url"),
     raw: jsonb("raw"),
     fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+    // when someone last found, opened or tracked it: the cleanup leaves foods used in the last hour
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("food_cache_source_idx").on(t.source, t.sourceId), index("food_cache_barcode_idx").on(t.barcode)]
 );
