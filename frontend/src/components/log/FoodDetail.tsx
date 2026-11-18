@@ -83,6 +83,7 @@ export default function FoodDetail({
   submitLabel,
   onSubmit,
   onEditFood,
+  note,
   children,
 }: {
   food: DetailFood;
@@ -90,6 +91,7 @@ export default function FoodDetail({
   submitLabel: string;
   onSubmit: (p: Portion) => Promise<void>;
   onEditFood?: () => void;
+  note?: ReactNode; // under the name (a kept copy's "Saved copy from …" with Check for changes)
   children?: ReactNode;
 }) {
   const [portion, setPortion] = useState<Portion>(initial);
@@ -126,6 +128,7 @@ export default function FoodDetail({
         <div className="min-w-0">
           <h3 className="text-xl font-bold">{food.name}</h3>
           {food.brand && <p className="text-sm text-subtle">{food.brand}</p>}
+          {note}
           {onEditFood && (
             <button type="button" onClick={onEditFood} className={`${linkButton} text-sm`}>
               Edit food

@@ -11,6 +11,7 @@ import type { CuluryLink, CuluryRecipe, Day, FoodResult, Item, LogEntry, Meal, N
 import FoodForm, { draftOf, emptyDraft, type FoodDraft, type FoodFormMode } from "./FoodForm";
 import FoodDetail, { nutrientsFor, startingPortion } from "./FoodDetail";
 import FoodRow, { QuickAddButton, tagOf, useQuickAdd } from "./FoodRow";
+import { SavedCopyNote } from "./SavedCopy";
 import { TrackMeal } from "../myfoods/QuickMealEditor";
 import Pills from "./Pills";
 import MealPlanView from "./MealPlanView";
@@ -308,6 +309,14 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
     notifyDayChanged();
   };
 
+  // A kept copy checked for changes: the search results show it as it is now
+  const checked = (food: FoodResult) =>
+    setFound((fd) => {
+      const same = (f: FoodResult) => (f.kind === food.kind && f.id === food.id ? food : f);
+      if (fd?.kind === "search") return { ...fd, groups: fd.groups.map((g) => ({ ...g, foods: g.foods.map(same) })) };
+      return fd?.kind === "barcode" && fd.food ? { ...fd, food: same(fd.food) } : fd;
+    });
+
   const label = `Add food to ${MEAL_NAMES[meal]}`;
   const back = () => setView((view.k === "detail" || view.k === "form" || view.k === "describe") && view.from ? { k: view.from } : { k: "search" });
 
@@ -318,6 +327,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
           food={view.food}
           initial={view.initial}
           submitLabel="Track"
+          note={<SavedCopyNote food={view.food} onChecked={(food) => (setView({ ...view, food }), checked(food))} />}
           // recipes are changed in their own editor in My Foods
           onEditFood={view.food.foodKind === "recipe" ? undefined : () => edit(view.food, view.from)}
           onSubmit={async (p) => {
@@ -407,6 +417,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
   }
 
   // saved: the row is from Recently tracked. A Culury row with no nutrition opens on + too (to offer the estimate).
+  // A found food (search or barcode) that is a kept copy says so, with Check for changes.
   const culuryRow = (f: FoodResult) => f.kind === "culury";
   const row = (f: FoodResult, p: Portion, saved?: RecentFood) => (
     <FoodRow
@@ -421,6 +432,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
       busy={culuryRow(f) && opening === f.id}
       onOpen={() => (culuryRow(f) ? void openRow(f, saved).catch((e) => setMsg(errorMsg(e))) : pick(f, p))}
       onQuickAdd={() => (culuryRow(f) && !Object.keys(f.nutrients).length ? openRow(f, saved) : log(f, p))}
+      note={saved ? undefined : <SavedCopyNote food={f} onChecked={checked} />}
     />
   );
   const sameMeal = yesterday.filter((e) => e.meal === meal);
@@ -530,7 +542,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
               <>
                 {/* a source couldn't be checked, so "not found" isn't certain: creating now could hide the real product */}
                 <p className="text-subtle">
-                  Couldn't check {found.errors.map((e) => (e.source === "usda" ? "USDA" : "Open Food Facts")).join(" or ")} for barcode {found.code} just now.
+                  Couldn't check {found.errors.map((e) => (e.source === "usda" ? "USDA" : e.source === "fatsecret" ? "FatSecret" : "Open Food Facts")).join(" or ")} for barcode {found.code} just now.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => setAttempt((n) => n + 1)} className={primaryButton}>

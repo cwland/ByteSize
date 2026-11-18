@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Plus } from "lucide-react";
 import type { FoodKind, Nutrients } from "../../types";
 import Pills from "./Pills";
@@ -65,6 +65,7 @@ export default function FoodRow({
   onOpen,
   onQuickAdd,
   busy = false,
+  note,
 }: {
   name: string;
   icon: string;
@@ -76,6 +77,7 @@ export default function FoodRow({
   onOpen: () => void;
   onQuickAdd: () => Promise<void>;
   busy?: boolean; // being opened (a Culury recipe loading): disabled, "Opening…" for the amount
+  note?: ReactNode; // under the row (a kept copy's "Saved copy from …" with its own button)
 }) {
   const quick = useQuickAdd(onQuickAdd);
   return (
@@ -99,6 +101,7 @@ export default function FoodRow({
         </button>
         <QuickAddButton label={`Quick add ${name}`} added={quick.added} onClick={quick.run} />
       </div>
+      {note && <div className="-mt-1 px-4 pb-2">{note}</div>}
       {quick.error && (
         <p role="alert" className="mx-3 mb-2 rounded-xl bg-error-subtle px-3 py-1.5 text-sm text-error">
           {quick.error}
