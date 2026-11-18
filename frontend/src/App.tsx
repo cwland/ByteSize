@@ -7,6 +7,7 @@ import { useHash } from "./routes";
 import AppShell from "./components/AppShell";
 import SetupWizard from "./components/SetupWizard";
 import { SessionContext, type User } from "./session";
+import { forgetSettings } from "./day";
 
 type AuthState =
   | { status: "loading" }
@@ -84,6 +85,7 @@ export default function App() {
 
   const signOut = () => {
     api("POST", "/api/auth/logout").catch(() => {}); // this device shows as signed out
+    forgetSettings(auth.user.id); // their date look and the rest aren't kept on this device
     setToken(null);
     setAuth({ status: "login" });
   };
