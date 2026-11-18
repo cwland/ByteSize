@@ -23,6 +23,7 @@ import settingsMeRoutes from "./routes/settings-me.js";
 import foodRoutes from "./routes/foods.js";
 import myFoodRoutes from "./routes/my-foods.js";
 import foodLogRoutes from "./routes/log.js";
+import dashboardRoutes from "./routes/dashboard.js";
 import photoRoutes from "./routes/photos.js";
 import weightRoutes from "./routes/weight.js";
 import weightImportRoutes from "./routes/weight-import.js";
@@ -162,6 +163,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(foodRoutes);
   app.register(myFoodRoutes);
   app.register(foodLogRoutes);
+  app.register(dashboardRoutes); // the person's Dashboard widget layout
   app.register(photoRoutes); // registers multipart uploads for its own routes only
   app.register(weightRoutes);
   app.register(weightImportRoutes); // Settings › Data: weight history from a CSV (multipart for its own routes only)

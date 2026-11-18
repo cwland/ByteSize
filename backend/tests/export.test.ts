@@ -127,6 +127,13 @@ describe("GET /api/export", () => {
     expect(json.tables.passkeys).toBeUndefined();
   });
 
+  it("includes the person's Dashboard layout", async () => {
+    const layout = { version: 1, columns: [["budget"], ["food"], ["streak"]] };
+    expect((await t.api("PUT", "/api/dashboard/layout", layout)).status).toBe(200);
+    const { text } = await download();
+    expect(JSON.parse(text("bytesize-export.json")).tables.dashboard_layouts).toEqual([expect.objectContaining({ columns: layout.columns })]);
+  });
+
   it("includes the person's photo, byte for byte", async () => {
     const { photo, userId } = await seed();
     const { files } = await download();

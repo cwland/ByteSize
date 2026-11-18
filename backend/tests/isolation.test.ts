@@ -415,6 +415,17 @@ describe("per-user isolation", () => {
     expect((await a.as("GET", "/api/restaurants/recent-chains")).body).toEqual({ chains: ["Chipotle"] });
   });
 
+  it("a person's Dashboard layout is their own", async () => {
+    const { a, b } = await twoUsers(t);
+    const annas = { version: 1, columns: [["streak"], ["food"], []] };
+    expect((await a.as("PUT", "/api/dashboard/layout", annas)).status).toBe(200);
+    expect((await b.as("GET", "/api/dashboard/layout")).body).toEqual({ layout: null });
+    const bens = { version: 1, columns: [["budget"]] };
+    expect((await b.as("PUT", "/api/dashboard/layout", bens)).status).toBe(200);
+    expect((await a.as("GET", "/api/dashboard/layout")).body).toEqual({ layout: annas });
+    expect((await b.as("GET", "/api/dashboard/layout")).body).toEqual({ layout: bens });
+  });
+
   it("a person's data download holds none of anyone else's rows, photos or Culury address", async () => {
     const { a, b } = await twoUsers(t);
     const food = (who: typeof a, name: string) => who.as("POST", "/api/my-foods", { name, servings: [{ label: "1", grams: 10 }], nutrients: { calories: 100 } }).then((r) => r.body.food);

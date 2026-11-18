@@ -14,7 +14,7 @@ import { aiSettings } from "./foodFakes.js";
 import { setRestaurantKeys } from "./restaurantFakes.js";
 import { multipart, plainPhoto } from "./photoFakes.js";
 import * as schema from "../src/db/schema.js";
-import {
+import { dashboardLayouts,
   appLog,
   appSettings,
   badges,
@@ -104,6 +104,7 @@ async function seed() {
     await t.db.insert(badges).values({ userId: u.id, badge: "first_log", earnedOn: "2026-11-10", seen: i === 1 });
     await t.db.insert(vacations).values({ userId: u.id, fromDay: "2026-12-20", toDay: "2026-12-27" });
     await t.db.insert(restaurantFavourites).values({ userId: u.id, cacheId: cache.id, chain: "Acme Diner" });
+    await t.db.insert(dashboardLayouts).values({ userId: u.id, columns: i ? [["food"], [], ["budget"]] : [["budget", "water"], ["food"]] }); // the person's Dashboard
     await t.db.insert(passkeys).values({ userId: u.id, credentialId: `cred-${u.id}`, publicKey: "pk", transports: ["internal"], rpId: "localhost", name: "Phone" });
   }
   const photo = await storePhoto(t.app, a.id, await plainPhoto(40, 30));
