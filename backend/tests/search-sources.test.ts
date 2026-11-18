@@ -19,13 +19,13 @@ const searched = async (q = "greek yogurt") => (await t.api("GET", `/api/foods/s
 const turn = (enabled: Record<string, boolean>) => t.api("PUT", "/api/admin/food-sources", { enabled });
 
 describe("searched sources", () => {
-  it("a fresh server asks only Open Food Facts, even with nothing found", async () => {
-    expect(await searched()).toEqual(["off"]);
+  it("a fresh server asks My foods and Open Food Facts, even with nothing found", async () => {
+    expect(await searched()).toEqual(["mine", "off"]);
   });
 
   it("a USDA key adds Basic foods and USDA, in pill order", async () => {
     await t.api("PUT", "/api/admin/food-sources", { usdaApiKey: "usda-key" });
-    expect(await searched()).toEqual(["basic", "usda", "off"]);
+    expect(await searched()).toEqual(["mine", "basic", "usda", "off"]);
   });
 
   it("FatSecret and a linked Culury come in their places", async () => {
@@ -33,23 +33,23 @@ describe("searched sources", () => {
     await setRestaurantKeys(t, { fatsecret: { id: "fs-id", secret: "fs-secret" } });
     culuryKnows(t, { recipes: [culuryRecipe(7, "Chili")], plan: [] });
     await t.api("PUT", "/api/settings/culury", { url: CULURY, apiKey: CULURY_KEY });
-    expect(await searched()).toEqual(["fatsecret", "basic", "usda", "off", "culury"]);
+    expect(await searched()).toEqual(["mine", "fatsecret", "basic", "usda", "off", "culury"]);
   });
 
   it("a source switched off is not listed", async () => {
     await t.api("PUT", "/api/admin/food-sources", { usdaApiKey: "usda-key" });
     await turn({ off: false, usda: false });
-    expect(await searched()).toEqual([]);
+    expect(await searched()).toEqual(["mine"]);
   });
 
   it("a source that fails is still listed", async () => {
     t.foodWeb.respond = () => ({ status: 500, json: {} });
     const r = await t.api("GET", "/api/foods/search?q=greek%20yogurt");
     expect(r.body.errors.map((e: any) => e.source)).toEqual(["off"]);
-    expect(r.body.searched).toEqual(["off"]);
+    expect(r.body.searched).toEqual(["mine", "off"]);
   });
 
-  it("a typed barcode is not a source search: nothing listed", async () => {
+  it("a typed barcode is not a source search: no pills", async () => {
     expect(await searched("3000000000007")).toEqual([]);
   });
 });

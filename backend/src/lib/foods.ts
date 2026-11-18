@@ -377,8 +377,8 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
   // The person's own Culury recipes (only their own link), at the same time
   const culury = await culuryLink(app, userId);
   const culuryRun = culury ? searchCulury(app, culury, q) : null;
-  // Pill order; Basic foods are USDA's whole foods, so they are asked whenever USDA is
-  const searched: GroupSource[] = [...(fs ? (["fatsecret"] as const) : []), ...(key ? (["basic", "usda"] as const) : []), ...(outside.some((o) => o.source === "off") ? (["off"] as const) : []), ...(culury ? (["culury"] as const) : [])];
+  // Pill order (My foods is always searched); Basic foods are USDA's whole foods, so they are asked whenever USDA is
+  const searched: GroupSource[] = ["mine", ...(fs ? (["fatsecret"] as const) : []), ...(key ? (["basic", "usda"] as const) : []), ...(outside.some((o) => o.source === "off") ? (["off"] as const) : []), ...(culury ? (["culury"] as const) : [])];
   culuryRun?.catch(() => {}); // handled below
 
   const mine = await findMyFoods(db, userId, q, 10);

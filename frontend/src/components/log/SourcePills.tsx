@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SearchResult } from "../../types";
 
 // Add food's source pills (§22): one toggle per source a typed search asked. A pill that is on shows its group.
 export const PILLS = [
+  { id: "mine", label: "My foods" },
   { id: "fatsecret", label: "FatSecret" },
   { id: "basic", label: "Basic" },
   { id: "usda", label: "USDA" },
@@ -11,7 +12,7 @@ export const PILLS = [
 ] as const;
 export type PillId = (typeof PILLS)[number]["id"];
 export type Choice = Record<PillId, boolean>;
-const DEFAULTS: Choice = { fatsecret: true, basic: false, usda: true, off: true, culury: false };
+const DEFAULTS: Choice = { mine: true, fatsecret: true, basic: false, usda: true, off: true, culury: false };
 
 // Remembered per person on this device. A browser without storage (or with junk in it) just uses the defaults.
 const keyFor = (userId: number) => `bytesize.searchSources.${userId}`;
@@ -34,12 +35,15 @@ function save(userId: number, choice: Choice) {
 
 export function useSourceChoice(userId: number) {
   const [choice, setChoice] = useState(() => load(userId));
-  const toggle = (id: PillId) =>
-    setChoice((c) => {
-      const next = { ...c, [id]: !c[id] };
-      save(userId, next);
-      return next;
-    });
+  // Saved after a change the person made, not on first show
+  const changed = useRef(false);
+  useEffect(() => {
+    if (changed.current) save(userId, choice);
+  }, [userId, choice]);
+  const toggle = (id: PillId) => {
+    changed.current = true;
+    setChoice((c) => ({ ...c, [id]: !c[id] }));
+  };
   return { choice, toggle };
 }
 
@@ -51,8 +55,11 @@ export function viewOf(found: SearchResult, choice: Choice) {
   if (failedIds.has("usda")) failedIds.add("basic");
   const pills = asked.map((p) => ({ ...p, on: choice[p.id], count: count(p.id), failed: failedIds.has(p.id) }));
   const asking = new Set<string>(pills.map((p) => p.id));
-  // Groups with a pill follow it; My foods and Saved foods have none and always show
-  const groups = found.groups.filter((g) => !asking.has(g.source) || choice[g.source as PillId]);
+  // A pill source's group shows only while its pill is on; one with no pill (switched off, no key) stays hidden.
+  // Saved foods (restaurant items) are no pill source and always show.
+  const isPillSource = (source: string) => PILLS.some((p) => p.id === source);
+  // (An answer that doesn't say which sources it asked is shown whole.)
+  const groups = !found.searched ? found.groups : found.groups.filter((g) => !isPillSource(g.source) || (asking.has(g.source) && choice[g.source as PillId]));
   const errors = found.errors.filter((e) => !asking.has(e.source) || choice[e.source as PillId] || (e.source === "usda" && choice.basic));
   const on = pills.filter((p) => p.on);
   const more = pills.find((p) => !p.on && p.count > 0);

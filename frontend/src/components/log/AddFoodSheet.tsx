@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, CalendarDays, Camera, ChevronDown, Plus, ScanBarcode, Sparkles, Utensils } from "lucide-react";
+import { CalendarDays, Camera, ChevronDown, Plus, ScanBarcode, Sparkles, Utensils } from "lucide-react";
 import { ApiError, api } from "../../api";
 import { formatAmount } from "../../amounts";
 import { notifyDayChanged } from "../../day";
 import { MEALS, MEAL_NAMES } from "../../meals";
-import { isMyFoods, myFoodsHref } from "../../routes";
 import { addDays, dayLabel, todayIn } from "../../selectedDay";
 import { useSession } from "../../session";
 import type { CuluryLink, CuluryRecipe, Day, FoodResult, Item, LogEntry, Meal, Nutrients, PhotoDraft, PhotoMode, Portion, RecentFood, RestaurantStatus, SearchResult, SourceError } from "../../types";
@@ -496,16 +495,6 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
         </button>
         <button type="button" onClick={() => setView({ k: "form", mode: { kind: "create" }, draft: emptyDraft() })} className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}>
           <Plus className="size-4" /> Create food
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            onClose();
-            if (!isMyFoods()) window.location.hash = myFoodsHref();
-          }}
-          className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}
-        >
-          <BookOpen className="size-4" /> My Foods
         </button>
         {culury && (
           <button type="button" onClick={() => setView({ k: "plan" })} className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}>

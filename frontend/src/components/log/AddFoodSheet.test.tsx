@@ -473,13 +473,11 @@ describe("Add food: recipes, quick meals and My Foods", () => {
     ]);
   });
 
-  it("My Foods link goes to My Foods, remembering the Log to come back to", async () => {
-    window.location.hash = "#/log";
+  it("has no My Foods button (the page is reached from the side rail and Log header)", async () => {
     open();
     const user = userEvent.setup();
     const sheet = await openSnacks(user);
-    await user.click(within(sheet).getByRole("button", { name: "My Foods" }));
-    expect(window.location.hash).toBe("#/log/my-foods?from=/log");
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await within(sheet).findByRole("button", { name: /Describe it/ });
+    expect(within(sheet).queryByRole("button", { name: "My Foods" })).toBeNull();
   });
 });

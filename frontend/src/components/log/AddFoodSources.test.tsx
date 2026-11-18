@@ -19,7 +19,7 @@ const GROUPS = [
   group("usda", "USDA branded", [food(30, "USDA peanut butter", "usda"), food(31, "USDA peanut oil", "usda")]),
   group("off", "Open Food Facts", [food(40, "OFF peanut snack", "off")]),
 ];
-const ALL = ["fatsecret", "basic", "usda", "off", "culury"];
+const ALL = ["mine", "fatsecret", "basic", "usda", "off", "culury"];
 const answer = (over: Record<string, unknown> = {}) => ({ groups: GROUPS, errors: [], searched: ALL, ...over });
 
 function open(search: () => unknown = () => answer(), user = {}) {
@@ -69,7 +69,7 @@ describe("source pills", () => {
     const sheet = await openSheet(u);
     await search(u, sheet);
     await within(sheet).findByText("OFF peanut snack");
-    expect(pills(sheet).map((p) => p.textContent)).toEqual(["FatSecret (1)", "Basic (2)", "USDA (2)", "Open Food Facts (1)", "Culury (1)"]);
+    expect(pills(sheet).map((p) => p.textContent)).toEqual(["My foods (1)", "FatSecret (1)", "Basic (2)", "USDA (2)", "Open Food Facts (1)", "Culury (1)"]);
   });
 
   it("starts with FatSecret, USDA and Open Food Facts on, Basic and Culury off: their groups are hidden", async () => {
@@ -78,7 +78,7 @@ describe("source pills", () => {
     const sheet = await openSheet(u);
     await search(u, sheet);
     await within(sheet).findByText("OFF peanut snack");
-    expect(pills(sheet).map((p) => p.getAttribute("aria-pressed"))).toEqual(["true", "false", "true", "true", "false"]);
+    expect(pills(sheet).map((p) => p.getAttribute("aria-pressed"))).toEqual(["true", "true", "false", "true", "true", "false"]);
     expect(within(sheet).getByText("FatSecret peanut bar")).toBeInTheDocument();
     expect(within(sheet).getByText("USDA peanut butter")).toBeInTheDocument();
     expect(within(sheet).queryByText("Basic peanuts")).toBeNull();
@@ -87,15 +87,47 @@ describe("source pills", () => {
     expect(within(sheet).queryByRole("heading", { name: "Culury" })).toBeNull();
   });
 
-  it("My foods is always shown, even with every pill off", async () => {
+  it("My foods is a pill too: on by default, and turning it off hides its group", async () => {
     open();
     const u = userEvent.setup();
     const sheet = await openSheet(u);
     await search(u, sheet);
     await within(sheet).findByText("OFF peanut snack");
-    for (const name of [/^FatSecret/, /^USDA/, /^Open Food Facts/]) await u.click(pill(sheet, name));
+    expect(pills(sheet)[0]).toHaveTextContent("My foods (1)");
     expect(within(sheet).getByText("My peanut shake")).toBeInTheDocument();
-    expect(within(sheet).queryByText("OFF peanut snack")).toBeNull();
+    await u.click(pill(sheet, /^My foods/));
+    expect(within(sheet).queryByText("My peanut shake")).toBeNull();
+    await u.click(pill(sheet, /^My foods/));
+    expect(within(sheet).getByText("My peanut shake")).toBeInTheDocument();
+  });
+
+  it("Recents (before typing) are not filtered by the pills", async () => {
+    localStorage.setItem("bytesize.searchSources.1", JSON.stringify({ mine: false }));
+    open();
+    const u = userEvent.setup();
+    const sheet = await openSheet(u);
+    expect(within(sheet).queryByRole("group", { name: "Sources" })).toBeNull();
+  });
+
+  it("a saved choice with no My foods entry treats it as on", async () => {
+    localStorage.setItem("bytesize.searchSources.1", JSON.stringify({ fatsecret: true, basic: false, usda: true, off: true, culury: false }));
+    open();
+    const u = userEvent.setup();
+    const sheet = await openSheet(u);
+    await search(u, sheet);
+    await within(sheet).findByText("OFF peanut snack");
+    expect(pill(sheet, /^My foods/)).toHaveAttribute("aria-pressed", "true");
+    expect(within(sheet).getByText("My peanut shake")).toBeInTheDocument();
+  });
+
+  it("a kept food of a pill source that wasn't searched (off, or no key) stays hidden", async () => {
+    open(() => answer({ searched: ["mine", "off"], groups: [GROUPS[0], GROUPS[2], GROUPS[3], GROUPS[5]] }));
+    const u = userEvent.setup();
+    const sheet = await openSheet(u);
+    await search(u, sheet);
+    await within(sheet).findByText("OFF peanut snack");
+    expect(within(sheet).queryByText("Basic peanuts")).toBeNull();
+    expect(within(sheet).queryByText("FatSecret peanut bar")).toBeNull();
   });
 
   it("turning a pill on shows its group, off hides it, with no extra search", async () => {
@@ -132,24 +164,24 @@ describe("source pills", () => {
     const sheet = await openSheet(u);
     await search(u, sheet);
     await within(sheet).findByText("FatSecret peanut bar");
-    expect(pills(sheet).map((p) => p.textContent)).toEqual(["FatSecret (1)", "Basic (0)", "USDA (0)", "Open Food Facts (0)", "Culury (0)"]);
+    expect(pills(sheet).map((p) => p.textContent)).toEqual(["My foods (1)", "FatSecret (1)", "Basic (0)", "USDA (0)", "Open Food Facts (0)", "Culury (0)"]);
   });
 
   it("a source that wasn't searched (switched off, or no key) has no pill", async () => {
-    open(() => answer({ searched: ["off"], groups: [GROUPS[0], GROUPS[5]] }));
+    open(() => answer({ searched: ["mine", "off"], groups: [GROUPS[0], GROUPS[5]] }));
     const u = userEvent.setup();
     const sheet = await openSheet(u);
     await search(u, sheet);
     await within(sheet).findByText("OFF peanut snack");
-    expect(pills(sheet).map((p) => p.textContent)).toEqual(["Open Food Facts (1)"]);
+    expect(pills(sheet).map((p) => p.textContent)).toEqual(["My foods (1)", "Open Food Facts (1)"]);
   });
 
   it("no sources searched: no pills at all", async () => {
-    open(() => answer({ searched: [], groups: [GROUPS[0]] }));
+    open(() => answer({ searched: [], groups: [] }));
     const u = userEvent.setup();
     const sheet = await openSheet(u);
     await search(u, sheet);
-    await within(sheet).findByText("My peanut shake");
+    await within(sheet).findByText(/No foods found/);
     expect(within(sheet).queryByRole("group", { name: "Sources" })).toBeNull();
   });
 
@@ -176,22 +208,22 @@ describe("source pills", () => {
   });
 
   it("when every pill that is on has nothing, says so and names the first pill with results", async () => {
-    open(() => answer({ groups: [GROUPS[0], GROUPS[2], GROUPS[1]] }));
+    open(() => answer({ groups: [GROUPS[2], GROUPS[1]] }));
     const u = userEvent.setup();
     const sheet = await openSheet(u);
     await search(u, sheet);
-    expect(await within(sheet).findByText("Nothing from FatSecret, USDA and Open Food Facts. Tap Basic (2) to see those.")).toBeInTheDocument();
+    expect(await within(sheet).findByText("Nothing from My foods, FatSecret, USDA and Open Food Facts. Tap Basic (2) to see those.")).toBeInTheDocument();
     await u.click(pill(sheet, /^Basic/));
     expect(within(sheet).queryByText(/^Nothing from/)).toBeNull();
     expect(within(sheet).getByText("Basic peanuts")).toBeInTheDocument();
   });
 
-  it("with one pill on and nothing from it: 'Nothing from FatSecret.'", async () => {
-    open(() => answer({ searched: ["fatsecret", "basic"], groups: [GROUPS[2]] }));
+  it("with one pill on and nothing from it: 'Nothing from My foods and FatSecret.'", async () => {
+    open(() => answer({ searched: ["mine", "fatsecret", "basic"], groups: [GROUPS[2]] }));
     const u = userEvent.setup();
     const sheet = await openSheet(u);
     await search(u, sheet);
-    expect(await within(sheet).findByText("Nothing from FatSecret. Tap Basic (2) to see those.")).toBeInTheDocument();
+    expect(await within(sheet).findByText("Nothing from My foods and FatSecret. Tap Basic (2) to see those.")).toBeInTheDocument();
   });
 
   it("no 'Nothing from' line when nothing was found anywhere", async () => {
@@ -215,7 +247,7 @@ describe("source pills", () => {
     sheet = await openSheet(u);
     await search(u, sheet);
     await within(sheet).findByText("FatSecret peanut bar");
-    expect(pills(sheet).map((p) => p.getAttribute("aria-pressed"))).toEqual(["true", "false", "true", "false", "true"]);
+    expect(pills(sheet).map((p) => p.getAttribute("aria-pressed"))).toEqual(["true", "true", "false", "true", "false", "true"]);
     expect(within(sheet).getByText("Culury chili")).toBeInTheDocument();
   });
 
@@ -231,7 +263,7 @@ describe("source pills", () => {
     sheet = await openSheet(u);
     await search(u, sheet);
     await within(sheet).findByText("OFF peanut snack");
-    expect(pills(sheet).map((p) => p.getAttribute("aria-pressed"))).toEqual(["true", "false", "true", "true", "false"]);
+    expect(pills(sheet).map((p) => p.getAttribute("aria-pressed"))).toEqual(["true", "true", "false", "true", "true", "false"]);
   });
 
   it("a browser without storage still works, on the defaults", async () => {
