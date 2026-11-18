@@ -769,6 +769,10 @@ own history only.
   column that isn't the date). Known exports this should handle without changes: Lose It (Date, Weight),
   MyFitnessPal measurement export (Date, Weight), Happy Scale, Libra (semicolon), Withings ("Date","Weight (lb)" /
   "Weight (kg)"), Fitbit (Date, Weight), a hand-made two-column sheet.
+- Added in review: files wider than 50 columns are refused; exact headers ("date", "weight", "weight (lb)",
+  "weight (kg)", "body weight") win over partial matches; two-digit years read as 20YY (19YY if that would be in the
+  future); UTF-16 (Excel "Unicode Text", with its byte-order mark) and Windows-1252 files are read; an unclosed quote
+  is reported with its line number; at most 100 unreadable-row reasons are kept (the count is exact).
 - Stored as kilograms like every weigh-in (exact conversion 0.45359237); notes from a "note"/"notes"/"comment"
   column if there is one, otherwise none.
 
