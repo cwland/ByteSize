@@ -30,6 +30,9 @@ export default function Dashboard() {
   const settings = useSettingsMe();
   const [cols, setCols] = useState<Columns>(() => defaultLayout(WIDGETS));
   const [editing, setEditing] = useState<Columns | null>(null);
+  // Editing starts from the saved layout: until it has loaded (or failed to), Edit dashboard waits, so Save
+  // can never write an edit of the default over it
+  const [loaded, setLoaded] = useState(false);
   // Phones: Photo opens the file picker straight away; the chosen photo then opens Add Food for the meal of the moment
   const [photo, setPhoto] = useState<{ file: File; meal: Meal } | null>(null);
   const photoInput = usePhotoInput((file) => setPhoto({ file, meal: mealFor(user.timezone, new Date(), settings.mealWindows) }));
@@ -38,13 +41,14 @@ export default function Dashboard() {
     let live = true;
     api<{ layout: SavedLayout | null }>("GET", "/api/dashboard/layout")
       .then((r) => live && setCols(fromSaved(r.layout, WIDGETS)))
-      .catch(() => {}); // the default layout stays
+      .catch(() => {}) // the default layout stays
+      .finally(() => live && setLoaded(true));
     return () => void (live = false);
   }, []);
 
   const props: WidgetProps = { day, data, isToday, wide };
   const editButton = !editing && (
-    <button type="button" onClick={() => setEditing(cols)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-link hover:bg-pressed">
+    <button type="button" disabled={!loaded} onClick={() => setEditing(cols)} className="disabled:opacity-50 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-link hover:bg-pressed">
       <Pencil aria-hidden="true" className="size-4" /> Edit dashboard
     </button>
   );

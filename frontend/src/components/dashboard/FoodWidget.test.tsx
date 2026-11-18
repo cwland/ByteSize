@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import FoodHost from "../../test/FoodHost";
 import { SelectedDayProvider } from "../../selectedDay";
@@ -103,6 +103,29 @@ describe("Food widget (everything the Log page did)", () => {
     const moved = server.writes().find((w) => w.path === "/api/log/move")!;
     expect(moved.body).toEqual({ ids: [1], day: "2026-11-17", meal: "lunch", copy: false });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("select several, then Delete selected asks once and deletes each", async () => {
+    let gone = false;
+    const server = show({
+      "GET /api/day/:date": () => (gone ? { ...bothInBreakfast, entries: [] } : bothInBreakfast),
+      "DELETE /api/log/:id": () => {
+        gone = true;
+        return { status: 204 };
+      },
+    });
+    const user = userEvent.setup();
+    await screen.findByRole("button", { name: /Toast/ });
+    await user.click(screen.getByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("checkbox", { name: /Toast/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Peanut butter bar/ }));
+    await user.click(screen.getByRole("button", { name: "Delete selected" }));
+    const confirm = screen.getByRole("alertdialog", { name: "Delete 2 foods?" });
+    expect(server.writes()).toHaveLength(0);
+    await user.click(within(confirm).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(server.writes().map((w) => [w.method, w.path])).toEqual([["DELETE", "/api/log/1"], ["DELETE", "/api/log/2"]]));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Toast/ })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Delete selected" })).not.toBeInTheDocument(); // selecting ended
   });
 
   it("delete asks first and removes the row", async () => {

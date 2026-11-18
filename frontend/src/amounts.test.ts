@@ -54,6 +54,19 @@ describe("formatAmount", () => {
     expect(one("1 peeled baby carrot", 5)).toBe("5 peeled baby carrots");
     expect(one("1 extra large egg", 2)).toBe("2 extra large eggs");
     expect(one("1 small", 2)).toBe("2 small"); // a size on its own stays as it is
+    // a measure or container word first takes the plural, whatever follows it (review, fix round 1)
+    expect(one("1 cup sliced", 2)).toBe("2 cups sliced");
+    expect(one("1 can soda", 2)).toBe("2 cans soda");
+    expect(one("1 slice whole wheat bread", 2)).toBe("2 slices whole wheat bread");
+    expect(one("1 link sausage", 2)).toBe("2 links sausage");
+    expect(one("1 large", 2)).toBe("2 large");
+    expect(one("1 medium egg", 2)).toBe("2 medium eggs");
+    expect(one("1 tbsp", 2)).toBe("2 tbsp");
+    expect(one("1 oz", 2)).toBe("2 oz");
+    expect(formatAmount([{ label: "100 g", grams: 100 }], 0, "serving", 1.5, 1)).toBe("150 g");
+    expect(one("2 cups sliced", 0.5)).toBe("1 cup sliced");
+    expect(one("1 egg white", 2)).toBe("2 egg whites");
+    expect(one("1 chocolate chip cookie", 3)).toBe("3 chocolate chip cookies");
   });
 
   it("writes units as people say them", () => {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Dashboard from "./Dashboard";
 import { WIDGETS } from "./widgets";
@@ -169,6 +169,25 @@ describe("Dashboard widgets", () => {
     expect(order).toEqual(["budget", "food", "water", "day-totals", "weight", "next-shot", "streak"]);
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(server.writes()[0].body.columns).toEqual([["budget", "food"], ["water"], ["day-totals", "weight", "next-shot", "streak"]]);
+  });
+
+  it("Edit dashboard waits for the saved layout, so Save never writes an edit of the default over it", async () => {
+    let answer!: (v: unknown) => void;
+    const server = show({ over: { "GET /api/dashboard/layout": () => new Promise((r) => (answer = r)) } });
+    const edit = await screen.findByRole("button", { name: "Edit dashboard" });
+    expect(edit).toBeDisabled();
+    answer({ layout: { version: 1, columns: [["streak"], ["food"], []] } });
+    await waitFor(() => expect(edit).toBeEnabled());
+    const user = userEvent.setup();
+    await user.click(edit);
+    expect(columns().map(editCards)).toEqual([["streak"], ["food"], []]);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(server.writes()[0].body.columns).toEqual([["streak"], ["food"], []]);
+  });
+
+  it("if the saved layout can't be loaded, editing starts from the default", async () => {
+    show({ over: { "GET /api/dashboard/layout": () => ({ status: 500, json: { error: "down" } }) } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Edit dashboard" })).toBeEnabled());
   });
 
   it("a failed save says why and stays in edit mode", async () => {

@@ -18,13 +18,14 @@ type Moving = { ids: number[]; copy: boolean; meal: Meal };
 
 // The Dashboard's Food widget: everything the Log page did (§28). The day's meals as the Log's meal cards
 // (entries with photo/icon, amount and pills; "+ Add food" on every meal; Supplements & water), tap a food to
-// edit, move, copy or delete it; Select for several (move, copy — e.g. a meal to another day); Save as a meal.
+// edit, move, copy or delete it; Select for several (move, copy — e.g. a meal to another day — or delete); Save as a meal.
 export default function FoodWidget({ day, data, isToday }: { day: string; data: Day | null; isToday: boolean }) {
   const { user } = useSession();
   const [adding, setAdding] = useState<Meal | null>(null);
   const [editing, setEditing] = useState<LogEntry | null>(null);
   const [moving, setMoving] = useState<Moving | null>(null);
   const [deleting, setDeleting] = useState<LogEntry | null>(null);
+  const [deletingSelected, setDeletingSelected] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [msg, setMsg] = useState<Msg>(null);
@@ -51,6 +52,23 @@ export default function FoodWidget({ day, data, isToday }: { day: string; data: 
     }
   };
 
+  // Delete selected: one at a time, so what was deleted before a failure stays deleted and the rest stay selected
+  const removeSelected = async () => {
+    setDeletingSelected(false);
+    const left = new Set(selected);
+    try {
+      for (const id of selected) {
+        await api("DELETE", `/api/log/${id}`);
+        left.delete(id);
+      }
+      endSelect();
+    } catch (err) {
+      setSelected(left);
+      setMsg(errorMsg(err));
+    }
+    notifyDayChanged();
+  };
+
   const entries = data?.entries ?? [];
   const title = isToday || !data ? "Today's food" : `Food on ${dayLabel(data.day)}`;
   return (
@@ -65,6 +83,9 @@ export default function FoodWidget({ day, data, isToday }: { day: string; data: 
             </button>
             <button type="button" disabled={!selected.size} onClick={() => setMoving({ ids: [...selected], copy: true, meal: "breakfast" })} className={`${secondaryButton} px-4 py-1.5 text-sm`}>
               Copy selected
+            </button>
+            <button type="button" disabled={!selected.size} onClick={() => setDeletingSelected(true)} className={`${secondaryButton} px-4 py-1.5 text-sm text-error`}>
+              Delete selected
             </button>
           </>
         ) : (
@@ -127,6 +148,9 @@ export default function FoodWidget({ day, data, isToday }: { day: string; data: 
             endSelect();
           }}
         />
+      )}
+      {deletingSelected && (
+        <Confirm title={`Delete ${selected.size} ${selected.size === 1 ? "food" : "foods"}?`} confirmLabel="Delete" onConfirm={removeSelected} onCancel={() => setDeletingSelected(false)} />
       )}
       {deleting && <Confirm title={`Delete ${deleting.name}?`} confirmLabel="Delete" onConfirm={() => remove(deleting)} onCancel={() => setDeleting(null)} />}
     </section>
