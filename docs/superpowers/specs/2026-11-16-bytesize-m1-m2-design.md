@@ -1019,3 +1019,4 @@ Search food etc. on the budget widget — users don't need them there."
 - **Day totals on the Dashboard** ("add this widget to the Dashboard as well, on the right, top"): the Log page's Day
   totals card (calories, protein, carbs, fat, fiber, sugar, sodium, water — eaten vs target, same component and
   rules) sits at the top of the right column, above weight, next shot and streak, for the selected day.
+- Pop-up windows don't close on a click outside them — only the X in the corner or Escape closes them ('when entering an item, the window should not close if you click out of it by accident').
