@@ -1016,3 +1016,6 @@ Search food etc. on the budget widget — users don't need them there."
 - The four quick buttons (Search food, Barcode photo, Label photo, Restaurants) are removed from the Dashboard.
 - Today's food: every meal gets a "+ Add food" button (also meals that already have food, after their last item),
   so food can always be added from there.
+- **Day totals on the Dashboard** ("add this widget to the Dashboard as well, on the right, top"): the Log page's Day
+  totals card (calories, protein, carbs, fat, fiber, sugar, sodium, water — eaten vs target, same component and
+  rules) sits at the top of the right column, above weight, next shot and streak, for the selected day.
