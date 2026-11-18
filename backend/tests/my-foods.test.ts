@@ -156,6 +156,10 @@ describe("AI estimate", () => {
     expect(lastAiPrompt(t)).toMatch(/most likely food/i);
     expect(lastAiPrompt(t)).toMatch(/misspell/i);
     expect(lastAiPrompt(t)).toContain("interpretedAs");
+    // only when it changed or guessed what was typed, never when it merely reworded clear words (§37)
+    expect(lastAiPrompt(t)).toMatch(/only when you changed or guessed what was typed/i);
+    expect(lastAiPrompt(t)).toMatch(/not when you only reworded/i);
+    expect(lastAiPrompt(t)).toContain('"a large banana" named as "Banana, large" is not assumed');
 
     // What it was typed as: nothing to confirm
     aiAnswers(t, burrito);

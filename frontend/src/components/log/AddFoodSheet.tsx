@@ -337,7 +337,11 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
     });
 
   const label = `Add food to ${MEAL_NAMES[meal]}`;
-  const back = () => setView((view.k === "detail" || view.k === "form" || view.k === "describe") && view.from ? { k: view.from } : { k: "search" });
+  // Back from Describe it while an estimate runs cancels it, as Cancel does (nothing opens when it would have come)
+  const back = () => {
+    estimating.cancel();
+    setView((view.k === "detail" || view.k === "form" || view.k === "describe") && view.from ? { k: view.from } : { k: "search" });
+  };
 
   if (view.k === "detail") {
     return (

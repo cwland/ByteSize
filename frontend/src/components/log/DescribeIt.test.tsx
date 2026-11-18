@@ -105,6 +105,38 @@ describe("Describe it", () => {
     expect(server.writes().filter((w) => w.path.startsWith("/api/log"))).toEqual([]);
   });
 
+  it("‹ Back while it works cancels it, as Cancel does: the request is aborted and a late answer opens nothing (§37)", async () => {
+    const answer = streamed();
+    const server = open(() => answer.response);
+    const user = userEvent.setup();
+    const sheet = await describeIt(user, "cherios");
+    await within(sheet).findByText("Estimating… asking AI");
+    await user.click(within(sheet).getByRole("button", { name: "‹ Back" }));
+    expect(server.sent.find((s) => s.path === "/api/ai/estimate")!.signal?.aborted).toBe(true);
+    // back at search; nothing jumps to the New food form afterwards
+    expect(within(sheet).queryByRole("textbox", { name: "Describe the food" })).not.toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(within(sheet).queryByRole("heading", { name: "New food" })).not.toBeInTheDocument();
+    // and Describe it again starts idle, with the words kept
+    await user.click(within(sheet).getByRole("button", { name: "Describe it" }));
+    expect(within(sheet).getByRole("status")).toBeEmptyDOMElement();
+    expect(within(sheet).getByRole("button", { name: "Estimate" })).toBeEnabled();
+  });
+
+  it("while idle the status region takes no space (no stray gap by the Estimate button), and is in the flow while working (§37)", async () => {
+    open(() => new Promise(() => {}));
+    const user = userEvent.setup();
+    const card = await screen.findByRole("region", { name: "Snacks" });
+    await user.click(within(card).getByRole("button", { name: "Add Food" }));
+    const sheet = screen.getByRole("dialog", { name: "Add food to Snacks" });
+    await user.click(within(sheet).getByRole("button", { name: "Describe it" }));
+    const area = within(sheet).getByRole("status").parentElement!;
+    expect(area).toHaveClass("absolute", "size-0", "overflow-hidden"); // out of the layout, still read out
+    await user.type(within(sheet).getByRole("textbox", { name: "Describe the food" }), "toast");
+    await user.click(within(sheet).getByRole("button", { name: "Estimate" }));
+    expect(area).not.toHaveClass("absolute");
+  });
+
   it("a guess worth confirming: Did you mean Cheerios? Yes carries on with that estimate", async () => {
     open(() => ({ food: cheerios, assumed: true, interpretedAs: "Cheerios" }));
     const user = userEvent.setup();

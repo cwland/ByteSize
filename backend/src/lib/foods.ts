@@ -756,7 +756,7 @@ const ESTIMATE_ASK = (text: string) =>
     "",
     "Assume the most likely food the person meant: the text may misspell it, write a brand name loosely, or leave words out. Only when nothing sensible fits, give up and answer {\"unknown\": true}.",
     `Answer as JSON: {"name": string, "brand": string | null, "category": string, "servings": [{"label": string, "grams"?: number, "ml"?: number}], "nutrients": {<key>: number}, "assumed": boolean, "interpretedAs"?: string}. servings[0] is the usual US serving and the nutrients are for it.`,
-    'name is the food as you understood it. assumed is true only when that differs from what was typed in a way worth confirming (a misspelling, a guessed brand, a missing word); then interpretedAs says what you took it to mean, e.g. "Cheerios".',
+    'name is the food as you understood it. Set assumed to true (and interpretedAs to what you took it to mean, e.g. "Cheerios" for "cherios") only when you changed or guessed what was typed: a misspelling, an unclear or partial name, a guessed brand, a missing word. Not when you only reworded clear words (order, case, commas, plurals, adding the usual name): "a large banana" named as "Banana, large" is not assumed; leave assumed false and interpretedAs out.',
   ].join("\n");
 
 /**
