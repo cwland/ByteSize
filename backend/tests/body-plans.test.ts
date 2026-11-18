@@ -70,6 +70,7 @@ describe("body and plans", () => {
     expect(res.body.explanation).toBe("Steady fits you best. Eat plenty of protein.");
     expect(t.ai.calls).toHaveLength(1);
     expect(JSON.stringify(t.ai.calls[0].body)).toContain("1,960");
+    expect(t.ai.calls[0].body).toMatchObject({ max_tokens: 1000, reasoning: { effort: "low" } }); // room for models that think first
 
     t.ai.down = true;
     const fallback = await t.api("GET", "/api/plans");

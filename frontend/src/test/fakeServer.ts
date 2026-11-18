@@ -8,8 +8,10 @@ export interface Sent {
   path: string;
   body: any;
   headers: Record<string, string>;
+  signal?: AbortSignal; // aborted when the screen stops waiting (Cancel)
 }
-type Handler = (body: any, path: string) => { status?: number; json?: unknown } | unknown;
+// A handler may return a Response itself (e.g. an answer streamed as lines)
+type Handler = (body: any, path: string) => { status?: number; json?: unknown } | Response | unknown;
 
 export function fakeServer(routes: Record<string, Handler>) {
   const sent: Sent[] = [];
@@ -18,13 +20,22 @@ export function fakeServer(routes: Record<string, Handler>) {
     const path = url.replace(/^https?:\/\/[^/]+/, "");
     const method = (init?.method ?? "GET").toUpperCase();
     const body = typeof init?.body === "string" ? JSON.parse(init.body) : init?.body;
-    sent.push({ method, path, body, headers: Object.fromEntries(new Headers(init?.headers).entries()) });
+    const signal = init?.signal ?? undefined;
+    sent.push({ method, path, body, headers: Object.fromEntries(new Headers(init?.headers).entries()), signal });
     const key = Object.keys(routes).find((k) => {
       const [m, pattern] = k.split(" ");
       return m === method && new RegExp(`^${pattern.replace(/:\w+/g, "[^/?]+")}(\\?.*)?$`).test(path);
     });
     if (!key) return new Response(JSON.stringify({ error: `No fake for ${method} ${path}` }), { status: 404 });
-    const out = (await routes[key](body, path)) as { status?: number; json?: unknown };
+    // Like a real fetch, an aborted request rejects with AbortError (even while the handler is still working)
+    const aborted = new Promise<never>((_, reject) => {
+      const fail = () => reject(new DOMException("The operation was aborted.", "AbortError"));
+      if (signal?.aborted) fail();
+      signal?.addEventListener("abort", fail);
+    });
+    aborted.catch(() => {});
+    const out = (await Promise.race([routes[key](body, path), aborted])) as { status?: number; json?: unknown };
+    if (out instanceof Response) return out;
     // { status: 409, json: … } sets the HTTP status; anything else is the JSON itself
     const isWrapped = !!out && typeof out === "object" && typeof out.status === "number" && Object.keys(out).every((k) => k === "status" || k === "json");
     const status = isWrapped ? (out.status ?? 200) : 200;

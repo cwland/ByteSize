@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { Db } from "../db/index.js";
 import { fatsecretBarcodes, foodCache, foodSearches, userFoods } from "../db/schema.js";
 import { culuryLink, culuryMessage, logCuluryFailure, searchCulury } from "./culury.js";
-import { AiError } from "./ai.js";
+import { AiError, AiStopped, type AiProgress } from "./ai.js";
 import { logEvent } from "./appLog.js";
 import { normalizeBarcode } from "./barcode.js";
 import { HttpError, badRequest } from "./errors.js";
@@ -709,18 +709,13 @@ const SYSTEM = [
   "Values are plain numbers only (no units, no ranges, no strings). Answer with JSON only.",
 ].join("\n");
 
-async function aiReady(app: FastifyInstance) {
+export async function aiReady(app: FastifyInstance) {
   if (!(await app.ai.active("food"))) throw new HttpError(503, AI_NOT_READY);
 }
 
-async function askFood(app: FastifyInstance, userId: number, user: string) {
-  try {
-    return (await app.ai.ask("food", SYSTEM, user, { userId, maxTokens: 1200 })).json;
-  } catch (err) {
-    if (err instanceof AiError) throw new HttpError(502, err.message);
-    throw err;
-  }
-}
+// Room for models that think before answering (common on OpenRouter), and asked to think only a little
+const askFood = (app: FastifyInstance, userId: number, user: string, opts: { signal?: AbortSignal; onProgress?: (p: AiProgress) => void } = {}) =>
+  app.ai.ask("food", SYSTEM, user, { userId, maxTokens: 4000, reasoning: "low", ...opts }).then((r) => r.json);
 
 const aiFood = z.object({
   name: z.string().trim().min(1).max(200),
@@ -740,19 +735,45 @@ const aiFood = z.object({
 
 export type AiDraft = Omit<FoodResult, "id" | "kind" | "foodKind"> & { category: string };
 
-export async function estimateFood(app: FastifyInstance, userId: number, text: string): Promise<AiDraft> {
+// What the person sees when the estimate fails (never which AI service it was)
+export const AI_COULDNT_ESTIMATE = "The AI couldn't estimate that. Try again, or describe it differently.";
+export const AI_NO_IDEA = "Couldn't work out what that is. Try describing it differently.";
+
+// assumed: the AI took the text to mean something worth confirming ("Did you mean Cheerios?"): interpretedAs
+export type Estimate = { food: AiDraft; assumed: boolean; interpretedAs?: string };
+
+const ESTIMATE_ASK = (text: string) =>
+  [
+    `Estimate this food: ${JSON.stringify(text)}`,
+    "",
+    "Assume the most likely food the person meant: the text may misspell it, write a brand name loosely, or leave words out. Only when nothing sensible fits, give up and answer {\"unknown\": true}.",
+    `Answer as JSON: {"name": string, "brand": string | null, "category": string, "servings": [{"label": string, "grams"?: number, "ml"?: number}], "nutrients": {<key>: number}, "assumed": boolean, "interpretedAs"?: string}. servings[0] is the usual US serving and the nutrients are for it.`,
+    'name is the food as you understood it. assumed is true only when that differs from what was typed in a way worth confirming (a misspelling, a guessed brand, a missing word); then interpretedAs says what you took it to mean, e.g. "Cheerios".',
+  ].join("\n");
+
+/**
+ * Describe it: the AI's draft of a food from a few words, and whether it had to assume what was meant.
+ * signal: the person cancelled (AiStopped is thrown); onProgress: what's happening, e.g. another AI asked.
+ */
+export async function estimateFood(app: FastifyInstance, userId: number, text: string, opts: { signal?: AbortSignal; onProgress?: (p: AiProgress) => void } = {}): Promise<Estimate> {
   await aiReady(app);
-  const json = await askFood(
-    app,
-    userId,
-    `Estimate this food: ${JSON.stringify(text)}\n\nAnswer as JSON: {"name": string, "brand": string | null, "category": string, "servings": [{"label": string, "grams"?: number, "ml"?: number}], "nutrients": {<key>: number}}. servings[0] is the usual US serving and the nutrients are for it.`
-  );
-  const draft = aiDraft(json);
-  if (!draft) {
-    await logEvent(app.db, { category: "ai", level: "warning", source: "AI estimate", event: "The AI's food estimate couldn't be used", detail: JSON.stringify(json).slice(0, 600), userId });
-    throw new HttpError(502, "The AI's answer didn't look like a food. Try again, or describe it differently.");
+  let json: Record<string, unknown>;
+  try {
+    json = await askFood(app, userId, ESTIMATE_ASK(text), opts);
+  } catch (err) {
+    if (err instanceof AiStopped || !(err instanceof AiError)) throw err;
+    throw new HttpError(502, AI_COULDNT_ESTIMATE); // what went wrong is in Settings › Logs
   }
-  return draft;
+  if (json.unknown === true) throw new HttpError(422, AI_NO_IDEA);
+  const food = aiDraft(json);
+  if (!food) {
+    await logEvent(app.db, { category: "ai", level: "warning", source: "AI estimate", event: "The AI's food estimate couldn't be used", detail: JSON.stringify(json).slice(0, 600), userId });
+    throw new HttpError(502, AI_COULDNT_ESTIMATE);
+  }
+  // Read on their own: a wrong-shaped answer here only means nothing to confirm
+  const assumed = z.boolean().safeParse(json.assumed).data === true;
+  const interpretedAs = z.string().trim().min(1).max(200).safeParse(json.interpretedAs).data;
+  return assumed ? { food, assumed, interpretedAs: interpretedAs ?? food.name } : { food, assumed };
 }
 
 /** An AI answer as a draft food (every value AI-estimated); null when it isn't a food with at least one nutrient. */
@@ -800,7 +821,9 @@ export async function fillGaps(app: FastifyInstance, userId: number, ref: { kind
       `Estimate ONLY these missing keys for that serving: ${missing.join(", ")}.`,
       `Answer as JSON: {"nutrients": {<key>: number}}. Leave out a key you can't estimate.`,
     ].join("\n")
-  );
+  ).catch((err) => {
+    throw err instanceof AiError ? new HttpError(502, err.message) : err;
+  });
   const got = cleanNutrients(json && typeof json.nutrients === "object" ? json.nutrients : json);
   const nutrients: Nutrients = {};
   for (const k of missing) if (got[k] !== undefined) nutrients[k] = got[k];

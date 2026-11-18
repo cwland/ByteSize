@@ -103,7 +103,8 @@ export default async function photoRoutes(app: FastifyInstance) {
     try {
       const { json } = await app.ai.ask("photo", LABEL_SYSTEM, LABEL_ASK, {
         userId,
-        maxTokens: 1200,
+        maxTokens: 4000, // room for models that think first, asked to think only a little
+        reasoning: "low",
         images: labelAt.map((i) => ({ mime: "image/jpeg", base64: normalised[i].toString("base64") })),
       });
       draft = aiDraft(json);

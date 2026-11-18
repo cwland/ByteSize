@@ -18,6 +18,8 @@ import MealPlanView from "./MealPlanView";
 import CuluryTrack from "./CuluryTrack";
 import RestaurantsView, { newRestaurantsMemo } from "./RestaurantsView";
 import PhotoPicker, { MAX_PHOTOS, analyzePhotos, usePhotoInput } from "./PhotoPicker";
+import FoodPic from "./FoodPic";
+import { AiWorking, useEstimate, type Estimate } from "./useEstimate";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
 import { field, primaryButton, secondaryButton } from "../ui/styles";
@@ -25,7 +27,8 @@ import { field, primaryButton, secondaryButton } from "../ui/styles";
 type Found = ({ kind: "search" } & SearchResult) | { kind: "barcode"; code: string; food: FoodResult | null; errors?: SourceError[] };
 type View =
   | { k: "search" }
-  | { k: "describe"; from?: "restaurants" }
+  // guess: the AI's estimate when it assumed what was meant ("Did you mean Cheerios?"), waiting for Yes or No
+  | { k: "describe"; from?: "restaurants"; guess?: Estimate }
   | { k: "photo"; files: File[]; mode: PhotoMode }
   // photos: the photo(s) a label draft was read from, so a barcode photo can still be added
   // barcodeFill: the barcode a barcode photo added to that draft found, merged into the form as it stands
@@ -293,11 +296,13 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
       fillRef: { kind: food.kind as "cache" | "user_food", id: food.id }, // never a Culury recipe (its own view)
     });
 
-  const estimate = async () => {
+  const estimating = useEstimate();
+  const estimate = async (from?: "restaurants") => {
+    setMsg(null);
     try {
-      const out = await api<{ food: Omit<FoodResult, "id" | "kind"> & { category: string } }>("POST", "/api/ai/estimate", { text: describe });
-      setView({ k: "form", mode: { kind: "create" }, draft: draftOf(out.food) });
-      setMsg(null);
+      const out = await estimating.run(describe);
+      if (!out) return; // cancelled
+      setView(out.assumed ? { k: "describe", from, guess: out } : { k: "form", mode: { kind: "create" }, draft: draftOf(out.food) });
     } catch (e) {
       setMsg(errorMsg(e));
     }
@@ -412,15 +417,47 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
       </Sheet>
     );
   }
+  if (view.k === "describe" && view.guess) {
+    const { food, interpretedAs } = view.guess;
+    return (
+      <Sheet tall label={label} heading="Describe it" onClose={onClose} onBack={back}>
+        <div className="flex flex-col gap-3">
+          <h3 className="text-lg font-bold">Did you mean {interpretedAs ?? food.name}?</h3>
+          <div className="flex items-center gap-3 rounded-2xl bg-pressed p-3">
+            <FoodPic icon={food.icon} imageUrl={food.imageUrl} />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">{food.name}</p>
+              <p className="text-sm text-subtle">{[food.brand, food.servings[0]?.label].filter(Boolean).join(" · ")}</p>
+              <div className="mt-1.5">
+                <Pills n={food.nutrients} />
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setView({ k: "form", mode: { kind: "create" }, draft: draftOf(food) })} className={primaryButton}>
+              Yes
+            </button>
+            <button type="button" onClick={() => setView({ k: "describe", from: view.from })} className={secondaryButton}>
+              No, change it
+            </button>
+          </div>
+        </div>
+      </Sheet>
+    );
+  }
   if (view.k === "describe") {
+    const from = view.from;
     return (
       <Sheet tall label={label} heading="Describe it" onClose={onClose} onBack={back}>
         <div className="flex flex-col gap-3">
           <textarea aria-label="Describe the food" autoFocus rows={3} placeholder="A large banana" value={describe} onChange={(e) => setDescribe(e.target.value)} className={field} />
           <Notice msg={msg} />
-          <button type="button" disabled={!describe.trim()} onClick={estimate} className={`${primaryButton} self-start`}>
-            Estimate
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" disabled={!describe.trim() || !!estimating.step} onClick={() => void estimate(from)} className={primaryButton}>
+              Estimate
+            </button>
+            <AiWorking step={estimating.step} onCancel={estimating.cancel} />
+          </div>
         </div>
       </Sheet>
     );

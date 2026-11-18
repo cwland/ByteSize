@@ -275,7 +275,7 @@ export class AiService {
       try {
         const { text, stop } = opts.stream
           ? await this.streamRaw(sv, system, user, maxTokens, timeoutMs, images, { signal: opts.signal, onProgress, reasoning: opts.reasoning })
-          : await this.chatRaw(sv, system, user, maxTokens, timeoutMs, images, opts.reasoning);
+          : await this.chatRaw(sv, system, user, maxTokens, timeoutMs, images, opts.reasoning, opts.signal);
         return { text, stop, service: sv, index, failures };
       } catch (e) {
         if (e instanceof AiStopped) throw e; // stopped on purpose: don't move on to the next one
@@ -419,16 +419,24 @@ export class AiService {
     return trimSlash(b);
   }
 
-  private async request(url: string, headers: Record<string, string>, body?: unknown, method = "POST", timeoutMs = 60000) {
+  // signal: the person stopped waiting (the request to the service is dropped, and AiStopped thrown)
+  private async request(url: string, headers: Record<string, string>, body?: unknown, method = "POST", timeoutMs = 60000, signal?: AbortSignal) {
     let res;
     const abort = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let stopNow: (() => void) | undefined;
+    if (signal?.aborted) throw new AiStopped("The AI check was stopped.");
     try {
       const timedOut = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           abort.abort();
           reject(new AiError(`The AI service didn't answer within ${Math.round(timeoutMs / 1000)} seconds.`));
         }, timeoutMs);
+        stopNow = () => {
+          abort.abort();
+          reject(new AiStopped("The AI check was stopped."));
+        };
+        signal?.addEventListener("abort", stopNow);
       });
       res = await Promise.race([
         this.fetchImpl(url, { method, headers: { ...(body ? { "content-type": "application/json" } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined, signal: abort.signal }),
@@ -436,9 +444,11 @@ export class AiService {
       ]);
     } catch (e) {
       if (e instanceof AiError) throw e;
+      if (signal?.aborted) throw new AiStopped("The AI check was stopped.");
       throw new AiError(`Couldn't reach the AI service (${(e as Error).message}).`);
     } finally {
       clearTimeout(timer);
+      if (stopNow) signal?.removeEventListener("abort", stopNow);
     }
     const json = (await res.json().catch(() => ({}))) as any;
     if (!res.ok) throw httpError(res.status, json);
@@ -464,11 +474,11 @@ export class AiService {
   }
 
   // The reply text, and why the model stopped ("length" = it ran out of room)
-  private async chatRaw(c: AiConfig, system: string, user: string, maxTokens: number, timeoutMs: number, images: AiImage[] = [], reasoning?: "low"): Promise<{ text: string; stop: string | null }> {
+  private async chatRaw(c: AiConfig, system: string, user: string, maxTokens: number, timeoutMs: number, images: AiImage[] = [], reasoning?: "low", signal?: AbortSignal): Promise<{ text: string; stop: string | null }> {
     if (c.provider !== "local" && !c.apiKey) throw new HttpError(400, "Enter an API key first");
     if (!c.model) throw new HttpError(400, "Choose a model first");
     const { url, body } = this.requestFor(c, this.base(c), system, user, maxTokens, images, false, reasoning);
-    return readReply(c.provider, await this.request(url, this.authHeaders(c), body, "POST", timeoutMs));
+    return readReply(c.provider, await this.request(url, this.authHeaders(c), body, "POST", timeoutMs, signal));
   }
 
   // Each provider's address and request body (stream: the answer comes in pieces)
@@ -521,17 +531,34 @@ export class AiService {
     const active = found && opts.skip?.length ? { ...found, services: found.services.filter((sv) => !opts.skip!.includes(sv.id)) } : found;
     if (found && active && !active.services.length) throw new AiError("There's no other AI service to ask. Try again without skipping, or add another service in Settings › Integrations.");
     if (!active) throw new AiError(opts.off ?? (task === "photo" ? "Reading photos needs an AI service that can see pictures. Turn on AI in Settings › Integrations, and tick “Can read photos” on a service." : "This needs AI. Turn it on in Settings › Integrations."));
-    // An answer that can't be read (cut off because it ran out of room, or not JSON) is like a
-    // service that's down: the next one is asked
+    // An answer cut off because it ran out of room: the same service is asked once more with double the
+    // room (models that think first can use it all up). An answer that still can't be read (or isn't
+    // JSON) is like a service that's down: the next one is asked
+    const maxTokens = opts.maxTokens ?? 2000;
+    const waitMs = Math.max(active.timeoutSec, opts.minWaitSec ?? (task === "quick" ? 30 : 60)) * 1000 * this.timeScale;
+    const how = { stream: opts.stream, signal: opts.signal, reasoning: opts.reasoning, userId: opts.userId };
+    const readable = (text: string) => {
+      const json = parseJsonReply(text);
+      return json !== null && typeof json === "object" ? (json as Record<string, unknown>) : null;
+    };
     let left = active.services;
     for (;;) {
-      const { text, stop, service } = await this.chatWithFailover(left, system, user, opts.maxTokens ?? 2000, Math.max(active.timeoutSec, opts.minWaitSec ?? (task === "quick" ? 30 : 60)) * 1000 * this.timeScale, opts.images, opts.onProgress, { stream: opts.stream, signal: opts.signal, reasoning: opts.reasoning, userId: opts.userId });
-      const json = parseJsonReply(text);
-      if (json !== null && typeof json === "object") return { json: json as Record<string, unknown>, service };
+      let { text, stop, service } = await this.chatWithFailover(left, system, user, maxTokens, waitMs, opts.images, opts.onProgress, how);
+      let json = readable(text);
+      if (!json && isCutOff(stop)) {
+        try {
+          ({ text, stop } = await this.chatWithFailover([service], system, user, maxTokens * 2, waitMs, opts.images, undefined, how));
+          json = readable(text);
+        } catch (e) {
+          if (e instanceof AiStopped || !(e instanceof AiError)) throw e;
+          // it didn't answer the second time: logged by chatWithFailover; the next service is asked
+        }
+      }
+      if (json) return { json, service };
       // Keep what it said, so Settings › Logs shows why
       await logEvent(this.db, { category: "ai", level: "warning", source: service.name, event: `${service.name}'s answer couldn't be read`, detail: `Stopped: ${stop ?? "unknown"}. It said: ${typeof text === "string" ? text.slice(0, 600) : JSON.stringify(text).slice(0, 600)}`, userId: opts.userId ?? null });
       left = left.slice(left.findIndex((sv) => sv.id === service.id) + 1);
-      if (!left.length || opts.signal?.aborted) throw new AiError(`${service.name}'s answer couldn't be read${stop && /length|max_tokens/i.test(stop) ? " (it ran out of room)" : ""}. Try again, or try another AI service.`);
+      if (!left.length || opts.signal?.aborted) throw new AiError(`${service.name}'s answer couldn't be read${isCutOff(stop) ? " (it ran out of room)" : ""}. Try again, or try another AI service.`);
       opts.onProgress?.({ kind: "failover", from: service.name, to: left[0].name, reason: "its answer couldn't be read" });
     }
   }
@@ -567,6 +594,9 @@ export class AiService {
     if (!parsed || (parsed as any).ok !== true) throw new AiError(`The model answered, but not with the expected JSON${outOfRoom ? " (it ran out of room)" : ""}. It said: ${text.slice(0, 120)}`);
   }
 }
+
+// The model stopped because it ran out of room (OpenAI "length", Claude "max_tokens", Gemini "MAX_TOKENS")
+const isCutOff = (stop: string | null) => !!stop && /length|max_tokens/i.test(stop);
 
 // A refused request, said plainly
 function httpError(status: number, json: any) {
