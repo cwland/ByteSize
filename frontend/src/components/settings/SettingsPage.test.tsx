@@ -14,6 +14,7 @@ describe("SettingsPage", () => {
     expect(screen.getByText("Culury meal plan and recipes")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Data" })).toBeInTheDocument(); // everyone can download their own data
     expect(screen.getByText("Download your data")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "App info" })).toBeInTheDocument(); // everyone's own numbers
     for (const name of ["Users", "AI services", "Food sources", "Logs", "Email"]) {
       expect(screen.queryByRole("tab", { name })).not.toBeInTheDocument();
     }
@@ -22,7 +23,7 @@ describe("SettingsPage", () => {
   it("admins see Users, Integrations and Logs; AI and food sources are inside Integrations", async () => {
     fakeServer({});
     renderWithSession(<SettingsPage />, { isAdmin: true });
-    expect((await screen.findAllByRole("tab")).map((t) => t.getAttribute("aria-label"))).toEqual(["Profile", "Security", "Integrations", "Email", "Data", "Users", "Logs"]);
+    expect((await screen.findAllByRole("tab")).map((t) => t.getAttribute("aria-label"))).toEqual(["Profile", "Security", "Integrations", "Email", "Data", "App info", "Users", "Logs"]);
     expect(screen.getByText("Your data and backups")).toBeInTheDocument();
     expect(screen.getByText("Sending email, forgot password")).toBeInTheDocument();
     expect(screen.getByText("AI, food data, restaurants, Culury")).toBeInTheDocument();
@@ -77,5 +78,13 @@ describe("SettingsPage", () => {
     expect(await screen.findByRole("tabpanel", { name: "Integrations" })).toBeInTheDocument();
     expect(await screen.findByRole("switch", { name: "Culury on" })).toBeInTheDocument();
     expect(server.sent.map((r) => r.path)).toEqual(["/api/settings/culury"]);
+  });
+
+  it("App info is a row in the phone list, between Data and the admin sections, and opens its numbers", async () => {
+    window.location.hash = "#/settings/app-info";
+    fakeServer({ "GET /api/app-info": () => ({ you: { daysLogged: 12, foodsLogged: 0, differentFoods: 0, myFoods: 0, weighIns: 0, weightLost: null, shots: null, longestStreak: 0, memberSince: "2026-03-04", barcodesScanned: 0, photosRead: 0, aiEstimates: 0, lookupsSaved: 0, outsideLookups: { total: 0, off: 0, usda: 0, fatsecret: 0, spoonacular: 0, culury: 0 } }, countingSince: "2026-11-18", version: "0.1.0" }) });
+    renderWithSession(<SettingsPage />, { isAdmin: false });
+    expect(screen.getByRole("heading", { level: 1, name: "App info" })).toBeInTheDocument();
+    expect(await screen.findByRole("group", { name: "Days logged" })).toBeInTheDocument();
   });
 });

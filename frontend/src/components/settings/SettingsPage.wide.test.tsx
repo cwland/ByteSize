@@ -26,7 +26,7 @@ describe("Settings on a wide screen", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
     const strip = screen.getByRole("navigation", { name: "Settings sections" });
     expect(within(strip).queryByRole("tablist")).not.toBeInTheDocument();
-    expect(within(strip).getAllByRole("link").map((t) => t.textContent)).toEqual(["Profile", "Security", "Integrations", "Email", "Data", "Users", "Logs"]);
+    expect(within(strip).getAllByRole("link").map((t) => t.textContent)).toEqual(["Profile", "Security", "Integrations", "Email", "Data", "App info", "Users", "Logs"]);
     expect(within(strip).getByRole("link", { name: "Profile" })).toHaveAttribute("aria-current", "page");
     expect(within(strip).getByRole("link", { name: "Security" })).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("tabpanel", { name: "Profile" })).toBeInTheDocument();
@@ -55,7 +55,7 @@ describe("Settings on a wide screen", () => {
     wideScreen();
     fakeServer(routes);
     renderWithSession(<SettingsPage />, { isAdmin: false });
-    expect(within(screen.getByRole("navigation", { name: "Settings sections" })).getAllByRole("link").map((t) => t.textContent)).toEqual(["Profile", "Security", "Integrations", "Data"]);
+    expect(within(screen.getByRole("navigation", { name: "Settings sections" })).getAllByRole("link").map((t) => t.textContent)).toEqual(["Profile", "Security", "Integrations", "Data", "App info"]);
     // An admin tab's address falls back to the first tab
     expect(screen.getByRole("tabpanel", { name: "Profile" })).toBeInTheDocument();
   });
