@@ -911,12 +911,16 @@ pills at the top that show sources; FatSecret highlighted by default, Basic and 
 show the number of results, e.g. (Culury (8))." "USDA and Open Food Facts should be on by default."
 
 **Pills.** Above the search results in Add food (typed search only — a barcode match shows as today), one pill per
-source group that was searched: FatSecret, Basic (USDA whole foods), USDA (branded), Open Food Facts, Culury, each
+source group that was searched: My foods, FatSecret, Basic (USDA whole foods), USDA (branded), Open Food Facts, Culury, each
 with its result count, e.g. "Culury (8)". A pill that is on is highlighted and its group shows; off hides it.
-Order: FatSecret, Basic, USDA, Open Food Facts, Culury. Pills are real toggle buttons (`aria-pressed`, 44 px tall,
+Order: My foods, FatSecret, Basic, USDA, Open Food Facts, Culury. Pills are real toggle buttons (`aria-pressed`, 44 px tall,
 wrap on phones).
-- Defaults: FatSecret, USDA and Open Food Facts on; Basic and Culury off.
-- **My foods** (and Recents / saved restaurant items) are not pills — always shown first.
+- Defaults: My foods, FatSecret, USDA and Open Food Facts on; Basic and Culury off.
+- **My foods** is a pill too, first and on by default ("my foods should also be a pill that is turned on").
+  Recents (shown before you type) and saved restaurant items are not pills.
+- The **My Foods** button in Add food's row of options (Describe it, Create food, My Foods, Restaurants) is removed
+  ("it doesn't need to take you to that screen when searching"); the My foods page stays reachable from the side
+  rail / Log header / phone navigation as today.
 - A source with no results still shows its pill with (0); a source switched off in Integrations (§18) or with no key
   gets no pill; a source that failed shows its pill with "!" and the existing error line in its group when on.
 - If every pill that is on has 0 results but another has some: "Nothing from FatSecret. Tap Basic (12) to see those."
