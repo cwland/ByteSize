@@ -14,12 +14,15 @@ export type DetailFood = { name: string; brand?: string | null; icon: string; im
 // A sensible first portion: the food's own serving (e.g. "1 bar") rather than "100 g"
 const ML_PER_FL_OZ = 29.5735;
 const GRAMS_ONLY = /^\s*[\d.]+\s*(g|grams?)\s*$/i; // "240 g": a serving that names no volume
+const BARE_AMOUNT = /^\s*[\d.,/\s]+\s*(g|grams?|ml|millilit(?:er|re)s?|l|lit(?:er|re)s?|oz|fl\.?\s*oz)\s*$/i; // "100 g", "100 ml": an amount, not an item
 
 // Where a food starts: its own serving; a drink measured in grams starts in fl oz (or ml), same amount,
-// or a cup's worth when it's only known per 100 g
+// or a cup's worth when its only serving is a bare amount ("100 ml"). A single serving that names an item
+// ("1 shake", "1 bottle (500 ml)") starts at 1 of it.
 export function defaultPortion(servings: Serving[], units: "imperial" | "metric" = "imperial"): Portion {
   const base = servings[0];
   const own = servings.length > 1 ? servings[1] : null;
+  if (base && !own && !BARE_AMOUNT.test(base.label)) return { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 };
   if (base?.ml && (!own || GRAMS_ONLY.test(own.label))) {
     const mlPerGram = base.grams ? base.ml / base.grams : 1;
     const ml = own ? (own.ml ?? (own.grams ?? 0) * mlPerGram) || 240 : 240;
