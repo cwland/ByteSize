@@ -72,14 +72,14 @@ const list = (names: string[]) => (names.length < 2 ? names.join("") : `${names.
 export function SourcePills({ pills, onToggle }: { pills: ReturnType<typeof viewOf>["pills"]; onToggle: (id: PillId) => void }) {
   if (!pills.length) return null;
   return (
-    <div role="group" aria-label="Sources" className="mt-3 flex flex-wrap gap-2">
+    <div role="group" aria-label="Sources" className="mt-2 flex flex-wrap gap-1.5">
       {pills.map((p) => (
         <button
           key={p.id}
           type="button"
           aria-pressed={p.on}
           onClick={() => onToggle(p.id)}
-          className={`inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold ${p.on ? "bg-primary text-on-primary hover:bg-primary-pressed" : "bg-pressed text-subtle hover:bg-strong"}`}
+          className={`inline-flex h-7 items-center rounded-full px-2.5 text-xs font-semibold ${p.on ? "bg-primary text-on-primary hover:bg-primary-pressed" : "bg-pressed text-subtle hover:bg-strong"}`}
         >
           {p.failed ? (p.count ? `${p.label} (${p.count}) !` : `${p.label} !`) : `${p.label} (${p.count})`}
         </button>

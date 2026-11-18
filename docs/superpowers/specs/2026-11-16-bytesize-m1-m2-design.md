@@ -1132,3 +1132,65 @@ cup's-worth fallback meant for drinks known only per 100 g.
 at 1 of that serving, whatever the source. Only a serving that names no item — just an amount like "100 g" or
 "100 ml" — falls back to a cup's worth (8 fl oz / 240 ml). Everything else in `defaultPortion` is unchanged
 (a grams-only second serving still starts in fl oz/ml, same amount).
+
+## 31. Unknown nutrients count as 0 on screen (Cory, 2026-11-18)
+
+**Asked for.** "When calculating macros, if something is unknown or blank, treat it as 0 instead of saying unknown."
+This replaces the earlier "unknown is never 0" rule **for what's shown**: totals, rings, day totals, meal lines,
+entry pills, food details and recipe/meal sums add a missing value as 0 and show the number (no "?", no "+ some
+unknown", no "N foods missing fiber", no "—" for a sum). **Stored data doesn't change**: a food that doesn't say its
+fiber is still saved without it, so "fill in missing nutrients", Check for changes and later lookups can still fill
+it, and editing a food still shows the field blank. Combining duplicate entries (§28) adds known amounts and leaves
+a missing nutrient missing in storage. Places that aren't nutrient amounts keep their own wording (e.g. a restaurant
+item with no calories in the menu list, a day with no food in the after-injection chart).
+
+## 32. Cached data: its own Settings tab, with filters and pages (Cory, 2026-11-18)
+
+**Asked for.** "Move Saved barcodes to its own menu item in setup, called Cached Data. Filters at the top for sources
+(USDA etc.) for quick filtering. Only show 10 by default before the pages < 1 2 3 > show at the bottom. Let users
+choose to see 10, 20, 30, 40, 50 in a dropdown near the filters."
+Calls made for Cory (to confirm): the tab is admin-only, like Saved barcodes was; it holds the same list (kept
+barcodes) — the per-source cache hours and lookup order stay in Integrations.
+
+**Tab.** Settings › **Cached data** (admin only), after Integrations (wide: in the tab strip; phones: a row in the
+settings list, `#/settings/cached-data`). The Saved barcodes section leaves Integrations; Integrations' food-source
+cards get a one-line link "See cached data" to the tab. The list keeps everything it does today (search by name or
+barcode, refresh from its source, delete, Delete all not in use, in-use marker, saved/deletes dates).
+- **Source filters** at the top: one pill per source that has kept barcodes (Open Food Facts, USDA, FatSecret, …),
+  each with its count, like the search pills (§22, same small size); all on to start; tapping one turns it off/on;
+  the list, total and pages follow the pills. Search combines with them.
+- **Per page**: a "Show" dropdown beside the filters — 10, 20, 30, 40, 50 — default 10, remembered on this device.
+- **Pages** at the bottom: ‹ 1 2 3 … › (current page highlighted, first/last always shown, ellipsis when there are
+  many, ‹ › disabled at the ends), plus "11–20 of 134". Changing filters, search or per-page goes back to page 1.
+- Server: `GET /api/admin/saved-barcodes` takes `pageSize` (10–50, default 10; other values 400) and `sources`
+  (comma list of source ids; unknown ids 400) and returns per-source counts for the pills (counts follow the search
+  but not the source filter).
+
+## 33. Choose how the date at the top is written (Cory, 2026-11-18)
+
+**Asked for.** "In settings give options for users to change the date format at the top of the app; do variations
+for international users as well. The default is what it is right now."
+Calls made for Cory (to confirm): it's a per-person choice in Settings › Profile (beside units), saved on the server;
+it changes the date in the page header (the compact centred date, §24) only — other dates in the app stay as they are.
+
+**Choices** (shown in a dropdown, each option previewing today's date in that format):
+- **Wednesday, Nov 18** — default (today's look; existing people keep it)
+- Wed, Nov 18
+- Wednesday, November 18
+- 11/18/2026
+- Wednesday 18 Nov
+- Wed 18 Nov
+- Wednesday 18 November
+- 18/11/2026
+- 18.11.2026
+- 2026-11-18
+The "Today"/"Yesterday" wording the header already uses, if any, stays as it is. Stored as a key per format
+(e.g. `weekday-long-month-short`, `dmy-slash`, `iso`) in user_settings; unknown keys 400; included in backups and
+"Download my data" with the rest of user_settings. Formatting is done in one helper (with tests for every choice) so
+other places can adopt it later.
+
+## 34. No greeting line; widgets closer to the dates (Cory, 2026-11-18)
+
+**Asked for.** "Remove the greeting 'Good afternoon, Cory · 2-day streak' and move the widgets up closer to the
+dates." The Dashboard header loses the greeting/streak line (the Streak widget still shows the streak); the gap
+between the week strip and the first row of widgets shrinks to the normal card gap (about 12–16 px).
