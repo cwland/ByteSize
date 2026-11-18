@@ -147,7 +147,7 @@ describe("source pills", () => {
     expect(searchCalls(server)).toHaveLength(before);
   });
 
-  it("pills are 44 px tall buttons that wrap", async () => {
+  it("pills are small (28 px) buttons that wrap", async () => {
     open();
     const u = userEvent.setup();
     const sheet = await openSheet(u);
@@ -155,7 +155,7 @@ describe("source pills", () => {
     await within(sheet).findByText("OFF peanut snack");
     const group = within(sheet).getByRole("group", { name: "Sources" });
     expect(group).toHaveClass("flex-wrap");
-    for (const p of pills(sheet)) expect(p).toHaveClass("min-h-11");
+    for (const p of pills(sheet)) expect(p).toHaveClass("h-7");
   });
 
   it("a source with no results keeps its pill with (0)", async () => {
