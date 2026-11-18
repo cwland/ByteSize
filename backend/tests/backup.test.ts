@@ -38,7 +38,7 @@ import {
 } from "../src/db/schema.js";
 import { encryptSecret } from "../src/lib/secrets.js";
 import { storePhoto } from "../src/lib/photos.js";
-import { BACKED_UP_TABLES, CACHE_REFERENCES, SKIP_TABLES, backupHooks, cleanLeftovers, dailyBackupCheck, dailyStatus, writeBackup } from "../src/lib/backup.js";
+import { BACKED_UP_TABLES, CACHE_REFERENCES, SKIP_TABLES, backupHooks, cleanLeftovers, cleanLeftoversOnStart, dailyBackupCheck, dailyStatus, writeBackup } from "../src/lib/backup.js";
 
 let t: TestApp;
 beforeAll(async () => (t = await setupTestApp()));
@@ -671,6 +671,15 @@ describe("backups", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("a cleanup that fails on start never stops the server from starting", async () => {
+    const errors: unknown[] = [];
+    // no data folder to look in: the cleanup itself throws
+    const broken = { db: t.db, dataDir: undefined, log: { error: (e: unknown) => errors.push(e) } };
+    await expect(cleanLeftovers(broken as never)).rejects.toThrow();
+    await expect(cleanLeftoversOnStart(broken as never)).resolves.toBeUndefined();
+    expect(errors).toHaveLength(1);
   });
 
   it("activity log: backup, download, delete and restore each say who and which file", async () => {

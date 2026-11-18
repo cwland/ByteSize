@@ -7,7 +7,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import multipart from "@fastify/multipart";
 import { z } from "zod";
 import { logEvent } from "../lib/appLog.js";
-import { backupFile, backupKeep, backupProblem, backupsDir, cleanLeftovers, deleteBackup, formatSize, listBackups, restoreBackup, unreadableKeys, whoIs, writeBackup } from "../lib/backup.js";
+import { backupFile, backupKeep, backupProblem, backupsDir, cleanLeftoversOnStart, deleteBackup, formatSize, listBackups, restoreBackup, unreadableKeys, whoIs, writeBackup } from "../lib/backup.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireAdmin } from "../lib/guards.js";
 
@@ -54,7 +54,7 @@ async function receiveUpload(app: FastifyInstance, req: FastifyRequest): Promise
 export default async function backupRoutes(app: FastifyInstance) {
   await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 2, fieldSize: 100, parts: 3, headerPairs: 50 } });
 
-  app.addHook("onReady", () => cleanLeftovers(app)); // what a backup or restore the server stopped in the middle of left
+  app.addHook("onReady", () => cleanLeftoversOnStart(app)); // what a backup or restore the server stopped in the middle of left
 
   const nameParam = (req: FastifyRequest) => (req.params as { name: string }).name;
 

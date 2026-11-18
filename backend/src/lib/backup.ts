@@ -463,6 +463,15 @@ export function restoreBackup(app: FastifyInstance, file: string, by: { userId: 
  * (backups/.work-*, backups/.*.tmp, .restore-*). The photos moved aside by a restore (.uploads-old-*) are
  * never touched: a warning says where they are.
  */
+// On start: tidy up, but a leftover that can't be removed must never keep the server from starting
+export async function cleanLeftoversOnStart(app: Pick<FastifyInstance, "db" | "dataDir" | "log">) {
+  try {
+    await cleanLeftovers(app);
+  } catch (err) {
+    app.log.error(err);
+  }
+}
+
 export async function cleanLeftovers(app: Pick<FastifyInstance, "db" | "dataDir">) {
   const dir = path.join(app.dataDir, "backups");
   for (const n of await fs.readdir(dir).catch(() => [] as string[])) {
