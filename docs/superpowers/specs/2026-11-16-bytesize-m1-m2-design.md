@@ -1143,3 +1143,25 @@ fiber is still saved without it, so "fill in missing nutrients", Check for chang
 it, and editing a food still shows the field blank. Combining duplicate entries (§28) adds known amounts and leaves
 a missing nutrient missing in storage. Places that aren't nutrient amounts keep their own wording (e.g. a restaurant
 item with no calories in the menu list, a day with no food in the after-injection chart).
+
+## 32. Cached data: its own Settings tab, with filters and pages (Cory, 2026-11-18)
+
+**Asked for.** "Move Saved barcodes to its own menu item in setup, called Cached Data. Filters at the top for sources
+(USDA etc.) for quick filtering. Only show 10 by default before the pages < 1 2 3 > show at the bottom. Let users
+choose to see 10, 20, 30, 40, 50 in a dropdown near the filters."
+Calls made for Cory (to confirm): the tab is admin-only, like Saved barcodes was; it holds the same list (kept
+barcodes) — the per-source cache hours and lookup order stay in Integrations.
+
+**Tab.** Settings › **Cached data** (admin only), after Integrations (wide: in the tab strip; phones: a row in the
+settings list, `#/settings/cached-data`). The Saved barcodes section leaves Integrations; Integrations' food-source
+cards get a one-line link "See cached data" to the tab. The list keeps everything it does today (search by name or
+barcode, refresh from its source, delete, Delete all not in use, in-use marker, saved/deletes dates).
+- **Source filters** at the top: one pill per source that has kept barcodes (Open Food Facts, USDA, FatSecret, …),
+  each with its count, like the search pills (§22, same small size); all on to start; tapping one turns it off/on;
+  the list, total and pages follow the pills. Search combines with them.
+- **Per page**: a "Show" dropdown beside the filters — 10, 20, 30, 40, 50 — default 10, remembered on this device.
+- **Pages** at the bottom: ‹ 1 2 3 … › (current page highlighted, first/last always shown, ellipsis when there are
+  many, ‹ › disabled at the ends), plus "11–20 of 134". Changing filters, search or per-page goes back to page 1.
+- Server: `GET /api/admin/saved-barcodes` takes `pageSize` (10–50, default 10; other values 400) and `sources`
+  (comma list of source ids; unknown ids 400) and returns per-source counts for the pills (counts follow the search
+  but not the source filter).
