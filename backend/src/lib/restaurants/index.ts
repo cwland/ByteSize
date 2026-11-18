@@ -404,8 +404,16 @@ export async function wholeKeptFood(app: FastifyInstance, userId: number, cacheI
   if (row.source === "fatsecret" && isSummary(row)) {
     try {
       return (await restaurantItem(app, userId, "fatsecret", row.sourceId)).food;
-    } catch {
-      // FatSecret off or failing: the summary is better than nothing
+    } catch (err) {
+      // FatSecret off or failing: the summary is better than nothing (messages are ByteSize's own: no keys)
+      await logEvent(app.db, {
+        category: "food",
+        level: "warning",
+        source: SOURCE_NAMES.fatsecret,
+        event: "FatSecret whole food fetch failed",
+        detail: `Used the search summary of food ${row.sourceId}: ${err instanceof Error ? err.message : "unexpected error"}`,
+        userId,
+      });
     }
   }
   await touchUsed(app.db, [row.id], app.now());

@@ -178,7 +178,7 @@ export function fatsecret(opts: { fetch: FoodFetch; clientId: string; clientSecr
       // A token FatSecret no longer accepts: get a new one, once (tokens are free; no points burned)
       if (code === 13 && !renewed) {
         opts.tokens.delete(tokenKey);
-        return call(params, true);
+        return call(params, true, scope); // a scoped token is renewed with its scope
       }
       throw apiError(code);
     }
@@ -214,8 +214,10 @@ export function fatsecret(opts: { fetch: FoodFetch; clientId: string; clientSecr
         if (scoped || !(e instanceof SourceError) || e.kind !== "no_scope") throw e;
         try {
           await token(BARCODE_SCOPE);
-        } catch {
-          throw err(NO_BARCODE_SCOPE, "no_scope");
+        } catch (te) {
+          // Only a refused token means no barcode access; a slow, down or unreachable FatSecret is a plain failure
+          if (te instanceof SourceError && (te.kind === "bad_key" || te.kind === "no_scope")) throw err(NO_BARCODE_SCOPE, "no_scope");
+          throw te;
         }
         json = await call(params, false, BARCODE_SCOPE);
       }

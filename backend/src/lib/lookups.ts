@@ -68,7 +68,7 @@ export function scheduleLookupCleanup(app: FastifyInstance) {
     cleanupLookups(app).catch((err) => logEvent(app.db, { category: "schedule", level: "error", source: "Lookup cleanup", event: "The lookup cleanup failed", detail: (err as Error).message }));
   let timer: NodeJS.Timeout | undefined;
   app.addHook("onReady", async () => {
-    void run();
+    await run(); // the first run finishes before the app is ready (it never throws), so nothing races it at start
     timer = setInterval(run, CLEANUP_EVERY_MS);
     timer.unref();
   });

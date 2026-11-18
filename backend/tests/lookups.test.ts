@@ -691,3 +691,107 @@ describe("fix round 1", () => {
     for (const ref of CACHE_REFERENCES) expect(IN_USE_REFS, ref).toContain(ref);
   });
 });
+
+describe("fix round 2: the scoped barcode token", () => {
+  beforeEach(() => {
+    t.clock.date = START;
+  });
+  const tokenCallsOf = () => t.foodWeb.calls.filter((c) => c.url.includes("oauth.fatsecret.com"));
+  const scopeOf = (c: { body: any }) => new URLSearchParams(String(c.body)).get("scope");
+  const flag = async () => (await t.api("GET", "/api/admin/food-sources")).body.fatsecret.barcodeScopeMissing;
+  /** Plain tokens lack the barcode scope (14); scoped tokens are numbered; expired: the scoped tokens FatSecret now calls expired (13). */
+  async function premier(expired: Set<string> = new Set()) {
+    await setRestaurantKeys(t, { fatsecret: FS });
+    await settings({ enabled: { off: false }, fatsecretPlan: "premier" });
+    let n = 0;
+    web({
+      fs: {
+        fsToken: (call) => ({ status: 200, json: { access_token: scopeOf(call) ? `scoped-${++n}` : "plain", expires_in: 86400 } }),
+        fsBarcode: (_code, call) => {
+          const bearer = call.headers.authorization.slice(7);
+          if (bearer === "plain") return { status: 200, json: { error: { code: 14, message: "Missing scope" } } };
+          if (expired.has(bearer)) return { status: 200, json: { error: { code: 13, message: "Invalid access token" } } };
+          return fsFound();
+        },
+        fsGet: () => ({ status: 200, json: { food: fsGranola } }),
+      },
+    });
+  }
+
+  it("a scoped token already kept is used directly: no new token, no plain try", async () => {
+    await premier();
+    await scan();
+    const tokens = tokenCallsOf().length;
+    const finds = fsCalls(t, "food.find_id_for_barcode").length;
+    expect((await scan("0000000000017")).body.food.source).toBe("fatsecret");
+    expect(tokenCallsOf()).toHaveLength(tokens);
+    expect(fsCalls(t, "food.find_id_for_barcode")).toHaveLength(finds + 1);
+    expect(fsCalls(t, "food.find_id_for_barcode").at(-1)!.headers.authorization).toBe("Bearer scoped-1");
+  });
+
+  it("a kept scoped token FatSecret calls expired (13) is renewed once WITH the barcode scope", async () => {
+    const expired = new Set<string>();
+    await premier(expired);
+    await scan();
+    expired.add("scoped-1");
+    const r = await scan("0000000000017");
+    expect(r.body.food).toMatchObject({ source: "fatsecret" });
+    const renewal = tokenCallsOf().at(-1)!;
+    expect(scopeOf(renewal)).toBe("basic premier barcode");
+    expect(await flag()).toBe(false);
+  });
+
+  it("a scoped token past its life is asked for again with the barcode scope", async () => {
+    await premier();
+    await scan();
+    later(25 * H);
+    const finds = fsCalls(t, "food.find_id_for_barcode").length;
+    expect((await scan("0000000000017")).body.food.source).toBe("fatsecret");
+    // the barcode call: one try, with the scoped token renewed with its scope (the plain one renews for food.get)
+    expect(fsCalls(t, "food.find_id_for_barcode").slice(finds).map((c) => c.headers.authorization)).toEqual(["Bearer scoped-2"]);
+    expect(tokenCallsOf().filter((c) => scopeOf(c)).map(scopeOf)).toEqual(["basic premier barcode", "basic premier barcode"]);
+    expect(await flag()).toBe(false);
+  });
+
+  it("a scoped token request that fails (down) is an ordinary failure, not a missing scope", async () => {
+    await setRestaurantKeys(t, { fatsecret: FS });
+    await settings({ enabled: { off: false }, fatsecretPlan: "premier" });
+    web({
+      fs: {
+        fsToken: (call) => (scopeOf(call) ? { status: 503, json: {} } : { status: 200, json: { access_token: "plain", expires_in: 86400 } }),
+        fsBarcode: () => ({ status: 200, json: { error: { code: 14, message: "Missing scope" } } }),
+      },
+    });
+    const r = await scan();
+    expect(r.body.errors).toEqual([{ source: "fatsecret", message: "FatSecret answered with an error (503)" }]);
+    expect(await flag()).toBe(false);
+  });
+
+  it("a scoped token FatSecret refuses (400) means no barcode access: the flag", async () => {
+    await setRestaurantKeys(t, { fatsecret: FS });
+    await settings({ enabled: { off: false }, fatsecretPlan: "premier" });
+    web({
+      fs: {
+        fsToken: (call) => (scopeOf(call) ? { status: 400, json: { error: "invalid_scope" } } : { status: 200, json: { access_token: "plain", expires_in: 86400 } }),
+        fsBarcode: () => ({ status: 200, json: { error: { code: 14, message: "Missing scope" } } }),
+      },
+    });
+    const r = await scan();
+    expect(r.body.errors).toEqual([]);
+    expect(await flag()).toBe(true);
+  });
+
+  it("tracking a FatSecret summary that can't be fetched whole logs why, without secrets", async () => {
+    await setRestaurantKeys(t, { fatsecret: FS });
+    web({ fs: { fsSearch: () => ({ status: 200, json: { foods: { food: [fsHit(31, "Granola Clusters", "Bear Naked", 140, "1/4 cup")] } } }), fsGet: () => ({ status: 500, json: {} }) } });
+    const row = (await search("granola")).body.groups.find((g: any) => g.source === "fatsecret").foods[0];
+    const logged = await t.api("POST", "/api/log", { day: "2026-11-18", meal: "snacks", food: { kind: "cache", id: row.id }, unit: "serving", quantity: 1 });
+    expect(logged.status).toBe(200);
+    expect(logged.body.entry.nutrients).toMatchObject({ calories: 140 });
+    const log = (await t.db.execute<{ category: string; source: string; event: string; detail: string }>(sql`select category, source, event, detail from app_log`)).rows;
+    const line = log.find((l) => l.event === "FatSecret whole food fetch failed");
+    expect(line).toMatchObject({ category: "food", source: "FatSecret" });
+    expect(line!.detail).toMatch(/error \(500\)/);
+    expect(JSON.stringify(log)).not.toMatch(/fs-secret|fs-id/);
+  });
+});
