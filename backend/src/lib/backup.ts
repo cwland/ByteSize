@@ -13,6 +13,7 @@ import { z } from "zod";
 import * as schema from "../db/schema.js";
 import { appSettings, userSettings, users } from "../db/schema.js";
 import { logEvent } from "./appLog.js";
+import { waitOnClose } from "./schedule.js";
 import { HttpError, badRequest } from "./errors.js";
 import { QUOTA_KEY } from "./restaurants/index.js";
 import { decryptSecret } from "./secrets.js";
@@ -598,7 +599,7 @@ export function scheduleBackups(app: FastifyInstance) {
   });
   app.addHook("onClose", async () => {
     clearInterval(timer);
-    await running;
+    await waitOnClose(app, "daily backup", running);
   });
 }
 

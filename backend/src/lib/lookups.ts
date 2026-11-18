@@ -4,6 +4,7 @@
 import type { FastifyInstance } from "fastify";
 import { and, desc, eq, ilike, inArray, isNotNull, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { foodCache, foodSearches, restaurantSearches } from "../db/schema.js";
+import { waitOnClose } from "./schedule.js";
 import { logEvent } from "./appLog.js";
 import { HttpError, badRequest, notFound } from "./errors.js";
 import { cacheUpsert, SOURCE_TIMEOUT_MS, toResult, type FoodResult } from "./foods.js";
@@ -76,7 +77,7 @@ export function scheduleLookupCleanup(app: FastifyInstance) {
   });
   app.addHook("onClose", async () => {
     clearInterval(timer);
-    await running; // closing waits for a run still going
+    await waitOnClose(app, "lookup cleanup", running); // closing waits (a while) for a run still going
   });
 }
 

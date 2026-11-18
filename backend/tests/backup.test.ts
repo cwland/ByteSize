@@ -41,6 +41,7 @@ import { dashboardLayouts,
 } from "../src/db/schema.js";
 import { encryptSecret } from "../src/lib/secrets.js";
 import { storePhoto } from "../src/lib/photos.js";
+import { scheduleHooks } from "../src/lib/schedule.js";
 import { BACKED_UP_TABLES, CACHE_REFERENCES, SKIP_TABLES, backupHooks, cleanLeftovers, cleanLeftoversOnStart, dailyBackupCheck, dailyStatus, writeBackup } from "../src/lib/backup.js";
 
 let t: TestApp;
@@ -749,6 +750,38 @@ describe("backups", () => {
       expect(readdirSync(path.join(dir, "backups")).filter((n) => n.endsWith(".tar.gz"))).toHaveLength(1);
     } finally {
       release();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("closing waits at most a while for a backup that hangs, then closes anyway", async () => {
+    await seed();
+    process.env.BACKUP_HOUR = "0";
+    const dir = mkdtempSync(path.join(tmpdir(), "bytesize-hang-"));
+    let entered!: () => void;
+    const inside = new Promise<void>((r) => (entered = r));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    backupHooks.started = async () => {
+      entered();
+      await gate;
+    };
+    scheduleHooks.closeWaitMs = 300;
+    try {
+      const app = buildApp({ db: t.db, jwtSecret: TEST_SECRET, rateLimit: false, dataDir: dir });
+      await app.ready();
+      await inside;
+      const began = Date.now();
+      await app.close(); // the backup never finishes on its own
+      expect(Date.now() - began).toBeLessThan(5000);
+    } finally {
+      scheduleHooks.closeWaitMs = 10_000;
+      release();
+      // the held backup carries on: wait until it has written its file, so it isn't still reading the tables
+      // when the next test empties them
+      const done = () => existsSync(path.join(dir, "backups")) && readdirSync(path.join(dir, "backups")).some((n) => n.endsWith(".tar.gz"));
+      for (let i = 0; i < 400 && !done(); i++) await new Promise((r) => setTimeout(r, 25));
+      expect(done()).toBe(true);
       rmSync(dir, { recursive: true, force: true });
     }
   });

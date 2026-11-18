@@ -1,4 +1,5 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import { eq } from "drizzle-orm";
@@ -9,6 +10,9 @@ import { aiAnswers, aiSettings, offKnows, offProduct } from "./foodFakes.js";
 import { barcodePhoto, junk, labelPhoto, plainPhoto, photoUpload } from "./photoFakes.js";
 import { appLog, logEntries, uploads, userFoods, users } from "../src/db/schema.js";
 import { cleanupUploads } from "../src/lib/photos.js";
+import { scheduleHooks } from "../src/lib/schedule.js";
+import { buildApp } from "../src/app.js";
+import { TEST_SECRET } from "./helpers.js";
 
 let t: TestApp;
 beforeAll(async () => (t = await setupTestApp()));
@@ -369,5 +373,32 @@ describe("photo cleanup", () => {
     t.clock.date = new Date("2026-11-12T08:00:00Z");
     expect(await cleanupUploads(t.app)).toBe(1);
     expect(await t.db.select().from(uploads)).toEqual([]);
+  });
+
+  it("starting the server doesn't wait for the first photo cleanup (it runs in the background); closing does", async () => {
+    let entered!: () => void;
+    const inside = new Promise<void>((r) => (entered = r));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    scheduleHooks.photoCleanupStarted = async () => {
+      entered();
+      await gate;
+    };
+    const dir = mkdtempSync(path.join(tmpdir(), "bytesize-start-"));
+    try {
+      const app = buildApp({ db: t.db, jwtSecret: TEST_SECRET, rateLimit: false, dataDir: dir, backupSchedule: false });
+      await app.ready(); // would hang here if start-up waited for the cleanup
+      await inside;
+      let closed = false;
+      const closing = app.close().then(() => void (closed = true));
+      await new Promise((r) => setTimeout(r, 200));
+      expect(closed).toBe(false);
+      release();
+      await closing;
+    } finally {
+      scheduleHooks.photoCleanupStarted = async () => {};
+      release();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

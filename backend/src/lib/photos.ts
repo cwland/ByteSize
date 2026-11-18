@@ -12,6 +12,7 @@ import sharp from "sharp";
 import { prepareZXingModule, readBarcodes } from "zxing-wasm/reader";
 import type { Db } from "../db/index.js";
 import { uploads, users } from "../db/schema.js";
+import { scheduleHooks, waitOnClose } from "./schedule.js";
 import { logEvent } from "./appLog.js";
 import { normalizeBarcode } from "./barcode.js";
 import { HttpError, badRequest } from "./errors.js";
@@ -238,20 +239,23 @@ async function removeDeletedUsersFiles(app: FastifyInstance) {
 /** Runs the cleanup when the server starts, then every hour (never stops the server). */
 export function scheduleUploadCleanup(app: FastifyInstance) {
   const run = () =>
-    cleanupUploads(app).catch((err) =>
+    scheduleHooks
+      .photoCleanupStarted()
+      .then(() => cleanupUploads(app))
+      .catch((err) =>
       logEvent(app.db, { category: "schedule", level: "error", source: "Photo cleanup", event: "The photo cleanup failed", detail: (err as Error).message })
     );
   let timer: NodeJS.Timeout | undefined;
   let running: Promise<unknown> = Promise.resolve();
   const start = () => (running = run());
   app.addHook("onReady", async () => {
-    await start(); // the first run finishes before the app is ready (it never throws), so nothing races it at start
+    void start(); // in the background: starting the server never waits for it (the health check's start period)
     timer = setInterval(start, CLEANUP_EVERY_MS);
     timer.unref();
   });
   // Closing waits for a run still going (nothing runs on against a database the server has let go of)
   app.addHook("onClose", async () => {
     clearInterval(timer);
-    await running;
+    await waitOnClose(app, "photo cleanup", running);
   });
 }
