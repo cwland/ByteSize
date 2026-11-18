@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Camera, GripVertical, Pencil, Plus, X } from "lucide-react";
 import { api } from "../../api";
 import { useDay, useSettingsMe } from "../../day";
@@ -103,6 +103,9 @@ export default function Dashboard() {
 }
 
 type Drag = { id: string; target: { col: number; index: number } | null };
+type Dir = "up" | "down" | "left" | "right";
+const DIRS: Dir[] = ["up", "down", "left", "right"];
+const OPPOSITE: Record<Dir, Dir> = { up: "down", down: "up", left: "right", right: "left" };
 
 // Edit mode. Widgets are cards (their title and one line; they don't load or work here). Wide screens: three
 // columns (empty ones stay as drop targets), a drag handle (mouse and touch) and Move up/down/left/right on each.
@@ -113,6 +116,29 @@ function EditLayout({ cols, wide, onChange, onCancel, onSaved }: { cols: Columns
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState<Drag | null>(null);
   const columnEls = useRef<(HTMLDivElement | null)[]>([]);
+  // After a move with a button, keyboard focus follows the widget: a move across columns draws its card anew
+  // in the other column, and a button that turns disabled (the end of a column) can't keep focus. The same
+  // button if it can still be used, else the opposite move, else any move, else the drag handle.
+  const area = useRef<HTMLDivElement>(null);
+  const refocus = useRef<{ id: string; dir: Dir } | null>(null);
+  useLayoutEffect(() => {
+    const r = refocus.current;
+    refocus.current = null;
+    if (!r) return;
+    const w = widgetById(r.id);
+    const cardEl = area.current?.querySelector<HTMLElement>(`[data-widget="${r.id}"]`);
+    if (!w || !cardEl) return;
+    const prefer: string[] = [`Move ${w.title} ${r.dir}`, `Move ${w.title} ${OPPOSITE[r.dir]}`, ...DIRS.map((d) => `Move ${w.title} ${d}`), `Drag ${w.title}`];
+    const buttons = [...cardEl.querySelectorAll<HTMLButtonElement>("button")];
+    for (const label of prefer) {
+      const b = buttons.find((x) => x.getAttribute("aria-label") === label && !x.disabled);
+      if (b) return void b.focus();
+    }
+  }, [cols]);
+  const moveWith = (id: string, dir: Dir, next: Columns) => {
+    refocus.current = { id, dir };
+    onChange(next);
+  };
 
   const save = async () => {
     setBusy(true);
@@ -192,10 +218,10 @@ function EditLayout({ cols, wide, onChange, onCancel, onSaved }: { cols: Columns
           {iconButton(`Remove ${w.title}`, <X aria-hidden="true" className="size-5" />, () => onChange(removeWidget(cols, id)))}
         </div>
         <div className="mt-1 flex flex-wrap justify-end">
-          {iconButton(`Move ${w.title} up`, <ArrowUp aria-hidden="true" className="size-5" />, () => onChange(moveVertical(cols, id, -1)), i === 0)}
-          {iconButton(`Move ${w.title} down`, <ArrowDown aria-hidden="true" className="size-5" />, () => onChange(moveVertical(cols, id, 1)), i === order.length - 1)}
-          {wide && iconButton(`Move ${w.title} left`, <ArrowLeft aria-hidden="true" className="size-5" />, () => onChange(moveSideways(cols, id, -1)), col === 0)}
-          {wide && iconButton(`Move ${w.title} right`, <ArrowRight aria-hidden="true" className="size-5" />, () => onChange(moveSideways(cols, id, 1)), col === cols.length - 1)}
+          {iconButton(`Move ${w.title} up`, <ArrowUp aria-hidden="true" className="size-5" />, () => moveWith(id, "up", moveVertical(cols, id, -1)), i === 0)}
+          {iconButton(`Move ${w.title} down`, <ArrowDown aria-hidden="true" className="size-5" />, () => moveWith(id, "down", moveVertical(cols, id, 1)), i === order.length - 1)}
+          {wide && iconButton(`Move ${w.title} left`, <ArrowLeft aria-hidden="true" className="size-5" />, () => moveWith(id, "left", moveSideways(cols, id, -1)), col === 0)}
+          {wide && iconButton(`Move ${w.title} right`, <ArrowRight aria-hidden="true" className="size-5" />, () => moveWith(id, "right", moveSideways(cols, id, 1)), col === cols.length - 1)}
         </div>
       </div>
     );
@@ -204,7 +230,7 @@ function EditLayout({ cols, wide, onChange, onCancel, onSaved }: { cols: Columns
   const missing = WIDGETS.filter((w) => !order.includes(w.id));
 
   return (
-    <div className="flex flex-col gap-4">
+    <div ref={area} className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
         <p className="mr-auto text-sm text-subtle">{wide ? "Drag widgets by their handle, or use the arrows." : "Use the arrows to change the order."}</p>
         <button type="button" onClick={() => setAdding(true)} className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}>
