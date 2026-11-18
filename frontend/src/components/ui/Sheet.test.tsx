@@ -67,4 +67,17 @@ describe("Sheet", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+  it("Escape on an are-you-sure over a window closes only the are-you-sure", async () => {
+    const onClose = vi.fn();
+    const onCancel = vi.fn();
+    render(
+      <Sheet label="Edit entry" onClose={onClose}>
+        <Confirm title="Delete entry?" confirmLabel="Delete" onConfirm={vi.fn()} onCancel={onCancel} />
+      </Sheet>,
+    );
+    await userEvent.setup().keyboard("{Escape}");
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });

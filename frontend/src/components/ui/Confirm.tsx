@@ -5,9 +5,14 @@ import { primaryButton, secondaryButton } from "./styles";
 // Cancel or Escape does.
 export function Confirm({ title, text, confirmLabel, onConfirm, onCancel }: { title: string; text?: string; confirmLabel: string; onConfirm: () => void; onCancel: () => void }) {
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCancel();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // Caught on the way down and stopped there, so a window underneath (a Sheet) doesn't close too.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      onCancel();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [onCancel]);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
