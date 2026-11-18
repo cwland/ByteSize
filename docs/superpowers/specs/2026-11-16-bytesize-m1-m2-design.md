@@ -691,3 +691,39 @@ piece of wording that said "Settings › Food sources" or "Settings › AI servi
 
 **Later (M4b).** ByteSize's own personal API keys will be stored encrypted rather than one-way hashed so they get
 the same eye and copy; the cost is that a backup plus the server's `JWT_SECRET` can read them.
+
+## 17. Wide-screen layout — option A (Cory, 2026-11-17)
+
+**Asked for.** Use more of the screen on the web, like Culury, with Settings tabs across the top. Keep the current
+phone layout as it is — it is the template for the iPhone app. Cory picked option A ("side rail") from the layout
+proof-of-concepts (design canvas "ByteSize web layout options"; the artboards are the reference for look and
+spacing: Main = Dashboard, OptionA-Log, OptionA-Goals, Settings-Integrations for the tab strip).
+
+**Rule.** Below 1024 px wide (Tailwind `lg`) nothing changes: same markup, same tests. From 1024 px up:
+- **Side rail** instead of the bottom tab bar and top bar: logo; the orange + (log food — same action as today's
+  floating +); Dashboard, Log, Goals, My foods (icon + label, active one highlighted); Settings and the account
+  button at the bottom. The rail stays in view while the page scrolls.
+- **Page header**: page title (Dashboard shows the selected day as "Tuesday, November 17" with "Good evening,
+  <name> · <n>-day streak" when there is a streak), and on Dashboard and Log the week strip (same behaviour as
+  today's, drawn as a row of day buttons with dots and ‹ › ).
+- **Dashboard** in three columns (wrapping to two/one as the width shrinks): (1) the budget card + four quick
+  buttons — Search food, Barcode photo, Label photo, Restaurants — each opening Add food at that view for the meal of
+  the moment; (2) "Today's food": the selected day's entries by meal with calories, an "Open the log" link, and an
+  "+ Add food" button under an empty meal with its suggested calories; (3) water, weight (with a small trend line of
+  recent weigh-ins), GLP-1 next shot (only when GLP-1 is on), streak. Existing cards keep their behaviour.
+- **Log**: meal cards in a responsive grid (two across when there is room; supplements & water full width) with a
+  "Day totals" table beside it: calories, protein, carbs, fat, fiber, sugar, sodium, water — eaten vs target range
+  ("—" when there is no target; unknown stays blank, never 0). "My foods" link in the header.
+- **Goals**: plan card and weight card side by side; weekly trends as a table (scrolls sideways if narrow); badges
+  in a grid (about four across); vacation mode and the GLP-1 link beside the badges.
+- **My foods, GLP-1, other pages**: wider content column (about 1180 px max), no other change.
+- **Settings**: tabs across the top (Culury style: underline on the active tab, scrolls sideways when they don't
+  fit), each tab's panel below, content up to about 1180 px with cards side by side where the mockup shows them.
+  Phones keep the list-with-chevrons. Addresses stay the same (`#/settings/<tab>`); `#/settings` on a wide screen
+  opens the first tab.
+- **Add food and other sheets**: on wide screens they open as a centred window (max about 640 px wide, about 85%
+  of the screen tall, rounded, dimmed backdrop, Escape and backdrop click close) instead of sliding up from the
+  bottom. Same content.
+
+**Not in this step.** New data or routes; the Log mockup's Shortcuts box; the Email and App info tabs (their own
+steps); option C's docked Add food panel.
