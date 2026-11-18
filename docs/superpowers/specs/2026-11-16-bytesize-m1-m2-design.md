@@ -1020,3 +1020,115 @@ Search food etc. on the budget widget — users don't need them there."
   totals card (calories, protein, carbs, fat, fiber, sugar, sodium, water — eaten vs target, same component and
   rules) sits at the top of the right column, above weight, next shot and streak, for the selected day.
 - Pop-up windows don't close on a click outside them — only the X in the corner or Escape closes them ('when entering an item, the window should not close if you click out of it by accident').
+
+## 28. Dashboard widgets you can arrange; no Log page (Cory, 2026-11-18)
+
+**Asked for.** "We don't need the Log page at all since all of this is on the Dashboard — lose it everywhere (phones
+too: the web app can be used on a phone, but the native iOS app will be the main phone app)." "Make the changes I
+want the default order of widgets. Add a feature where users can move the widgets into any column or order: an edit
+mode where widgets become draggable across the columns, and they save their changes. We'll add more widgets later
+as a widget library users pull onto the dashboard — take that into account."
+Calls made for Cory (he didn't answer these; to confirm): the food widget keeps everything the Log page did; the
+layout is saved on the server per person; edit mode can also remove widgets and add them back from a list.
+
+**No Log page.** The Log page, its navigation entries (side rail and phone bottom bar) and `#/log` go;
+`#/log` (and old links to it) open the Dashboard. Everything the Log page did moves into the Dashboard's **Food**
+widget: meals with their entries (photo/icon, name, amount, calories, nutrient pills as the Log showed them), "+ Add
+food" on every meal, tap an entry to edit it, delete, move to another meal, select several (move/delete/copy), copy
+a meal to another day, save a meal as a quick meal, the Supplements & water section, Day totals stay a separate
+widget. The week strip in the Dashboard header picks the day for every widget. Phones: the Dashboard is the home
+tab; the bottom bar keeps the + (opens Add food for the meal of the moment) and drops Log.
+
+**Widgets.** The Dashboard is a set of widgets in three columns (one column on phones, two at medium widths), each a
+self-contained card with an id, a title, and a "fits" hint (narrow / wide). Today's widgets: Food, Budget, Water,
+Day totals, Weight, Next shot (only shown when GLP-1 is on), Streak, plus the existing Dashboard cards that aren't
+named here (e.g. new badges, after-injection prompt) keep their current behaviour above the columns.
+- **Default layout** (Cory's order, §27): left: Food; middle: Budget, Water; right: Day totals, Weight, Next shot,
+  Streak.
+- **Edit mode**: an "Edit dashboard" button (pencil, in the Dashboard header). In edit mode: each widget shows a drag
+  handle and a remove (×) button; widgets can be dragged within and across columns (mouse and touch), with a clear
+  drop indicator; every move can also be done without dragging (each widget has Move up / Move down / Move left /
+  Move right buttons or a "Move to…" menu, keyboard accessible); empty columns stay as drop targets. "Add widget"
+  opens the widget list (the start of the library): every widget not on the dashboard, with its title and one line
+  about it, added to the bottom of the shortest column (or dragged into place). **Save** stores the layout;
+  **Cancel** puts it back; **Reset to default** restores Cory's default. Widgets don't fetch or work while in edit
+  mode beyond showing themselves.
+- **Saved on the server** per person (`GET/PUT /api/dashboard/layout`, `{ version: 1, columns: string[][] }`, a new
+  per-user table or a JSON column on user_settings; backed up; included in "Download my data"). Unknown widget ids
+  in a saved layout are dropped; widgets added to ByteSize later appear in the Add widget list (not forced onto
+  everyone's dashboard) unless marked "new default". A widget id appears at most once. Validation: at most 3 columns,
+  known ids only.
+- **Phones / one column**: widgets show in reading order (left column top to bottom, then middle, then right); edit
+  mode on a phone uses the Move up / Move down buttons (dragging optional).
+- **Built for the library**: a single widget registry (id, title, description, fits, component, default column,
+  "only when …" condition) that the Dashboard, Add widget list and layout validation all read; adding a widget later
+  means adding one registry entry.
+- **Next shot shows the date** ("put the date, not just the day of the week"): "Next shot Wed, Nov 19" (weekday,
+  month, day; the year only when it isn't this year), wherever the next shot is shown (Next shot widget, GLP-1 page).
+- **The Food widget uses the Log page's meal view exactly** (Cory: "make sure we are using this view on the main
+  dashboard, where you can see the pills and click to edit"): each meal card as the Log page's MealCard draws it —
+  "Breakfast: 246 cals", the meal's line of protein · carbs · fat · fiber, each entry with its photo/icon, name,
+  amount and the calorie / protein / fiber pills — and tapping an entry opens it for editing as on the Log page.
+  Reuse the MealCard component rather than a new list.
+- **Adding the same food twice to a meal combines them** ("I added two eggs — it should auto combine them"): when a
+  food is logged to a day and meal that already has an entry of the same food (same food reference; for foods
+  without one, e.g. a quick add, the same name and the same nutrients per unit), the existing entry's amount grows
+  instead of a second entry being added — 100 g + 100 g → 200 g, 1 large + 1 large → 2 large. Different units of the
+  same food combine when both convert through grams (or millilitres), shown in the existing entry's unit; otherwise
+  they stay separate. Nutrients are recomputed from the combined amount (unknown stays unknown). A short note "Added
+  to the egg white already in Breakfast (now 200 g)" confirms it, with **Undo** (splits it back). Moving an entry
+  into a meal that already has the same food combines the same way. Entries that are already duplicated stay as they
+  are. Done on the server in the log route, so every way of adding (search, barcode, recents, quick add, AI,
+  restaurants, Culury, quick meals) follows it; a quick meal adds each of its items this way.
+- **Serving names pluralise correctly**: "6 pitted prunes", not "6 pitteds prunes" (the plural rule pluralised the
+  first word of a multi-word serving name); fix the rule so only the noun takes the plural, with a test for the
+  common serving names in the data.
+- **Edit entry: Move, Copy and Delete as icons at the top** ("they should be at the top of the window and be icons,
+  not words"): in the Edit entry window's title row, to the left of the X, three icon buttons — Move (arrow into a
+  box / arrow-right-left), Copy (two squares), Delete (bin, error colour) — each with an accessible name and a hover
+  tooltip ("Move to another meal or day", "Copy", "Delete"), 44 px targets. They leave the bottom of the window,
+  which keeps only Save. Delete still asks inline before deleting.
+
+## 29. App info: fun stats that count up (Cory, 2026-11-18)
+
+**Asked for.** "An 'App info' section with fun usage stats — items scanned, items tracked, API calls, days logged,
+items logged… — with numbers that count up over a few seconds."
+Calls made for Cory (to confirm): it's a Settings tab everyone has, showing their own numbers; the admin also sees
+the same stats for everyone on the server; counts of things ByteSize didn't record before start from today.
+
+**Settings › App info** (new tab, last before Logs/Users where those exist; on phones a row in the settings list).
+Big-number tiles in a grid (two across on phones, four on wide screens), each a number with a short label and a
+small icon:
+- From data ByteSize already keeps: **Days logged** (days with at least one entry), **Foods logged** (entries),
+  **Different foods** (distinct foods/names logged), **My foods** (saved foods and recipes), **Weigh-ins**,
+  **Pounds lost** (first to latest weigh-in, in the person's units; hidden when there's no loss), **Shots logged**
+  (GLP-1 on only), **Longest streak**, **Member since** (date, not counted up).
+- Counted from now on (a new per-person counter, see below): **Barcodes scanned** (barcode lookups, typed or photo),
+  **Photos read** (label/barcode photos), **AI estimates** (Describe it), **Lookups saved** (searches and barcodes
+  answered from the local copy instead of asking a service), and **Outside lookups** with a per-source breakdown
+  (Open Food Facts, USDA, FatSecret, Spoonacular, Culury) as small lines under the tile. These tiles carry a
+  footnote "Counting since <date this shipped>".
+- Admin only, a second section **Everyone on this server**: people, days logged, foods logged, barcodes scanned,
+  outside lookups, lookups saved — totals across all users. Nobody else sees other people's numbers.
+- Footer line: ByteSize version.
+
+**Count-up.** When the tab opens, each number counts up from 0 to its value over about 1.5 seconds with an ease-out,
+tiles slightly staggered; thousands separators throughout. With "reduce motion" on, numbers appear at once. A
+number that's 0 just shows 0. Screen readers get the final value (the animating text is aria-hidden with the real
+value in an sr-only span).
+
+**Counter.** A per-user `usage_counts` table (user id, key, count; one row per user and key). Incremented with an
+atomic upsert where the event happens (barcode lookup, photo read, AI estimate, each outside call per source, each
+local answer). Counting never delays or fails the request it counts (errors logged, not thrown). Backed up and in
+"Download my data"; covered by the per-user isolation test. `GET /api/app-info` returns `{ you: {...}, everyone?:
+{...}, countingSince, version }` (`everyone` for the admin only).
+
+## 30. A drink with one serving opens at that serving, not 8 fl oz (Cory, 2026-11-18)
+
+**Found in testing.** A restaurant drink opened from search starts at "1 shake", but once it is corrected (saved to
+My foods) or comes from another source with a single named serving that has a volume, it opens at "8 fl oz" — the
+cup's-worth fallback meant for drinks known only per 100 g.
+**Rule.** Where a food starts: if its only serving names an item ("1 shake", "1 bottle (500 ml)", "1 can") it starts
+at 1 of that serving, whatever the source. Only a serving that names no item — just an amount like "100 g" or
+"100 ml" — falls back to a cup's worth (8 fl oz / 240 ml). Everything else in `defaultPortion` is unchanged
+(a grams-only second serving still starts in fl oz/ml, same amount).
