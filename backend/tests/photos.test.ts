@@ -244,7 +244,8 @@ describe("photo serving and linking", () => {
     const otherSig = new URL(otherFood.imageUrl, "http://x").searchParams.get("sig")!;
     expect((await imgGet(`/api/photos/${id}`)).statusCode).toBe(404); // no signature
     expect((await imgGet(`/api/photos/${id}?sig=`)).statusCode).toBe(404);
-    expect((await imgGet(`/api/photos/${id}?sig=${sig.slice(0, -1)}A`)).statusCode).toBe(404); // wrong
+    // wrong (the last character changed; "A" when it isn't one already: a signature can end in "A")
+    expect((await imgGet(`/api/photos/${id}?sig=${sig.slice(0, -1)}${sig.endsWith("A") ? "B" : "A"}`)).statusCode).toBe(404);
     expect((await imgGet(`/api/photos/${id}?sig=${otherSig}`)).statusCode).toBe(404); // another photo's
     expect((await imgGet(`/api/photos/${id}?sig=${sig}x`)).statusCode).toBe(404);
     // Only the id is stored, never a signature
