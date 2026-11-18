@@ -25,15 +25,15 @@ const everythingSaid = async () => JSON.stringify((await t.db.select().from(appL
 
 describe("Culury settings", () => {
   it("starts unlinked", async () => {
-    expect((await t.api("GET", "/api/settings/culury")).body).toEqual({ url: null, hasKey: false });
+    expect((await t.api("GET", "/api/settings/culury")).body).toEqual({ url: null, hasKey: false, enabled: false });
   });
 
   it("saves the address and key; the key is stored encrypted and never sent back", async () => {
     const saved = await link(CULURY + "/");
     expect(saved.status).toBe(200);
-    expect(saved.body).toEqual({ url: CULURY, hasKey: true }); // trailing slash trimmed
+    expect(saved.body).toEqual({ url: CULURY, hasKey: true, enabled: true }); // trailing slash trimmed
     const got = await t.api("GET", "/api/settings/culury");
-    expect(got.body).toEqual({ url: CULURY, hasKey: true });
+    expect(got.body).toEqual({ url: CULURY, hasKey: true, enabled: true });
     expect(JSON.stringify(got.body)).not.toContain(CULURY_KEY);
     const [row] = await t.db.select().from(userSettings);
     expect(row.culuryUrl).toBe(CULURY);
@@ -43,15 +43,15 @@ describe("Culury settings", () => {
 
   it("keeps the saved key when only the address's form changes, but wants the key again for a new address", async () => {
     await link();
-    expect((await t.api("PUT", "/api/settings/culury", { url: CULURY + "/" })).body).toEqual({ url: CULURY, hasKey: true });
+    expect((await t.api("PUT", "/api/settings/culury", { url: CULURY + "/" })).body).toEqual({ url: CULURY, hasKey: true, enabled: true });
     const moved = await t.api("PUT", "/api/settings/culury", { url: "http://elsewhere.example:4000" });
     expect(moved.status).toBe(400);
     expect(moved.body.error).toMatch(/API key/);
-    expect((await t.api("GET", "/api/settings/culury")).body).toEqual({ url: CULURY, hasKey: true });
+    expect((await t.api("GET", "/api/settings/culury")).body).toEqual({ url: CULURY, hasKey: true, enabled: true });
   });
 
   it("keeps a path but drops a query and fragment", async () => {
-    expect((await link("https://home.example/culury/?x=1#top")).body).toEqual({ url: "https://home.example/culury", hasKey: true });
+    expect((await link("https://home.example/culury/?x=1#top")).body).toEqual({ url: "https://home.example/culury", hasKey: true, enabled: true });
   });
 
   it.each([
@@ -76,7 +76,7 @@ describe("Culury settings", () => {
   ])("refuses %s", async (url) => {
     const res = await link(url);
     expect(res.status).toBe(400);
-    expect((await t.api("GET", "/api/settings/culury")).body).toEqual({ url: null, hasKey: false });
+    expect((await t.api("GET", "/api/settings/culury")).body).toEqual({ url: null, hasKey: false, enabled: false });
   });
 
   it("needs a key the first time", async () => {
@@ -86,8 +86,8 @@ describe("Culury settings", () => {
 
   it("Remove forgets both", async () => {
     await link();
-    expect((await t.api("DELETE", "/api/settings/culury")).body).toEqual({ url: null, hasKey: false });
-    expect((await t.api("GET", "/api/settings/culury")).body).toEqual({ url: null, hasKey: false });
+    expect((await t.api("DELETE", "/api/settings/culury")).body).toEqual({ url: null, hasKey: false, enabled: false });
+    expect((await t.api("GET", "/api/settings/culury")).body).toEqual({ url: null, hasKey: false, enabled: false });
     const [row] = await t.db.select().from(userSettings);
     expect(row.culuryKeyEnc).toBeNull();
   });
@@ -112,7 +112,7 @@ describe("Test connection", () => {
     culuryKnows(t);
     const res = await t.api("POST", "/api/settings/culury/test", { url: CULURY, apiKey: CULURY_KEY });
     expect(res.status).toBe(200);
-    expect((await t.api("GET", "/api/settings/culury")).body).toEqual({ url: null, hasKey: false });
+    expect((await t.api("GET", "/api/settings/culury")).body).toEqual({ url: null, hasKey: false, enabled: false });
   });
 
   it("a wrong key: a plain reason, never the key or Culury's answer", async () => {

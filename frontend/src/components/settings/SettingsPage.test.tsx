@@ -31,22 +31,22 @@ describe("SettingsPage", () => {
     window.location.hash = hash;
     fakeServer({
       "GET /api/settings/ai": () => ({ settings: null }),
-      "GET /api/admin/food-sources": () => ({ usda: { hasKey: false }, spoonacular: { hasKey: false }, fatsecret: { hasKey: false } }),
-      "GET /api/settings/culury": () => ({ url: null, hasKey: false }),
+      "GET /api/admin/food-sources": () => ({ off: { enabled: true }, usda: { hasKey: false, enabled: false }, spoonacular: { hasKey: false, enabled: false }, fatsecret: { hasKey: false, enabled: false } }),
+      "GET /api/settings/culury": () => ({ url: null, hasKey: false, enabled: false }),
     });
     renderWithSession(<SettingsPage />, { isAdmin: true });
     expect(await screen.findByRole("tabpanel", { name: "Integrations" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Integrations");
-    expect(await screen.findByRole("region", { name: "Food databases" })).toBeInTheDocument();
-    expect(await screen.findByText(/Not linked yet/)).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "USDA" })).toBeInTheDocument();
+    expect(await screen.findByRole("switch", { name: "Culury on" })).toBeInTheDocument();
   });
 
   it("an old address opens Integrations for a member too, with only Culury", async () => {
     window.location.hash = "#/settings/ai";
-    const server = fakeServer({ "GET /api/settings/culury": () => ({ url: null, hasKey: false }) });
+    const server = fakeServer({ "GET /api/settings/culury": () => ({ url: null, hasKey: false, enabled: false }) });
     renderWithSession(<SettingsPage />, { isAdmin: false });
     expect(await screen.findByRole("tabpanel", { name: "Integrations" })).toBeInTheDocument();
-    expect(await screen.findByText(/Not linked yet/)).toBeInTheDocument();
+    expect(await screen.findByRole("switch", { name: "Culury on" })).toBeInTheDocument();
     expect(server.sent.map((r) => r.path)).toEqual(["/api/settings/culury"]);
   });
 });

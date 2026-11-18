@@ -54,6 +54,11 @@ describe("Restaurants tab", () => {
     expect(server.sent.some((s) => s.path.startsWith("/api/restaurants/search"))).toBe(false);
   });
 
+  it("shows when only one source is on (the server leaves out a source that is off)", async () => {
+    open({ "GET /api/restaurants/status": () => ({ sources: ["fatsecret"], lookupsLeft: null }) });
+    expect(await screen.findByRole("button", { name: "Restaurants" })).toBeInTheDocument();
+  });
+
   it("tells someone who can't add a key to ask an admin", async () => {
     open({ "GET /api/restaurants/status": () => ({ sources: [], lookupsLeft: null }) }, false);
     expect(await screen.findByText(/Ask an admin to add a restaurant data key/)).toBeInTheDocument();

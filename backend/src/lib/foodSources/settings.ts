@@ -4,8 +4,12 @@ import { appSettings } from "../../db/schema.js";
 import { decryptSecret, encryptSecret } from "../secrets.js";
 
 // Food source settings, in app_settings under "food_sources". The USDA key is stored encrypted.
+// enabled: the admin's on/off switch per source (Settings › Integrations); a source never switched has none.
 const KEY = "food_sources";
-type Stored = { usdaApiKey?: string | null };
+export const SWITCHED_SOURCES = ["off", "usda", "spoonacular", "fatsecret"] as const;
+export type SwitchedSource = (typeof SWITCHED_SOURCES)[number];
+export type SourceSwitches = Record<SwitchedSource, boolean>;
+type Stored = { usdaApiKey?: string | null; enabled?: Partial<SourceSwitches> };
 
 async function stored(app: FastifyInstance): Promise<Stored> {
   const [row] = await app.db.select().from(appSettings).where(eq(appSettings.key, KEY));
@@ -19,17 +23,53 @@ export async function usdaKey(app: FastifyInstance): Promise<string | null> {
 }
 
 export async function setUsdaKey(app: FastifyInstance, key: string | null) {
-  const value: Stored = { ...(await stored(app)), usdaApiKey: key ? encryptSecret(key, app.jwtSecret) : null };
-  await app.db
-    .insert(appSettings)
-    .values({ key: KEY, value })
-    .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
+  await save(app, { ...(await stored(app)), usdaApiKey: key ? encryptSecret(key, app.jwtSecret) : null });
 }
 
 // Restaurant sources: the Spoonacular key and FatSecret client id + secret, all encrypted like the USDA key.
 type KeyField = "usdaApiKey" | "spoonacularApiKey" | "fatsecretClientId" | "fatsecretClientSecret";
 export type SourceKeys = Partial<Record<KeyField, string | null>>;
 export type RestaurantKeys = { spoonacular: string | null; fatsecret: { clientId: string; clientSecret: string } | null };
+
+async function save(app: FastifyInstance, value: Record<string, unknown>) {
+  await app.db
+    .insert(appSettings)
+    .values({ key: KEY, value })
+    .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
+}
+
+/**
+ * Whether each source is on. A source never switched follows the starting rule (also for servers set up
+ * before the switches): Open Food Facts on; USDA, Spoonacular and FatSecret on when their key is saved.
+ */
+export async function sourceSwitches(app: FastifyInstance): Promise<SourceSwitches> {
+  const s = await stored(app);
+  const keys = await restaurantKeys(app);
+  const set = s.enabled ?? {};
+  return {
+    off: set.off ?? true,
+    usda: set.usda ?? (await usdaKey(app)) !== null,
+    spoonacular: set.spoonacular ?? keys.spoonacular !== null,
+    fatsecret: set.fatsecret ?? keys.fatsecret !== null,
+  };
+}
+
+/** Turns the sources given on or off; the keys are never touched. */
+export async function setSourceSwitches(app: FastifyInstance, switches: Partial<SourceSwitches>) {
+  const s = await stored(app);
+  await save(app, { ...s, enabled: { ...s.enabled, ...switches } });
+}
+
+/** The USDA key when USDA is on and has one; else null (USDA isn't asked). */
+export async function usdaKeyInUse(app: FastifyInstance): Promise<string | null> {
+  return (await sourceSwitches(app)).usda ? usdaKey(app) : null;
+}
+
+/** The restaurant credentials of the sources that are on (a source that is off counts as not set). */
+export async function restaurantKeysInUse(app: FastifyInstance): Promise<RestaurantKeys> {
+  const [keys, on] = [await restaurantKeys(app), await sourceSwitches(app)];
+  return { spoonacular: on.spoonacular ? keys.spoonacular : null, fatsecret: on.fatsecret ? keys.fatsecret : null };
+}
 
 /** The keys as stored (encrypted), for the eye and copy buttons to open one at a time. */
 export async function savedSourceKeys(app: FastifyInstance): Promise<SourceKeys> {
@@ -52,8 +92,5 @@ export async function setSourceKeys(app: FastifyInstance, keys: SourceKeys) {
     if (key === undefined) continue;
     value[field] = key ? encryptSecret(key, app.jwtSecret) : null;
   }
-  await app.db
-    .insert(appSettings)
-    .values({ key: KEY, value })
-    .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
+  await save(app, value);
 }

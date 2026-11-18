@@ -23,10 +23,10 @@ const burrito = fsFood(101, "Chicken Burrito", "Chipotle", [{ serving_descriptio
 
 describe("restaurant keys (admin)", () => {
   it("are saved encrypted, only reported as set, and can be removed", async () => {
-    expect((await t.api("GET", "/api/admin/food-sources")).body).toEqual({ usda: { hasKey: false }, spoonacular: { hasKey: false }, fatsecret: { hasKey: false } });
+    expect((await t.api("GET", "/api/admin/food-sources")).body).toEqual({ off: { enabled: true }, usda: { hasKey: false, enabled: false }, spoonacular: { hasKey: false, enabled: false }, fatsecret: { hasKey: false, enabled: false } });
     await setRestaurantKeys(t, { spoonacular: " spoon-key ", fatsecret: FS });
     const got = await t.api("GET", "/api/admin/food-sources");
-    expect(got.body).toEqual({ usda: { hasKey: false }, spoonacular: { hasKey: true }, fatsecret: { hasKey: true } });
+    expect(got.body).toEqual({ off: { enabled: true }, usda: { hasKey: false, enabled: false }, spoonacular: { hasKey: true, enabled: true }, fatsecret: { hasKey: true, enabled: true } });
     const stored = JSON.stringify((await t.db.execute(sql`select value from app_settings`)).rows);
     for (const secret of ["spoon-key", "fs-secret", "fs-id"]) {
       expect(JSON.stringify(got.body)).not.toContain(secret);
@@ -34,14 +34,14 @@ describe("restaurant keys (admin)", () => {
     }
     // Leaving a key out keeps it; the USDA key is untouched by restaurant keys
     await t.api("PUT", "/api/admin/food-sources", { usdaApiKey: "usda" });
-    expect((await t.api("GET", "/api/admin/food-sources")).body).toEqual({ usda: { hasKey: true }, spoonacular: { hasKey: true }, fatsecret: { hasKey: true } });
+    expect((await t.api("GET", "/api/admin/food-sources")).body).toEqual({ off: { enabled: true }, usda: { hasKey: true, enabled: true }, spoonacular: { hasKey: true, enabled: true }, fatsecret: { hasKey: true, enabled: true } });
     await setRestaurantKeys(t, { spoonacular: null, fatsecret: null });
-    expect((await t.api("GET", "/api/admin/food-sources")).body).toEqual({ usda: { hasKey: true }, spoonacular: { hasKey: false }, fatsecret: { hasKey: false } });
+    expect((await t.api("GET", "/api/admin/food-sources")).body).toEqual({ off: { enabled: true }, usda: { hasKey: true, enabled: true }, spoonacular: { hasKey: false, enabled: false }, fatsecret: { hasKey: false, enabled: false } });
   });
 
   it("a FatSecret client ID without a secret doesn't count as set", async () => {
     await t.api("PUT", "/api/admin/food-sources", { fatsecretClientId: "only-id" });
-    expect((await t.api("GET", "/api/admin/food-sources")).body.fatsecret).toEqual({ hasKey: false });
+    expect((await t.api("GET", "/api/admin/food-sources")).body.fatsecret).toEqual({ hasKey: false, enabled: false });
     expect((await t.api("GET", "/api/restaurants/status")).body.sources).toEqual([]);
   });
 

@@ -12,7 +12,7 @@ import { normalizeBarcode } from "./barcode.js";
 import { HttpError, badRequest } from "./errors.js";
 import { iconFor } from "./foodIcons.js";
 import { offByBarcode, offSearch } from "./foodSources/off.js";
-import { usdaKey } from "./foodSources/settings.js";
+import { sourceSwitches, usdaKeyInUse } from "./foodSources/settings.js";
 import { SourceError, type SourceFood } from "./foodSources/types.js";
 import { usdaByBarcode, usdaSearch } from "./foodSources/usda.js";
 import { NUTRIENT_KEYS, withLiquidVolumes, type NutrientKey, type Nutrients, type Serving } from "./nutrients.js";
@@ -161,7 +161,7 @@ export type BarcodeHit = { code: string; food: FoodResult | null; from: GroupSou
 /**
  * The waterfall: the person's own food with that barcode, a fresh cached food, Open Food Facts,
  * then USDA (only with a key). Outside finds are cached. A stale cached food is still used when
- * the outside sources can't refresh it.
+ * the outside sources can't refresh it. A source the admin switched off is skipped silently.
  */
 export async function lookupBarcode(app: FastifyInstance, userId: number, raw: string): Promise<BarcodeHit> {
   const code = normalizeBarcode(raw);
@@ -181,14 +181,16 @@ export async function lookupBarcode(app: FastifyInstance, userId: number, raw: s
   if (cached && cached.fetchedAt.getTime() >= now.getTime() - CACHE_FRESH_MS) return { code, food: toResult(cached, "cache"), from: "cache", errors };
 
   let found: SourceFood | null = null;
-  try {
-    found = await offByBarcode(app.foodFetch, code, SOURCE_TIMEOUT_MS);
-  } catch (err) {
-    await logSourceFailure(app, userId, "off", "barcode lookup", err);
-    errors.push({ source: "off", message: friendly("off", err) });
+  if ((await sourceSwitches(app)).off) {
+    try {
+      found = await offByBarcode(app.foodFetch, code, SOURCE_TIMEOUT_MS);
+    } catch (err) {
+      await logSourceFailure(app, userId, "off", "barcode lookup", err);
+      errors.push({ source: "off", message: friendly("off", err) });
+    }
   }
   if (!found) {
-    const key = await usdaKey(app);
+    const key = await usdaKeyInUse(app);
     if (key) {
       try {
         found = await usdaByBarcode(app.foodFetch, key, code, SOURCE_TIMEOUT_MS);
@@ -262,12 +264,11 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
   }
 
   const { db } = app;
-  // Outside sources start at once (each with its own timeout) while the local lists are read
-  const key = await usdaKey(app);
+  // Outside sources that are on start at once (each with its own timeout) while the local lists are read
+  const key = await usdaKeyInUse(app);
   // Each source gives its foods, plus an error when only part of it answered (USDA's two calls)
-  const outside: { source: "off" | "usda"; run: Promise<{ foods: SourceFood[]; error: Error | null }> }[] = [
-    { source: "off", run: offSearch(app.foodFetch, q, SOURCE_TIMEOUT_MS).then((foods) => ({ foods, error: null })) },
-  ];
+  const outside: { source: "off" | "usda"; run: Promise<{ foods: SourceFood[]; error: Error | null }> }[] = [];
+  if ((await sourceSwitches(app)).off) outside.push({ source: "off", run: offSearch(app.foodFetch, q, SOURCE_TIMEOUT_MS).then((foods) => ({ foods, error: null })) });
   if (key) outside.push({ source: "usda", run: usdaSearch(app.foodFetch, key, q, SOURCE_TIMEOUT_MS) });
   for (const o of outside) o.run.catch(() => {}); // handled below
   // The person's own Culury recipes (only their own link), at the same time

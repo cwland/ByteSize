@@ -1,19 +1,27 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireAdmin } from "../lib/guards.js";
-import { restaurantKeys, savedSourceKeys, setSourceKeys, usdaKey } from "../lib/foodSources/settings.js";
+import { restaurantKeys, savedSourceKeys, setSourceKeys, setSourceSwitches, sourceSwitches, usdaKey } from "../lib/foodSources/settings.js";
 import { openSaved, revealRateLimit, sendSavedKey } from "../lib/savedKeys.js";
 import { clearPoints, testRestaurantSource } from "../lib/restaurants/index.js";
 import { RESTAURANT_SOURCES } from "../lib/restaurants/types.js";
 
 const key = z.string().trim().max(200).nullable().optional();
+const on = z.boolean({ error: "A switch is on (true) or off (false)" }).optional();
+const switches = z.strictObject({ off: on, usda: on, spoonacular: on, fatsecret: on }).optional();
 
-// Admin: where foods come from. The summary only says whether each key is set; a saved key itself is
-// only sent by .../:source/key, one at a time, for the eye and copy buttons.
+// Admin: where foods come from. The summary says whether each source is on and whether its key is set; a
+// saved key itself is only sent by .../:source/key, one at a time, for the eye and copy buttons.
 export default async function foodSourceRoutes(app: FastifyInstance) {
   const summary = async () => {
     const r = await restaurantKeys(app);
-    return { usda: { hasKey: (await usdaKey(app)) !== null }, spoonacular: { hasKey: r.spoonacular !== null }, fatsecret: { hasKey: r.fatsecret !== null } };
+    const on = await sourceSwitches(app);
+    return {
+      off: { enabled: on.off },
+      usda: { hasKey: (await usdaKey(app)) !== null, enabled: on.usda },
+      spoonacular: { hasKey: r.spoonacular !== null, enabled: on.spoonacular },
+      fatsecret: { hasKey: r.fatsecret !== null, enabled: on.fatsecret },
+    };
   };
 
   app.get("/api/admin/food-sources", async (req) => {
@@ -21,12 +29,13 @@ export default async function foodSourceRoutes(app: FastifyInstance) {
     return summary();
   });
 
-  // A key left out is kept; null or blank removes it
+  // A key left out is kept; null or blank removes it. enabled: the switches given (the keys stay as they are)
   app.put("/api/admin/food-sources", async (req) => {
     requireAdmin(req);
-    const body = z.object({ usdaApiKey: key, spoonacularApiKey: key, fatsecretClientId: key, fatsecretClientSecret: key }).parse(req.body ?? {});
+    const { enabled, ...body } = z.object({ usdaApiKey: key, spoonacularApiKey: key, fatsecretClientId: key, fatsecretClientSecret: key, enabled: switches }).parse(req.body ?? {});
     const before = (await restaurantKeys(app)).spoonacular;
     await setSourceKeys(app, body);
+    if (enabled) await setSourceSwitches(app, enabled);
     // A new or changed Spoonacular key is tried at once, not after midnight UTC
     if ((await restaurantKeys(app)).spoonacular !== before) await clearPoints(app);
     return summary();

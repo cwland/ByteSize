@@ -10,8 +10,8 @@ import { settingsMe } from "../../test/fixtures";
 const routes = {
   "GET /api/settings/me": () => settingsMe,
   "GET /api/settings/ai": () => ({ settings: null }),
-  "GET /api/admin/food-sources": () => ({ usda: { hasKey: false }, spoonacular: { hasKey: false }, fatsecret: { hasKey: false } }),
-  "GET /api/settings/culury": () => ({ url: null, hasKey: false }),
+  "GET /api/admin/food-sources": () => ({ off: { enabled: true }, usda: { hasKey: false, enabled: false }, spoonacular: { hasKey: false, enabled: false }, fatsecret: { hasKey: false, enabled: false } }),
+  "GET /api/settings/culury": () => ({ url: null, hasKey: false, enabled: false }),
   "GET /api/passkeys": () => [],
   "GET /api/auth/sessions": () => [],
   "GET /api/auth/logins": () => [],
@@ -44,7 +44,7 @@ describe("Settings on a wide screen", () => {
     await userEvent.setup().click(tab);
     await waitFor(() => expect(tab).toHaveAttribute("aria-current", "page"));
     const panel = screen.getByRole("tabpanel", { name: "Integrations" });
-    expect(await within(panel).findByRole("region", { name: "Food databases" })).toBeInTheDocument();
+    expect(await within(panel).findByRole("region", { name: "USDA" })).toBeInTheDocument();
     // Integrations' cards sit in two columns
     expect(panel).toHaveClass("lg:columns-2");
     expect(screen.queryByRole("tabpanel", { name: "Profile" })).not.toBeInTheDocument();

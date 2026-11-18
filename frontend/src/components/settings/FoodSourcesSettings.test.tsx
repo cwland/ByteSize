@@ -1,26 +1,43 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FoodDatabasesSettings, RestaurantMenusSettings, useSourceKeys } from "./FoodSourcesSettings";
+import { FatSecretSettings, OpenFoodFactsSettings, SpoonacularSettings, UsdaSettings, useSourceKeys } from "./FoodSourcesSettings";
 import { restoreClipboard, stubClipboard } from "../../test/clipboard";
 
-// Each card as IntegrationsSettings uses it, with the summary fetched once by its parent
-const FoodDatabases = () => <FoodDatabasesSettings sources={useSourceKeys()} />;
-const RestaurantMenus = () => <RestaurantMenusSettings sources={useSourceKeys()} />;
+// The cards as IntegrationsSettings uses them, with the summary fetched once by their parent
+function FoodDatabases() {
+  const sources = useSourceKeys();
+  return (
+    <>
+      <OpenFoodFactsSettings sources={sources} />
+      <UsdaSettings sources={sources} />
+    </>
+  );
+}
+function RestaurantMenus() {
+  const sources = useSourceKeys();
+  return (
+    <>
+      <FatSecretSettings sources={sources} />
+      <SpoonacularSettings sources={sources} />
+    </>
+  );
+}
 afterEach(restoreClipboard);
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
 
-const none = { usda: { hasKey: false }, spoonacular: { hasKey: false }, fatsecret: { hasKey: false } };
+// Every card switched on (the switches themselves: IntegrationSwitches.test.tsx), no keys saved
+const none = { off: { enabled: true }, usda: { hasKey: false, enabled: true }, spoonacular: { hasKey: false, enabled: true }, fatsecret: { hasKey: false, enabled: true } };
 
-describe("Food databases and restaurant menus settings", () => {
+describe("Food source cards", () => {
   it("saves a USDA key without ever showing it again", async () => {
     let hasKey = false;
     const server = fakeServer({
-      "GET /api/admin/food-sources": () => ({ ...none, usda: { hasKey } }),
+      "GET /api/admin/food-sources": () => ({ ...none, usda: { hasKey, enabled: true } }),
       "PUT /api/admin/food-sources": (body: any) => {
         hasKey = !!body.usdaApiKey;
-        return { ...none, usda: { hasKey } };
+        return { ...none, usda: { hasKey, enabled: true } };
       },
     });
     renderWithSession(<FoodDatabases />, { isAdmin: true });
@@ -34,7 +51,7 @@ describe("Food databases and restaurant menus settings", () => {
 
   it("removes the key", async () => {
     const server = fakeServer({
-      "GET /api/admin/food-sources": () => ({ ...none, usda: { hasKey: true } }),
+      "GET /api/admin/food-sources": () => ({ ...none, usda: { hasKey: true, enabled: true } }),
       "PUT /api/admin/food-sources": () => none,
     });
     renderWithSession(<FoodDatabases />, { isAdmin: true });
@@ -46,10 +63,10 @@ describe("Food databases and restaurant menus settings", () => {
   it("saves a Spoonacular key without ever showing it, and tests it", async () => {
     let hasKey = false;
     const server = fakeServer({
-      "GET /api/admin/food-sources": () => ({ ...none, spoonacular: { hasKey } }),
+      "GET /api/admin/food-sources": () => ({ ...none, spoonacular: { hasKey, enabled: true } }),
       "PUT /api/admin/food-sources": (body: any) => {
         hasKey = !!body.spoonacularApiKey;
-        return { ...none, spoonacular: { hasKey } };
+        return { ...none, spoonacular: { hasKey, enabled: true } };
       },
       "POST /api/admin/food-sources/test": () => ({ ok: true, lookupsLeft: 49 }),
     });
@@ -70,10 +87,10 @@ describe("Food databases and restaurant menus settings", () => {
   it("saves FatSecret's client ID and secret together, never shows them, and reports a failed Test", async () => {
     let hasKey = false;
     const server = fakeServer({
-      "GET /api/admin/food-sources": () => ({ ...none, fatsecret: { hasKey } }),
+      "GET /api/admin/food-sources": () => ({ ...none, fatsecret: { hasKey, enabled: true } }),
       "PUT /api/admin/food-sources": (body: any) => {
         hasKey = !!body.fatsecretClientId && !!body.fatsecretClientSecret;
-        return { ...none, fatsecret: { hasKey } };
+        return { ...none, fatsecret: { hasKey, enabled: true } };
       },
       "POST /api/admin/food-sources/test": () => ({ ok: false, error: "FatSecret refused this server's IP address" }),
     });
@@ -94,7 +111,7 @@ describe("Food databases and restaurant menus settings", () => {
 
   it("removes FatSecret's credentials", async () => {
     const server = fakeServer({
-      "GET /api/admin/food-sources": () => ({ ...none, fatsecret: { hasKey: true } }),
+      "GET /api/admin/food-sources": () => ({ ...none, fatsecret: { hasKey: true, enabled: true } }),
       "PUT /api/admin/food-sources": () => none,
     });
     renderWithSession(<RestaurantMenus />, { isAdmin: true });
@@ -107,7 +124,7 @@ describe("Food databases and restaurant menus settings", () => {
     const writeText = vi.fn(async () => {});
     stubClipboard({ writeText });
     const server = fakeServer({
-      "GET /api/admin/food-sources": () => ({ ...none, usda: { hasKey: true } }),
+      "GET /api/admin/food-sources": () => ({ ...none, usda: { hasKey: true, enabled: true } }),
       "GET /api/admin/food-sources/usda/key": () => ({ key: "usda-saved" }),
     });
     renderWithSession(<FoodDatabases />, { isAdmin: true });
@@ -126,7 +143,7 @@ describe("Food databases and restaurant menus settings", () => {
 
   it("Restaurant menus: eyes on the Spoonacular key and on FatSecret's ID and secret, each named apart, and the credits", async () => {
     const server = fakeServer({
-      "GET /api/admin/food-sources": () => ({ ...none, spoonacular: { hasKey: true }, fatsecret: { hasKey: true } }),
+      "GET /api/admin/food-sources": () => ({ ...none, spoonacular: { hasKey: true, enabled: true }, fatsecret: { hasKey: true, enabled: true } }),
       "GET /api/admin/food-sources/spoonacular/key": () => ({ key: "spoon-saved" }),
       "GET /api/admin/food-sources/fatsecret/key": () => ({ clientId: "fs-id-saved", clientSecret: "fs-secret-saved" }),
     });
@@ -149,9 +166,9 @@ describe("Food databases and restaurant menus settings", () => {
 
   it("FatSecret: once both are hidden again (or after a save) the pair is fetched afresh", async () => {
     const server = fakeServer({
-      "GET /api/admin/food-sources": () => ({ ...none, fatsecret: { hasKey: true } }),
+      "GET /api/admin/food-sources": () => ({ ...none, fatsecret: { hasKey: true, enabled: true } }),
       "GET /api/admin/food-sources/fatsecret/key": () => ({ clientId: "fs-id-saved", clientSecret: "fs-secret-saved" }),
-      "PUT /api/admin/food-sources": () => ({ ...none, fatsecret: { hasKey: true } }),
+      "PUT /api/admin/food-sources": () => ({ ...none, fatsecret: { hasKey: true, enabled: true } }),
     });
     renderWithSession(<RestaurantMenus />, { isAdmin: true });
     const fetches = () => server.sent.filter((r) => r.path.endsWith("/fatsecret/key")).length;

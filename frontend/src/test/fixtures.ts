@@ -138,8 +138,10 @@ export const m3Routes = {
 
 // Culury (§14 A). Not linked is the default for any screen that opens Add food:
 // fakeServer({ ...culuryOff, … })
-export const culuryOff = { "GET /api/settings/culury": () => ({ url: null, hasKey: false }) };
-export const culuryOn = { "GET /api/settings/culury": () => ({ url: "http://culury.lan:4000", hasKey: true }) };
+export const culuryOff = { "GET /api/settings/culury": () => ({ url: null, hasKey: false, enabled: false }) };
+export const culuryOn = { "GET /api/settings/culury": () => ({ url: "http://culury.lan:4000", hasKey: true, enabled: true }) };
+// Linked, but the person switched Culury off in Settings › Integrations
+export const culuryLinkedOff = { "GET /api/settings/culury": () => ({ url: "http://culury.lan:4000", hasKey: true, enabled: false }) };
 
 // As GET /api/culury/plan sends it: the selected day (Wed) first, its dinner first; then the rest in date order
 export const culuryPlan = {

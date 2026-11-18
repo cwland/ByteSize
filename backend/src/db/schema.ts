@@ -146,6 +146,8 @@ export const userSettings = pgTable("user_settings", {
   weekStart: integer("week_start").notNull().default(0),
   culuryUrl: text("culury_url"),
   culuryKeyEnc: text("culury_key_enc"), // encrypted
+  // The person's Culury switch (Settings › Integrations); null = never switched: on when linked
+  culuryEnabled: boolean("culury_enabled"),
 });
 
 // Daily targets. The targets in force on day D: the latest effective_from <= D (ties: highest id).

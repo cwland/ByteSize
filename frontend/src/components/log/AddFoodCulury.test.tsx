@@ -5,7 +5,7 @@ import LogPage from "./LogPage";
 import { SelectedDayProvider } from "../../selectedDay";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
-import { barFood, culuryChili, culuryOff, culuryOn, culuryPlan, dayJson, settingsMe } from "../../test/fixtures";
+import { barFood, culuryChili, culuryLinkedOff, culuryOff, culuryOn, culuryPlan, dayJson, settingsMe } from "../../test/fixtures";
 
 // Add food with Culury linked (§14 A): the Meal plan button, Culury recipes in search, tracking them
 const taco = { ...culuryChili, id: 90, name: "Taco soup", icon: "🍽️", servings: [{ label: "1 serving" }], nutrients: {} };
@@ -56,6 +56,15 @@ describe("Add food with Culury", () => {
     const user = userEvent.setup();
     const sheet = await openDinner(user);
     expect(within(sheet).getByRole("button", { name: /Describe it/ })).toBeInTheDocument();
+    expect(within(sheet).queryByRole("button", { name: /Meal plan/ })).toBeNull();
+  });
+
+  it("no Meal plan button when the person's Culury is linked but switched off", async () => {
+    const server = open(culuryLinkedOff);
+    const user = userEvent.setup();
+    const sheet = await openDinner(user);
+    await within(sheet).findByRole("button", { name: /Describe it/ });
+    await vi.waitFor(() => expect(server.sent.some((s) => s.path === "/api/settings/culury")).toBe(true));
     expect(within(sheet).queryByRole("button", { name: /Meal plan/ })).toBeNull();
   });
 

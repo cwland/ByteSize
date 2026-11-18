@@ -61,6 +61,8 @@ export default async function aiSettingsRoutes(app: FastifyInstance) {
     // The single-provider shape from before backup services (updates the first service)
     service.and(z.object(common)).superRefine((v, ctx) => checkReady(v.enabled, [v], ctx, () => [])),
   ]);
+  // The switch in the AI services card's title row alone: the services are kept as they are
+  const switchOnly = z.strictObject({ enabled: z.boolean() });
 
   // The service to test or list models with: typed values, with a blank key falling back to the saved one
   const aiConfigFrom = async (body: unknown): Promise<AiConfig> => {
@@ -90,6 +92,11 @@ export default async function aiSettingsRoutes(app: FastifyInstance) {
 
   app.put("/api/settings/ai", async (req) => {
     requireAdmin(req);
+    const flip = switchOnly.safeParse(req.body);
+    if (flip.success) {
+      await app.ai.setEnabled(flip.data.enabled);
+      return { settings: await app.ai.summary() };
+    }
     const v = aiSettings.parse(req.body);
     const clean = (sv: z.infer<typeof service>) => ({ ...sv, baseUrl: sv.baseUrl ? sv.baseUrl.replace(/\/+$/, "") : null, apiKey: sv.apiKey === null ? "" : sv.apiKey });
     if ("services" in v) {

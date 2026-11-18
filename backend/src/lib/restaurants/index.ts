@@ -1,5 +1,5 @@
-// Restaurant menus: Spoonacular first, FatSecret when Spoonacular has no key, is out of points, fails or
-// finds nothing. Spoonacular calls go through a queue (at most one a second, on the app clock); its search
+// Restaurant menus: Spoonacular first, FatSecret when Spoonacular has no key, is off, is out of points, fails or
+// finds nothing. A source the admin switched off counts as not set up: never asked, never reported. Spoonacular calls go through a queue (at most one a second, on the app clock); its search
 // answers are kept 24 h and an item's nutrition once fetched. FatSecret search hits are never kept; an item
 // is stored (as a food_cache row) only when the person opens it to log or star it.
 import type { FastifyInstance } from "fastify";
@@ -8,7 +8,7 @@ import { appSettings, foodCache, logEntries, restaurantFavourites, restaurantSea
 import { logEvent } from "../appLog.js";
 import { HttpError, badRequest, notFound } from "../errors.js";
 import { cacheUpsert, SOURCE_TIMEOUT_MS, toResult, type FoodResult } from "../foods.js";
-import { restaurantKeys, type RestaurantKeys } from "../foodSources/settings.js";
+import { restaurantKeys, restaurantKeysInUse, type RestaurantKeys } from "../foodSources/settings.js";
 import { SOURCE_NAMES, SourceError } from "../foodSources/types.js";
 import { fatsecret, type FatSecretToken } from "./fatsecret.js";
 import { spoonacular } from "./spoonacular.js";
@@ -133,7 +133,7 @@ async function failed(app: FastifyInstance, userId: number | null, source: Resta
 // ---------- status and search ----------
 
 export async function restaurantStatus(app: FastifyInstance) {
-  const keys = await restaurantKeys(app);
+  const keys = await restaurantKeysInUse(app);
   return { sources: configured(keys), lookupsLeft: await lookupsLeft(app, keys) };
 }
 
@@ -160,7 +160,7 @@ async function withCacheIds(app: FastifyInstance, items: MenuHit[]): Promise<Res
 }
 
 export async function searchRestaurants(app: FastifyInstance, userId: number, raw: string | undefined): Promise<RestaurantSearch> {
-  const keys = await restaurantKeys(app);
+  const keys = await restaurantKeysInUse(app);
   if (!keys.spoonacular && !keys.fatsecret) throw badRequest(NO_KEY_MESSAGE);
   const q = normalise(raw ?? "");
   if (q.length < 3) throw badRequest(MIN_QUERY_MESSAGE);
@@ -210,7 +210,7 @@ export async function searchRestaurants(app: FastifyInstance, userId: number, ra
 
 /** An item's nutrition as a food: from the cache when fetched before, else fetched once and stored. */
 export async function restaurantItem(app: FastifyInstance, userId: number, source: RestaurantSource, sourceId: string): Promise<{ food: FoodResult; lookupsLeft: number | null }> {
-  const keys = await restaurantKeys(app);
+  const keys = await restaurantKeysInUse(app);
   const find = () => app.db.select().from(foodCache).where(and(eq(foodCache.source, source), eq(foodCache.sourceId, sourceId)));
   const [have] = await find();
   if (have) {

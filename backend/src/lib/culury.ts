@@ -107,8 +107,14 @@ export function cleanCuluryUrl(raw: string): string {
 export type CuluryLink = { url: string; key: string };
 
 async function storedLink(app: FastifyInstance, userId: number) {
-  const [row] = await app.db.select({ url: userSettings.culuryUrl, keyEnc: userSettings.culuryKeyEnc }).from(userSettings).where(eq(userSettings.userId, userId));
-  return { url: row?.url ?? null, key: row?.keyEnc ? decryptSecret(row.keyEnc, app.jwtSecret) : null };
+  const [row] = await app.db
+    .select({ url: userSettings.culuryUrl, keyEnc: userSettings.culuryKeyEnc, enabled: userSettings.culuryEnabled })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId));
+  const url = row?.url ?? null;
+  const key = row?.keyEnc ? decryptSecret(row.keyEnc, app.jwtSecret) : null;
+  // Never switched: on when linked
+  return { url, key, enabled: row?.enabled ?? !!(url && key) };
 }
 
 /** This person's saved Culury key as stored (encrypted), or null. */
@@ -117,16 +123,30 @@ export async function savedCuluryKeyEnc(app: FastifyInstance, userId: number): P
   return row?.keyEnc ?? null;
 }
 
-/** This person's Culury link, or null when they haven't linked one (or its key can't be read any more). */
-export async function culuryLink(app: FastifyInstance, userId: number): Promise<CuluryLink | null> {
+/** This person's saved Culury link, on or off; null when they haven't linked one (or its key can't be read any more). */
+export async function savedCuluryLink(app: FastifyInstance, userId: number): Promise<CuluryLink | null> {
   const { url, key } = await storedLink(app, userId);
   return url && key ? { url, key } : null;
 }
 
-/** What Settings shows: the address and whether a key is saved (the key itself only comes from GET /api/settings/culury/key). */
+/** This person's Culury link when their Culury is on; null when it is off or not linked (Culury isn't asked). */
+export async function culuryLink(app: FastifyInstance, userId: number): Promise<CuluryLink | null> {
+  const { url, key, enabled } = await storedLink(app, userId);
+  return enabled && url && key ? { url, key } : null;
+}
+
+/**
+ * What Settings shows: the address, whether a key is saved (the key itself only comes from
+ * GET /api/settings/culury/key) and whether the person's Culury switch is on.
+ */
 export async function culurySummary(app: FastifyInstance, userId: number) {
-  const { url, key } = await storedLink(app, userId);
-  return { url, hasKey: key !== null };
+  const { url, key, enabled } = await storedLink(app, userId);
+  return { url, hasKey: key !== null, enabled };
+}
+
+/** The person's Culury switch; the address and key stay as they are. */
+export async function setCuluryEnabled(app: FastifyInstance, userId: number, enabled: boolean) {
+  await app.db.insert(userSettings).values({ userId, culuryEnabled: enabled }).onConflictDoUpdate({ target: userSettings.userId, set: { culuryEnabled: enabled } });
 }
 
 /** Saves the link. A new address needs the key typed again, so a saved key never goes to another host. */
