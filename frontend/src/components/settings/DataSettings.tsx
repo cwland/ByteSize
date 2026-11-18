@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, download, saveFile } from "../../api";
 import { useSession } from "../../session";
 import type { Backup, BackupList, RestoreResult } from "../../types";
@@ -58,7 +58,8 @@ function MyData() {
 }
 
 // What a restore will use: a backup on the server, or a file the admin picked
-type Source = { kind: "server"; name: string } | { kind: "file"; file: File };
+// pick: counts file choices, so a new choice starts the confirmation over
+type Source = { kind: "server"; name: string } | { kind: "file"; file: File; pick: number };
 
 function Backups() {
   const { user, signOut } = useSession();
@@ -68,6 +69,8 @@ function Backups() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [restoring, setRestoring] = useState<Source | null>(null);
   const [restored, setRestored] = useState<RestoreResult | null>(null);
+  const [restoreError, setRestoreError] = useState<Msg>(null);
+  const picks = useRef(0);
 
   const load = useCallback(async () => {
     try {
@@ -93,8 +96,8 @@ function Backups() {
 
   const backUp = () =>
     run(async () => {
-      const { backup } = await api<{ backup: Backup }>("POST", "/api/admin/backups");
-      setList((l) => (l ? { ...l, backups: [backup, ...l.backups] } : l));
+      await api<{ backup: Backup }>("POST", "/api/admin/backups");
+      await load(); // the server may have deleted the oldest ones to keep to its limit
     });
   const get = (name: string) => run(async () => saveFile(await download(backupPath(name))));
   const remove = (name: string) =>
@@ -103,12 +106,24 @@ function Backups() {
       setList((l) => (l ? { ...l, backups: l.backups.filter((b) => b.name !== name) } : l));
       setDeleting(null);
     });
-  const restore = (source: Source) =>
-    run(async () => {
+  const restore = async (source: Source) => {
+    setBusy(true);
+    setMsg(null);
+    setRestoreError(null);
+    try {
       const body = source.kind === "server" ? { name: source.name, confirm: "RESTORE" } : fileForm(source.file);
       setRestored(await api<RestoreResult>("POST", "/api/admin/backups/restore", body));
       setRestoring(null);
-    });
+    } catch (e) {
+      setRestoreError(errorMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const startRestore = (source: Source) => {
+    setRestoreError(null);
+    setRestoring(source);
+  };
 
   if (restored) {
     return (
@@ -122,7 +137,7 @@ function Backups() {
     );
   }
 
-  const panel = (source: Source) => <RestorePanel busy={busy} onRestore={() => void restore(source)} onCancel={() => setRestoring(null)} />;
+  const panel = (source: Source) => <RestorePanel key={source.kind === "file" ? source.pick : source.name} error={restoreError} busy={busy} onRestore={() => void restore(source)} onCancel={() => setRestoring(null)} />;
 
   return (
     <Card title="Backups" description={list ? `ByteSize backs up everything each night and keeps the newest ${list.keep}.` : undefined}>
@@ -159,7 +174,7 @@ function Backups() {
                   <button type="button" onClick={() => void get(b.name)} disabled={busy} className={linkButton}>
                     Download
                   </button>
-                  <button type="button" onClick={() => setRestoring({ kind: "server", name: b.name })} disabled={busy} className={linkButton}>
+                  <button type="button" onClick={() => startRestore({ kind: "server", name: b.name })} disabled={busy} className={linkButton}>
                     Restore
                   </button>
                   <button type="button" onClick={() => setDeleting(b.name)} disabled={busy} className={linkButton}>
@@ -182,7 +197,7 @@ function Backups() {
             disabled={busy}
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) setRestoring({ kind: "file", file });
+              if (file) startRestore({ kind: "file", file, pick: ++picks.current });
               e.target.value = "";
             }}
             className={`${field} text-sm`}
@@ -207,7 +222,7 @@ function fileForm(file: File) {
 }
 
 // Restoring replaces every person's data, so it needs the word typed out
-function RestorePanel({ busy, onRestore, onCancel }: { busy: boolean; onRestore: () => void; onCancel: () => void }) {
+function RestorePanel({ busy, error, onRestore, onCancel }: { busy: boolean; error: Msg; onRestore: () => void; onCancel: () => void }) {
   const [typed, setTyped] = useState("");
   return (
     <div role="group" aria-label="Confirm restore" className="mt-3 rounded-xl border border-error p-3">
@@ -216,8 +231,9 @@ function RestorePanel({ busy, onRestore, onCancel }: { busy: boolean; onRestore:
         Type RESTORE to confirm
         <input aria-label="Type RESTORE to confirm" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" autoCapitalize="characters" disabled={busy} className={field} />
       </label>
+      <Notice msg={error} />
       <div className="mt-3 flex flex-wrap gap-3">
-        <button type="button" onClick={onRestore} disabled={busy || typed !== "RESTORE"} className={`${primaryButton} bg-error text-white hover:bg-error`}>
+        <button type="button" onClick={onRestore} disabled={busy || typed !== "RESTORE"} className="rounded-full bg-error px-5 py-2.5 font-bold text-white hover:opacity-90 disabled:opacity-60">
           {busy ? "Restoring…" : "Restore"}
         </button>
         <button type="button" onClick={onCancel} disabled={busy} className={secondaryButton}>

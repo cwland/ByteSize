@@ -86,7 +86,11 @@ describe("DataSettings", () => {
 
   it("Back up now posts and the new backup appears at the top", async () => {
     const made = { name: "bytesize-2026-11-17-153000.tar.gz", size: 3000000, createdAt: "2026-11-17T22:30:00.000Z" };
-    const { writes } = fakeServer({ "GET /api/admin/backups": () => backupList, "POST /api/admin/backups": () => ({ backup: made }) });
+    let posted = false;
+    const { writes } = fakeServer({
+      "GET /api/admin/backups": () => (posted ? { ...backupList, backups: [made, ...backupList.backups] } : backupList),
+      "POST /api/admin/backups": () => ((posted = true), { backup: made }),
+    });
     renderWithSession(<DataSettings />);
     await screen.findByText("ByteSize backs up everything each night and keeps the newest 14.");
     await userEvent.click(screen.getByRole("button", { name: "Back up now" }));
@@ -211,5 +215,65 @@ describe("DataSettings", () => {
     await userEvent.click(within(screen.getByRole("group", { name: "Confirm restore" })).getByRole("button", { name: "Restore" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("newer version");
     expect(screen.queryByText("Restored. Sign in again to continue.")).not.toBeInTheDocument();
+  });
+
+  it("choosing a second file clears the typed confirmation", async () => {
+    fakeServer({ "GET /api/admin/backups": () => backupList });
+    renderWithSession(<DataSettings />);
+    await screen.findAllByRole("listitem");
+    const input = screen.getByLabelText("Restore from a file");
+    await userEvent.upload(input, new File(["a"], "a.tar.gz"));
+    await userEvent.type(screen.getByLabelText("Type RESTORE to confirm"), "RESTORE");
+    const go = () => within(screen.getByRole("group", { name: "Confirm restore" })).getByRole("button", { name: "Restore" });
+    expect(go()).toBeEnabled();
+    await userEvent.upload(input, new File(["b"], "b.tar.gz"));
+    expect(screen.getByLabelText("Type RESTORE to confirm")).toHaveValue("");
+    expect(go()).toBeDisabled();
+  });
+
+  it("a failed restore shows its error inside the confirmation panel", async () => {
+    fakeServer({
+      "GET /api/admin/backups": () => backupList,
+      "POST /api/admin/backups/restore": () => ({ status: 400, json: { error: "That file isn't a ByteSize backup. Choose another." } }),
+    });
+    renderWithSession(<DataSettings />);
+    await userEvent.click(within((await screen.findAllByRole("listitem"))[0]).getByRole("button", { name: "Restore" }));
+    await userEvent.type(screen.getByLabelText("Type RESTORE to confirm"), "RESTORE");
+    await userEvent.click(within(screen.getByRole("group", { name: "Confirm restore" })).getByRole("button", { name: "Restore" }));
+    expect(await within(screen.getByRole("group", { name: "Confirm restore" })).findByRole("alert")).toHaveTextContent("isn't a ByteSize backup");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+
+  it("Back up now re-reads the list, so backups the server pruned disappear", async () => {
+    const made = { name: "bytesize-2026-11-17-153000.tar.gz", size: 3000000, createdAt: "2026-11-17T22:30:00.000Z" };
+    let posted = false;
+    fakeServer({
+      "GET /api/admin/backups": () => (posted ? { ...backupList, backups: [made, ...backupList.backups.slice(0, 2)] } : { ...backupList, backups: [...backupList.backups, { name: "bytesize-2026-11-01-020000.tar.gz", size: 100, createdAt: "2026-11-01T09:00:00.000Z" }] }),
+      "POST /api/admin/backups": () => ((posted = true), { backup: made }),
+    });
+    renderWithSession(<DataSettings />);
+    expect(await screen.findAllByRole("listitem")).toHaveLength(4);
+    await userEvent.click(screen.getByRole("button", { name: "Back up now" }));
+    await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(3));
+    expect(screen.queryByText("100 B")).not.toBeInTheDocument();
+    expect(screen.getByText("2.9 MB")).toBeInTheDocument();
+  });
+
+  it("the Restore button is styled as a warning", async () => {
+    fakeServer({ "GET /api/admin/backups": () => backupList });
+    renderWithSession(<DataSettings />);
+    await userEvent.click(within((await screen.findAllByRole("listitem"))[0]).getByRole("button", { name: "Restore" }));
+    const cls = within(screen.getByRole("group", { name: "Confirm restore" })).getByRole("button", { name: "Restore" }).className;
+    expect(cls).toContain("bg-error");
+    expect(cls).not.toContain("bg-primary");
+  });
+
+  it("a stray % in a download's file name doesn't break the download", async () => {
+    stubSave();
+    withFile({}, { "/api/export": "100%-sure.zip" });
+    renderWithSession(<DataSettings />, { isAdmin: false });
+    await userEvent.click(screen.getByRole("button", { name: "Download my data" }));
+    await waitFor(() => expect(saved).toEqual(["100%-sure.zip"]));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

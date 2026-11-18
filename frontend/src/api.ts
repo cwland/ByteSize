@@ -73,6 +73,19 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
   return data as T;
 }
 
+// The name in a Content-Disposition header: filename*=UTF-8''… is percent-encoded, a plain filename="…" is not
+function fileNameFrom(header: string): string | null {
+  const encoded = /filename\*=(?:UTF-8'')?"?([^";]+)"?/i.exec(header);
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded[1]);
+    } catch {
+      /* not valid encoding: fall through to the plain name */
+    }
+  }
+  return /filename="?([^";]+)"?/i.exec(header)?.[1] ?? null;
+}
+
 // A file the server sends (the data export, a backup): fetched with the login token, since a plain link
 // can't carry it. The name the server chose comes from Content-Disposition.
 export async function download(path: string): Promise<{ blob: Blob; filename: string }> {
@@ -89,8 +102,9 @@ export async function download(path: string): Promise<{ blob: Blob; filename: st
     const data = await res.json().catch(() => ({}));
     throw new ApiError(res.status, errorText(data, res.status), data.details);
   }
-  const named = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(res.headers.get("content-disposition") ?? "");
-  return { blob: await res.blob(), filename: named ? decodeURIComponent(named[1]) : (path.split("/").pop() ?? "download") };
+  const header = res.headers.get("content-disposition") ?? "";
+  const filename = fileNameFrom(header) ?? path.split("/").pop() ?? "download";
+  return { blob: await res.blob(), filename };
 }
 
 // Hand a downloaded file to the browser's save dialog / Downloads folder
