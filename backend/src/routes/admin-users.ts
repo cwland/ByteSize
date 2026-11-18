@@ -52,7 +52,8 @@ export default async function adminUserRoutes(app: FastifyInstance) {
       .leftJoin(invites, eq(invites.userId, users.id))
       .groupBy(users.id, invites.id)
       .orderBy(asc(users.id));
-    return { users: rows.map((r) => adminRow(r.user, r.lastSeenAt, r.inviteSentAt ? { sentAt: r.inviteSentAt } : null)) };
+    // canInvite: email is set up, so Invite by email can be offered
+    return { users: rows.map((r) => adminRow(r.user, r.lastSeenAt, r.inviteSentAt ? { sentAt: r.inviteSentAt } : null)), canInvite: !!(await app.mail.active()) };
   });
 
   app.post("/api/admin/users", async (req) => {

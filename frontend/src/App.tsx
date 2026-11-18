@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { applyMode, applyTheme } from "./themes";
 import { api, ApiError, getToken, setToken } from "./api";
 import AuthScreen from "./components/AuthScreen";
+import InvitePage, { inviteTokenFromHash } from "./components/InvitePage";
+import { useHash } from "./routes";
 import AppShell from "./components/AppShell";
 import SetupWizard from "./components/SetupWizard";
 import { SessionContext, type User } from "./session";
@@ -15,6 +17,7 @@ type AuthState =
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>({ status: "loading" });
+  const inviteToken = inviteTokenFromHash(useHash()); // an invite email's link
 
   // The account's theme (Settings › Profile) wins over the one this browser remembered
   const userTheme = auth.status === "in" ? auth.user.theme : undefined;
@@ -72,6 +75,7 @@ export default function App() {
     );
   }
   if (auth.status === "setup") return <SetupWizard onAccount={signedIn} onDone={() => void check()} />;
+  if (inviteToken) return <InvitePage token={inviteToken} onDone={signedIn} />;
   if (auth.status === "login") return <AuthScreen onDone={signedIn} />;
 
   const setUser = (user: User) => setAuth({ status: "in", user });

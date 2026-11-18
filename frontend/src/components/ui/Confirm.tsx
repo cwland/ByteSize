@@ -3,7 +3,7 @@ import { primaryButton, secondaryButton } from "./styles";
 
 // An in-app "are you sure?" (instead of window.confirm). A click on the backdrop doesn't dismiss it:
 // Cancel or Escape does.
-export function Confirm({ title, text, confirmLabel, onConfirm, onCancel }: { title: string; text?: string; confirmLabel: string; onConfirm: () => void; onCancel: () => void }) {
+export function Confirm({ title, text, confirmLabel, cancelLabel = "Cancel", onConfirm, onCancel }: { title: string; text?: string; confirmLabel: string; cancelLabel?: string; onConfirm: () => void; onCancel: () => void }) {
   useEffect(() => {
     // Caught on the way down and stopped there, so a window underneath (a Sheet) doesn't close too.
     const onKey = (e: KeyboardEvent) => {
@@ -21,7 +21,7 @@ export function Confirm({ title, text, confirmLabel, onConfirm, onCancel }: { ti
         {text && <p className="mt-1 text-subtle">{text}</p>}
         <div className="mt-5 flex justify-end gap-3">
           <button type="button" onClick={onCancel} className={secondaryButton}>
-            Cancel
+            {cancelLabel}
           </button>
           <button type="button" onClick={onConfirm} className={`${primaryButton} bg-error text-white hover:bg-error`}>
             {confirmLabel}

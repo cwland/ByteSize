@@ -82,8 +82,10 @@ describe("inviting", () => {
     expect(t.mail.sent).toHaveLength(0);
   });
 
-  it("needs email set up", async () => {
+  it("needs email set up (Settings › Users is told whether it can invite)", async () => {
+    expect((await t.api("GET", "/api/admin/users")).body.canInvite).toBe(true);
     await t.api("DELETE", "/api/settings/email");
+    expect((await t.api("GET", "/api/admin/users")).body.canInvite).toBe(false);
     const r = await invite();
     expect(r.status).toBe(409);
     expect(r.body.error).toBe("Set up email in Settings › Email to invite people");

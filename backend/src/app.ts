@@ -167,9 +167,9 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     const header = req.headers.authorization;
     if (header?.startsWith("Bearer ") && isKeyLike(header.slice(7))) {
       if (req.url.startsWith("/api/")) await keyCaller(req, header.slice(7)); // (the web app's pages don't take keys)
-      return;
-    }
-    if (header?.startsWith("Bearer ")) {
+      if (req.auth) return;
+      // otherwise on as nobody: public routes, the 404 handler, or 401 below
+    } else if (header?.startsWith("Bearer ")) {
       const claims = verifyToken(header.slice(7), opts.jwtSecret);
       if (claims) {
         const [user] = await opts.db.select({ tv: users.tokenVersion, isAdmin: users.isAdmin, disabled: users.disabled }).from(users).where(eq(users.id, claims.userId));
