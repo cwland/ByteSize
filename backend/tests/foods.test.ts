@@ -115,8 +115,8 @@ describe("barcode lookup", () => {
     await barcode(BAR);
     await barcode("012345678905");
     expect(t.foodWeb.calls).toHaveLength(1);
-    // A month later it's looked up again (and refreshed)
-    await t.db.execute(sql`update food_cache set fetched_at = now() - interval '31 days'`);
+    // Once Open Food Facts' hours (9999 by default) have passed it's looked up again (and refreshed)
+    await t.db.execute(sql`update food_cache set fetched_at = now() - interval '10000 hours'`);
     offKnows(t, { [BAR]: offProduct(BAR, "Crunchy bar v2", 410) });
     const r = await barcode(BAR);
     expect(t.foodWeb.calls).toHaveLength(2);
@@ -127,7 +127,7 @@ describe("barcode lookup", () => {
   it("a stale cached food is still used when the web is down", async () => {
     offKnows(t, { [BAR]: offProduct(BAR, "Crunchy bar", 400) });
     const first = await barcode(BAR);
-    await t.db.execute(sql`update food_cache set fetched_at = now() - interval '31 days'`);
+    await t.db.execute(sql`update food_cache set fetched_at = now() - interval '10000 hours'`);
     t.foodWeb.down = true;
     const r = await barcode(BAR);
     expect(r.status).toBe(200);
@@ -139,7 +139,7 @@ describe("search", () => {
   const custom = (name: string, extra: object = {}) =>
     t.api("POST", "/api/my-foods", { name, servings: [{ label: "1 bowl", grams: 250 }], nutrients: { calories: 300, protein_g: 20 }, ...extra });
 
-  it("search returns my foods first, then basic foods, cache, OFF and USDA (branded)", async () => {
+  it("search returns my foods first, then basic foods, USDA branded and OFF (kept foods in their source's group)", async () => {
     await t.api("PUT", "/api/admin/food-sources", { usdaApiKey: "usda-key" });
     const mine = await custom("Greek yogurt bowl");
     // Something already in the cache (looked up by barcode earlier)
@@ -157,14 +157,13 @@ describe("search", () => {
     expect(r.body.groups.map((g: any) => [g.source, g.label, g.foods.map((f: any) => f.name)])).toEqual([
       ["mine", "My foods", ["Greek yogurt bowl"]],
       ["basic", "Basic foods", ["Yogurt, Greek, plain, nonfat"]],
-      ["cache", "Saved foods", ["Greek yogurt plain"]],
-      ["off", "Open Food Facts", ["Greek yogurt honey"]],
-      ["usda", "USDA", ["Greek yogurt, vanilla"]],
+      ["usda", "USDA branded", ["Greek yogurt, vanilla"]],
+      ["off", "Open Food Facts", ["Greek yogurt honey", "Greek yogurt plain"]],
     ]);
-    const [m, basic, c, off, usda] = r.body.groups;
+    const [m, basic, usda, off] = r.body.groups;
     expect(m.foods[0]).toMatchObject({ kind: "user_food", id: mine.body.food.id, source: "mine" });
     expect(basic.foods[0]).toMatchObject({ kind: "cache", source: "usda", id: expect.any(Number), icon: "🥛" });
-    expect(c.foods[0]).toMatchObject({ kind: "cache", id: cached.body.food.id, source: "off" });
+    expect(off.foods[1]).toMatchObject({ kind: "cache", id: cached.body.food.id, source: "off" });
     expect(off.foods[0]).toMatchObject({ kind: "cache", source: "off", id: expect.any(Number) });
     expect(usda.foods[0]).toMatchObject({ kind: "cache", source: "usda", id: expect.any(Number), icon: "🥛" });
     expect(t.foodWeb.calls.find((c) => c.url.startsWith(OFF_SEARCH))!.url).toContain("q=greek%20yogurt");
@@ -174,7 +173,7 @@ describe("search", () => {
     ]);
     // What the sources found is now saved, so it can be logged by id
     expect((await t.db.execute(sql`select count(*)::int as n from food_cache`)).rows[0]).toEqual({ n: 4 });
-    // Searching again shows them once, under Saved foods
+    // Searching again shows them once
     const again = await search("greek yogurt");
     const names = again.body.groups.flatMap((g: any) => g.foods.map((f: any) => f.name));
     expect(names.filter((n: string) => n === "Greek yogurt honey")).toHaveLength(1);
@@ -191,8 +190,8 @@ describe("search", () => {
     expect(elapsed).toBeLessThan(3800);
     expect(r.body.groups.map((g: any) => g.source)).toEqual(["mine"]);
     expect(r.body.errors).toEqual([
-      { source: "off", message: "Open Food Facts took too long to answer" },
       { source: "usda", message: "USDA answered with an error (500)" },
+      { source: "off", message: "Open Food Facts took too long to answer" },
     ]);
     const [me] = (await t.db.execute<{ id: number }>(sql`select id from users where username = 'cory'`)).rows;
     const logs = await foodLogs();
@@ -234,10 +233,10 @@ describe("search forgives typos, puts basic foods first and suggests a spelling"
     await saved("Raw cashews", "2");
     const r = await search("bananna");
     expect(r.status).toBe(200);
-    expect(shape(r.body)).toEqual([["cache", ["Bananas, raw"]]]);
+    expect(shape(r.body)).toEqual([["usda", ["Bananas, raw"]]]); // a kept food shows in its source's group
   });
 
-  it("USDA Foundation / SR Legacy hits come as Basic foods, before Saved foods and Open Food Facts", async () => {
+  it("USDA Foundation / SR Legacy hits come as Basic foods, before USDA branded and Open Food Facts", async () => {
     await t.api("PUT", "/api/admin/food-sources", { usdaApiKey: "usda-key" });
     await saved("Banana smoothie", "3000000000009", "off");
     t.foodWeb.respond = (url, call) => {
@@ -248,24 +247,22 @@ describe("search forgives typos, puts basic foods first and suggests a spelling"
     const r = await search("banana");
     expect(r.body.groups.map((g: any) => [g.source, g.label])).toEqual([
       ["basic", "Basic foods"],
-      ["cache", "Saved foods"],
+      ["usda", "USDA branded"],
       ["off", "Open Food Facts"],
-      ["usda", "USDA"],
     ]);
     expect(shape(r.body)).toEqual([
       ["basic", ["Bananas, raw"]],
-      ["cache", ["Banana smoothie"]],
-      ["off", ["Banana bread"]],
       ["usda", ["Banana chips"]],
+      ["off", ["Banana bread", "Banana smoothie"]],
     ]);
     expect(r.body.groups[0].foods[0]).toMatchObject({ kind: "cache", source: "usda" });
     // Saved like any outside food, and still a basic food on every later search (with a typo too)
     quietWeb();
     for (const q of ["banana", "bananna"]) {
       const later = await search(q);
-      expect(later.body.groups.map((g: any) => g.source)).toEqual(["basic", "cache"]);
+      expect(later.body.groups[0].source).toBe("basic");
       expect(later.body.groups[0].foods.map((f: any) => f.name)).toEqual(["Bananas, raw"]);
-      expect(later.body.groups[1].foods.map((f: any) => f.name)).not.toContain("Bananas, raw");
+      expect(later.body.groups.slice(1).flatMap((g: any) => g.foods.map((f: any) => f.name))).not.toContain("Bananas, raw");
     }
   });
 
@@ -294,8 +291,8 @@ describe("search forgives typos, puts basic foods first and suggests a spelling"
     expect(shape((await search("banana")).body)).toEqual([
       ["mine", ["Banana split", "Apple banana mix"]],
       ["basic", ["Bananas, raw", "Plantain or banana, cooked"]],
-      ["off", ["Banana bread", "Dried banana slices"]],
       ["usda", ["Banana chips", "Organic banana chips"]],
+      ["off", ["Banana bread", "Dried banana slices"]],
     ]);
   });
 

@@ -33,7 +33,7 @@ import restaurantRoutes from "./routes/restaurants.js";
 import backupRoutes from "./routes/backups.js";
 import { scheduleBackups } from "./lib/backup.js";
 import exportRoutes from "./routes/export.js";
-import { scheduleRestaurantCleanup } from "./lib/restaurants/index.js";
+import { scheduleLookupCleanup } from "./lib/lookups.js";
 import { scheduleUploadCleanup, setPhotoSecret } from "./lib/photos.js";
 
 declare module "fastify" {
@@ -149,7 +149,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(backupRoutes); // admin: whole-server backups and restore
   app.register(exportRoutes); // Download my data
   scheduleUploadCleanup(app);
-  scheduleRestaurantCleanup(app); // FatSecret foods nobody kept, restaurant searches past 24 h
+  scheduleLookupCleanup(app); // kept foods and searches past their source's hours (foods in use stay)
   if (opts.backupSchedule ?? true) scheduleBackups(app); // daily backup after BACKUP_HOUR
   return app;
 }

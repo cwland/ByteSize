@@ -59,6 +59,8 @@ export type RestaurantWeb = {
   fsToken?: () => { status: number; json?: unknown };
   fsSearch?: (q: string) => { status: number; json?: unknown; text?: string };
   fsGet?: (id: string) => { status: number; json?: unknown };
+  /** food.find_id_for_barcode (Premier "barcode" scope); default: not found (food_id 0). */
+  fsBarcode?: (code: string) => { status: number; json?: unknown };
 };
 
 /** Routes the fake food web to the given restaurant handlers (anything else: 404). */
@@ -72,6 +74,7 @@ export function restaurantWeb(t: TestApp, web: RestaurantWeb) {
     if (raw === FS_API) {
       const p = new URLSearchParams(String(call.body ?? ""));
       if (p.get("method") === "foods.search") return web.fsSearch ? web.fsSearch(p.get("search_expression") ?? "") : { status: 200, json: { foods: { max_results: "20", total_results: "0", page_number: "0" } } };
+      if (p.get("method") === "food.find_id_for_barcode") return web.fsBarcode ? web.fsBarcode(p.get("barcode") ?? "") : { status: 200, json: { food_id: { value: "0" } } };
       if (p.get("method") === "food.get.v2") return web.fsGet ? web.fsGet(p.get("food_id") ?? "") : { status: 200, json: { error: { code: 106, message: "Invalid ID" } } };
     }
     return { status: 404, json: {} };

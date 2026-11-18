@@ -2,6 +2,9 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireUser } from "../lib/guards.js";
 import { estimateFood, fillGaps, lookupBarcode, searchFoods } from "../lib/foods.js";
+import { refreshKept, refreshRateLimit } from "../lib/lookups.js";
+
+const cacheRef = z.object({ cacheId: z.number().int().positive().max(2147483647) });
 
 // Finding foods (search, typed or scanned barcodes) and AI drafts. Who is asking comes only from the login.
 export default async function foodRoutes(app: FastifyInstance) {
@@ -15,6 +18,12 @@ export default async function foodRoutes(app: FastifyInstance) {
     const userId = requireUser(req);
     const { code, food, errors } = await lookupBarcode(app, userId, String((req.params as { code: string }).code));
     return { code, food, errors };
+  });
+
+  // Check for changes: the kept copy the person is looking at, fetched again from its source (rate-limited per person)
+  app.post("/api/foods/refresh", { config: refreshRateLimit }, async (req) => {
+    const userId = requireUser(req);
+    return refreshKept(app, userId, cacheRef.parse(req.body ?? {}).cacheId);
   });
 
   app.post("/api/ai/estimate", async (req) => {

@@ -246,7 +246,8 @@ describe("food log", () => {
     const recent = (await t.api("GET", "/api/foods/recent")).body.foods;
     expect(recent.map((f: any) => `${f.kind}:${f.id}`)).toEqual([`user_food:${mine.id}`, `cache:${cached.id}`]);
     expect(recent[0]).toEqual({ ...mine, last: { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 } });
-    expect(recent[1]).toEqual({ ...cached, last: { servingIndex: 0, unit: "g", quantity: 30, fraction: 1 } });
+    // read back later, the scanned food is a kept copy (it has a saved date)
+    expect(recent[1]).toEqual({ ...cached, savedAt: expect.any(String), last: { servingIndex: 0, unit: "g", quantity: 30, fraction: 1 } });
 
     const frequent = (await t.api("GET", "/api/foods/frequent")).body.foods;
     // the bar 2 times and toast 2 times in the window; a tie goes to the one used last

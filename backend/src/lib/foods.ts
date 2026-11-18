@@ -4,7 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { and, asc, desc, eq, gte, inArray, ne, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/index.js";
-import { foodCache, userFoods } from "../db/schema.js";
+import { fatsecretBarcodes, foodCache, foodSearches, userFoods } from "../db/schema.js";
 import { culuryLink, culuryMessage, logCuluryFailure, searchCulury } from "./culury.js";
 import { AiError } from "./ai.js";
 import { logEvent } from "./appLog.js";
@@ -12,7 +12,8 @@ import { normalizeBarcode } from "./barcode.js";
 import { HttpError, badRequest } from "./errors.js";
 import { iconFor } from "./foodIcons.js";
 import { offByBarcode, offSearch } from "./foodSources/off.js";
-import { sourceSwitches, usdaKeyInUse } from "./foodSources/settings.js";
+import { fatsecretPlan, setBarcodeScopeMissing, sourceHours, sourceSwitches, usdaKeyInUse, type SourceHours } from "./foodSources/settings.js";
+import { fatsecretInUse } from "./restaurants/index.js";
 import { SourceError, type SourceFood } from "./foodSources/types.js";
 import { usdaByBarcode, usdaSearch } from "./foodSources/usda.js";
 import { NUTRIENT_KEYS, withLiquidVolumes, type NutrientKey, type Nutrients, type Serving } from "./nutrients.js";
@@ -33,10 +34,12 @@ export type FoodResult = {
   source: "off" | "usda" | "spoonacular" | "fatsecret" | "mine" | "ai" | "culury";
   /** What kind of food it is: a plain food (cached or the person's own), a correction, a recipe or a quick meal. */
   foodKind: FoodKind;
+  /** A kept copy of an outside food: when it was fetched ("Saved copy from …"); null when fetched just now. Absent for the person's own foods. */
+  savedAt?: string | null;
 };
 export type FoodKind = "custom" | "override" | "recipe" | "quick_meal";
 export const COMPOUND_KINDS = ["recipe", "quick_meal"] as const;
-export type GroupSource = "mine" | "culury" | "basic" | "cache" | "off" | "usda";
+export type GroupSource = "mine" | "culury" | "basic" | "fatsecret" | "usda" | "off" | "cache";
 export type SearchGroup = { source: GroupSource; label: string; foods: FoodResult[] };
 /** suggestion: a close spelling from saved food names ("Did you mean …?"), only when little was found. */
 export type SearchResult = { groups: SearchGroup[]; errors: { source: string; message: string }[]; suggestion?: string };
@@ -44,9 +47,11 @@ export type SearchResult = { groups: SearchGroup[]; errors: { source: string; me
 type CacheRow = typeof foodCache.$inferSelect;
 type UserFoodRow = typeof userFoods.$inferSelect;
 
-export const GROUP_LABELS: Record<GroupSource, string> = { mine: "My foods", culury: "Culury", basic: "Basic foods", cache: "Saved foods", off: "Open Food Facts", usda: "USDA" };
+// Typed search shows the groups in this order (§21); "Saved foods" holds kept foods of other sources (restaurant items)
+const GROUP_ORDER = ["mine", "culury", "basic", "fatsecret", "usda", "off", "cache"] as const;
+export const GROUP_LABELS: Record<GroupSource, string> = { mine: "My foods", culury: "Culury", basic: "Basic foods", fatsecret: "FatSecret", usda: "USDA branded", off: "Open Food Facts", cache: "Saved foods" };
 export const SOURCE_TIMEOUT_MS = 3000; // per outside source
-const CACHE_FRESH_MS = 30 * 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 const NOT_A_BARCODE = "That doesn't look like a barcode";
 const DUP_BARCODE = "You already have a food with this barcode";
 export const AI_NOT_READY = "Set up an AI service first";
@@ -77,7 +82,7 @@ export function toResult(row: CacheRow | UserFoodRow, kind: "cache" | "user_food
   const base = { kind, id: row.id, name: row.name, brand: row.brand, icon: iconFor(row.category, row.name), barcode: row.barcode, servings: withLiquidVolumes(row.servings as Serving[], row.category, row.name), nutrients };
   if (kind === "cache") {
     const c = row as CacheRow;
-    return { ...base, aiFields: [], imageUrl: signImageUrl(c.imageUrl), override: false, source: CACHE_SOURCES.has(c.source) ? (c.source as FoodResult["source"]) : "off", foodKind: "custom" };
+    return { ...base, aiFields: [], imageUrl: signImageUrl(c.imageUrl), override: false, source: CACHE_SOURCES.has(c.source) ? (c.source as FoodResult["source"]) : "off", foodKind: "custom", savedAt: c.fetchedAt.toISOString() };
   }
   const u = row as UserFoodRow;
   const aiFields = presentAiFields(u.aiFields, nutrients);
@@ -107,7 +112,7 @@ const cacheValues = (f: SourceFood, now: Date) => ({
 });
 
 const upsertSet = {
-  barcode: sql`excluded.barcode`,
+  barcode: sql`coalesce(excluded.barcode, ${foodCache.barcode})`, // a FatSecret food.get has no barcode: keep the scanned one
   name: sql`excluded.name`,
   brand: sql`excluded.brand`,
   category: sql`excluded.category`,
@@ -124,24 +129,51 @@ export async function cacheUpsert(db: Db, f: SourceFood, now = new Date()): Prom
   return row.id;
 }
 
-/** Saves outside foods in the cache (one statement); returns the rows in the same order (duplicates once). */
+/** A FatSecret typed-search summary (calories, fat, carbs and protein for one serving), not a whole food. */
+const SUMMARY = sql`(${foodCache.raw} ->> 'summary') = 'true'`;
+
+/**
+ * Saves outside foods in the cache (one statement); returns the rows in the same order (duplicates once).
+ * A summary replaces only another summary: a whole food already kept stays as it is (and is returned).
+ */
 async function upsertMany(db: Db, foods: SourceFood[], now: Date): Promise<CacheRow[]> {
   const unique = [...new Map(foods.filter((f) => f.sourceId).map((f) => [`${f.source}:${f.sourceId}`, f])).values()];
   if (!unique.length) return [];
-  const rows = await db
-    .insert(foodCache)
-    .values(unique.map((f) => cacheValues(f, now)))
-    .onConflictDoUpdate({ target: [foodCache.source, foodCache.sourceId], set: upsertSet })
-    .returning();
+  const isSummary = (f: SourceFood) => (f.raw as { summary?: unknown } | null)?.summary === true;
+  const write = async (list: SourceFood[], onlySummaries: boolean) => {
+    if (!list.length) return [];
+    return db
+      .insert(foodCache)
+      .values(list.map((f) => cacheValues(f, now)))
+      .onConflictDoUpdate({ target: [foodCache.source, foodCache.sourceId], set: upsertSet, ...(onlySummaries ? { setWhere: SUMMARY } : {}) })
+      .returning();
+  };
+  const summaries = unique.filter(isSummary);
+  const rows = [...(await write(unique.filter((f) => !isSummary(f)), false)), ...(await write(summaries, true))];
   const byKey = new Map(rows.map((r) => [`${r.source}:${r.sourceId}`, r]));
+  // Summaries skipped because a whole food is kept: that kept food
+  const skipped = summaries.filter((f) => !byKey.has(`${f.source}:${f.sourceId}`));
+  if (skipped.length) {
+    const kept = await db
+      .select()
+      .from(foodCache)
+      .where(and(eq(foodCache.source, "fatsecret"), inArray(foodCache.sourceId, skipped.map((f) => f.sourceId))));
+    for (const r of kept) byKey.set(`${r.source}:${r.sourceId}`, r);
+  }
   return unique.map((f) => byKey.get(`${f.source}:${f.sourceId}`)!).filter(Boolean);
 }
 
+/** Whether a kept food is fresher than its source's hours. */
+const fresh = (row: CacheRow, hours: SourceHours, now: Date) => row.fetchedAt.getTime() >= now.getTime() - (hours[row.source as keyof SourceHours] ?? 0) * HOUR_MS;
+/** A food fetched just now: no "Saved copy" note. */
+const justFetched = (row: CacheRow): FoodResult => ({ ...toResult(row, "cache"), savedAt: null });
+
 // ---------- outside sources ----------
 
-const SOURCE_LABEL = { off: "Open Food Facts", usda: "USDA" } as const;
+const SOURCE_LABEL = { off: "Open Food Facts", usda: "USDA", fatsecret: "FatSecret" } as const;
+type Outside = keyof typeof SOURCE_LABEL;
 
-async function logSourceFailure(app: FastifyInstance, userId: number, source: "off" | "usda", what: string, err: unknown) {
+async function logSourceFailure(app: FastifyInstance, userId: number, source: Outside, what: string, err: unknown) {
   await logEvent(app.db, {
     category: "food",
     level: "warning",
@@ -152,16 +184,17 @@ async function logSourceFailure(app: FastifyInstance, userId: number, source: "o
   });
 }
 
-const friendly = (source: "off" | "usda", err: unknown) => (err instanceof SourceError ? err.message : `${SOURCE_LABEL[source]} couldn't be searched`);
+const friendly = (source: Outside, err: unknown) => (err instanceof SourceError ? err.message : `${SOURCE_LABEL[source]} couldn't be searched`);
 
 // ---------- barcode ----------
 
 export type BarcodeHit = { code: string; food: FoodResult | null; from: GroupSource | null; errors: SearchResult["errors"] };
 
 /**
- * The waterfall: the person's own food with that barcode, a fresh cached food, Open Food Facts,
- * then USDA (only with a key). Outside finds are cached. A stale cached food is still used when
- * the outside sources can't refresh it. A source the admin switched off is skipped silently.
+ * The waterfall: the person's own food with that barcode, a kept copy fresher than its source's hours (or, for a
+ * barcode FatSecret found before, that one food fetched again), then Open Food Facts, FatSecret (Premier only) and
+ * USDA (only with a key). The first hit wins and is kept. A stale kept copy is still used when the outside sources
+ * can't refresh it. A source the admin switched off is skipped silently.
  */
 export async function lookupBarcode(app: FastifyInstance, userId: number, raw: string): Promise<BarcodeHit> {
   const code = normalizeBarcode(raw);
@@ -177,17 +210,56 @@ export async function lookupBarcode(app: FastifyInstance, userId: number, raw: s
   if (mine) return { code, food: toResult(mine, "user_food"), from: "mine", errors };
 
   const now = app.now();
-  const [cached] = await db.select().from(foodCache).where(eq(foodCache.barcode, code)).orderBy(desc(foodCache.fetchedAt)).limit(1);
-  if (cached && cached.fetchedAt.getTime() >= now.getTime() - CACHE_FRESH_MS) return { code, food: toResult(cached, "cache"), from: "cache", errors };
+  const hours = await sourceHours(app);
+  const kept = await db.select().from(foodCache).where(eq(foodCache.barcode, code)).orderBy(desc(foodCache.fetchedAt));
+  const keptFresh = kept.find((r) => fresh(r, hours, now));
+  if (keptFresh) return { code, food: toResult(keptFresh, "cache"), from: "cache", errors };
+  const cached = kept[0];
+
+  const switches = await sourceSwitches(app);
+  const fs = await fatsecretInUse(app);
+  const keep = async (found: SourceFood) => {
+    const [row] = await upsertMany(db, [{ ...found, barcode: found.barcode ?? code }], app.now());
+    return row;
+  };
+  const tryFatSecret = async (what: string, run: () => Promise<SourceFood | null>) => {
+    try {
+      return await run();
+    } catch (err) {
+      if (err instanceof SourceError && err.kind === "no_scope") {
+        await setBarcodeScopeMissing(app, true); // shown once on the FatSecret card; barcodes skip FatSecret now
+        return null;
+      }
+      await logSourceFailure(app, userId, "fatsecret", what, err);
+      errors.push({ source: "fatsecret", message: friendly("fatsecret", err) });
+      return null;
+    }
+  };
+
+  // FatSecret found this barcode before (the link is kept for good): only that one food is fetched again
+  const [link] = fs ? await db.select().from(fatsecretBarcodes).where(eq(fatsecretBarcodes.barcode, code)) : [];
+  if (fs && link) {
+    const found = await tryFatSecret("barcode lookup", async () => (await fs.item(link.foodId)).food);
+    if (found) return { code, food: justFetched(await keep(found)), from: "fatsecret", errors };
+  }
 
   let found: SourceFood | null = null;
-  if ((await sourceSwitches(app)).off) {
+  if (switches.off) {
     try {
       found = await offByBarcode(app.foodFetch, code, SOURCE_TIMEOUT_MS);
     } catch (err) {
       await logSourceFailure(app, userId, "off", "barcode lookup", err);
       errors.push({ source: "off", message: friendly("off", err) });
     }
+  }
+  const plan = await fatsecretPlan(app);
+  if (!found && fs && !link && plan.plan === "premier" && !plan.barcodeScopeMissing) {
+    found = await tryFatSecret("barcode lookup", async () => {
+      const id = await fs.barcode(code);
+      if (!id) return null;
+      await db.insert(fatsecretBarcodes).values({ barcode: code, foodId: id, createdAt: app.now() }).onConflictDoUpdate({ target: fatsecretBarcodes.barcode, set: { foodId: id } });
+      return (await fs.item(id)).food;
+    });
   }
   if (!found) {
     const key = await usdaKeyInUse(app);
@@ -200,10 +272,7 @@ export async function lookupBarcode(app: FastifyInstance, userId: number, raw: s
       }
     }
   }
-  if (found) {
-    const [row] = await upsertMany(db, [{ ...found, barcode: found.barcode ?? code }], now);
-    return { code, food: toResult(row, "cache"), from: found.source as "off" | "usda", errors };
-  }
+  if (found) return { code, food: justFetched(await keep(found)), from: found.source as GroupSource, errors };
   if (cached) return { code, food: toResult(cached, "cache"), from: "cache", errors };
   return { code, food: null, from: null, errors };
 }
@@ -264,23 +333,38 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
   }
 
   const { db } = app;
-  // Outside sources that are on start at once (each with its own timeout) while the local lists are read
+  const query = q.toLowerCase();
+  const now = app.now();
+  const hours = await sourceHours(app);
+  // Each source that is on answers from its kept answer for this search (fresher than its hours), else it is
+  // asked at once (each with its own timeout) while the local lists are read. A call gives its foods, plus an
+  // error when only part of it answered (USDA's two calls); only a whole answer is kept.
+  type Answer = { foods: SourceFood[]; error: Error | null };
+  const outside: { source: Outside; kept: { id: number; basic?: true }[] | null; run: Promise<Answer> | null }[] = [];
+  const add = async (source: Outside, call: () => Promise<Answer>) => {
+    const [kept] = await db
+      .select()
+      .from(foodSearches)
+      .where(and(eq(foodSearches.source, source), eq(foodSearches.query, query), gte(foodSearches.fetchedAt, new Date(now.getTime() - hours[source] * HOUR_MS))));
+    const run = kept ? null : call();
+    run?.catch(() => {}); // handled below
+    outside.push({ source, kept: kept ? kept.results : null, run });
+  };
   const key = await usdaKeyInUse(app);
-  // Each source gives its foods, plus an error when only part of it answered (USDA's two calls)
-  const outside: { source: "off" | "usda"; run: Promise<{ foods: SourceFood[]; error: Error | null }> }[] = [];
-  if ((await sourceSwitches(app)).off) outside.push({ source: "off", run: offSearch(app.foodFetch, q, SOURCE_TIMEOUT_MS).then((foods) => ({ foods, error: null })) });
-  if (key) outside.push({ source: "usda", run: usdaSearch(app.foodFetch, key, q, SOURCE_TIMEOUT_MS) });
-  for (const o of outside) o.run.catch(() => {}); // handled below
+  const fs = await fatsecretInUse(app);
+  if (fs) await add("fatsecret", () => fs.searchFoods(q).then((foods) => ({ foods, error: null })));
+  if (key) await add("usda", () => usdaSearch(app.foodFetch, key, q, SOURCE_TIMEOUT_MS));
+  if ((await sourceSwitches(app)).off) await add("off", () => offSearch(app.foodFetch, q, SOURCE_TIMEOUT_MS).then((foods) => ({ foods, error: null })));
   // The person's own Culury recipes (only their own link), at the same time
   const culury = await culuryLink(app, userId);
   const culuryRun = culury ? searchCulury(app, culury, q) : null;
   culuryRun?.catch(() => {}); // handled below
 
   const mine = await findMyFoods(db, userId, q, 10);
-  // The person's own versions hide the cached ones they replace
+  // The person's own versions hide the kept ones they replace
   const notMine = sql`not exists (select 1 from ${userFoods} uf where uf.user_id = ${userId} and uf.archived = false and (uf.base_cache_id = ${foodCache.id} or uf.barcode = ${foodCache.barcode}))`;
   // Every word appears, or it's close (pg_trgm, forgives typos), like the person's own foods
-  const similarity = sql`word_similarity(${q.toLowerCase()}, ${cacheHay})`;
+  const similarity = sql`word_similarity(${query}, ${cacheHay})`;
   const cache = await db
     .select()
     .from(foodCache)
@@ -290,17 +374,16 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
 
   const myBarcodes = new Set(mine.map((f) => f.barcode).filter(Boolean));
   const myBases = new Set(mine.map((f) => f.baseCacheId).filter(Boolean));
-  const shown = new Set(cache.map((c) => c.id));
-  // A saved USDA whole food is still a basic food, on every later search too
-  const found: Record<GroupSource, FoodResult[]> = {
-    mine: mine.map((f) => toResult(f, "user_food")),
-    culury: [],
-    basic: cache.filter(isBasicRow).map((c) => toResult(c, "cache")),
-    cache: cache.filter((c) => !isBasicRow(c)).map((c) => toResult(c, "cache")),
-    off: [],
-    usda: [],
-  };
+  const shown = new Set<number>();
+  const found: Record<GroupSource, FoodResult[]> = { mine: mine.map((f) => toResult(f, "user_food")), culury: [], basic: [], fatsecret: [], usda: [], off: [], cache: [] };
   const errors: SearchResult["errors"] = [];
+  /** A kept food in its source's group (a USDA whole food under Basic foods); a food fetched just now has no saved date. */
+  const place = (r: CacheRow, basic: boolean) => {
+    if (shown.has(r.id)) return;
+    shown.add(r.id);
+    const group: GroupSource = basic || isBasicRow(r) ? "basic" : r.source === "off" || r.source === "usda" || r.source === "fatsecret" ? r.source : "cache";
+    found[group].push(r.fetchedAt.getTime() === now.getTime() ? justFetched(r) : toResult(r, "cache"));
+  };
 
   if (culuryRun) {
     try {
@@ -311,34 +394,49 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
     }
   }
 
-  const settled = await Promise.allSettled(outside.map((o) => o.run));
-  const now = app.now();
+  const settled = await Promise.allSettled(outside.map((o) => o.run ?? Promise.resolve(null)));
   for (const [i, o] of outside.entries()) {
     const s = settled[i];
     let rows: CacheRow[] = [];
+    let basicIds = new Set<number>();
     const fail = async (err: unknown) => {
       errors.push({ source: o.source, message: friendly(o.source, err) });
       await logSourceFailure(app, userId, o.source, "search", err);
     };
     try {
       if (s.status === "rejected") throw s.reason;
-      rows = await upsertMany(db, s.value.foods, now);
+      if (o.kept) {
+        const ids = o.kept.map((k) => k.id);
+        const byId = new Map((ids.length ? await db.select().from(foodCache).where(inArray(foodCache.id, ids)) : []).map((r) => [r.id, r]));
+        rows = ids.map((id) => byId.get(id)).filter((r): r is CacheRow => !!r); // a food cleaned up since is left out
+        basicIds = new Set(o.kept.filter((k) => k.basic).map((k) => k.id));
+      } else {
+        const answer = s.value!;
+        rows = await upsertMany(db, answer.foods, now);
+        // USDA's plain whole foods (Foundation / SR Legacy) get their own group; the rest are branded
+        const basicRefs = new Set(answer.foods.filter((f) => f.basic).map((f) => f.sourceId));
+        basicIds = new Set(rows.filter((r) => basicRefs.has(r.sourceId)).map((r) => r.id));
+        if (answer.error) await fail(answer.error); // part failed: what did come is still shown, but not kept
+        else {
+          const results = rows.map((r) => (basicIds.has(r.id) ? { id: r.id, basic: true as const } : { id: r.id }));
+          await db
+            .insert(foodSearches)
+            .values({ source: o.source, query, results, fetchedAt: now })
+            .onConflictDoUpdate({ target: [foodSearches.source, foodSearches.query], set: { results, fetchedAt: now } });
+        }
+      }
     } catch (err) {
       await fail(err);
       continue;
     }
-    if (s.value.error) await fail(s.value.error); // part failed: what did come is still shown
-    const fresh = rows.filter((r) => !shown.has(r.id) && !myBases.has(r.id) && !(r.barcode && myBarcodes.has(r.barcode)));
-    fresh.forEach((r) => shown.add(r.id));
-    // USDA's plain whole foods (Foundation / SR Legacy) get their own group; the rest are branded
-    const basicIds = new Set(s.value.foods.filter((f) => f.basic).map((f) => f.sourceId));
-    for (const r of fresh) found[basicIds.has(r.sourceId) ? "basic" : o.source].push(toResult(r, "cache"));
+    for (const r of rows) if (!myBases.has(r.id) && !(r.barcode && myBarcodes.has(r.barcode))) place(r, basicIds.has(r.id));
   }
+  // Kept foods that match the words (or a typo of them), from earlier searches and scans
+  for (const r of cache) place(r, false);
 
   const lq = q.toLowerCase();
   const startsFirst = (foods: FoodResult[]) => [...foods].sort((a, b) => Number(b.name.toLowerCase().startsWith(lq)) - Number(a.name.toLowerCase().startsWith(lq)));
-  const groups = (["mine", "culury", "basic", "cache", "off", "usda"] as const)
-    .map((source): SearchGroup => ({ source, label: GROUP_LABELS[source], foods: startsFirst(found[source]) }))
+  const groups = GROUP_ORDER.map((source): SearchGroup => ({ source, label: GROUP_LABELS[source], foods: startsFirst(found[source]) }))
     .filter((g) => g.foods.length);
   const total = groups.reduce((n, g) => n + g.foods.length, 0);
   const suggestion = total < SUGGEST_BELOW ? await suggestSpelling(db, userId, q) : undefined;

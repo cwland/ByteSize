@@ -394,7 +394,7 @@ export const restaurantFavourites = pgTable(
   (t) => [uniqueIndex("restaurant_favourites_user_cache_idx").on(t.userId, t.cacheId)]
 );
 
-// Restaurant search answers kept 24 h (Spoonacular only), shared by everyone: not anyone's own data.
+// Restaurant search answers (Spoonacular, FatSecret) kept for their source's hours, shared by everyone: not anyone's own data.
 // query is lowercased with single spaces.
 export const restaurantSearches = pgTable(
   "restaurant_searches",
@@ -407,3 +407,25 @@ export const restaurantSearches = pgTable(
   },
   (t) => [uniqueIndex("restaurant_searches_source_query_idx").on(t.source, t.query)]
 );
+
+// Typed-search answers per outside source (off, usda, fatsecret) and query (lowercased, single spaces), kept for
+// that source's hours: the food_cache ids found, in order (basic: a USDA whole food). Shared; not backed up.
+export const foodSearches = pgTable(
+  "food_searches",
+  {
+    id: serial("id").primaryKey(),
+    source: text("source").notNull(),
+    query: text("query").notNull(),
+    results: jsonb("results").$type<{ id: number; basic?: true }[]>().notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("food_searches_source_query_idx").on(t.source, t.query)]
+);
+
+// FatSecret: barcode (EAN-13) → FatSecret food id, kept for good (FatSecret's terms allow it), so a barcode whose
+// food details were cleaned up costs one call (food.get) to fetch again.
+export const fatsecretBarcodes = pgTable("fatsecret_barcodes", {
+  barcode: text("barcode").primaryKey(),
+  foodId: text("food_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

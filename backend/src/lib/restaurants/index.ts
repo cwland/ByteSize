@@ -1,16 +1,17 @@
-// Restaurant menus: Spoonacular first, FatSecret when Spoonacular has no key, is off, is out of points, fails or
-// finds nothing. A source the admin switched off counts as not set up: never asked, never reported. Spoonacular calls go through a queue (at most one a second, on the app clock); its search
-// answers are kept 24 h and an item's nutrition once fetched. FatSecret search hits are never kept; an item
-// is stored (as a food_cache row) only when the person opens it to log or star it.
+// Restaurant menus: a kept answer first, then FatSecret, then Spoonacular when FatSecret has no key, is off, fails
+// or finds nothing. A source the admin switched off counts as not set up: never asked, never reported. Search
+// answers (both sources) and items are kept for their source's hours (Settings › Integrations; FatSecret 24 h,
+// Spoonacular 1 h by default) and cleaned up hourly (lookups.ts). Spoonacular calls go through a queue (at most
+// one a second, on the app clock).
 import type { FastifyInstance } from "fastify";
-import { and, asc, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { appSettings, foodCache, logEntries, restaurantFavourites, restaurantSearches } from "../../db/schema.js";
 import { logEvent } from "../appLog.js";
 import { HttpError, badRequest, notFound } from "../errors.js";
 import { cacheUpsert, SOURCE_TIMEOUT_MS, toResult, type FoodResult } from "../foods.js";
-import { restaurantKeys, restaurantKeysInUse, type RestaurantKeys } from "../foodSources/settings.js";
+import { restaurantKeys, restaurantKeysInUse, sourceHours, type RestaurantKeys } from "../foodSources/settings.js";
 import { SOURCE_NAMES, SourceError } from "../foodSources/types.js";
-import { fatsecret, type FatSecretToken } from "./fatsecret.js";
+import { fatsecret, type FatSecretAdapter, type FatSecretToken } from "./fatsecret.js";
 import { spoonacular } from "./spoonacular.js";
 import { RESTAURANT_SOURCES, type MenuHit, type RestaurantAdapter, type RestaurantSource } from "./types.js";
 
@@ -18,7 +19,7 @@ export const QUOTA_MESSAGE = "Today's restaurant lookups are used up. They reset
 export const NO_KEY_MESSAGE = "Add a restaurant data key in Settings › Integrations";
 export const TURN_ON_MESSAGE = "Turn on FatSecret or Spoonacular in Settings › Integrations.";
 export const MIN_QUERY_MESSAGE = "Type at least 3 letters";
-const SEARCH_FRESH_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 const SPACING_MS = 1000; // Spoonacular free plan: 1 request a second
 export const QUOTA_KEY = "restaurant_quota"; // app_settings: { left, day } — Spoonacular points left on that UTC day
 
@@ -62,11 +63,34 @@ export function throttled<T>(app: FastifyInstance, fn: () => Promise<T>): Promis
 
 function adapterFor(app: FastifyInstance, keys: RestaurantKeys, source: RestaurantSource): RestaurantAdapter | null {
   if (source === "spoonacular") return keys.spoonacular ? spoonacular({ fetch: app.foodFetch, apiKey: keys.spoonacular, timeoutMs: SOURCE_TIMEOUT_MS }) : null;
+  return fatsecretWith(app, keys);
+}
+
+function fatsecretWith(app: FastifyInstance, keys: RestaurantKeys): FatSecretAdapter | null {
   const fs = keys.fatsecret;
   return fs ? fatsecret({ fetch: app.foodFetch, clientId: fs.clientId, clientSecret: fs.clientSecret, timeoutMs: SOURCE_TIMEOUT_MS, now: () => app.now().getTime(), tokens: state(app).tokens }) : null;
 }
 
-const configured = (keys: RestaurantKeys): RestaurantSource[] => RESTAURANT_SOURCES.filter((s) => (s === "spoonacular" ? keys.spoonacular : keys.fatsecret));
+/** FatSecret when it is on and has its id and secret (typed search, barcodes, Check for changes); else null. */
+export async function fatsecretInUse(app: FastifyInstance): Promise<FatSecretAdapter | null> {
+  return fatsecretWith(app, await restaurantKeysInUse(app));
+}
+
+/** A queued Spoonacular item fetch (Check for changes), or null when Spoonacular isn't in use. */
+export async function spoonacularItem(app: FastifyInstance, sourceId: string) {
+  const adapter = adapterFor(app, await restaurantKeysInUse(app), "spoonacular");
+  if (!adapter) return null;
+  if (await outOfPoints(app)) throw new SourceError("spoonacular", QUOTA_MESSAGE, "quota");
+  return spoonQueued(app, async () => {
+    await stillHasPoints(app);
+    const r = await adapter.item(sourceId);
+    if (r.quota) await savePoints(app, r.quota.left);
+    return r.food;
+  });
+}
+
+// FatSecret first (more chains, no daily points), then Spoonacular
+const configured = (keys: RestaurantKeys): RestaurantSource[] => (["fatsecret", "spoonacular"] as const).filter((s) => (s === "spoonacular" ? keys.spoonacular : keys.fatsecret));
 const utcDay = (d: Date) => d.toISOString().slice(0, 10);
 
 /** Spoonacular points left today, as its last answer said (null: not known today). */
@@ -149,13 +173,22 @@ export async function restaurantStatus(app: FastifyInstance) {
 
 const normalise = (q: string) => q.trim().replace(/\s+/g, " ");
 
-async function freshSearch(app: FastifyInstance, query: string): Promise<MenuHit[] | null> {
-  const since = new Date(app.now().getTime() - SEARCH_FRESH_MS);
+/** The source's kept answer for this search, while it is fresher than the source's hours. */
+async function keptSearch(app: FastifyInstance, source: RestaurantSource, query: string): Promise<MenuHit[] | null> {
+  const since = new Date(app.now().getTime() - (await sourceHours(app))[source] * HOUR_MS);
   const [row] = await app.db
     .select()
     .from(restaurantSearches)
-    .where(and(eq(restaurantSearches.source, "spoonacular"), eq(restaurantSearches.query, query), gte(restaurantSearches.fetchedAt, since)));
+    .where(and(eq(restaurantSearches.source, source), eq(restaurantSearches.query, query), gte(restaurantSearches.fetchedAt, since)));
   return row ? (row.results as MenuHit[]) : null;
+}
+
+async function keepSearch(app: FastifyInstance, source: RestaurantSource, query: string, items: MenuHit[]) {
+  const now = app.now();
+  await app.db
+    .insert(restaurantSearches)
+    .values({ source, query, results: items, fetchedAt: now })
+    .onConflictDoUpdate({ target: [restaurantSearches.source, restaurantSearches.query], set: { results: items, fetchedAt: now } });
 }
 
 /** The saved food (if any) for each hit. */
@@ -176,27 +209,37 @@ export async function searchRestaurants(app: FastifyInstance, userId: number, ra
   if (q.length < 3) throw badRequest(MIN_QUERY_MESSAGE);
   const errors: RestaurantSearch["errors"] = [];
   let items: MenuHit[] = [];
+  const query = q.toLowerCase();
 
-  const spoon = adapterFor(app, keys, "spoonacular");
+  const fs = adapterFor(app, keys, "fatsecret");
+  if (fs) {
+    const kept = await keptSearch(app, "fatsecret", query);
+    if (kept) items = kept;
+    else {
+      try {
+        items = (await fs.search(q)).items;
+        await keepSearch(app, "fatsecret", query, items);
+      } catch (err) {
+        errors.push({ source: "fatsecret", message: await failed(app, userId, "fatsecret", "search", err) });
+      }
+    }
+  }
+
+  const spoon = items.length ? null : adapterFor(app, keys, "spoonacular");
   if (spoon) {
-    const query = q.toLowerCase();
-    const kept = await freshSearch(app, query);
+    const kept = await keptSearch(app, "spoonacular", query);
     if (kept) items = kept;
     else if (await outOfPoints(app)) errors.push({ source: "spoonacular", message: QUOTA_MESSAGE });
     else {
       try {
-        // Re-checked in the queue: the same search waiting behind another is answered from the cache
+        // Re-checked in the queue: the same search waiting behind another is answered from the kept answer
         items = await spoonQueued(app, async () => {
-          const again = await freshSearch(app, query);
+          const again = await keptSearch(app, "spoonacular", query);
           if (again) return again;
           await stillHasPoints(app);
           const r = await spoon.search(q);
           if (r.quota) await savePoints(app, r.quota.left);
-          const now = app.now();
-          await app.db
-            .insert(restaurantSearches)
-            .values({ source: "spoonacular", query, results: r.items, fetchedAt: now })
-            .onConflictDoUpdate({ target: [restaurantSearches.source, restaurantSearches.query], set: { results: r.items, fetchedAt: now } });
+          await keepSearch(app, "spoonacular", query, r.items);
           return r.items;
         });
       } catch (err) {
@@ -204,35 +247,36 @@ export async function searchRestaurants(app: FastifyInstance, userId: number, ra
       }
     }
   }
-
-  const fs = items.length ? null : adapterFor(app, keys, "fatsecret");
-  if (fs) {
-    try {
-      items = (await fs.search(q)).items; // not stored: FatSecret's plan lists no storage permission
-    } catch (err) {
-      errors.push({ source: "fatsecret", message: await failed(app, userId, "fatsecret", "search", err) });
-    }
-  }
   return { items: await withCacheIds(app, items), lookupsLeft: await lookupsLeft(app, keys), errors };
 }
 
 // ---------- items ----------
 
-/** An item's nutrition as a food: from the cache when fetched before, else fetched once and stored. */
+/** A FatSecret typed-search summary (not the whole food). */
+const isSummary = (row: typeof foodCache.$inferSelect) => (row.raw as { summary?: unknown } | null)?.summary === true;
+
+/**
+ * An item's nutrition as a food: the kept copy while it is fresher than its source's hours, else fetched once
+ * and kept (a FatSecret typed-search summary is fetched whole). A kept copy is still used when its source is off.
+ */
 export async function restaurantItem(app: FastifyInstance, userId: number, source: RestaurantSource, sourceId: string): Promise<{ food: FoodResult; lookupsLeft: number | null }> {
   const keys = await restaurantKeysInUse(app);
   const find = () => app.db.select().from(foodCache).where(and(eq(foodCache.source, source), eq(foodCache.sourceId, sourceId)));
+  const since = app.now().getTime() - (await sourceHours(app))[source] * HOUR_MS;
   const [have] = await find();
-  if (have) {
-    // Opened again: kept another 24 h, so the hourly cleanup can't remove a FatSecret food being logged
-    if (source === "fatsecret") await app.db.update(foodCache).set({ fetchedAt: app.now() }).where(eq(foodCache.id, have.id));
-    return { food: toResult(have, "cache"), lookupsLeft: await lookupsLeft(app, keys) };
-  }
+  const kept = have && !isSummary(have) ? have : null;
+  const keptCopy = async () => ({ food: toResult(kept!, "cache"), lookupsLeft: await lookupsLeft(app, keys) });
+  if (kept && kept.fetchedAt.getTime() >= since) return keptCopy();
 
+  // Past its hours, a kept copy is still used when the source can't be asked (off, out of points) or fails
   const adapter = adapterFor(app, keys, source);
+  if (!adapter && kept) return keptCopy();
   // This source isn't in use: switched off (its key is saved) or no key
   if (!adapter) throw badRequest((await restaurantKeys(app))[source] ? TURN_ON_MESSAGE : NO_KEY_MESSAGE);
-  if (source === "spoonacular" && (await outOfPoints(app))) throw new HttpError(503, QUOTA_MESSAGE);
+  if (source === "spoonacular" && (await outOfPoints(app))) {
+    if (kept) return keptCopy();
+    throw new HttpError(503, QUOTA_MESSAGE);
+  }
   // Two opens of the same item at once share one fetch (and one stored row)
   const inflight = state(app).inflight;
   const key = `${source}:${sourceId}`;
@@ -244,7 +288,8 @@ export async function restaurantItem(app: FastifyInstance, userId: number, sourc
         fetched =
           source === "spoonacular"
             ? await spoonQueued(app, async () => {
-                if ((await find())[0]) return null;
+                const [meanwhile] = await find(); // fetched by a queued open of the same item
+                if (meanwhile && !isSummary(meanwhile) && meanwhile.fetchedAt.getTime() >= since && (!have || meanwhile.fetchedAt > have.fetchedAt)) return null;
                 await stillHasPoints(app);
                 return adapter.item(sourceId);
               })
@@ -259,9 +304,14 @@ export async function restaurantItem(app: FastifyInstance, userId: number, sourc
     })().finally(() => inflight.delete(key));
     inflight.set(key, pending);
   }
-  await pending;
+  try {
+    await pending;
+  } catch (err) {
+    if (kept) return keptCopy();
+    throw err;
+  }
   const [row] = await find();
-  return { food: toResult(row, "cache"), lookupsLeft: await lookupsLeft(app, keys) };
+  return { food: { ...toResult(row, "cache"), savedAt: null }, lookupsLeft: await lookupsLeft(app, keys) };
 }
 
 // ---------- admin Test ----------
@@ -336,55 +386,4 @@ export async function recentChains(app: FastifyInstance, userId: number, limit =
     .orderBy(desc(last))
     .limit(limit);
   return { chains: rows.map((r) => r.chain!) };
-}
-
-// ---------- cleanup (on start, then hourly; logged under "schedule") ----------
-
-const CLEANUP_EVERY_MS = 60 * 60 * 1000;
-
-/**
- * Removes Spoonacular search answers older than 24 h, and FatSecret foods fetched more than 24 h ago
- * that nobody starred, logged, used in a recipe or quick meal, or corrected (FatSecret's plan lists no
- * storage permission). Spoonacular items are kept. Returns how many rows went.
- */
-export async function cleanupRestaurants(app: FastifyInstance): Promise<{ foods: number; searches: number }> {
-  const cutoff = new Date(app.now().getTime() - SEARCH_FRESH_MS);
-  const searches = await app.db.delete(restaurantSearches).where(lt(restaurantSearches.fetchedAt, cutoff)).returning({ id: restaurantSearches.id });
-  const foods = await app.db
-    .delete(foodCache)
-    .where(
-      and(
-        eq(foodCache.source, "fatsecret"),
-        lt(foodCache.fetchedAt, cutoff),
-        sql`not exists (select 1 from restaurant_favourites f where f.cache_id = ${foodCache.id})`,
-        sql`not exists (select 1 from log_entries le where le.source_ref = 'cache:' || ${foodCache.id})`,
-        sql`not exists (select 1 from recipe_items ri where ri.food_kind = 'cache' and ri.food_id = ${foodCache.id})`,
-        sql`not exists (select 1 from user_foods uf where uf.base_cache_id = ${foodCache.id})`,
-      ),
-    )
-    .returning({ id: foodCache.id });
-  if (foods.length || searches.length) {
-    await logEvent(app.db, {
-      category: "schedule",
-      level: "info",
-      source: "Restaurant cleanup",
-      event: `Removed ${foods.length} unused FatSecret food${foods.length === 1 ? "" : "s"} and ${searches.length} old restaurant search${searches.length === 1 ? "" : "es"}`,
-      detail: "Kept 24 hours; starred, logged, recipe and corrected foods stay",
-    });
-  }
-  return { foods: foods.length, searches: searches.length };
-}
-
-export function scheduleRestaurantCleanup(app: FastifyInstance) {
-  const run = () =>
-    cleanupRestaurants(app).catch((err) =>
-      logEvent(app.db, { category: "schedule", level: "error", source: "Restaurant cleanup", event: "The restaurant cleanup failed", detail: (err as Error).message }),
-    );
-  let timer: NodeJS.Timeout | undefined;
-  app.addHook("onReady", async () => {
-    void run();
-    timer = setInterval(run, CLEANUP_EVERY_MS);
-    timer.unref();
-  });
-  app.addHook("onClose", async () => clearInterval(timer));
 }
