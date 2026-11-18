@@ -22,7 +22,7 @@ function TrendLine({ weighIns }: { weighIns: WeighIn[] }) {
   const points = pts.map((p) => `${(((Date.parse(p.day) - t0) / tspan) * 100).toFixed(2)},${(2 + (1 - (p.weightKg - lo) / span) * 26).toFixed(2)}`).join(" ");
   return (
     <svg role="img" aria-label="Weight trend, recent weigh-ins" viewBox="0 0 100 30" preserveAspectRatio="none" className="mt-3 h-12 w-full">
-      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" className="text-primary" />
+      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" className="text-action" />
     </svg>
   );
 }

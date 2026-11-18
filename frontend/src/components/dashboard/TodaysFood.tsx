@@ -1,7 +1,7 @@
 import { Plus } from "lucide-react";
 import { formatAmount } from "../../amounts";
 import { MEALS, MEAL_NAMES } from "../../meals";
-import { dayLabel } from "../../selectedDay";
+import { dayLabel, keepDayOnNextPage } from "../../selectedDay";
 import type { Day, Meal, Units } from "../../types";
 import { fmt } from "../../units";
 import FoodPic from "../log/FoodPic";
@@ -16,7 +16,7 @@ export default function TodaysFood({ data, isToday, units, onAdd }: { data: Day 
     <section aria-label={title} className="rounded-2xl bg-container p-5">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-bold">{title}</h2>
-        <a href="#/log" className="rounded-full px-2 py-1 text-sm font-bold text-link hover:bg-pressed">
+        <a href="#/log" onClick={keepDayOnNextPage} className="rounded-full px-2 py-1 text-sm font-bold text-link hover:bg-pressed">
           Open the log
         </a>
       </div>
@@ -44,7 +44,8 @@ export default function TodaysFood({ data, isToday, units, onAdd }: { data: Day 
                         <span className="block truncate font-semibold">{e.name}</span>
                         <span className="block truncate text-sm text-subtle">{formatAmount(e.servings, e.servingIndex, e.unit, e.quantity, e.fraction, units)}</span>
                       </span>
-                      <span className="font-bold tabular">{e.nutrients.calories === undefined ? "?" : fmt(e.nutrients.calories)}</span>
+                      {/* unknown calories stay blank */}
+                      <span className="font-bold tabular">{e.nutrients.calories !== undefined && fmt(e.nutrients.calories)}</span>
                     </li>
                   ))}
                 </ul>

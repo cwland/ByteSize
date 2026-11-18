@@ -146,47 +146,49 @@ export default function Dashboard() {
     </section>
   );
 
-  if (wide) {
-    const streakNote = data && data.streak > 0 ? ` · ${data.streak}-day streak` : "";
-    const column = "flex min-w-0 flex-col gap-4";
-    return (
-      <div className="flex flex-col gap-5">
-        <PageHeader title={longDate(day)} sub={`${greeting(user.timezone)}, ${user.displayName ?? user.username}${streakNote}`} days />
-        {error && <Notice msg={{ ok: false, text: error }} />}
-        <NewBadge />
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,19rem),1fr))] items-start gap-5">
-          <div data-testid="dashboard-column" className={column}>
-            {budget}
-            <div className="grid grid-cols-2 gap-3">
-              {QUICK.map(({ start, label, Icon }) => (
-                <button
-                  key={start}
-                  type="button"
-                  onClick={() => setAdding({ meal: mealNow(), start })}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-container px-3 py-3.5 font-bold hover:bg-pressed"
-                >
-                  <Icon aria-hidden="true" className="size-5 shrink-0 text-action" /> {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div data-testid="dashboard-column" className={column}>
-            <TodaysFood data={data} isToday={isToday} units={user.units} onAdd={(meal) => setAdding({ meal, start: "search" })} />
-          </div>
-          <div data-testid="dashboard-column" className={column}>
-            {waterCard}
-            <Notice msg={msg} />
-            <WeightCard trend />
-            <Glp1Card />
-            {streakCard}
+  // Add food sheets sit after the layout, in the same place for both, so crossing 1024 px keeps them open
+  const sheets = (
+    <>
+      {adding && <AddFoodSheet day={day} meal={adding.meal} start={adding.start} onClose={() => setAdding(null)} />}
+      {photo && <AddFoodSheet day={day} meal={photo.meal} photo={photo.file} onClose={() => setPhoto(null)} />}
+    </>
+  );
+  const streakNote = data && data.streak > 0 ? ` · ${data.streak}-day streak` : "";
+  const column = "flex min-w-0 flex-col gap-4";
+  const layout = wide ? (
+    <div className="flex flex-col gap-5">
+      <PageHeader title={longDate(day)} sub={`${greeting(user.timezone)}, ${user.displayName ?? user.username}${streakNote}`} days />
+      {error && <Notice msg={{ ok: false, text: error }} />}
+      <NewBadge />
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,19rem),1fr))] items-start gap-5">
+        <div data-testid="dashboard-column" className={column}>
+          {budget}
+          <div className="grid grid-cols-2 gap-3">
+            {QUICK.map(({ start, label, Icon }) => (
+              <button
+                key={start}
+                type="button"
+                onClick={() => setAdding({ meal: mealNow(), start })}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-container px-3 py-3.5 font-bold hover:bg-pressed"
+              >
+                <Icon aria-hidden="true" className="size-5 shrink-0 text-action" /> {label}
+              </button>
+            ))}
           </div>
         </div>
-        {adding && <AddFoodSheet day={day} meal={adding.meal} start={adding.start} onClose={() => setAdding(null)} />}
+        <div data-testid="dashboard-column" className={column}>
+          <TodaysFood data={data} isToday={isToday} units={user.units} onAdd={(meal) => setAdding({ meal, start: "search" })} />
+        </div>
+        <div data-testid="dashboard-column" className={column}>
+          {waterCard}
+          <Notice msg={msg} />
+          <WeightCard trend />
+          <Glp1Card />
+          {streakCard}
+        </div>
       </div>
-    );
-  }
-
-  return (
+    </div>
+  ) : (
     <div className="flex flex-col gap-3">
       <h1 className="sr-only">Dashboard</h1>
       {error && <Notice msg={{ ok: false, text: error }} />}
@@ -203,7 +205,12 @@ export default function Dashboard() {
       <Glp1Card />
       <WeightCard />
       {streakCard}
-      {photo && <AddFoodSheet day={day} meal={photo.meal} photo={photo.file} onClose={() => setPhoto(null)} />}
     </div>
+  );
+  return (
+    <>
+      {layout}
+      {sheets}
+    </>
   );
 }

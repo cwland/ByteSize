@@ -16,7 +16,7 @@ import MyFoodsPage from "./myfoods/MyFoodsPage";
 import Glp1Page from "./glp1/Glp1Page";
 import { isGlp1, isMyFoods, pageFromHash, useHash, type Page } from "../routes";
 import { useSession } from "../session";
-import { SelectedDayProvider, todayIn, useSelectedDay } from "../selectedDay";
+import { SelectedDayProvider, takeKeepDay, todayIn, useSelectedDay } from "../selectedDay";
 import { useWide } from "../wide";
 
 // The signed-in app: top bar (week strip on Dashboard and Log), the page for the address, and the bottom tab bar.
@@ -60,38 +60,31 @@ export default function AppShell() {
     </>
   );
 
-  if (wide) {
-    return (
-      <SelectedDayProvider timeZone={user.timezone}>
-        <div className="flex min-h-screen bg-page">
-          <TodayOnEnter page={page} />
-          <LogButton page={page} myFoods={myFoods} wide />
-          <main className="min-w-0 flex-1 px-9 pt-7 pb-12">
-            <div className="mx-auto max-w-[1180px]">{content}</div>
-          </main>
-        </div>
-      </SelectedDayProvider>
-    );
-  }
-
+  // One tree for both layouts, so crossing 1024 px (an iPad turned, a window resized) keeps the page and
+  // any open sheet with what was typed: only classes change, the top bar's slot empties, and LogButton
+  // draws the rail or the bottom tab bar in the same place.
   return (
     <SelectedDayProvider timeZone={user.timezone}>
-      <div className="min-h-screen bg-page">
+      <div className={wide ? "flex min-h-screen bg-page" : "min-h-screen bg-page"}>
         <TodayOnEnter page={page} />
-        <TopBar days={(page === "dashboard" && !isGlp1(hash)) || (page === "log" && !myFoods)} />
-        <main className="mx-auto max-w-[560px] px-3 pt-2 pb-32">{content}</main>
-        <LogButton page={page} myFoods={myFoods} />
+        {!wide && <TopBar days={(page === "dashboard" && !isGlp1(hash)) || (page === "log" && !myFoods)} />}
+        <LogButton page={page} myFoods={myFoods} wide={wide} />
+        <main className={wide ? "min-w-0 flex-1 px-9 pt-7 pb-12" : "mx-auto max-w-[560px] px-3 pt-2 pb-32"}>
+          <div className={wide ? "mx-auto max-w-[1180px]" : undefined}>{content}</div>
+        </main>
       </div>
     </SelectedDayProvider>
   );
 }
 
-// Entering the Dashboard or Log from another page always selects today
+// Entering the Dashboard or Log from another page always selects today, except through a link that
+// asked to keep the day (the wide Dashboard's "Open the log": keepDayOnNextPage)
 function TodayOnEnter({ page }: { page: Page }) {
   const { today } = useSelectedDay();
   const was = useRef(page);
   useEffect(() => {
-    if (page !== was.current && (page === "dashboard" || page === "log")) today();
+    if (page === was.current) return;
+    if ((page === "dashboard" || page === "log") && !takeKeepDay()) today();
     was.current = page;
   }, [page, today]);
   return null;

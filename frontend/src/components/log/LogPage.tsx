@@ -141,7 +141,7 @@ export default function LogPage() {
               ),
             )}
           </div>
-          <DayTotals entries={entries} targets={data.targets} units={user.units} />
+          <DayTotals day={data} units={user.units} />
         </div>
       )}
 

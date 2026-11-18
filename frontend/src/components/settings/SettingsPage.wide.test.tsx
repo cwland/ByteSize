@@ -24,11 +24,11 @@ describe("Settings on a wide screen", () => {
     fakeServer(routes);
     renderWithSession(<SettingsPage />, { isAdmin: true });
     expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
-    const strip = screen.getByRole("tablist", { name: "Settings sections" });
-    expect(strip).toHaveAttribute("aria-orientation", "horizontal");
-    expect(within(strip).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Profile", "Security", "Integrations", "Data", "Users", "Logs"]);
-    expect(within(strip).getByRole("tab", { name: "Profile" })).toHaveAttribute("aria-selected", "true");
-    expect(within(strip).getByRole("tab", { name: "Security" })).toHaveAttribute("aria-selected", "false");
+    const strip = screen.getByRole("navigation", { name: "Settings sections" });
+    expect(within(strip).queryByRole("tablist")).not.toBeInTheDocument();
+    expect(within(strip).getAllByRole("link").map((t) => t.textContent)).toEqual(["Profile", "Security", "Integrations", "Data", "Users", "Logs"]);
+    expect(within(strip).getByRole("link", { name: "Profile" })).toHaveAttribute("aria-current", "page");
+    expect(within(strip).getByRole("link", { name: "Security" })).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("tabpanel", { name: "Profile" })).toBeInTheDocument();
     // No phone list of rows with chevrons
     expect(screen.queryByRole("link", { name: /‹|Settings$/ })).not.toBeInTheDocument();
@@ -39,10 +39,10 @@ describe("Settings on a wide screen", () => {
     wideScreen();
     fakeServer(routes);
     renderWithSession(<SettingsPage />, { isAdmin: true });
-    const tab = screen.getByRole("tab", { name: "Integrations" });
+    const tab = within(screen.getByRole("navigation", { name: "Settings sections" })).getByRole("link", { name: "Integrations" });
     expect(tab).toHaveAttribute("href", "#/settings/integrations");
     await userEvent.setup().click(tab);
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Integrations" })).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(tab).toHaveAttribute("aria-current", "page"));
     const panel = screen.getByRole("tabpanel", { name: "Integrations" });
     expect(await within(panel).findByRole("region", { name: "Food databases" })).toBeInTheDocument();
     // Integrations' cards sit in two columns
@@ -55,7 +55,7 @@ describe("Settings on a wide screen", () => {
     wideScreen();
     fakeServer(routes);
     renderWithSession(<SettingsPage />, { isAdmin: false });
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Profile", "Security", "Integrations", "Data"]);
+    expect(within(screen.getByRole("navigation", { name: "Settings sections" })).getAllByRole("link").map((t) => t.textContent)).toEqual(["Profile", "Security", "Integrations", "Data"]);
     // An admin tab's address falls back to the first tab
     expect(screen.getByRole("tabpanel", { name: "Profile" })).toBeInTheDocument();
   });

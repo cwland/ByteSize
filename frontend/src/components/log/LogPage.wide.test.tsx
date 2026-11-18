@@ -10,8 +10,12 @@ import { culuryOff, dayJson, entryJson, mealTotals, settingsMe } from "../../tes
 const toast = entryJson(); // 160 cal, 6 g protein, 30 g carbs, 2 g fat, 4 g fiber
 const bar = entryJson({ id: 2, name: "Peanut butter bar", nutrients: { calories: 127, protein_g: 10, carbs_g: 1, fat_g: 22 } }); // no fiber
 const water = entryJson({ id: 3, meal: "supplements", name: "Water", source: "water", sourceRef: null, nutrients: { water_ml: 473 } });
+// As GET /api/day sends them: sums with unknown as 0, and how many foods lack each nutrient (water isn't a food)
+const unknownCount = { fiber_g: 1, saturated_fat_g: 2, sugar_g: 2, added_sugar_g: 2, sugar_alcohol_g: 2, sodium_mg: 2, potassium_mg: 2, magnesium_mg: 2, water_ml: 2 };
+const totals = { calories: 287, protein_g: 16, carbs_g: 31, fat_g: 24, fiber_g: 4, saturated_fat_g: 0, sugar_g: 0, added_sugar_g: 0, sugar_alcohol_g: 0, sodium_mg: 0, potassium_mg: 0, magnesium_mg: 0, water_ml: 473, unknownCount };
 const day = dayJson({
   entries: [toast, bar, water],
+  totals,
   meals: {
     breakfast: mealTotals(287, { protein_g: 16, carbs_g: 31, fat_g: 24, fiber_g: 4 }),
     lunch: mealTotals(0, { suggested: 490 }),
@@ -76,10 +80,20 @@ describe("Log on a wide screen", () => {
   });
 
   it("an empty day totals 0", async () => {
-    show({ ...day, entries: [] });
+    const zero = Object.fromEntries(Object.keys(totals).filter((k) => k !== "unknownCount").map((k) => [k, 0]));
+    show({ ...day, entries: [], totals: { ...zero, unknownCount: {} } });
     const table = await screen.findByRole("table", { name: "Day totals" });
     expect(row(table, "Calories")).toEqual(["0", "1,810–2,110"]);
     expect(row(table, "Sodium")).toEqual(["0 mg", "—"]);
+  });
+
+  it("takes the numbers from the day's totals as the server sums them", async () => {
+    show({ ...day, totals: { ...totals, calories: 300, protein_g: 16.4, unknownCount: { ...unknownCount, fiber_g: 0, sugar_g: 1 } } });
+    const table = await screen.findByRole("table", { name: "Day totals" });
+    expect(row(table, "Calories")).toEqual(["300", "1,810–2,110"]);
+    expect(row(table, "Protein")).toEqual(["16 g", "126–180 g"]);
+    expect(row(table, "Fiber")).toEqual(["4 g", "25–38 g"]);
+    expect(row(table, "Sugar")).toEqual(["0 g+ some unknown", "—"]);
   });
 
   it("meal cards sit in a grid, supplements and water full width", async () => {

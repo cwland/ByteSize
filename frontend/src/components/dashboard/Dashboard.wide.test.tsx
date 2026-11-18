@@ -12,9 +12,10 @@ import { weightJson } from "../../test/weightFixtures";
 
 const toast = entryJson();
 const bar = entryJson({ id: 2, meal: "lunch", name: "Peanut butter bar", nutrients: { calories: 127, protein_g: 10 } });
+const mystery = entryJson({ id: 4, meal: "snacks", name: "Mystery snack", nutrients: { protein_g: 2 } }); // calories unknown
 const water = entryJson({ id: 3, meal: "supplements", name: "Water", sourceRef: null, source: "water", nutrients: { water_ml: 473 } });
 const day = dayJson({
-  entries: [toast, bar, water],
+  entries: [toast, bar, water, mystery],
   totals: { calories: 287, protein_g: 16, water_ml: 473, unknownCount: {} },
   meals: {
     breakfast: mealTotals(160, { suggested: 392 }),
@@ -89,6 +90,11 @@ describe("Dashboard on a wide screen", () => {
     const dinner = within(food).getByRole("group", { name: "Dinner" });
     expect(within(dinner).getByText("686 calories suggested")).toBeInTheDocument();
     expect(within(dinner).queryByRole("listitem")).not.toBeInTheDocument();
+    // Unknown calories are blank, never "?" or 0
+    const snack = within(within(food).getByRole("group", { name: "Snacks" })).getByRole("listitem");
+    expect(snack).toHaveTextContent("Mystery snack");
+    expect(snack).not.toHaveTextContent("?");
+    expect(snack).not.toHaveTextContent(/\b0\b/);
     // Water isn't food: no Supplements group
     expect(within(food).queryByRole("group", { name: "Supplements & water" })).not.toBeInTheDocument();
     expect(within(food).getByRole("link", { name: "Open the log" })).toHaveAttribute("href", "#/log");
@@ -133,7 +139,8 @@ describe("Dashboard on a wide screen", () => {
   it("the Weight card draws a small trend line of recent weigh-ins", async () => {
     const server = show();
     const card = await screen.findByRole("region", { name: "Weight" });
-    expect(await within(card).findByRole("img", { name: "Weight trend, recent weigh-ins" })).toBeInTheDocument();
+    const line = await within(card).findByRole("img", { name: "Weight trend, recent weigh-ins" });
+    expect(line.querySelector("polyline")).toHaveClass("text-action");
     // Recent weigh-ins: the last 8 weeks
     expect(server.sent.some((s) => s.path === "/api/weight?from=2026-09-21&to=2026-11-16")).toBe(true);
   });

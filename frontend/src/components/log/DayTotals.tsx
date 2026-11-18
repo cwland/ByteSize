@@ -1,4 +1,4 @@
-import type { LogEntry, NutrientKey, Range, Targets, Units } from "../../types";
+import type { Day, NutrientKey, Range, Targets, Units } from "../../types";
 import { fmt, waterUnit, waterValue } from "../../units";
 
 type Row = { name: string; key: NutrientKey; unit: string; target?: keyof Pick<Targets, "calories" | "protein_g" | "fiber_g" | "water_ml"> };
@@ -13,19 +13,20 @@ const ROWS: Row[] = [
   { name: "Water", key: "water_ml", unit: "", target: "water_ml" },
 ];
 
-// What the day's entries add up to for one nutrient, from their snapshotted nutrients. Water is
-// counted from every entry; for the rest only foods count (a water entry isn't missing fiber).
-// known: null when every food lacks it (unknown, shown blank — never 0); partial when some do.
-export function dayTotal(entries: LogEntry[], key: NutrientKey): { known: number | null; partial: boolean } {
-  const list = key === "water_ml" ? entries : entries.filter((e) => e.source !== "water");
-  const values = list.map((e) => e.nutrients[key]).filter((v): v is number => v !== undefined);
-  if (key === "water_ml") return { known: values.reduce((s, v) => s + v, 0), partial: false };
-  if (list.length > 0 && values.length === 0) return { known: null, partial: false };
-  return { known: values.reduce((s, v) => s + v, 0), partial: values.length < list.length };
+// One nutrient of GET /api/day's totals (unknown summed as 0) with unknownCount (foods lacking it; water
+// entries aren't foods): known null when every food lacks it (blank — never 0), partial when some do
+export function dayTotal(totals: Day["totals"], foods: number, key: NutrientKey): { known: number | null; partial: boolean } {
+  const total = totals[key] ?? 0;
+  if (key === "water_ml") return { known: total, partial: false };
+  const missing = totals.unknownCount[key] ?? 0;
+  if (foods > 0 && missing >= foods) return { known: null, partial: false };
+  return { known: total, partial: missing > 0 };
 }
 
 // The wide Log's "Day totals": eaten vs the target range for the day ("—" where there is no target)
-export default function DayTotals({ entries, targets, units }: { entries: LogEntry[]; targets: Targets | null; units: Units }) {
+export default function DayTotals({ day, units }: { day: Day; units: Units }) {
+  const foods = day.entries.filter((e) => e.source !== "water").length;
+  const targets: Targets | null = day.targets;
   const amount = (row: Row, v: number) => (row.key === "water_ml" ? `${fmt(waterValue(v, units))} ${waterUnit(units)}` : `${fmt(v)}${row.unit ? ` ${row.unit}` : ""}`);
   const range = (row: Row, r: Range) =>
     row.key === "water_ml" ? `${fmt(waterValue(r.min, units))}–${fmt(waterValue(r.max, units))} ${waterUnit(units)}` : `${fmt(r.min)}–${fmt(r.max)}${row.unit ? ` ${row.unit}` : ""}`;
@@ -50,7 +51,7 @@ export default function DayTotals({ entries, targets, units }: { entries: LogEnt
         </thead>
         <tbody className="divide-y divide-line">
           {ROWS.map((row) => {
-            const { known, partial } = dayTotal(entries, row.key);
+            const { known, partial } = dayTotal(day.totals, foods, row.key);
             const target = row.target && targets ? range(row, targets[row.target]) : "—";
             return (
               <tr key={row.key}>
