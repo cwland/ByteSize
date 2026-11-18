@@ -5,7 +5,7 @@ import { IntegrationCard } from "./IntegrationCard";
 import { KeyField } from "../ui/KeyField";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Choice } from "../ui/Choice";
-import { field, noAutofill, primaryButton, secondaryButton } from "../ui/styles";
+import { field, linkButton, noAutofill, primaryButton, secondaryButton } from "../ui/styles";
 
 type Source = "usda" | "spoonacular" | "fatsecret";
 export type AnySource = Source | "off";
@@ -197,6 +197,11 @@ function SourceCard({ source, title, sources, children }: { source: AnySource; t
   return (
     <IntegrationCard title={title} on={sources.on(source)} onSwitch={onSwitch} loading={sources.msg ? <Notice msg={sources.msg} /> : <p className="text-muted">Loading…</p>}>
       {children(focus)}
+      <p className="mt-3 text-sm">
+        <a href="#/settings/cached-data" className={linkButton}>
+          See cached data
+        </a>
+      </p>
     </IntegrationCard>
   );
 }

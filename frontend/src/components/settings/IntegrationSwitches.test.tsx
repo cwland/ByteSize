@@ -37,8 +37,8 @@ describe("Settings › Integrations switches", () => {
     adminTab({ usda: { hasKey: true, enabled: true } });
     await screen.findByLabelText("USDA API key");
     const names = ["AI services", "Open Food Facts", "USDA", "FatSecret", "Spoonacular", "Culury"];
-    // the lookup order table comes first and Saved barcodes after the server-wide sources (§21): neither has a switch
-    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["How ByteSize looks foods up", ...names.slice(0, 5), "Saved barcodes", "Culury"]);
+    // the lookup order table comes first Saved barcodes moved to Cached data (§32): the order table has no switch
+    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["How ByteSize looks foods up", ...names]);
     for (const name of names) {
       const sw = await within(card(name)).findByRole("switch", { name: `${name} on` });
       // in the title row: the heading and the switch share one row

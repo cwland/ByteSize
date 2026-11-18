@@ -35,6 +35,7 @@ import { dashboardLayouts,
   userFoods,
   userSettings,
   users,
+  usageCounts,
   vacations,
   weighIns,
 } from "../src/db/schema.js";
@@ -95,7 +96,7 @@ async function seed() {
   const [corrected, loggedOnly, inRecipeOnly, unused] = await t.db.insert(foodCache).values([cached("corrected"), cached("logged"), cached("recipe"), cached("unused")]).returning();
   for (const [i, u] of [a, b].entries()) {
     await t.db.insert(userBody).values({ userId: u.id, sex: i ? "male" : "female", birthDate: "1985-03-0" + (i + 1), heightCm: 170.18 + i, weightKg: 81.123456789, goalWeightKg: 70, activity: "some", glp1: i === 0, targetsWeightKg: null });
-    await t.db.insert(userSettings).values({ userId: u.id, weekStart: 1, waterButtonsMl: [250, 500], culuryUrl: i ? null : "http://culury.lan:4000", culuryKeyEnc: i ? null : encryptSecret("cul_key", TEST_SECRET) });
+    await t.db.insert(userSettings).values({ userId: u.id, weekStart: 1, dateFormat: i ? "weekday-long-month-short" : "dmy-dot", waterButtonsMl: [250, 500], culuryUrl: i ? null : "http://culury.lan:4000", culuryKeyEnc: i ? null : encryptSecret("cul_key", TEST_SECRET) });
     await t.db.insert(targets).values({ userId: u.id, effectiveFrom: "2026-11-01", plan: "steady", caloriesMin: 1600, caloriesMax: 1800, proteinMin: 100.5, proteinMax: 140, fiberMin: 25, fiberMax: 38, waterMin: 2000, waterMax: 3000 });
     await t.db.insert(weighIns).values({ userId: u.id, day: "2026-11-10", weightKg: 82.4 + i / 10, note: i ? null : "after run, \"tired\"" });
     await t.db.insert(glp1Settings).values({ userId: u.id, medication: "semaglutide", doseMg: 0.25, injectionWeekday: 3 });
@@ -103,6 +104,7 @@ async function seed() {
     await t.db.insert(sideEffects).values({ userId: u.id, day: "2026-11-13", effects: { nausea: 2 }, note: null });
     await t.db.insert(badges).values({ userId: u.id, badge: "first_log", earnedOn: "2026-11-10", seen: i === 1 });
     await t.db.insert(vacations).values({ userId: u.id, fromDay: "2026-12-20", toDay: "2026-12-27" });
+    await t.db.insert(usageCounts).values([{ userId: u.id, key: "barcodes_scanned", count: 3 + i }, { userId: u.id, key: "outside_off", count: 1 }]); // App info's numbers are the person's own data
     await t.db.insert(restaurantFavourites).values({ userId: u.id, cacheId: cache.id, chain: "Acme Diner" });
     await t.db.insert(dashboardLayouts).values({ userId: u.id, columns: i ? [["food"], [], ["budget"]] : [["budget", "water"], ["food"]] }); // the person's Dashboard
     await t.db.insert(passkeys).values({ userId: u.id, credentialId: `cred-${u.id}`, publicKey: "pk", transports: ["internal"], rpId: "localhost", name: "Phone" });
@@ -526,7 +528,7 @@ describe("backups", () => {
     const b = await makeBackup();
     const json = await backupJson(b.name);
     json.schema = 5;
-    for (const row of json.tables.user_settings) delete row.week_start; // added by a later migration
+    for (const row of json.tables.user_settings) (delete row.week_start, delete row.date_format); // added by later migrations
     json.tables.users[0].old_column = "gone";
     json.tables.old_table = [{ id: 1 }];
     const r = await restoreUpload(tarGz([tarEntry("bytesize.json", { data: JSON.stringify(json) })]));
@@ -534,6 +536,7 @@ describe("backups", () => {
     expect(r.body.restored).toEqual({ schema: 5, users: 3, photos: 0 });
     const [s] = await t.db.select().from(userSettings).where(eq(userSettings.userId, a.id));
     expect(s.weekStart).toBe(0);
+    expect(s.dateFormat).toBe("weekday-long-month-short"); // an old backup: everyone keeps today's look
     expect(s.waterButtonsMl).toEqual([250, 500]);
     expect(readdirSync(uploadsDir())).toEqual([]);
   });

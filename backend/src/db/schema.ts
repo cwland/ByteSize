@@ -184,6 +184,8 @@ export const userSettings = pgTable("user_settings", {
   waterButtonsMl: jsonb("water_buttons_ml").$type<number[]>().notNull().default([237, 473]),
   // First day of the week in the day strip: 0 = Sunday ... 6 = Saturday
   weekStart: integer("week_start").notNull().default(0),
+  // How the date at the top of the app is written (a key of lib/dateFormats.ts)
+  dateFormat: text("date_format").notNull().default("weekday-long-month-short"),
   culuryUrl: text("culury_url"),
   culuryKeyEnc: text("culury_key_enc"), // encrypted
   // The person's Culury switch (Settings › Integrations); null = never switched: on when linked
@@ -471,6 +473,19 @@ export const fatsecretBarcodes = pgTable("fatsecret_barcodes", {
   foodId: text("food_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// What a person has done with ByteSize that nothing else records (Settings › App info): barcodes scanned, photos
+// read, AI estimates, lookups answered from a saved copy, outside calls per source. One row per person and key,
+// counted from the day this shipped. Their own data: backed up, in "Download my data", gone with the person.
+export const usageCounts = pgTable(
+  "usage_counts",
+  {
+    userId: userRef(),
+    key: text("key").notNull(), // see lib/usage.ts USAGE_KEYS
+    count: integer("count").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.key] })]
+);
 
 // The person's Dashboard: which widgets sit in which column, top to bottom (§28). No row: the default layout.
 export const dashboardLayouts = pgTable("dashboard_layouts", {

@@ -2,7 +2,7 @@
 // kept food fetched again from its source), and the admin's Saved barcodes list. Kept foods (food_cache) are
 // shared public data, not anyone's own.
 import type { FastifyInstance } from "fastify";
-import { and, desc, eq, ilike, isNotNull, isNull, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNotNull, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { foodCache, foodSearches, restaurantSearches } from "../db/schema.js";
 import { logEvent } from "./appLog.js";
 import { HttpError, badRequest, notFound } from "./errors.js";
@@ -11,6 +11,7 @@ import { offByBarcode } from "./foodSources/off.js";
 import { SWITCHED_SOURCES, sourceHours, sourceSwitches, usdaKeyInUse, type SourceHours } from "./foodSources/settings.js";
 import { SOURCE_NAMES, SourceError, type SourceFood, type SourceName } from "./foodSources/types.js";
 import { usdaById } from "./foodSources/usda.js";
+import { countUsage } from "./usage.js";
 import { QUOTA_MESSAGE, fatsecretInUse, spoonacularItem } from "./restaurants/index.js";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -90,25 +91,28 @@ const sorted = (v: unknown): unknown =>
 const shown = (r: { name: string; brand: string | null; servings: unknown; nutrients: unknown }) => JSON.stringify(sorted([r.name, r.brand, r.servings, r.nutrients]));
 
 /** The kept food as its source has it now; null when the source no longer knows it. */
-async function fetchAgain(app: FastifyInstance, row: CacheRow): Promise<SourceFood | null> {
+async function fetchAgain(app: FastifyInstance, userId: number, row: CacheRow): Promise<SourceFood | null> {
   const source = row.source as SourceName;
   if (source === "off") {
     // A kept food of a source that is off can't be checked (its switch means: never call it)
     if (!(await sourceSwitches(app)).off) throw badRequest(TURN_ON("off"));
+    countUsage(app, userId, "outside_off");
     return offByBarcode(app.foodFetch, row.sourceId, SOURCE_TIMEOUT_MS);
   }
   if (source === "usda") {
     const key = await usdaKeyInUse(app);
     if (!key) throw badRequest(TURN_ON("usda"));
+    countUsage(app, userId, "outside_usda");
     return usdaById(app.foodFetch, key, row.sourceId, SOURCE_TIMEOUT_MS);
   }
   if (source === "fatsecret") {
     const fs = await fatsecretInUse(app);
     if (!fs) throw badRequest(TURN_ON("fatsecret"));
+    countUsage(app, userId, "outside_fatsecret");
     return (await fs.item(row.sourceId)).food;
   }
   if (source === "spoonacular") {
-    const food = await spoonacularItem(app, row.sourceId);
+    const food = await spoonacularItem(app, row.sourceId, userId);
     if (!food) throw badRequest(TURN_ON("spoonacular"));
     return food;
   }
@@ -129,7 +133,7 @@ export async function refreshKept(app: FastifyInstance, userId: number, cacheId:
   }
   let food: SourceFood | null;
   try {
-    food = await fetchAgain(app, row);
+    food = await fetchAgain(app, userId, row);
   } catch (err) {
     if (!(err instanceof SourceError)) throw err;
     await logEvent(app.db, { category: "food", level: "warning", source: SOURCE_NAMES[err.source], event: `${SOURCE_NAMES[err.source]} check for changes failed`, detail: `${err.kind}: ${err.message}`, userId });
@@ -144,29 +148,38 @@ export async function refreshKept(app: FastifyInstance, userId: number, cacheId:
 
 // ---------- Saved barcodes (admin) ----------
 
-export const SAVED_PAGE = 50;
 export type SavedBarcode = { cacheId: number; barcode: string; name: string; brand: string | null; source: string; savedAt: string; deletesAt: string | null; inUse: boolean };
 
 const escapeLike = (s: string) => s.replace(/[\\%_]/g, "\\$&");
 
-function savedFilter(q: string | undefined): SQL {
+function savedFilter(q: string | undefined, sources?: string[]): SQL {
+  const bySource = sources ? (sources.length ? inArray(foodCache.source, sources) : sql`false`) : undefined;
+  return and(searchFilter(q), bySource)!;
+}
+
+function searchFilter(q: string | undefined): SQL {
   const words = (q ?? "").trim();
   if (!words) return isNotNull(foodCache.barcode);
   const like = `%${escapeLike(words)}%`;
   return and(isNotNull(foodCache.barcode), or(ilike(foodCache.name, like), ilike(foodCache.brand, like), ilike(foodCache.barcode, like)))!;
 }
 
-/** Every kept food with a barcode, newest first, 50 a page; q matches the name, brand or barcode. */
-export async function listSavedBarcodes(app: FastifyInstance, q: string | undefined, page: number) {
-  const where = savedFilter(q);
+/**
+ * Every kept food with a barcode, newest first, pageSize a page; q matches the name, brand or barcode; sources narrows
+ * to those sources. `sources` in the answer counts per source for the filter pills: it follows q but not the filter.
+ */
+export async function listSavedBarcodes(app: FastifyInstance, q: string | undefined, page: number, pageSize: number, sources?: string[]) {
+  const where = savedFilter(q, sources);
+  const perSource = await app.db.select({ source: foodCache.source, n: sql<number>`count(*)::int` }).from(foodCache).where(searchFilter(q)).groupBy(foodCache.source);
+  const counts = Object.fromEntries(perSource.map((r) => [r.source, r.n]));
   const [{ total }] = await app.db.select({ total: sql<number>`count(*)::int` }).from(foodCache).where(where);
   const rows = await app.db
     .select({ row: foodCache, inUse: sql<boolean>`${IN_USE}` })
     .from(foodCache)
     .where(where)
     .orderBy(desc(foodCache.fetchedAt), desc(foodCache.id))
-    .limit(SAVED_PAGE)
-    .offset((page - 1) * SAVED_PAGE);
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
   const hours = await sourceHours(app);
   const items: SavedBarcode[] = rows.map(({ row, inUse }) => {
     const h = hours[row.source as keyof SourceHours];
@@ -181,7 +194,7 @@ export async function listSavedBarcodes(app: FastifyInstance, q: string | undefi
       inUse,
     };
   });
-  return { total, page, pageSize: SAVED_PAGE, items };
+  return { total, page, pageSize, sources: counts, items };
 }
 
 /** Deletes one kept barcode food; one in use stays (409). The FatSecret barcode link stays. */

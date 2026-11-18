@@ -69,6 +69,9 @@ export function viewOf(found: SearchResult, choice: Choice) {
 
 const list = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
 
+/** The small toggle pill (search sources here, Cached data's source filters). */
+export const pillClass = (on: boolean) => `inline-flex h-7 items-center rounded-full px-2.5 text-xs font-semibold ${on ? "bg-primary text-on-primary hover:bg-primary-pressed" : "bg-pressed text-subtle hover:bg-strong"}`;
+
 export function SourcePills({ pills, onToggle }: { pills: ReturnType<typeof viewOf>["pills"]; onToggle: (id: PillId) => void }) {
   if (!pills.length) return null;
   return (
@@ -79,7 +82,7 @@ export function SourcePills({ pills, onToggle }: { pills: ReturnType<typeof view
           type="button"
           aria-pressed={p.on}
           onClick={() => onToggle(p.id)}
-          className={`inline-flex h-7 items-center rounded-full px-2.5 text-xs font-semibold ${p.on ? "bg-primary text-on-primary hover:bg-primary-pressed" : "bg-pressed text-subtle hover:bg-strong"}`}
+          className={pillClass(p.on)}
         >
           {p.failed ? (p.count ? `${p.label} (${p.count}) !` : `${p.label} !`) : `${p.label} (${p.count})`}
         </button>

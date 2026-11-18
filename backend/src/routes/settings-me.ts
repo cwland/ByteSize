@@ -3,6 +3,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { userSettings, type MealWindows } from "../db/schema.js";
 import { requireUser } from "../lib/guards.js";
+import { DATE_FORMATS, DEFAULT_DATE_FORMAT } from "../lib/dateFormats.js";
 
 // Your own logging settings: meal windows (end time of each meal, local "HH:MM") and the water buttons
 export const DEFAULT_MEAL_WINDOWS: MealWindows = { breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" };
@@ -18,6 +19,7 @@ const settingsSchema = z.object({
     .refine((w) => w.breakfast < w.lunch && w.lunch < w.snacks && w.snacks < w.dinner, "Meal times must go breakfast, lunch, snacks, dinner, each later than the one before"),
   waterButtonsMl: z.array(z.number().positive("Water amounts must be above 0").max(5000, "Water amounts must be 5,000 ml or less")).min(1, "Keep at least one water button").max(4, "Up to 4 water buttons"),
   weekStart: z.number().int("Choose a day of the week").min(0, "Choose a day of the week").max(6, "Choose a day of the week").optional(),
+  dateFormat: z.enum(DATE_FORMATS, { error: "Choose one of the date formats" }).optional(),
 });
 
 export default async function settingsMeRoutes(app: FastifyInstance) {
@@ -26,21 +28,21 @@ export default async function settingsMeRoutes(app: FastifyInstance) {
   app.get("/api/settings/me", async (req) => {
     const userId = requireUser(req);
     const [row] = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
-    return { mealWindows: row?.mealWindows ?? DEFAULT_MEAL_WINDOWS, waterButtonsMl: row?.waterButtonsMl ?? DEFAULT_WATER_BUTTONS_ML, weekStart: row?.weekStart ?? DEFAULT_WEEK_START };
+    return { mealWindows: row?.mealWindows ?? DEFAULT_MEAL_WINDOWS, waterButtonsMl: row?.waterButtonsMl ?? DEFAULT_WATER_BUTTONS_ML, weekStart: row?.weekStart ?? DEFAULT_WEEK_START, dateFormat: row?.dateFormat ?? DEFAULT_DATE_FORMAT };
   });
 
   app.put("/api/settings/me", async (req) => {
     const userId = requireUser(req);
     const s = settingsSchema.parse(req.body ?? {});
-    // weekStart left out keeps the saved one (or Sunday for a first save)
+    // weekStart and dateFormat left out keep the saved ones (or Sunday and the usual date for a first save)
     const [saved] = await db
       .insert(userSettings)
-      .values({ userId, mealWindows: s.mealWindows, waterButtonsMl: s.waterButtonsMl, weekStart: s.weekStart ?? DEFAULT_WEEK_START })
+      .values({ userId, mealWindows: s.mealWindows, waterButtonsMl: s.waterButtonsMl, weekStart: s.weekStart ?? DEFAULT_WEEK_START, dateFormat: s.dateFormat ?? DEFAULT_DATE_FORMAT })
       .onConflictDoUpdate({
         target: userSettings.userId,
-        set: { mealWindows: s.mealWindows, waterButtonsMl: s.waterButtonsMl, ...(s.weekStart === undefined ? {} : { weekStart: s.weekStart }) },
+        set: { mealWindows: s.mealWindows, waterButtonsMl: s.waterButtonsMl, ...(s.weekStart === undefined ? {} : { weekStart: s.weekStart }), ...(s.dateFormat === undefined ? {} : { dateFormat: s.dateFormat }) },
       })
-      .returning({ weekStart: userSettings.weekStart });
-    return { mealWindows: s.mealWindows, waterButtonsMl: s.waterButtonsMl, weekStart: saved.weekStart };
+      .returning({ weekStart: userSettings.weekStart, dateFormat: userSettings.dateFormat });
+    return { mealWindows: s.mealWindows, waterButtonsMl: s.waterButtonsMl, weekStart: saved.weekStart, dateFormat: saved.dateFormat };
   });
 }

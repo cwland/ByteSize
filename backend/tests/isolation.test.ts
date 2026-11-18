@@ -10,6 +10,7 @@ import { strFromU8, unzipSync } from "fflate";
 import { plainPhoto } from "./photoFakes.js";
 import { storePhoto } from "../src/lib/photos.js";
 import { fakeIdp } from "./fakeIdp.js";
+import { countUsage, usageSettled } from "../src/lib/usage.js";
 
 // Every route that reads or changes a person's data gets a case here (M2 adds foods, logs, targets...)
 let t: TestApp;
@@ -70,17 +71,17 @@ describe("per-user isolation", () => {
     expect((await a.as("PUT", "/api/body", body)).status).toBe(200);
     expect((await a.as("POST", "/api/plans/select", { plan: "steady" })).status).toBe(200);
     const windows = { breakfast: "08:00", lunch: "12:00", snacks: "15:00", dinner: "19:00" };
-    expect((await a.as("PUT", "/api/settings/me", { mealWindows: windows, waterButtonsMl: [300], weekStart: 2 })).status).toBe(200);
+    expect((await a.as("PUT", "/api/settings/me", { mealWindows: windows, waterButtonsMl: [300], weekStart: 2, dateFormat: "iso" })).status).toBe(200);
 
     expect((await b.as("GET", "/api/body")).body).toEqual({ body: null });
     expect((await b.as("GET", "/api/plans")).status).toBe(409);
     expect((await b.as("GET", "/api/targets")).body).toEqual({ targets: null });
-    expect((await b.as("GET", "/api/settings/me")).body).toMatchObject({ waterButtonsMl: [237, 473], weekStart: 0 });
+    expect((await b.as("GET", "/api/settings/me")).body).toMatchObject({ waterButtonsMl: [237, 473], weekStart: 0, dateFormat: "weekday-long-month-short" }); // anna's date format is hers
     // ben's own changes don't touch anna's
     expect((await b.as("PUT", "/api/targets", { calories: { min: 1000, max: 1100 }, protein_g: { min: 1, max: 2 }, fiber_g: { min: 1, max: 2 }, water_ml: { min: 1, max: 2 } })).status).toBe(200);
     expect((await a.as("GET", "/api/targets")).body.targets.plan).toBe("steady");
     expect((await a.as("GET", "/api/body")).body).toEqual({ body: { ...body, needsReview: false } });
-    expect((await a.as("GET", "/api/settings/me")).body).toEqual({ mealWindows: windows, waterButtonsMl: [300], weekStart: 2 });
+    expect((await a.as("GET", "/api/settings/me")).body).toEqual({ mealWindows: windows, waterButtonsMl: [300], weekStart: 2, dateFormat: "iso" });
   });
 
   it("a user can't see, edit or archive another user's foods or overrides, and lookups never return them", async () => {
@@ -481,5 +482,20 @@ describe("per-user isolation", () => {
     const r = await t.app.inject({ method: "POST", url: "/api/auth/reset", payload: { email: "anna@example.com", code, newPassword: "taken-over-1" } });
     expect(r.statusCode).toBe(400);
     expect((await t.app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "anna", password: "password123" } })).statusCode).toBe(200);
+  });
+
+  it("App info: each person's usage counts are their own; only the admin gets totals for everyone; a member's data export holds only their rows", async () => {
+    const { a, b } = await twoUsers(t);
+    countUsage(t.app, a.id, "barcodes_scanned", 2);
+    countUsage(t.app, b.id, "barcodes_scanned", 7);
+    await usageSettled();
+    const [mine, bens, admin] = [(await a.as("GET", "/api/app-info")).body, (await b.as("GET", "/api/app-info")).body, (await t.api("GET", "/api/app-info")).body];
+    expect([mine.you.barcodesScanned, bens.you.barcodesScanned, admin.you.barcodesScanned]).toEqual([2, 7, 0]);
+    expect(mine.everyone).toBeUndefined();
+    expect(bens.everyone).toBeUndefined();
+    expect(admin.everyone).toMatchObject({ people: 3, barcodesScanned: 9 });
+    const zip = await t.app.inject({ method: "GET", url: "/api/export", headers: { authorization: `Bearer ${a.token}` } });
+    const json = JSON.parse(strFromU8(unzipSync(new Uint8Array(zip.rawPayload))["bytesize-export.json"]));
+    expect(json.tables.usage_counts).toEqual([{ userId: a.id, key: "barcodes_scanned", count: 2 }]);
   });
 });

@@ -14,6 +14,7 @@ import { iconFor } from "./foodIcons.js";
 import type { FoodResult } from "./foods.js";
 import type { NutrientKey, Nutrients, Serving } from "./nutrients.js";
 import { decryptSecret, encryptSecret } from "./secrets.js";
+import { countUsage } from "./usage.js";
 
 export const CULURY_TIMEOUT_MS = 3000;
 const MAX_URL = 300;
@@ -104,7 +105,7 @@ export function cleanCuluryUrl(raw: string): string {
   return `${u.origin}${u.pathname.replace(/\/+$/, "")}`;
 }
 
-export type CuluryLink = { url: string; key: string };
+export type CuluryLink = { url: string; key: string; userId?: number /* whose link: their calls are counted (Settings › App info) */ };
 
 async function storedLink(app: FastifyInstance, userId: number) {
   const [row] = await app.db
@@ -126,13 +127,13 @@ export async function savedCuluryKeyEnc(app: FastifyInstance, userId: number): P
 /** This person's saved Culury link, on or off; null when they haven't linked one (or its key can't be read any more). */
 export async function savedCuluryLink(app: FastifyInstance, userId: number): Promise<CuluryLink | null> {
   const { url, key } = await storedLink(app, userId);
-  return url && key ? { url, key } : null;
+  return url && key ? { url, key, userId } : null;
 }
 
 /** This person's Culury link when their Culury is on; null when it is off or not linked (Culury isn't asked). */
 export async function culuryLink(app: FastifyInstance, userId: number): Promise<CuluryLink | null> {
   const { url, key, enabled } = await storedLink(app, userId);
-  return enabled && url && key ? { url, key } : null;
+  return enabled && url && key ? { url, key, userId } : null;
 }
 
 /**
@@ -184,6 +185,7 @@ async function culuryGet(app: FastifyInstance, link: CuluryLink, path: "/api/pla
   });
   const call = (async () => {
     await checkHost(url);
+    if (link.userId !== undefined) countUsage(app, link.userId, "outside_culury");
     let res: Response;
     try {
       // redirect "manual": a 3xx is answered as it is (and refused below), never followed to another host

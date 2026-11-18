@@ -81,6 +81,7 @@ export const settingsMe = {
   mealWindows: { breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" },
   waterButtonsMl: [237, 473],
   weekStart: 0,
+  dateFormat: "weekday-long-month-short",
 };
 
 // A cereal bar from Open Food Facts: nutrients per 100 g, plus a 40 g bar

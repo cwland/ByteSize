@@ -8,7 +8,18 @@ import { RESTAURANT_SOURCES } from "../lib/restaurants/types.js";
 import { deleteSavedBarcode, deleteUnusedBarcodes, listSavedBarcodes, refreshKept, refreshRateLimit } from "../lib/lookups.js";
 
 const savedId = z.object({ id: z.coerce.number().int().positive().max(2147483647) });
-const savedList = z.object({ q: z.string().max(100).optional(), page: z.coerce.number().int().min(1).max(100000).default(1) });
+const SAVED_SOURCES = ["off", "usda", "fatsecret", "spoonacular"] as const;
+const savedList = z.object({
+  q: z.string().max(100).optional(),
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+  pageSize: z.coerce.number({ error: "Show 10 to 50 at a time" }).int("Show 10 to 50 at a time").min(10, "Show 10 to 50 at a time").max(50, "Show 10 to 50 at a time").default(10),
+  // a comma list of source ids; left out: every source; empty: none
+  sources: z
+    .string()
+    .transform((s) => s.split(",").filter(Boolean))
+    .pipe(z.array(z.enum(SAVED_SOURCES, { error: "Unknown source" })))
+    .optional(),
+});
 
 const key = z.string().trim().max(200).nullable().optional();
 const on = z.boolean({ error: "A switch is on (true) or off (false)" }).optional();
@@ -78,8 +89,8 @@ export default async function foodSourceRoutes(app: FastifyInstance) {
   // Saved barcodes: every kept food with a barcode (shared public data), to refresh or delete
   app.get("/api/admin/saved-barcodes", async (req) => {
     requireAdmin(req);
-    const { q, page } = savedList.parse(req.query ?? {});
-    return listSavedBarcodes(app, q, page);
+    const { q, page, pageSize, sources } = savedList.parse(req.query ?? {});
+    return listSavedBarcodes(app, q, page, pageSize, sources);
   });
 
   app.post("/api/admin/saved-barcodes/delete-unused", async (req) => {

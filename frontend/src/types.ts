@@ -119,7 +119,7 @@ export type Day = {
   streak: number;
 };
 export type MealWindows = { breakfast: string; lunch: string; snacks: string; dinner: string };
-export type SettingsMe = { mealWindows: MealWindows; waterButtonsMl: number[]; weekStart: number /* 0 = Sunday … 6 = Saturday */ };
+export type SettingsMe = { mealWindows: MealWindows; waterButtonsMl: number[]; weekStart: number /* 0 = Sunday … 6 = Saturday */; dateFormat?: string /* a key of dateFormat.ts */ };
 export type Units = "imperial" | "metric";
 // GET /api/weight: kg, unrounded. trendKg is the smoothed weight; projection.kgPerWeek > 0 means losing.
 export type WeighIn = { day: string; weightKg: number; trendKg: number; note: string | null };
@@ -194,3 +194,18 @@ export type WeightImportPreview = WeightImportOptions & {
   rows: { day: string; weightKg: number; existing: boolean }[];
 };
 export type WeightImportResult = { imported: number; kept: number; replaced: number; from: string; to: string };
+
+// Settings › App info (§29): GET /api/app-info. everyone: the admin's totals only; shots null: GLP-1 is off;
+// weightLost null: no loss to show (in the person's units); countingSince: the day the counted numbers began
+export type OutsideLookups = { total: number; off: number; usda: number; fatsecret: number; spoonacular: number; culury: number };
+export type AppInfo = {
+  you: {
+    daysLogged: number; foodsLogged: number; differentFoods: number; myFoods: number; weighIns: number;
+    weightLost: { amount: number; unit: "lb" | "kg" } | null;
+    shots: number | null; longestStreak: number; memberSince: string;
+    barcodesScanned: number; photosRead: number; aiEstimates: number; lookupsSaved: number; outsideLookups: OutsideLookups;
+  };
+  everyone?: { people: number; daysLogged: number; foodsLogged: number; barcodesScanned: number; outsideLookups: number; lookupsSaved: number };
+  countingSince: string;
+  version: string;
+};

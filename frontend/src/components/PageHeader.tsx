@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { useSettingsMe } from "../day";
+import { formatDate } from "../dateFormat";
 import { useSelectedDay } from "../selectedDay";
 import WeekStrip from "./WeekStrip";
 
@@ -19,13 +21,14 @@ export default function PageHeader({ title, note, sub, children }: { title: Reac
   );
 }
 
-// Wide Dashboard: one compact, centred block — the selected day ("Wednesday, Nov 18") above a small week
+// Wide Dashboard: one compact, centred block — the selected day (in the person's date format) above a small week
 // strip (no greeting line, §34). children: buttons at the top right (Edit dashboard).
 export function DayHeader({ children }: { children?: ReactNode }) {
   const { day } = useSelectedDay();
+  const date = formatDate(day, useSettingsMe().dateFormat); // the way this person chose (Settings › Profile)
   return (
     <header aria-label="Day" className="relative flex flex-col items-center gap-1 text-center">
-      <h1 className="text-lg leading-6 font-bold">{shortDate(day)}</h1>
+      <h1 className="text-lg leading-6 font-bold">{date}</h1>
       <div className="w-[23rem] max-w-full">
         <WeekStrip compact />
       </div>
@@ -33,8 +36,4 @@ export function DayHeader({ children }: { children?: ReactNode }) {
     </header>
   );
 }
-
-// "2026-11-18" -> "Wednesday, Nov 18"
-export const shortDate = (day: string) =>
-  new Date(`${day}T00:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "long", month: "short", day: "numeric" });
 
