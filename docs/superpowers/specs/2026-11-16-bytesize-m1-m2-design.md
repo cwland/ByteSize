@@ -814,3 +814,84 @@ not kept.
 **Not in this step.** Importing food logs, body-fat or other measurements; Apple Health's XML export (CSV only —
 the README can say how to get a CSV from Apple Health via a third-party app); undo (a person can delete weigh-ins
 as today).
+
+## 20. Accounts: email, forgot password, command-line reset, OAuth sign-in (Cory, 2026-11-17/18)
+
+**Asked for.** "Reset passwords from the main screen: enter your email, get a six-digit code if an account matches,
+then set a new password — only when email is set up." "Reset the admin password from the command line." "Add OAuth
+like Culury has; just use that code." Culury (`/home/claude/ref/Culury`, read-only) is the reference: copy its
+code and behaviour, adapted to ByteSize's names and per-user model. Agreed in conversation; built as one step with
+§21.
+
+**Email (Settings › Email, admin).** Copied from Culury's EmailSettings + lib/mail.ts: provider presets (Gmail,
+Outlook, iCloud, Fastmail, custom), From address, username, password (encrypted, never returned; eye + copy like
+§16), server/port/security under "More options", the app's own address (used in emails), and **Send test email**,
+which must succeed before Save. `SMTP_*`, `MAIL_FROM`, `APP_URL` in `.env` remain a fallback. The tab sits in the
+Settings tab strip (wide) / list (phone) after Integrations.
+
+**Forgot password (sign-in screen).** Shown only when email is set up. Steps: enter email → "If an account uses
+that email, we've sent a 6-digit code." (same answer whether or not it matches) → enter the code and a new password
+(same rules as elsewhere) → signed in. Code: 6 digits, random, stored hashed, valid 15 minutes, single use, 5 wrong
+tries kills it, a new request replaces the old code; rate-limited per address and per email (e.g. 5 an hour);
+email subject "Your ByteSize code: 123456"-style with the code in the body and "If you didn't ask, ignore this".
+Resetting ends the person's other sessions (like a password change) and is written to the activity log (who, not
+the code). A disabled account can't reset. Accounts without an email never get a code.
+
+**Command line.** `npm run reset-password -- <username>` (without a username: the first admin) prints a new random
+password once, or takes `--password` from a prompt; ends that account's sessions; logged. `npm run auth:reset`
+turns OAuth-only off and OAuth sign-in off (locked-out escape). `EMERGENCY_DISABLE_OAUTH=true` in `.env` does the
+same at start. README "Locked out?" section with the Docker and Mac commands.
+
+**OAuth / OpenID Connect sign-in (Settings › Security, admin config).** Copied from Culury: on/off, button name,
+issuer/discovery URL, client ID, client secret (encrypted, eye + copy), redirect URI shown to copy, **Test
+connection**, **Link my account** for each person, sign-in with a verified email that matches a profile, optional
+**OAuth only** (hides the password form; not allowed until the admin's own account is linked). PKCE + state + nonce
+as Culury. New accounts are not created by OAuth (admins add people as today).
+
+**Not in this step.** Invite-by-email for new people (later), email for anything else.
+
+## 21. Food lookups: local first, the lookup order, cache hours, FatSecret plan, saved barcodes (Cory, 2026-11-17/18)
+
+**Asked for.** "All values cached locally during lookups; always check locally first before an API call. I scan the
+same barcodes repeatedly." The lookup order table (barcode: Open Food Facts → FatSecret → USDA; restaurants:
+FatSecret → Spoonacular; whole foods: USDA → FatSecret → Open Food Facts; packaged text search: FatSecret → USDA →
+Open Food Facts). "Note when it's a cached version and let users override to re-cache." "A list of all cached UPCs
+in setup to delete or refresh." "Make the order clear in the setup menus." Follow-ups agreed: a FatSecret
+**Basic/Premier** choice (Premier enables barcode lookups); a **"Keep results for (hours)"** field per integration,
+1–9999, defaults from each source's terms, with an automatic cleanup.
+
+**Local first.** Every outside answer ByteSize keeps is reused while it is fresher than its source's hours; only
+then does ByteSize call out. That covers barcodes, item details and typed searches (a search's answer per source
+and query is remembered for that source's hours; the same query again calls nothing). Restaurant searches follow
+their source's hours (Spoonacular 1 h, FatSecret 24 h by default) — replacing the fixed 24 h.
+
+**Hours per source** (Settings › Integrations, in each card; whole hours 1–9999):
+Open Food Facts 9999, USDA 9999, FatSecret 24, Spoonacular 1 (defaults; terms: FatSecret 24 h, Spoonacular 1 h).
+An hourly cleanup deletes kept answers older than their hours, except items in use (logged entries keep their own
+copy anyway; recipe/quick-meal items, starred restaurant items and "My foods" edits based on a kept item are kept).
+For FatSecret the link barcode → FatSecret food id is kept for good (allowed by its terms); after its details are
+cleaned up, the next scan fetches only that one food (one call).
+
+**FatSecret plan** (FatSecret card): Basic (free) / Premier. Premier adds FatSecret to barcode lookups. If Premier is
+chosen but the key lacks barcode access (FatSecret answers "missing scope"), ByteSize says so once on the card
+("Your FatSecret key doesn't include barcode lookups yet") and skips FatSecret for barcodes.
+
+**Order.**
+- Barcode: saved copy → Open Food Facts → FatSecret (Premier only) → USDA. First hit wins and is kept.
+- Restaurants: saved copy → FatSecret → Spoonacular (swapped from today's order).
+- Typed search: results grouped in this order: My foods, Basic foods (USDA whole foods), FatSecret, USDA branded,
+  Open Food Facts (Culury results stay where they are today). FatSecret typed search uses the existing FatSecret
+  key (Basic allows search).
+- Sources switched off (§18) are skipped; the order table shows them "Off — skipped".
+
+**Saved-copy note.** A food that came from a kept copy shows "Saved copy from <date>" with **Check for changes**
+(on search rows and in the food's detail / Track food). Check for changes calls that source once for that item,
+updates the kept copy, and says "Up to date" or "Updated". It is the "re-cache" override.
+
+**Settings › Integrations additions.**
+- "How ByteSize looks foods up": the order table at the top (as in the mockup), sources that are off marked.
+- **Saved barcodes** card (admin): every kept barcode — barcode, food, from, saved, deleted (when its hours run
+  out, or "Kept — in use"), Refresh and Delete per row, search by name or barcode, count, paging (50 at a time),
+  "Delete all not in use".
+
+**Not in this step.** App info stats (next step).
