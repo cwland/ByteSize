@@ -4,9 +4,9 @@ import { eq } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { OFF_PRODUCT, OFF_SEARCH, USDA, aiAnswers, aiSettings, offProduct, usdaFood, usdaReply } from "./foodFakes.js";
 import { CULURY, culuryKnows, culuryRecipe } from "./culuryFakes.js";
-import { restaurantWeb, setRestaurantKeys, spoonItem, fsHit, quota } from "./restaurantFakes.js";
+import { restaurantWeb, setRestaurantKeys, spoonItem, fsFood, fsHit, quota } from "./restaurantFakes.js";
 import { barcodePhoto, labelPhoto, photoUpload } from "./photoFakes.js";
-import { usageCounts, users } from "../src/db/schema.js";
+import { appLog, foodCache, usageCounts, users } from "../src/db/schema.js";
 import { countUsage, usageSettled } from "../src/lib/usage.js";
 
 let t: TestApp;
@@ -112,12 +112,34 @@ describe("counting where it happens", () => {
     expect((await counts()).outside_off).toBe(2);
   });
 
-  it("Culury calls are the person's own outside lookups", async () => {
+  it("Check for changes counts one outside call for every source: USDA, FatSecret and Spoonacular too", async () => {
+    await setRestaurantKeys(t, { spoonacular: "spoon-key", fatsecret: FS });
+    expect((await t.api("PUT", "/api/admin/food-sources", { usdaApiKey: "usda-key" })).status).toBe(200);
+    const fsGranola = fsFood(555, "Granola Bar", "Nature Valley", [{ serving_description: "1 bar", metric_serving_amount: "21.000", metric_serving_unit: "g", calories: "90", fat: "3.00", protein: "2.00", carbohydrate: "15.00" }]);
+    restaurantWeb(t, { fsGet: () => ({ status: 200, json: { food: fsGranola } }), spoonItem: (id) => ({ status: 200, json: spoonItem(Number(id), "Bowl", "Chipotle", 655), headers: quota(30) }) });
+    const rest = t.foodWeb.respond;
+    t.foodWeb.respond = (url, call) => (url.startsWith("https://api.nal.usda.gov/fdc/v1/food/77") ? { status: 200, json: usdaFood(77, "Greek yogurt", 61) } : rest(url, call));
+    const kept = await t.db
+      .insert(foodCache)
+      .values([
+        { source: "usda", sourceId: "77", name: "Greek yogurt", servings: [{ label: "100 g", grams: 100 }], nutrients: { calories: 59 }, fetchedAt: t.clock.date! },
+        { source: "fatsecret", sourceId: "555", name: "Granola Bar", servings: [{ label: "1 bar", grams: 21 }], nutrients: { calories: 90 }, fetchedAt: t.clock.date! },
+        { source: "spoonacular", sourceId: "1001", name: "Bowl", servings: [{ label: "1 bowl", grams: 400 }], nutrients: { calories: 655 }, fetchedAt: t.clock.date! },
+      ])
+      .returning();
+    later(2 * H); // past Spoonacular's hours
+    for (const row of kept) expect((await t.api("POST", "/api/foods/refresh", { cacheId: row.id })).status, row.source).toBe(200);
+    expect(await counts()).toEqual({ outside_usda: 1, outside_fatsecret: 1, outside_spoonacular: 1 });
+  });
+
+  it("Culury calls are the person's own outside lookups: exactly one per call made", async () => {
     culuryKnows(t, { recipes: [culuryRecipe(7, "Chili")] });
     await t.api("PUT", "/api/settings/culury", { url: CULURY, apiKey: "cul_readonly_SECRET_9f8e7d" });
+    t.foodWeb.calls.length = 0;
     await search("chili");
-    const after = await counts();
-    expect(after.outside_culury).toBeGreaterThanOrEqual(2); // the list, then each recipe's details
+    const made = t.foodWeb.calls.filter((c) => c.url.startsWith(CULURY)).length;
+    expect(made).toBe(2); // the list, then the recipe's details
+    expect((await counts()).outside_culury).toBe(made);
   });
 
   it("Describe it counts an AI estimate once it has one; a failed estimate counts nothing", async () => {
@@ -152,6 +174,9 @@ describe("the counter itself", () => {
     expect(returned).toBeUndefined();
     await expect(usageSettled()).resolves.toBeUndefined();
     expect(await counts()).toEqual({});
+    // ...and the failure is a line in Settings › Logs, with whose count it was
+    const lines = await t.db.select().from(appLog);
+    expect(lines).toEqual([expect.objectContaining({ category: "api", level: "warning", source: "Usage counter", event: "Couldn't count barcodes_scanned", detail: "db is down", userId: 1 })]);
   });
 
   it("a person who is gone (their rows cascaded) can't make a count fail anything", async () => {
