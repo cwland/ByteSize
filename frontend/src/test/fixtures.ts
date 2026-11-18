@@ -182,3 +182,14 @@ export const restaurantRoutes = {
   "GET /api/restaurants/favourites": () => ({ chains: [] }),
   "GET /api/restaurants/recent-chains": () => ({ chains: [] }),
 };
+
+// Backups (Settings › Data): newest first, the way the server lists them
+export const backupList = {
+  backups: [
+    { name: "bytesize-2026-11-17-020000.tar.gz", size: 2516582, createdAt: "2026-11-17T09:00:00.000Z" },
+    { name: "bytesize-2026-11-16-181500-before-restore.tar.gz", size: 1048576, createdAt: "2026-11-17T01:15:00.000Z" },
+    { name: "bytesize-2026-11-16-020000.tar.gz", size: 2411724, createdAt: "2026-11-16T09:00:00.000Z" },
+  ],
+  keep: 14,
+  unreadableKeys: [] as string[],
+};

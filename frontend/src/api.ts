@@ -72,3 +72,35 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
   if (!res.ok) throw new ApiError(res.status, errorText(data, res.status), data.details);
   return data as T;
 }
+
+// A file the server sends (the data export, a backup): fetched with the login token, since a plain link
+// can't carry it. The name the server chose comes from Content-Disposition.
+export async function download(path: string): Promise<{ blob: Blob; filename: string }> {
+  const headers: Record<string, string> = { "x-device-id": deviceId() };
+  const token = getToken();
+  if (token) headers.authorization = `Bearer ${token}`;
+  let res: Response;
+  try {
+    res = await fetch(path, { headers });
+  } catch {
+    throw new ApiError(0, "Couldn't reach ByteSize. Check your connection and try again.");
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, errorText(data, res.status), data.details);
+  }
+  const named = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(res.headers.get("content-disposition") ?? "");
+  return { blob: await res.blob(), filename: named ? decodeURIComponent(named[1]) : (path.split("/").pop() ?? "download") };
+}
+
+// Hand a downloaded file to the browser's save dialog / Downloads folder
+export function saveFile({ blob, filename }: { blob: Blob; filename: string }) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
