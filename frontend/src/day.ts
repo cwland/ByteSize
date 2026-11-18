@@ -55,23 +55,47 @@ export const DEFAULT_SETTINGS: SettingsMe = {
 };
 
 // The last settings the server gave (or that were saved): where a new mount starts, so the week
-// strip doesn't draw Sunday-first and re-layout every time it comes back
-let lastKnown: SettingsMe = DEFAULT_SETTINGS;
+// strip doesn't draw Sunday-first and re-layout every time it comes back. Before the server first answers on
+// a page load, the date format and week start remembered on this device (from the last answer) are used, so
+// the header shows the person's format from the first paint instead of the default flashing first.
+const LOOK_KEY = "bytesize-look";
+function rememberedLook(): Partial<SettingsMe> {
+  try {
+    const v = JSON.parse(localStorage.getItem(LOOK_KEY) ?? "null") as { dateFormat?: unknown; weekStart?: unknown } | null;
+    const out: Partial<SettingsMe> = {};
+    if (typeof v?.dateFormat === "string") out.dateFormat = v.dateFormat;
+    if (Number.isInteger(v?.weekStart) && (v!.weekStart as number) >= 0 && (v!.weekStart as number) <= 6) out.weekStart = v!.weekStart as number;
+    return out;
+  } catch {
+    return {};
+  }
+}
+function rememberLook(s: SettingsMe) {
+  try {
+    localStorage.setItem(LOOK_KEY, JSON.stringify({ dateFormat: s.dateFormat, weekStart: s.weekStart }));
+  } catch {
+    // no storage (private mode): the default shows first, as before
+  }
+}
+let lastKnown: SettingsMe | null = null;
+const known = () => (lastKnown ??= { ...DEFAULT_SETTINGS, ...rememberedLook() });
 /** For tests: forget the remembered settings. */
 export const resetSettingsCache = () => {
-  lastKnown = DEFAULT_SETTINGS;
+  lastKnown = null;
 };
 
 // Meal windows, water buttons and week start (the last known ones until the server answers, or if it can't)
 export function useSettingsMe() {
-  const [s, setS] = useState<SettingsMe>(() => lastKnown);
+  const [s, setS] = useState<SettingsMe>(known);
   useEffect(() => {
     let live = true;
     const load = () =>
       api<SettingsMe>("GET", "/api/settings/me")
         .then((r) => {
-          lastKnown = { ...DEFAULT_SETTINGS, ...r };
-          if (live) setS(lastKnown);
+          const now: SettingsMe = { ...DEFAULT_SETTINGS, ...r };
+          lastKnown = now;
+          rememberLook(now);
+          if (live) setS(now);
         })
         .catch(() => {});
     load();
