@@ -1194,3 +1194,56 @@ other places can adopt it later.
 **Asked for.** "Remove the greeting 'Good afternoon, Cory · 2-day streak' and move the widgets up closer to the
 dates." The Dashboard header loses the greeting/streak line (the Streak widget still shows the streak); the gap
 between the week strip and the first row of widgets shrinks to the normal card gap (about 12–16 px).
+
+## 35. Personal API keys (M4b) (Cory, 2026-11-18)
+
+**Asked for.** Personal API keys (M4 part b), with the eye and copy on every key (agreed in §16: stored encrypted so
+they can be shown again). Purpose: let Cory's own tools (Home Assistant, n8n, Shortcuts, scripts) read and log his
+data, and later the iPhone app.
+Calls made for Cory (to confirm): keys belong to one person and act as that person only; two access levels; no key
+can reach admin, settings, key, backup or reveal routes.
+
+**Settings › API keys** (everyone; wide tab after Profile, phone row): list of the person's keys — name, the first
+characters ("bs_live_3f9a…"), access level, created, last used ("Never" until used). **New key**: name (required,
+1–60 chars) and access: **Read only** (default) or **Read and log** (may also add, edit and delete log entries,
+weigh-ins, water and shots). The key (`bs_` + 32 random bytes base62) is shown right away with the eye and copy, and
+can be shown again later with the eye (owner only; logged; `Cache-Control: no-store`; rate-limited like the other
+reveal routes). **Rename**, **Change access**, **Delete** (asks first; takes effect immediately). At most 20 keys
+per person.
+
+**Using a key.** `Authorization: Bearer <key>` on any `/api` route the access level allows; the request runs as the
+key's owner with the same per-user isolation as a signed-in session. Read only = GET routes of the person's own data
+(day, log, foods, my foods, weight, GLP-1, goals/targets, trends, app info). Read and log adds the log/weight/water/
+GLP-1 write routes. Never allowed with a key, whatever the level: anything under `/api/admin`, settings and
+integration routes, API key routes, backups/restore/export, every "reveal a key" route, sign-in/sessions/passkeys/
+password. A wrong, deleted or malformed key → 401 (same message for each); a key without access to a route → 403
+"This key can only read" / "Keys can't do that". Rate limit per key (e.g. 120 requests a minute). Each use updates
+last used (at most once a minute) and is counted in the app log at debug level (never the key itself).
+
+**Storage.** `api_keys` (user id, name, prefix, a SHA-256 hash for lookup — unique, the key encrypted with
+`encryptSecret` for the eye, access, created, last used). Backed up (encrypted copy readable only with the same
+`JWT_SECRET`, as for other saved keys); not in "Download my data" beyond name/prefix/access/dates. Deleting a person
+deletes their keys. Covered by the isolation test (one person can't list, show, rename or use another's key).
+
+**Help.** Under the list, a short "How to use a key" box: the header line and two copyable curl examples (today's
+day: `GET /api/day?date=YYYY-MM-DD`; log water: the water route) with the server's address filled in.
+
+## 36. Invite someone by email (Cory, 2026-11-18)
+
+**Asked for.** Invite by email for new people (the "later" in §20).
+Calls made for Cory (to confirm): admin only, in Settings › Users; only offered when email is set up; the person
+picks their own password from the link; an invite lasts 7 days.
+
+**Invite.** Settings › Users gets **Invite by email** beside the existing Add person: name, username (suggested
+from the email's first part, editable; same rules as Add person) and email. Sends an email: "<admin name> invited
+you to ByteSize" with a button/link to `#/invite/<token>` on the configured app address. The person appears in the
+list as **Invited** with the email, sent date, **Resend** (new link, old one stops working) and **Cancel invite**
+(removes the pending person). Without email set up, the button is shown disabled with "Set up email in Settings ›
+Email to invite people".
+
+**Accepting.** The invite page shows "Welcome to ByteSize, <name>", the username (read-only), and new password +
+confirm (same password rules as everywhere). On success the person is signed in and goes through first-run setup
+like a newly added person. Used, cancelled, superseded or expired (7 days) links → "This invite link has expired or
+was already used. Ask <admin> for a new one." Tokens: 32 random bytes, only a hash stored, single use, compared in
+constant time; the accept route is rate-limited. An invited person can't sign in until they accept (no password).
+Pending invites are skipped by backups like other short-lived tokens (the invited person row itself is kept).
