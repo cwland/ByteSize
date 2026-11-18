@@ -3,7 +3,6 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Dashboard from "./Dashboard";
 import { WIDGETS } from "./widgets";
-import { WIDGET_IDS } from "../../../../backend/src/lib/widgets";
 import { SelectedDayProvider } from "../../selectedDay";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
@@ -47,8 +46,9 @@ beforeEach(() => {
 afterEach(() => void vi.useRealTimers());
 
 describe("Dashboard widgets", () => {
-  it("one registry, the same widget ids the server accepts", () => {
-    expect(WIDGETS.map((w) => w.id).sort()).toEqual([...WIDGET_IDS].sort());
+  // (That the ids match the server's is checked in backend/tests/widgets-sync.test.ts)
+  it("one registry: every widget has a title and a description", () => {
+    expect(new Set(WIDGETS.map((w) => w.id)).size).toBe(WIDGETS.length);
     for (const w of WIDGETS) expect(w.title && w.description).toBeTruthy();
   });
 
