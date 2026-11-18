@@ -64,12 +64,12 @@ describe("Settings › Cached data", () => {
     await waitFor(() => expect(lastGet(s)).toBe("/api/admin/saved-barcodes?page=1&pageSize=10"));
   });
 
-  it("with every pill off the list is empty (only a source with no kept barcodes, so no pill, is still asked)", async () => {
-    const s = fakeServer({ "GET /api/admin/saved-barcodes": (_b, path) => (path.endsWith("sources=spoonacular") ? answer([], 0) : answer(rows(3), 134)) });
+  it("with every pill off the list is empty: the real \"none\" (an empty sources) is sent", async () => {
+    const s = fakeServer({ "GET /api/admin/saved-barcodes": (_b, path) => (path.endsWith("sources=") ? answer([], 0) : answer(rows(3), 134)) });
     renderWithSession(<CachedDataSettings />, { isAdmin: true });
     await screen.findByText("134 saved barcodes");
     for (const n of [/Open Food Facts/, /USDA/, /FatSecret/]) await userEvent.click(pill(n));
-    await waitFor(() => expect(lastGet(s)).toBe("/api/admin/saved-barcodes?page=1&pageSize=10&sources=spoonacular"));
+    await waitFor(() => expect(lastGet(s)).toBe("/api/admin/saved-barcodes?page=1&pageSize=10&sources="));
     expect(await screen.findByText("0 saved barcodes")).toBeInTheDocument();
     expect(pill(/USDA/)).toBeInTheDocument(); // the pills stay so they can be turned back on
   });
@@ -112,6 +112,25 @@ describe("Settings › Cached data", () => {
     await userEvent.click(screen.getByRole("button", { name: "Page 14" }));
     expect(await screen.findByText("131–134 of 134")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
+  });
+
+  it("the range and the current page follow the list on screen, not the page just asked for", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    fakeServer({
+      "GET /api/admin/saved-barcodes": async (_b, path) => {
+        const n = Number(/page=(\d+)/.exec(path)![1]);
+        if (n === 2) await gate;
+        return answer(rows(10, (n - 1) * 10), 134, { page: n });
+      },
+    });
+    renderWithSession(<CachedDataSettings />, { isAdmin: true });
+    await screen.findByText("1–10 of 134");
+    await userEvent.click(screen.getByRole("button", { name: "Page 2" }));
+    expect(screen.getByText("1–10 of 134")).toBeInTheDocument(); // page 1's rows are still showing
+    expect(screen.getByRole("button", { name: "Page 1" })).toHaveAttribute("aria-current", "page");
+    release();
+    expect(await screen.findByText("11–20 of 134")).toBeInTheDocument();
   });
 
   it("no pager when everything fits on one page", async () => {

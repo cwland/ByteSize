@@ -56,7 +56,9 @@ export default function CachedDataSettings() {
 
   useEffect(() => {
     let live = true;
-    const sources = off.size ? `&sources=${SOURCE_ORDER.filter((s) => !off.has(s)).join(",")}` : "";
+    // Every pill off: an empty list, which the server reads as no sources
+    const allOff = SOURCE_ORDER.filter((s) => known.has(s)).every((s) => off.has(s)) && known.size > 0;
+    const sources = allOff ? "&sources=" : off.size ? `&sources=${SOURCE_ORDER.filter((s) => !off.has(s)).join(",")}` : "";
     api<Page>("GET", `/api/admin/saved-barcodes?page=${page}&pageSize=${perPage}${q ? `&q=${encodeURIComponent(q)}` : ""}${sources}`).then(
       (p) => {
         if (!live) return;
@@ -114,7 +116,7 @@ export default function CachedDataSettings() {
       return `Deleted ${plural(out.deleted)}`;
     });
 
-  const pages = data ? Math.max(1, Math.ceil(data.total / perPage)) : 1;
+  const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
   const pills = SOURCE_ORDER.filter((s) => known.has(s));
   return (
     <section aria-label="Saved barcodes" className="rounded-2xl bg-container p-5 [column-span:all]">
@@ -176,8 +178,8 @@ export default function CachedDataSettings() {
       )}
       {data && data.total > 0 && (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
-          <span className="text-subtle">{`${(page - 1) * perPage + 1}–${Math.min(page * perPage, data.total)} of ${data.total}`}</span>
-          {pages > 1 && <Pager page={page} pages={pages} onPage={setPage} />}
+          <span className="text-subtle">{`${(data.page - 1) * data.pageSize + 1}–${Math.min(data.page * data.pageSize, data.total)} of ${data.total}`}</span>
+          {pages > 1 && <Pager page={data.page} pages={pages} onPage={setPage} />}
         </div>
       )}
       {!data && !msg && <p className="mt-3 text-muted">Loading…</p>}

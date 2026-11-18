@@ -14,7 +14,7 @@ export function pageList(page: number, pages: number): (number | "…")[] {
   return out;
 }
 
-const btn = "inline-flex size-9 items-center justify-center rounded-full text-sm font-semibold disabled:opacity-40";
+const btn = "inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-sm font-semibold disabled:opacity-40";
 
 // ‹ 1 2 3 … 14 ›
 export function Pager({ page, pages, onPage }: { page: number; pages: number; onPage: (page: number) => void }) {

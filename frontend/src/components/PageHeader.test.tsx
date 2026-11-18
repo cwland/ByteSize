@@ -30,7 +30,7 @@ describe("DayHeader's date (§33)", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Wednesday, Nov 18" })).toBeInTheDocument();
   });
 
-  it("is written the way the person chose, once their settings have loaded", async () => {
+  it("an unknown saved format falls back to today's look", async () => {
     show("wd-never");
     expect(await screen.findByRole("heading", { level: 1, name: "Wednesday, Nov 18" })).toBeInTheDocument(); // junk: the default look
   });
