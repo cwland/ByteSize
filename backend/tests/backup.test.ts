@@ -283,7 +283,10 @@ describe("backups", () => {
     expect((await asUser(t, a.token)("GET", "/api/day/2026-11-15")).status).toBe(401);
     await signIn();
     const list = await t.api("GET", "/api/admin/backups");
-    expect(list.body.backups.map((x: any) => x.name)).toEqual([expect.stringMatching(/-before-restore\.tar\.gz$/), backup.name].sort().reverse());
+    // the backup and the safety one made before restoring (in either order: they can fall in the same second or not)
+    const names: string[] = list.body.backups.map((x: any) => x.name);
+    expect(names).toHaveLength(2);
+    expect(names).toEqual(expect.arrayContaining([backup.name, expect.stringMatching(/-before-restore\.tar\.gz$/)]));
     // The safety backup holds what was there just before (the changed name)
     const safety = await backupJson(list.body.backups.find((x: any) => x.name.endsWith("-before-restore.tar.gz")).name);
     expect(safety.tables.users.find((u: any) => u.id === a.id).display_name).toBe("Changed");
