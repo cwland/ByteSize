@@ -14,7 +14,7 @@ import { aiSettings } from "./foodFakes.js";
 import { setRestaurantKeys } from "./restaurantFakes.js";
 import { multipart, plainPhoto } from "./photoFakes.js";
 import * as schema from "../src/db/schema.js";
-import {
+import { dashboardLayouts,
   appLog,
   appSettings,
   badges,
@@ -106,6 +106,7 @@ async function seed() {
     await t.db.insert(vacations).values({ userId: u.id, fromDay: "2026-12-20", toDay: "2026-12-27" });
     await t.db.insert(usageCounts).values([{ userId: u.id, key: "barcodes_scanned", count: 3 + i }, { userId: u.id, key: "outside_off", count: 1 }]); // App info's numbers are the person's own data
     await t.db.insert(restaurantFavourites).values({ userId: u.id, cacheId: cache.id, chain: "Acme Diner" });
+    await t.db.insert(dashboardLayouts).values({ userId: u.id, columns: i ? [["food"], [], ["budget"]] : [["budget", "water"], ["food"]] }); // the person's Dashboard
     await t.db.insert(passkeys).values({ userId: u.id, credentialId: `cred-${u.id}`, publicKey: "pk", transports: ["internal"], rpId: "localhost", name: "Phone" });
   }
   const apiKey = (await a.as("POST", "/api/keys", { name: "Anna's HA", access: "log" })).body.key as string; // backed up (encrypted)

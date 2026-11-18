@@ -54,13 +54,12 @@ function exactNutrients(i: EditItem): Nutrients {
   }
 }
 
-// The exact sum of the items (rounded only when shown); a nutrient any item doesn't know stays unknown
-// (never a partial sum). No items: unknown.
+// The exact sum of the items, to show (rounded only when shown); a nutrient an item doesn't say adds as 0
+// (§31). No items: 0. (What's saved is the server's own sum.)
 export function sumNutrients(items: EditItem[]): Nutrients {
-  if (!items.length) return {};
   const each = items.map(exactNutrients);
   const out: Nutrients = {};
-  for (const k of NUTRIENT_KEYS) if (each.every((n) => n[k] !== undefined)) out[k] = each.reduce((s, n) => s + (n[k] as number), 0);
+  for (const k of NUTRIENT_KEYS) out[k] = each.reduce((s, n) => s + (n[k] ?? 0), 0);
   return out;
 }
 export const divideNutrients = (n: Nutrients, by: number): Nutrients => (by > 0 ? Object.fromEntries(Object.entries(n).map(([k, v]) => [k, (v as number) / by])) : {});
@@ -74,7 +73,7 @@ const ROWS: [keyof Nutrients, string, (v: number) => string][] = [
   ["fat_g", "Fat", (v) => `${one(v)} g`],
 ];
 
-// Live totals; an unknown value is "—", never 0
+// Live totals (a value not said is 0, §31)
 export function Totals({ label, n }: { label: string; n: Nutrients }) {
   return (
     <section aria-label={label} className="rounded-2xl border border-line px-4 py-2">
@@ -85,7 +84,7 @@ export function Totals({ label, n }: { label: string; n: Nutrients }) {
           return (
             <p key={k} className="flex items-center justify-between py-2 text-sm">
               <span>{name}</span>
-              <span className="font-semibold tabular">{v === undefined ? "—" : show(v)}</span>
+              <span className="font-semibold tabular">{show(v ?? 0)}</span>
             </p>
           );
         })}

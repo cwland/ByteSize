@@ -21,14 +21,15 @@ export const EFFECT_LABELS: Record<SideEffect, string> = {
 export const LEVEL_LABELS = ["Off", "Mild", "Medium", "Strong"] as const; // index = level (0 = not felt)
 export const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-// "2026-11-20" -> "Fri"
-export const weekdayShort = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short" });
+// "2026-11-20" -> "Fri, Nov 20" (and ", 2027" when it isn't this year)
+export const shotDate = (day: string, now = new Date()) =>
+  new Date(`${day}T00:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric", ...(Number(day.slice(0, 4)) !== now.getFullYear() ? { year: "numeric" } : {}) });
 
-// The card's one line: "Next shot Fri" before, "Injection day" on the day, "Injection overdue by N days" after
-export function statusText(v: Glp1View): string | null {
+// The card's one line: "Next shot Thu, Nov 19" before, "Injection day" on the day, "Injection overdue by N days" after
+export function statusText(v: Glp1View, now = new Date()): string | null {
   if (v.status === "due") return "Injection day";
   if (v.status === "overdue") return `Injection overdue by ${v.overdueDays} ${v.overdueDays === 1 ? "day" : "days"}`;
-  if (v.status === "upcoming" && v.nextDue) return `Next shot ${weekdayShort(v.nextDue)}`;
+  if (v.status === "upcoming" && v.nextDue) return `Next shot ${shotDate(v.nextDue, now)}`;
   return null;
 }
 

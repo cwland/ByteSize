@@ -137,6 +137,13 @@ describe("GET /api/export", () => {
     expect(raw).not.toContain(made.key.slice(11));
   });
 
+  it("includes the person's Dashboard layout", async () => {
+    const layout = { version: 1, columns: [["budget"], ["food"], ["streak"]] };
+    expect((await t.api("PUT", "/api/dashboard/layout", layout)).status).toBe(200);
+    const { text } = await download();
+    expect(JSON.parse(text("bytesize-export.json")).tables.dashboard_layouts).toEqual([expect.objectContaining({ columns: layout.columns })]);
+  });
+
   it("the json carries the date format choice with the rest of the person's settings", async () => {
     await t.api("PUT", "/api/settings/me", { mealWindows: { breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" }, waterButtonsMl: [237], dateFormat: "dmy-dot" });
     const json = JSON.parse((await download()).text("bytesize-export.json"));

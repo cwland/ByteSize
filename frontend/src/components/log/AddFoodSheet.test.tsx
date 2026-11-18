@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import LogPage from "./LogPage";
+import FoodHost from "../../test/FoodHost";
 import { SelectedDayProvider } from "../../selectedDay";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
@@ -31,7 +31,7 @@ function open(routes: Record<string, (b: any, path: string) => unknown> = {}) {
   });
   renderWithSession(
     <SelectedDayProvider timeZone="America/Boise">
-      <LogPage />
+      <FoodHost />
     </SelectedDayProvider>,
   );
   return server;
@@ -267,7 +267,7 @@ describe("Add food, Weight Watchers style", () => {
 
   it("same as yesterday copies yesterday's breakfast into today with one tap", async () => {
     const toast = entryJson({ id: 7, day: "2026-11-15", name: "Toast" });
-    const egg = entryJson({ id: 8, day: "2026-11-15", name: "Egg", icon: "🥚", nutrients: { calories: 70, protein_g: 6, fiber_g: 0 } });
+    const egg = entryJson({ id: 8, day: "2026-11-15", name: "Egg", icon: "🥚", nutrients: { calories: 70, protein_g: 6 } }); // fiber missing: adds as 0
     const soup = entryJson({ id: 9, day: "2026-11-15", meal: "lunch", name: "Soup" });
     const server = open({
       "GET /api/day/:date": (_b, path) => (path.endsWith("2026-11-15") ? dayJson({ day: "2026-11-15", entries: [toast, egg, soup] }) : dayJson()),
@@ -279,6 +279,7 @@ describe("Add food, Weight Watchers style", () => {
     expect(within(card).getByText("Toast, Egg")).toBeInTheDocument();
     expect(within(card).getByText("230 cal")).toBeInTheDocument();
     expect(within(card).getByText("12 g protein")).toBeInTheDocument();
+    expect(within(card).getByText("4 g fiber")).toBeInTheDocument();
     await user.click(within(card).getByRole("button", { name: "Quick add same as yesterday" }));
     expect(server.writes()).toContainEqual(expect.objectContaining({ path: "/api/log/move", body: { ids: [7, 8], day: "2026-11-16", meal: "breakfast", copy: true } }));
     expect(await within(card).findByRole("img", { name: "Added" })).toBeInTheDocument();
@@ -360,7 +361,7 @@ describe("Add food, Weight Watchers style", () => {
     expect(within(within(sheet).getByRole("region", { name: "Nutritional insights" })).getByText("High in protein")).toBeInTheDocument();
     expect(row(sheet, "Nutrition facts", "Saturated fat")).toHaveTextContent("3 g");
     expect(row(sheet, "Nutrition facts", "Sodium")).toHaveTextContent("120 mg");
-    expect(row(sheet, "Nutrition facts", "Added sugars")).toHaveTextContent("—"); // unknown, not 0
+    expect(row(sheet, "Nutrition facts", "Added sugars")).toHaveTextContent("0 g"); // §31: missing shows as 0
 
     await user.click(within(sheet).getByRole("button", { name: /^Serving/ }));
     const unit = within(sheet).getByRole("combobox", { name: "Unit" });

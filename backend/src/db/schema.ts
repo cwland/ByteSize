@@ -522,3 +522,10 @@ export const usageCounts = pgTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.key] })]
 );
+
+// The person's Dashboard: which widgets sit in which column, top to bottom (§28). No row: the default layout.
+export const dashboardLayouts = pgTable("dashboard_layouts", {
+  userId: userRef().primaryKey(),
+  columns: jsonb("columns").$type<string[][]>().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

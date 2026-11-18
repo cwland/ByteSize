@@ -70,16 +70,13 @@ describe("Dashboard", () => {
     expect(screen.queryByText(/to reach your range/)).not.toBeInTheDocument();
   });
 
-  it("unknown fiber shows a question mark that explains itself", async () => {
-    show(dayJson({ totals: { ...totals, unknownCount: { fiber_g: 2 } } }));
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Why is fiber uncertain?" }));
-    expect(screen.getByText("2 foods missing fiber")).toBeInTheDocument();
-  });
-
-  it("unknown calories are flagged on the gauge, not silently counted as 0", async () => {
-    show(dayJson({ totals: { ...totals, unknownCount: { calories: 1 } } }));
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Why are calories uncertain?" }));
-    expect(screen.getByText("1 food missing calories")).toBeInTheDocument();
+  it("foods missing fiber or calories just add 0: the numbers show, with no question marks (§31)", async () => {
+    show(dayJson({ totals: { ...totals, unknownCount: { fiber_g: 2, calories: 1 } } }));
+    const budget = await screen.findByRole("region", { name: "Budget" });
+    expect(within(budget).getByTestId("food-calories")).toHaveTextContent(/^1,138$/);
+    expect(within(budget).getByText("29 / 25 g")).toBeInTheDocument();
+    expect(within(budget).queryByRole("button", { name: /uncertain/ })).not.toBeInTheDocument();
+    expect(within(budget).queryByText(/missing|\?/)).not.toBeInTheDocument();
   });
 
   it("water button logs 8 fl oz (237 ml) for the selected day", async () => {

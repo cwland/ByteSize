@@ -31,10 +31,10 @@ describe("AppShell on a wide screen", () => {
     const navs = screen.getAllByRole("navigation", { name: "Main" });
     expect(navs).toHaveLength(1);
     const rail = navs[0];
-    expect(within(rail).getAllByRole("link").map((a) => a.getAttribute("aria-label") ?? a.textContent)).toEqual(["ByteSize home", "Dashboard", "Log", "Goals", "My foods", "Settings", "Your profile"]);
+    expect(within(rail).getAllByRole("link").map((a) => a.getAttribute("aria-label") ?? a.textContent)).toEqual(["ByteSize home", "Dashboard", "Goals", "My foods", "Settings", "Your profile"]);
     expect(within(rail).getByRole("link", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
     expect(within(rail).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "#/settings");
-    // No + in the rail: food is added from Today's food and the Log
+    // No + in the rail: food is added from the Food widget
     expect(within(rail).queryByRole("button")).not.toBeInTheDocument();
     // The phone top bar's avatar link is gone (the rail has the account)
     expect(screen.queryByRole("link", { name: "Open settings" })).not.toBeInTheDocument();
@@ -48,14 +48,14 @@ describe("AppShell on a wide screen", () => {
     expect(await screen.findByRole("dialog", { name: "Add food to Lunch" })).toBeInTheDocument();
   });
 
-  it("My foods is its own rail item, current on My foods (not Log)", async () => {
-    window.location.hash = "#/log/my-foods?from=/log";
+  it("My foods is its own rail item, current on My foods", async () => {
+    window.location.hash = "#/log/my-foods?from=/";
     wideScreen();
     fakeServer(routes);
     renderWithSession(<AppShell />, { timezone: "America/Boise" });
     const rail = screen.getByRole("navigation", { name: "Main" });
     expect(within(rail).getByRole("link", { name: "My foods" })).toHaveAttribute("aria-current", "page");
-    expect(within(rail).getByRole("link", { name: "Log" })).not.toHaveAttribute("aria-current");
+    expect(within(rail).getByRole("link", { name: "Dashboard" })).not.toHaveAttribute("aria-current");
   });
 
   it("narrowing the window brings back the bottom tab bar and top bar", () => {
@@ -65,8 +65,7 @@ describe("AppShell on a wide screen", () => {
     expect(within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", { name: "My foods" })).toBeInTheDocument();
     screenSize.set(false);
     const bar = screen.getByRole("navigation", { name: "Main" });
-    expect(within(bar).queryByRole("link", { name: "My foods" })).not.toBeInTheDocument();
-    expect(within(bar).getByRole("link", { name: "Log" })).toBeInTheDocument();
+    expect(within(bar).getByRole("button", { name: "Log food" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open settings" })).toBeInTheDocument();
   });
 
@@ -74,7 +73,8 @@ describe("AppShell on a wide screen", () => {
     fakeServer(routes);
     renderWithSession(<AppShell />, { timezone: "America/Boise" });
     const bar = screen.getByRole("navigation", { name: "Main" });
-    expect(within(bar).getAllByRole("link").map((a) => a.textContent)).toEqual(["Dashboard", "Log", "Goals", "Settings"]);
+    expect(within(bar).getAllByRole("link").map((a) => a.textContent)).toEqual(["Dashboard", "Goals", "My foods", "Settings"]); // no Log page (§28)
+    expect(within(bar).getByRole("button", { name: "Log food" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open settings" })).toBeInTheDocument();
   });
 });

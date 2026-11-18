@@ -42,16 +42,30 @@ const ADJECTIVES = new Set(["small", "medium", "large", "extra", "whole", "jumbo
 const plural = (w: string) => (/(ss|sh|ch|x)$/i.test(w) ? `${w}es` : /[^aeiou]y$/i.test(w) ? `${w.slice(0, -1)}ies` : /s$/i.test(w) ? w : `${w}s`);
 const singular = (w: string) => (/[^aeiou]ies$/i.test(w) ? `${w.slice(0, -3)}y` : /(ss|sh|ch|x)es$/i.test(w) ? w.slice(0, -2) : /[^s]s$/i.test(w) ? w.slice(0, -1) : w);
 
-// Pluralise (or singularise) the noun in "slice", "medium banana", "cup, chopped"
+const PREPOSITIONS = new Set(["of", "with", "without", "in", "from", "for"]);
+// Measures and containers: when a serving name starts with one ("cup sliced", "can soda", "slice whole wheat
+// bread"), that word is the noun whatever follows it
+const MEASURES = new Set(
+  "cup can slice bottle bar piece scoop packet serving container link stick glass bowl pouch package pack box bag jar carton handful patty fillet strip wedge sheet envelope tablet capsule pinch dash leaf clove spear square cube pod sprig ring shot portion tablespoon teaspoon spoonful loaf bun roll tortilla cookie cracker".split(" "),
+);
+
+// Pluralise (or singularise) the noun of a serving name: a measure or container word that comes first (after
+// any size: "2 cups sliced", "2 large slices bread"); otherwise the last word before a comma or a preposition
+// ("6 pitted prunes", "2 pieces of bread", "2 fruits without skin"). A size on its own ("large") stays.
 function nounFor(noun: string, many: boolean): string {
   if (/\(s\)/.test(noun)) return noun;
-  const words = noun.split(" ");
-  const i = words.findIndex((w) => w && !ADJECTIVES.has(w.toLowerCase()));
-  if (i < 0) return noun;
+  const comma = noun.indexOf(",");
+  const head = comma < 0 ? noun : noun.slice(0, comma);
+  const words = head.split(" ");
+  const first = words.findIndex((w) => w && !ADJECTIVES.has(w.toLowerCase()));
+  const prep = words.findIndex((w, i) => i > 0 && PREPOSITIONS.has(w.toLowerCase()));
+  const measure = first >= 0 && MEASURES.has(singular(words[first].toLowerCase()));
+  const i = measure ? first : (prep < 0 ? words.length : prep) - 1;
+  if (i < 0 || ADJECTIVES.has(words[i].toLowerCase())) return noun;
   const [, word, tail] = words[i].match(/^([A-Za-z]+)(.*)$/) ?? [];
   if (!word) return noun;
   words[i] = (many ? plural(word) : singular(word)) + tail;
-  return words.join(" ");
+  return words.join(" ") + (comma < 0 ? "" : noun.slice(comma));
 }
 
 const leadingNumber = (s: string): number | null => {

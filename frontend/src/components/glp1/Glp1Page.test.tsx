@@ -48,7 +48,7 @@ describe("Glp1Page", () => {
     await waitFor(() => expect(server.writes()).toHaveLength(1));
     expect(server.writes()[0]).toMatchObject({ method: "PUT", path: "/api/glp1/settings", body: { medication: "Zepbound", doseMg: 2.5, injectionWeekday: 5 } });
     expect(await screen.findByText("Zepbound 2.5 mg, Fridays")).toBeInTheDocument();
-    expect(screen.getByText("Next shot Fri")).toBeInTheDocument();
+    expect(screen.getByText("Next shot Fri, Nov 20")).toBeInTheDocument();
   });
 
   it("with settings shows them and Edit opens the form filled in", async () => {

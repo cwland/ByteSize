@@ -1,202 +1,277 @@
-import { Camera, Flame, GlassWater } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Camera, GripVertical, Pencil, Plus, X } from "lucide-react";
 import { api } from "../../api";
-import { notifyDayChanged, useDay, useSettingsMe } from "../../day";
+import { useDay, useSettingsMe } from "../../day";
+import { mealFor } from "../../meals";
 import { useSelectedDay } from "../../selectedDay";
 import { useSession } from "../../session";
-import { fmt, waterUnit, waterValue } from "../../units";
-import Gauge from "./Gauge";
-import Ring from "./Ring";
-import NewBadge from "./NewBadge";
-import { useState } from "react";
-import { mealFor } from "../../meals";
 import type { Meal } from "../../types";
-import AddFoodSheet from "../log/AddFoodSheet";
-import DayTotals from "../log/DayTotals";
-import { usePhotoInput } from "../log/PhotoPicker";
-import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { primaryButton, secondaryButton } from "../ui/styles";
-import WeightCard from "../weight/WeightCard";
-import Glp1Card from "../glp1/Glp1Card";
-import { DayHeader } from "../PageHeader";
-import TodaysFood from "./TodaysFood";
 import { useWide } from "../../wide";
+import AddFoodSheet from "../log/AddFoodSheet";
+import { usePhotoInput } from "../log/PhotoPicker";
+import { DayHeader } from "../PageHeader";
+import { Notice, errorMsg, type Msg } from "../ui/Notice";
+import { Sheet } from "../ui/Sheet";
+import { primaryButton, secondaryButton } from "../ui/styles";
+import NewBadge from "./NewBadge";
+import { LAYOUT_VERSION, addWidget, defaultLayout, dropIndex, fromSaved, moveSideways, moveTo, moveVertical, readingOrder, removeWidget, type Columns, type SavedLayout } from "./layout";
+import { WIDGETS, widgetById, type WidgetProps } from "./widgets";
 
-// "Good evening": by the hour in the person's time zone
-function greeting(timeZone: string) {
-  let hour = new Date().getHours();
-  try {
-    hour = Number(new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", hourCycle: "h23" }).format(new Date()));
-  } catch {
-    // an unknown zone: the browser's clock
-  }
-  return hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-}
-
-// "Cory Landers" -> "Cory"
-const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
-
-// The selected day at a glance: calorie budget gauge, protein/fiber/water rings, water quick-add, streak.
-// Wide screens: a header (the day, the week strip, a greeting) and three columns — the day's food; the
-// budget with water under it; Day totals, weight (with a trend line), GLP-1 and streak. They wrap to two
-// or one columns in that order as the window narrows.
+// The Dashboard (§28): the selected day as widgets in three columns (two or one as the window narrows; one
+// column in reading order on phones), from the person's saved layout or the default. "Edit dashboard" turns
+// the widgets into cards that can be dragged within and across columns, moved with buttons, removed and added
+// back (Add widget); Save stores the layout, Cancel puts it back, Reset to default restores the default.
+// The new badge and other notices sit above the columns. Wide screens: a header with the day and week strip.
 export default function Dashboard() {
   const { user } = useSession();
   const { day, isToday } = useSelectedDay();
   const wide = useWide();
-  // Add food opened from the wide Dashboard (a meal's + Add food in Today's food)
-  const [adding, setAdding] = useState<Meal | null>(null);
   const { data, error } = useDay(day);
   const settings = useSettingsMe();
-  const mealNow = () => mealFor(user.timezone, new Date(), settings.mealWindows);
-  const [msg, setMsg] = useState<Msg>(null);
-  // Photo: the file picker opens straight away; the chosen photo then opens Add Food for the meal of the moment
+  const [cols, setCols] = useState<Columns>(() => defaultLayout(WIDGETS));
+  const [editing, setEditing] = useState<Columns | null>(null);
+  // Editing starts from the saved layout: until it has loaded (or failed to), Edit dashboard waits, so Save
+  // can never write an edit of the default over it
+  const [loaded, setLoaded] = useState(false);
+  // Phones: Photo opens the file picker straight away; the chosen photo then opens Add Food for the meal of the moment
   const [photo, setPhoto] = useState<{ file: File; meal: Meal } | null>(null);
-  const photoInput = usePhotoInput((file) => setPhoto({ file, meal: mealNow() }));
+  const photoInput = usePhotoInput((file) => setPhoto({ file, meal: mealFor(user.timezone, new Date(), settings.mealWindows) }));
 
-  const addWater = async (ml: number) => {
+  useEffect(() => {
+    let live = true;
+    api<{ layout: SavedLayout | null }>("GET", "/api/dashboard/layout")
+      .then((r) => live && setCols(fromSaved(r.layout, WIDGETS)))
+      .catch(() => {}) // the default layout stays
+      .finally(() => live && setLoaded(true));
+    return () => void (live = false);
+  }, []);
+
+  const props: WidgetProps = { day, data, isToday, wide };
+  const editButton = !editing && (
+    <button type="button" disabled={!loaded} onClick={() => setEditing(cols)} className="disabled:opacity-50 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-link hover:bg-pressed">
+      <Pencil aria-hidden="true" className="size-4" /> Edit dashboard
+    </button>
+  );
+  const widget = (id: string) => {
+    const w = widgetById(id);
+    return w ? <w.Component key={id} {...props} /> : null;
+  };
+  const column = "flex min-w-0 flex-col gap-4";
+  const grid = "grid grid-cols-[repeat(auto-fit,minmax(min(100%,19rem),1fr))] items-start gap-5";
+
+  const body = editing ? (
+    <EditLayout
+      cols={editing}
+      wide={wide}
+      onChange={setEditing}
+      onCancel={() => setEditing(null)}
+      onSaved={(saved) => {
+        setCols(saved);
+        setEditing(null);
+      }}
+    />
+  ) : (
+    // One tree for every width (crossing 1024 px keeps a widget's open sheet): three columns side by side on
+    // wide screens, stacked on phones — which is the reading order. An empty column takes no room.
+    <div className={wide ? grid : "flex flex-col gap-3"}>
+      {cols.map((c, i) => (
+        <div key={i} data-testid={c.length ? "dashboard-column" : undefined} hidden={!c.length} className={wide ? column : "flex flex-col gap-3"}>
+          {c.map(widget)}
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div className={`flex flex-col ${wide ? "gap-4" : "gap-3"}`}>
+      {wide ? <DayHeader>{editButton}</DayHeader> : <h1 className="sr-only">Dashboard</h1>}
+      {error && <Notice msg={{ ok: false, text: error }} />}
+      {!editing && <NewBadge />}
+      {!wide && !editing && (
+        <div className="flex items-center gap-2">
+          {photoInput.input}
+          <button type="button" onClick={photoInput.open} className={`${secondaryButton} inline-flex items-center gap-1.5`}>
+            <Camera aria-hidden="true" className="size-5" /> Photo
+          </button>
+          <span className="ml-auto">{editButton}</span>
+        </div>
+      )}
+      {body}
+      {photo && <AddFoodSheet day={day} meal={photo.meal} photo={photo.file} onClose={() => setPhoto(null)} />}
+    </div>
+  );
+}
+
+type Drag = { id: string; target: { col: number; index: number } | null };
+
+// Edit mode. Widgets are cards (their title and one line; they don't load or work here). Wide screens: three
+// columns (empty ones stay as drop targets), a drag handle (mouse and touch) and Move up/down/left/right on each.
+// Phones: one column in reading order with Move up/down. Every move can be made without dragging.
+function EditLayout({ cols, wide, onChange, onCancel, onSaved }: { cols: Columns; wide: boolean; onChange: (c: Columns) => void; onCancel: () => void; onSaved: (c: Columns) => void }) {
+  const [adding, setAdding] = useState(false);
+  const [msg, setMsg] = useState<Msg>(null);
+  const [busy, setBusy] = useState(false);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const columnEls = useRef<(HTMLDivElement | null)[]>([]);
+
+  const save = async () => {
+    setBusy(true);
+    setMsg(null);
     try {
-      await api("POST", "/api/log", { day, meal: "supplements", water_ml: ml });
-      notifyDayChanged();
+      await api("PUT", "/api/dashboard/layout", { version: LAYOUT_VERSION, columns: cols });
+      onSaved(cols);
     } catch (e) {
       setMsg(errorMsg(e));
     }
+    setBusy(false);
   };
 
-  const t = data?.targets ?? null;
-  const food = data?.totals.calories ?? 0;
-  const unknown = data?.totals.unknownCount ?? {};
-  const [calWhy, setCalWhy] = useState(false);
-  const water = (ml: number) => waterValue(ml, user.units);
-  const wUnit = waterUnit(user.units);
-  const waterLabel = (ml: number) => (user.units === "metric" ? `+${fmt(ml)} ml` : `+${water(ml)} oz`);
+  // Dragging: the column under the pointer (or the nearest), and the place in it by the cards' middles
+  const targetAt = (x: number, y: number) => {
+    const rects = columnEls.current.map((el) => el?.getBoundingClientRect());
+    let col = -1;
+    let best = Infinity;
+    rects.forEach((r, i) => {
+      if (!r) return;
+      const d = x < r.left ? r.left - x : x > r.right ? x - r.right : 0;
+      if (d < best) [best, col] = [d, i];
+    });
+    if (col < 0) return null;
+    const cards = [...(columnEls.current[col]?.querySelectorAll<HTMLElement>("[data-widget]") ?? [])].map((c) => c.getBoundingClientRect());
+    return { col, index: dropIndex(cards, y) };
+  };
+  const startDrag = (id: string) => {
+    setDrag({ id, target: null });
+    const move = (e: PointerEvent) => setDrag({ id, target: targetAt(e.clientX, e.clientY) });
+    const end = (e: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      const t = e.type === "pointerup" ? targetAt(e.clientX, e.clientY) : null;
+      setDrag(null);
+      if (t) onChange(moveTo(cols, id, t.col, t.index));
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+  };
 
-  const budget = (
-    <section aria-label="Budget" className="rounded-2xl bg-container p-5">
-      <h2 className="text-lg font-bold">{t ? `Budget: ${fmt(t.calories.min)}–${fmt(t.calories.max)} cals` : "Budget"}</h2>
-      {t ? (
-        <div className="mt-3 grid grid-cols-[4.5rem_1fr_4.5rem] items-end gap-2">
-          <div className="text-center">
-            <p data-testid="food-calories" className="text-xl font-bold tabular">
-              {fmt(food)}
-              {(unknown.calories ?? 0) > 0 && (
-                <button
-                  type="button"
-                  aria-label="Why are calories uncertain?"
-                  onClick={() => setCalWhy((w) => !w)}
-                  className="ml-1 inline-flex size-5 items-center justify-center rounded-full bg-pressed align-top text-xs font-bold text-subtle"
-                >
-                  ?
-                </button>
-              )}
-            </p>
-            <p className="text-xs text-muted">Food</p>
-            {calWhy && <p className="mt-1 text-xs text-muted">{`${unknown.calories} ${unknown.calories === 1 ? "food" : "foods"} missing calories`}</p>}
+  const order = readingOrder(cols);
+  const card = (id: string) => {
+    const w = widgetById(id);
+    if (!w) return null;
+    const col = cols.findIndex((c) => c.includes(id));
+    const i = order.indexOf(id);
+    const iconButton = (label: string, icon: JSX.Element, onClick: () => void, disabled = false) => (
+      <button type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick} className="flex size-11 items-center justify-center rounded-full text-subtle hover:bg-pressed hover:text-ink disabled:opacity-30">
+        {icon}
+      </button>
+    );
+    return (
+      <div key={id} role="group" aria-label={w.title} data-widget={id} className={`rounded-2xl border-2 border-dashed border-strong bg-container p-3 ${drag?.id === id ? "opacity-50" : ""}`}>
+        <div className="flex items-start gap-1">
+          {wide && (
+            <button
+              type="button"
+              aria-label={`Drag ${w.title}`}
+              title="Drag to move"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                startDrag(id);
+              }}
+              className="flex size-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-full text-subtle hover:bg-pressed active:cursor-grabbing"
+            >
+              <GripVertical aria-hidden="true" className="size-5" />
+            </button>
+          )}
+          <div className="min-w-0 flex-1 py-1.5">
+            <h2 className="font-bold">{w.title}</h2>
+            <p className="text-sm text-subtle">{w.description}</p>
+            {w.onlyWhen && <p className="text-xs text-muted">{w.onlyWhen}</p>}
           </div>
-          <Gauge food={food} min={t.calories.min} max={t.calories.max} />
-          <div className="text-center">
-            <p data-testid="exercise-calories" className="text-xl font-bold tabular">
-              {fmt(data?.exercise.calories ?? 0)}
-            </p>
-            <p className="text-xs text-muted">Exercise</p>
-          </div>
+          {iconButton(`Remove ${w.title}`, <X aria-hidden="true" className="size-5" />, () => onChange(removeWidget(cols, id)))}
+        </div>
+        <div className="mt-1 flex flex-wrap justify-end">
+          {iconButton(`Move ${w.title} up`, <ArrowUp aria-hidden="true" className="size-5" />, () => onChange(moveVertical(cols, id, -1)), i === 0)}
+          {iconButton(`Move ${w.title} down`, <ArrowDown aria-hidden="true" className="size-5" />, () => onChange(moveVertical(cols, id, 1)), i === order.length - 1)}
+          {wide && iconButton(`Move ${w.title} left`, <ArrowLeft aria-hidden="true" className="size-5" />, () => onChange(moveSideways(cols, id, -1)), col === 0)}
+          {wide && iconButton(`Move ${w.title} right`, <ArrowRight aria-hidden="true" className="size-5" />, () => onChange(moveSideways(cols, id, 1)), col === cols.length - 1)}
+        </div>
+      </div>
+    );
+  };
+  const dropLine = <div key="drop-line" data-testid="drop-line" aria-hidden="true" className="h-1 rounded-full bg-action" />;
+  const missing = WIDGETS.filter((w) => !order.includes(w.id));
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="mr-auto text-sm text-subtle">{wide ? "Drag widgets by their handle, or use the arrows." : "Use the arrows to change the order."}</p>
+        <button type="button" onClick={() => setAdding(true)} className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}>
+          <Plus aria-hidden="true" className="size-4" /> Add widget
+        </button>
+        <button type="button" onClick={() => onChange(defaultLayout(WIDGETS))} className="rounded-full px-3 py-1.5 text-sm font-semibold text-link hover:bg-pressed">
+          Reset to default
+        </button>
+        <button type="button" onClick={onCancel} className={`${secondaryButton} px-4 py-1.5 text-sm`}>
+          Cancel
+        </button>
+        <button type="button" disabled={busy} onClick={save} className={`${primaryButton} px-4 py-1.5 text-sm`}>
+          Save
+        </button>
+      </div>
+      <Notice msg={msg} />
+      {wide ? (
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,19rem),1fr))] items-start gap-5">
+          {cols.map((c, ci) => {
+            const items: JSX.Element[] = c.map(card).filter((x): x is JSX.Element => x !== null);
+            if (drag?.target?.col === ci) items.splice(drag.target.index, 0, dropLine);
+            return (
+              <div
+                key={ci}
+                ref={(el) => void (columnEls.current[ci] = el)}
+                data-testid="dashboard-column"
+                aria-label={`Column ${ci + 1}`}
+                className="flex min-h-32 min-w-0 flex-col gap-4 rounded-2xl bg-pressed/40 p-2"
+              >
+                {items}
+                {!c.length && !items.length && <p className="py-10 text-center text-sm text-muted">Drop a widget here</p>}
+              </div>
+            );
+          })}
         </div>
       ) : (
-        data && (
-          <div className="mt-3 flex flex-col items-center gap-3 text-center">
-            <p className="text-subtle">Pick a plan to see your budget</p>
-            <button type="button" onClick={() => (window.location.hash = "#/goals/plan")} className={primaryButton}>
-              Pick a plan
-            </button>
-          </div>
-        )
+        <div className="flex flex-col gap-3">{order.map(card)}</div>
       )}
-      {data && (
-        <div className="mt-6 grid grid-cols-3 gap-2">
-          <Ring name="Protein" value={data.totals.protein_g ?? 0} min={t?.protein_g.min} max={t?.protein_g.max} unit="g" unknown={unknown.protein_g} />
-          <Ring name="Fiber" value={data.totals.fiber_g ?? 0} min={t?.fiber_g.min} max={t?.fiber_g.max} unit="g" unknown={unknown.fiber_g} />
-          <Ring
-            name="Water"
-            value={water(data.totals.water_ml ?? 0)}
-            min={t ? water(t.water_ml.min) : undefined}
-            max={t ? water(t.water_ml.max) : undefined}
-            unit={wUnit}
-          />
-        </div>
+      {adding && (
+        <Sheet label="Add widget" onClose={() => setAdding(false)}>
+          {missing.length ? (
+            <ul className="flex flex-col gap-2">
+              {missing.map((w) => (
+                <li key={w.id} className="flex items-center gap-3 rounded-2xl bg-pressed/40 p-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold">{w.title}</p>
+                    <p className="text-sm text-subtle">{w.description}</p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`Add ${w.title}`}
+                    onClick={() => {
+                      onChange(addWidget(cols, w.id));
+                      setAdding(false);
+                    }}
+                    className={`${primaryButton} px-4 py-1.5 text-sm`}
+                  >
+                    Add
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-subtle">Every widget is on your dashboard</p>
+          )}
+        </Sheet>
       )}
-    </section>
-  );
-  const waterCard = (
-    <section aria-label="Water" className="flex items-center gap-3 rounded-2xl bg-container p-4">
-      <GlassWater className="size-6 text-action" aria-hidden="true" />
-      <span className="flex-1 font-semibold">Water</span>
-      {settings.waterButtonsMl.map((ml) => (
-        <button key={ml} type="button" onClick={() => addWater(ml)} className={`${secondaryButton} px-4 py-1.5 text-sm`}>
-          {waterLabel(ml)}
-        </button>
-      ))}
-    </section>
-  );
-  const streakCard = data && (
-    <section aria-label="Streak" className="flex items-center gap-2 rounded-2xl bg-container px-4 py-3">
-      <Flame className={`size-5 ${data.streak > 0 ? "text-action" : "text-inactive"}`} aria-hidden="true" />
-      <span className="font-semibold">{data.streak > 0 ? `${data.streak}-day streak` : "Log a food to start a streak"}</span>
-    </section>
-  );
-
-  // Add food sheets sit after the layout, in the same place for both, so crossing 1024 px keeps them open
-  const sheets = (
-    <>
-      {adding && <AddFoodSheet day={day} meal={adding} onClose={() => setAdding(null)} />}
-      {photo && <AddFoodSheet day={day} meal={photo.meal} photo={photo.file} onClose={() => setPhoto(null)} />}
-    </>
-  );
-  const streakNote = data && data.streak > 0 ? ` · ${data.streak}-day streak` : "";
-  const column = "flex min-w-0 flex-col gap-4";
-  const layout = wide ? (
-    <div className="flex flex-col gap-5">
-      <DayHeader sub={`${greeting(user.timezone)}, ${firstName(user.displayName ?? user.username)}${streakNote}`} />
-      {error && <Notice msg={{ ok: false, text: error }} />}
-      <NewBadge />
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,19rem),1fr))] items-start gap-5">
-        <div data-testid="dashboard-column" className={column}>
-          <TodaysFood data={data} isToday={isToday} units={user.units} onAdd={setAdding} />
-        </div>
-        <div data-testid="dashboard-column" className={column}>
-          {budget}
-          {waterCard}
-          <Notice msg={msg} />
-        </div>
-        <div data-testid="dashboard-column" className={column}>
-          {data && <DayTotals day={data} units={user.units} />}
-          <WeightCard trend />
-          <Glp1Card />
-          {streakCard}
-        </div>
-      </div>
     </div>
-  ) : (
-    <div className="flex flex-col gap-3">
-      <h1 className="sr-only">Dashboard</h1>
-      {error && <Notice msg={{ ok: false, text: error }} />}
-      <NewBadge />
-      {budget}
-      <div className="flex gap-2">
-        {photoInput.input}
-        <button type="button" onClick={photoInput.open} className={`${secondaryButton} inline-flex items-center gap-1.5`}>
-          <Camera aria-hidden="true" className="size-5" /> Photo
-        </button>
-      </div>
-      {waterCard}
-      <Notice msg={msg} />
-      <Glp1Card />
-      <WeightCard />
-      {streakCard}
-    </div>
-  );
-  return (
-    <>
-      {layout}
-      {sheets}
-    </>
   );
 }

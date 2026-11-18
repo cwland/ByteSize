@@ -135,3 +135,35 @@ export function sumNutrients(list: Nutrients[]): Nutrients & { unknownCount: Rec
   }
   return { ...totals, unknownCount };
 }
+
+// ---------- combining two amounts of the same food (§28) ----------
+
+export type Amount = { servingIndex: number; unit: Unit; quantity: number; fraction: number };
+
+/** How many grams (or millilitres) one of this amount's unit is, or undefined when it doesn't say. */
+function perUnit(servings: Serving[], a: Amount, dim: "grams" | "ml"): number | undefined {
+  if (a.unit === "serving") {
+    const v = servings[a.servingIndex]?.[dim];
+    return positive(v) ? v : undefined;
+  }
+  return (dim === "grams" ? MASS_G : VOLUME_ML)[a.unit];
+}
+
+/**
+ * `added` (measured against `addedServings`) put into `existing` (against `servings`), in the existing
+ * amount's own unit: the same unit adds up; different units add through grams, or else millilitres.
+ * null when they can't meet (they then stay separate entries).
+ */
+export function combineAmounts(servings: Serving[], existing: Amount, addedServings: Serving[], added: Amount): Amount | null {
+  const have = existing.quantity * existing.fraction;
+  const add = added.quantity * added.fraction;
+  const round = (n: number) => Math.round(n * 10000) / 10000;
+  const sameUnit = existing.unit === added.unit && (existing.unit !== "serving" || existing.servingIndex === added.servingIndex);
+  if (sameUnit) return { servingIndex: existing.servingIndex, unit: existing.unit, quantity: round(have + add), fraction: 1 };
+  for (const dim of ["grams", "ml"] as const) {
+    const into = perUnit(servings, existing, dim);
+    const from = perUnit(addedServings, added, dim);
+    if (into && from) return { servingIndex: existing.servingIndex, unit: existing.unit, quantity: round(have + (add * from) / into), fraction: 1 };
+  }
+  return null;
+}

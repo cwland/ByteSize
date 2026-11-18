@@ -1,6 +1,6 @@
 {
-  "id": "1d8cbff5-fa64-41ac-9968-4f72a6fe6bde",
-  "prevId": "192ecae6-ed7d-41fa-888d-d02dec72fa56",
+  "id": "ef0ac665-3ed4-4998-ad31-1070caad3395",
+  "prevId": "1e2ce6f9-ad42-4ecb-92c1-7a1307bb9754",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -311,6 +311,52 @@
           ]
         }
       },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.dashboard_layouts": {
+      "name": "dashboard_layouts",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "columns": {
+          "name": "columns",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "dashboard_layouts_user_id_users_id_fk": {
+          "name": "dashboard_layouts_user_id_users_id_fk",
+          "tableFrom": "dashboard_layouts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
