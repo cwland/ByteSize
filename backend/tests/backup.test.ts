@@ -109,6 +109,7 @@ async function seed() {
     await t.db.insert(dashboardLayouts).values({ userId: u.id, columns: i ? [["food"], [], ["budget"]] : [["budget", "water"], ["food"]] }); // the person's Dashboard
     await t.db.insert(passkeys).values({ userId: u.id, credentialId: `cred-${u.id}`, publicKey: "pk", transports: ["internal"], rpId: "localhost", name: "Phone" });
   }
+  const apiKey = (await a.as("POST", "/api/keys", { name: "Anna's HA", access: "log" })).body.key as string; // backed up (encrypted)
   const photo = await storePhoto(t.app, a.id, await plainPhoto(40, 30));
   await t.db.update(uploads).set({ linkedAt: new Date() }).where(eq(uploads.id, photo.id));
   const [custom] = await t.db
@@ -130,7 +131,7 @@ async function seed() {
     ]);
   }
   await t.db.insert(logEntries).values({ userId: a.id, day: "2026-11-14", meal: "lunch", name: "Food logged", icon: "🥣", source: "cache", sourceRef: `cache:${loggedOnly.id}`, unit: "g", quantity: 5, perServing: {}, servings: [], nutrients: {} });
-  return { admin, a, b, photo, cacheId: cache.id, unusedCacheId: unused.id };
+  return { admin, a, b, photo, cacheId: cache.id, unusedCacheId: unused.id, apiKey };
 }
 
 /** Every backed-up table's rows (as PostgreSQL writes them, so timestamps keep their microseconds). */
@@ -211,7 +212,7 @@ describe("backups", () => {
       .sort();
     expect([...BACKED_UP_TABLES, ...SKIP_TABLES].sort()).toEqual(inSchema);
     // sign-ins, and the short-lived codes and OAuth flows that lead to one, are never backed up
-    expect(SKIP_TABLES).toEqual(expect.arrayContaining(["sessions", "password_reset_codes", "oauth_flows", "oauth_tickets"]));
+    expect(SKIP_TABLES).toEqual(expect.arrayContaining(["sessions", "password_reset_codes", "oauth_flows", "oauth_tickets", "invites"]));
     const inDb = await t.db.execute<{ tablename: string }>(sql`select tablename from pg_tables where schemaname = 'public'`);
     expect(inDb.rows.map((r) => r.tablename).sort()).toEqual(inSchema);
   });
@@ -229,7 +230,7 @@ describe("backups", () => {
   });
 
   it("round trip: a backup restores every table, the photos and the id counters exactly", async () => {
-    const { a, b, photo, unusedCacheId } = await seed();
+    const { a, b, photo, unusedCacheId, apiKey } = await seed();
     const all = await snapshot();
     // A cached food nobody used (a search result) isn't kept
     const before: Record<string, string[]> = { ...all, food_cache: all.food_cache.filter((r) => JSON.parse(r).id !== unusedCacheId) };
@@ -249,6 +250,8 @@ describe("backups", () => {
     // Secrets stay as stored (encrypted)
     expect(JSON.stringify(json)).not.toContain("sk-home-ai");
     expect(JSON.stringify(json)).not.toContain("cul_key");
+    expect(JSON.stringify(json)).not.toContain(apiKey);
+    expect(json.tables.api_keys).toEqual([expect.objectContaining({ user_id: a.id, name: "Anna's HA", key_hash: expect.any(String), key_enc: expect.stringMatching(/^v1:/) })]);
 
     // Change things after the backup
     await t.db.update(users).set({ displayName: "Changed" }).where(eq(users.id, a.id));
@@ -282,6 +285,9 @@ describe("backups", () => {
     expect((await asUser(t, adminToken)("GET", "/api/admin/backups")).status).toBe(401);
     expect((await asUser(t, a.token)("GET", "/api/day/2026-11-15")).status).toBe(401);
     await signIn();
+    // A personal API key from the backup works again, and its owner's eye can show it (same JWT_SECRET)
+    const keyed = await t.app.inject({ method: "GET", url: "/api/day/2026-11-15", headers: { authorization: `Bearer ${apiKey}` } });
+    expect(keyed.statusCode).toBe(200);
     const list = await t.api("GET", "/api/admin/backups");
     // the backup and the safety one made before restoring (in either order: they can fall in the same second or not)
     const names: string[] = list.body.backups.map((x: any) => x.name);
@@ -290,6 +296,24 @@ describe("backups", () => {
     // The safety backup holds what was there just before (the changed name)
     const safety = await backupJson(list.body.backups.find((x: any) => x.name.endsWith("-before-restore.tar.gz")).name);
     expect(safety.tables.users.find((u: any) => u.id === a.id).display_name).toBe("Changed");
+  });
+
+  it("an invited person is kept, their pending invite link is not; after a restore Resend sends a new one", async () => {
+    await t.login();
+    const gmail = { enabled: true, host: "smtp.gmail.com", port: 587, security: "starttls", username: "c@gmail.com", password: "pw", fromName: null, fromAddress: "c@gmail.com", appUrl: "https://bytesize.example.com" };
+    await t.api("POST", "/api/settings/email/test", { settings: gmail });
+    expect((await t.api("PUT", "/api/settings/email", gmail)).status).toBe(200);
+    const dana = (await t.api("POST", "/api/admin/invites", { name: "Dana", username: "dana", email: "dana@example.com" })).body.user;
+    const backup = await makeBackup();
+    const json = await backupJson(backup.name);
+    expect(json.tables.invites).toBeUndefined();
+    expect(json.tables.users.find((u: any) => u.username === "dana")).toMatchObject({ password_hash: null, email: "dana@example.com" });
+    expect((await t.api("POST", "/api/admin/backups/restore", { name: backup.name, confirm: "RESTORE" })).status).toBe(200);
+    await signIn();
+    expect((await t.api("GET", "/api/admin/users")).body.users.find((u: any) => u.username === "dana")).toMatchObject({ invited: true, inviteSentAt: null });
+    t.mail.sent.length = 0;
+    expect((await t.api("POST", `/api/admin/invites/${dana.id}/resend`)).status).toBe(200);
+    expect(t.mail.sent[0].text).toContain("https://bytesize.example.com/#/invite/");
   });
 
   it("lists backups newest first with the number kept", async () => {

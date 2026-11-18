@@ -1,6 +1,7 @@
-import { ChevronLeft, ChevronRight, LogOut, ScrollText, Shield, User, Users, Database, HardDrive, Info, Link2, Mail } from "lucide-react";
+import { ChevronLeft, ChevronRight, LogOut, ScrollText, Shield, User, Users, Database, HardDrive, Info, KeyRound, Link2, Mail } from "lucide-react";
 import { settingsSectionFromHash, useHash } from "../../routes";
 import { useSession } from "../../session";
+import ApiKeysSettings from "./ApiKeysSettings";
 import AppInfoSettings from "./AppInfoSettings";
 import CachedDataSettings from "./CachedDataSettings";
 import LogsSettings from "./LogsSettings";
@@ -16,6 +17,7 @@ import { useWide } from "../../wide";
 // server-wide services there (AI, food data, restaurants). twoUp: on wide screens its cards sit in two columns.
 const TABS = [
   { id: "profile", label: "Profile", hint: "Name, units, time zone, appearance", admin: false, Icon: User, Panel: ProfileSettings },
+  { id: "api-keys", label: "API keys", hint: "Keys for your own tools and scripts", admin: false, Icon: KeyRound, Panel: ApiKeysSettings },
   { id: "security", label: "Security", hint: "Password, passkeys, devices", admin: false, Icon: Shield, Panel: SecuritySettings },
   { id: "integrations", label: "Integrations", hint: "Culury meal plan and recipes", adminHint: "AI, food data, restaurants, Culury", admin: false, twoUp: true, Icon: Link2, Panel: IntegrationsSettings },
   { id: "cached-data", label: "Cached data", hint: "Saved barcodes and what ByteSize keeps", admin: true, Icon: Database, Panel: CachedDataSettings },

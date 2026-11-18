@@ -82,6 +82,13 @@ you're signed in; every other device is signed out. A code works once, for 15 mi
 asking again replaces it. At most 5 codes an hour per email and per address, and 10 code tries an hour per email. Accounts without an email, and
 turned-off accounts, never get a code. Each reset is in Settings › Logs (who, never the code).
 
+### Invite by email
+
+With email set up, Settings › Users › **Invite by email** (admin) adds a person by name, username and email and
+emails them a link to choose their own password. They show as **Invited** until they do; **Resend** sends a new
+link (the old one stops working) and **Cancel invite** removes them. A link works once, for 7 days. It points at
+ByteSize's address from Settings › Email (or `APP_URL`), else the address the admin is using.
+
 ### OAuth sign-in
 
 Settings › Security › OAuth sign-in (admin) lets people sign in with Authentik, Keycloak, Google, Microsoft or any
@@ -98,6 +105,22 @@ The sign-in screen then shows **Sign in with …**. It only signs in accounts th
 account**; emails are never matched. OAuth never creates accounts: the admin adds people in Settings › Users.
 **OAuth only** hides the password form (passkeys still work); it can only be turned on once your own account is
 linked at that provider, and it turns itself off when you change the provider or the client ID.
+
+### API keys
+
+Settings › API keys lets each person make keys for their own tools (Home Assistant, n8n, Shortcuts, scripts), up
+to 20. A key works as its owner only, never as an admin. **Read only** reads your day, foods, My Foods, weight,
+GLP-1, goals and trends; **Read and log** can also add, edit and delete log entries, water, weigh-ins and shots.
+Send it as `Authorization: Bearer <key>`:
+
+```sh
+curl -H "Authorization: Bearer bs_…" https://<your ByteSize>/api/day/2026-11-18
+curl -X POST -H "Authorization: Bearer bs_…" -H "Content-Type: application/json" -d '{"water_ml": 250}' https://<your ByteSize>/api/log
+```
+
+No key can reach admin, settings or integrations, API keys, backups or Download my data, any "show a saved key"
+route, or sign-in, devices, passkeys and passwords. A key gets 120 requests a minute. Keys are stored encrypted
+with `JWT_SECRET` (so the eye can show them again) and as a hash; a backup plus that `JWT_SECRET` can read them.
 
 ### Locked out?
 

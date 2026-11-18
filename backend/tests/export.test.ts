@@ -114,7 +114,7 @@ describe("GET /api/export", () => {
       .map((tbl) => getTableConfig(tbl))
       .filter((c) => c.columns.some((col) => col.name === "user_id"))
       .map((c) => c.name)
-      .filter((n) => !["sessions", "passkeys", "password_reset_codes", "oauth_flows"].includes(n)); // sign-in material
+      .filter((n) => !["sessions", "passkeys", "password_reset_codes", "oauth_flows", "invites"].includes(n)); // sign-in material
     expect(Object.keys(json.tables).sort()).toEqual([...perUser, "recipe_items"].sort());
     expect(json.tables.log_entries).toHaveLength(4);
     expect(json.tables.weigh_ins).toHaveLength(1);
@@ -125,6 +125,16 @@ describe("GET /api/export", () => {
     expect(raw).not.toMatch(/key_?enc/i);
     expect(json.tables.sessions).toBeUndefined();
     expect(json.tables.passkeys).toBeUndefined();
+  });
+
+  it("API keys go out as name, first characters, access and dates only: never the key, its hash or its encrypted copy", async () => {
+    await seed();
+    const made = (await t.api("POST", "/api/keys", { name: "Home Assistant", access: "log" })).body;
+    const { text } = await download();
+    const raw = text("bytesize-export.json");
+    expect(JSON.parse(raw).tables.api_keys).toEqual([{ id: made.id, userId: 1, name: "Home Assistant", prefix: made.prefix, access: "log", createdAt: expect.any(String), lastUsedAt: null }]);
+    expect(raw).not.toContain(made.key);
+    expect(raw).not.toContain(made.key.slice(11));
   });
 
   it("includes the person's Dashboard layout", async () => {

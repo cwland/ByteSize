@@ -10,6 +10,8 @@ describe("SettingsPage", () => {
     renderWithSession(<SettingsPage />, { isAdmin: false });
     expect(await screen.findByRole("tab", { name: "Profile" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Security" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "API keys" })).toBeInTheDocument(); // everyone's own keys
+    expect(screen.getByText("Keys for your own tools and scripts")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Integrations" })).toBeInTheDocument(); // per person
     expect(screen.getByText("Culury meal plan and recipes")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Data" })).toBeInTheDocument(); // everyone can download their own data
@@ -23,7 +25,7 @@ describe("SettingsPage", () => {
   it("admins see Users, Integrations and Logs; AI and food sources are inside Integrations", async () => {
     fakeServer({});
     renderWithSession(<SettingsPage />, { isAdmin: true });
-    expect((await screen.findAllByRole("tab")).map((t) => t.getAttribute("aria-label"))).toEqual(["Profile", "Security", "Integrations", "Cached data", "Email", "Data", "App info", "Users", "Logs"]);
+    expect((await screen.findAllByRole("tab")).map((t) => t.getAttribute("aria-label"))).toEqual(["Profile", "API keys", "Security", "Integrations", "Cached data", "Email", "Data", "App info", "Users", "Logs"]);
     expect(screen.getByText("Your data and backups")).toBeInTheDocument();
     expect(screen.getByText("Sending email, forgot password")).toBeInTheDocument();
     expect(screen.getByText("AI, food data, restaurants, Culury")).toBeInTheDocument();
@@ -86,6 +88,14 @@ describe("SettingsPage", () => {
     renderWithSession(<SettingsPage />, { isAdmin: true });
     expect(screen.getByRole("heading", { level: 1, name: "Cached data" })).toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "Saved barcodes" })).toBeInTheDocument();
+  });
+
+  it("API keys opens the person's keys", async () => {
+    window.location.hash = "#/settings/api-keys";
+    fakeServer({ "GET /api/keys": () => ({ keys: [] }) });
+    renderWithSession(<SettingsPage />, { isAdmin: false });
+    expect(screen.getByRole("heading", { level: 1, name: "API keys" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "New key" })).toBeInTheDocument();
   });
 
   it("App info is a row in the phone list, between Data and the admin sections, and opens its numbers", async () => {

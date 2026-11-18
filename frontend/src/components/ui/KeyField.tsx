@@ -63,6 +63,7 @@ function writeLater(key: Promise<string>): Promise<void> | undefined {
  * A shown saved key lives only in this component: it is not the typed value (so it is never saved as a new
  * key) until it's edited, and it is gone when the field goes away.
  * keyName names the buttons ("Show USDA key", "Copy USDA key") so several fields on a page stay apart.
+ * readOnly + defaultShown: a key to look at and copy, not to type (a new API key, shown once it's made).
  */
 export function KeyField({
   label,
@@ -77,6 +78,8 @@ export function KeyField({
   autoComplete = "off",
   inputClassName = "",
   onRevealChange,
+  readOnly = false,
+  defaultShown = false,
 }: {
   label: string;
   keyName: string;
@@ -90,10 +93,12 @@ export function KeyField({
   autoComplete?: string;
   inputClassName?: string;
   onRevealChange?: (shown: boolean) => void; // a saved key is (or is no longer) shown in the box
+  readOnly?: boolean;
+  defaultShown?: boolean;
 }) {
   const ownId = useId();
   const boxId = id ?? ownId;
-  const [shown, setShown] = useState(false);
+  const [shown, setShown] = useState(defaultShown);
   const [revealed, setRevealed] = useState<string | null>(null); // the saved key, while it's shown
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -188,6 +193,7 @@ export function KeyField({
         type={shown ? "text" : "password"}
         autoComplete={autoComplete}
         spellCheck={false}
+        readOnly={readOnly}
         value={typed ? value : (revealed ?? "")}
         placeholder={placeholder}
         onChange={(e) => {

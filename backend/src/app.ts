@@ -1,11 +1,14 @@
 import path from "node:path";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { ZodError } from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, lt, or } from "drizzle-orm";
 import type { Db } from "./db/index.js";
-import { users } from "./db/schema.js";
+import { apiKeys, users } from "./db/schema.js";
 import { HttpError } from "./lib/errors.js";
-import { verifyToken } from "./lib/auth.js";
+import { hashApiKey, verifyToken } from "./lib/auth.js";
+import { BAD_KEY, DEFAULT_KEY_RATE_LIMIT, KEY_SHAPE, KEY_TOO_FAST, LAST_USED_EVERY_MS, isKeyLike, keyDenial, keyLimiter, sameHash, type KeyRateLimit } from "./lib/apiKeys.js";
+import apiKeyRoutes from "./routes/api-keys.js";
+import inviteRoutes from "./routes/invites.js";
 import { sessionForToken } from "./lib/sessions.js";
 import { DEFAULT_RATE_LIMIT, rateLimits, securityHeaders, type RateLimitOptions } from "./lib/security.js";
 import healthRoutes from "./routes/health.js";
@@ -57,7 +60,8 @@ declare module "fastify" {
     appOrigins: string[]; // the app's own addresses from .env (APP_URL, PASSKEY_ORIGINS)
   }
   interface FastifyRequest {
-    auth?: { userId: number; sessionId: number; isAdmin: boolean };
+    // keyId: the call came with a personal API key (sessionId is then 0, isAdmin always false)
+    auth?: { userId: number; sessionId: number; isAdmin: boolean; keyId?: number };
   }
 }
 
@@ -75,13 +79,15 @@ const PUBLIC_ROUTES = new Set([
   "POST /api/auth/oauth/start",
   "GET /api/auth/oauth/callback",
   "POST /api/auth/oauth/finish",
+  "POST /api/invites/check", // the invite page: the token in the body is the permission
+  "POST /api/invites/accept",
   "GET /api/photos/:id", // the owner's login or the URL's signature (an <img> can't send the token)
 ]);
 
 export interface AppOptions {
   db: Db;
   jwtSecret: string;
-  logger?: boolean;
+  logger?: boolean | { level?: string; stream?: NodeJS.WritableStream }; // tests: a stream to read the server log
   now?: () => Date;
   rateLimit?: RateLimitOptions | false; // tests turn it off
   aiFetch?: AiFetch; // tests swap in a fake AI
@@ -94,6 +100,7 @@ export interface AppOptions {
   mailTransport?: TransportFactory; // tests swap in a fake: no email is ever sent
   oauthFetch?: typeof fetch; // tests: a pretend OAuth provider
   appOrigins?: string[]; // default: APP_URL and PASSKEY_ORIGINS from .env
+  keyRateLimit?: KeyRateLimit | false; // requests per personal API key (default 120 a minute)
 }
 
 export function buildApp(opts: AppOptions): FastifyInstance {
@@ -127,11 +134,43 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   securityHeaders(app);
   rateLimits(app, opts.rateLimit ?? DEFAULT_RATE_LIMIT);
 
-  // Who is calling: a login token whose user is still allowed in and whose device is still signed in
+  // A personal API key (Settings › API keys): its owner, on the routes lib/apiKeys.ts opens to keys, and
+  // nowhere else. Wrong, deleted, malformed or the owner turned off: 401, all with the same message. The key
+  // is never logged: only its first characters.
+  const keyOverLimit = opts.keyRateLimit === false ? null : keyLimiter(opts.keyRateLimit ?? DEFAULT_KEY_RATE_LIMIT);
+  async function keyCaller(req: FastifyRequest, key: string) {
+    if (!KEY_SHAPE.test(key)) throw new HttpError(401, BAD_KEY);
+    const hash = hashApiKey(key);
+    const [row] = await opts.db
+      .select({ id: apiKeys.id, userId: apiKeys.userId, keyHash: apiKeys.keyHash, access: apiKeys.access, prefix: apiKeys.prefix, disabled: users.disabled })
+      .from(apiKeys)
+      .innerJoin(users, eq(users.id, apiKeys.userId))
+      .where(eq(apiKeys.keyHash, hash));
+    if (!row || !sameHash(row.keyHash, hash) || row.disabled) throw new HttpError(401, BAD_KEY);
+    // No such route (or only the web app's catch-all): the 404 handler answers, as nobody
+    if (!req.routeOptions.url || req.routeOptions.url === "/*") return;
+    const denial = keyDenial(row.access, req.method, req.routeOptions.url);
+    if (denial) throw new HttpError(403, denial);
+    const now = app.now();
+    if (keyOverLimit?.(row.keyHash, now.getTime())) throw new HttpError(429, KEY_TOO_FAST);
+    req.auth = { userId: row.userId, sessionId: 0, isAdmin: false, keyId: row.id };
+    req.log.debug({ apiKey: row.prefix, keyId: row.id, userId: row.userId }, "API key used");
+    // Last used: at most once a minute
+    await opts.db
+      .update(apiKeys)
+      .set({ lastUsedAt: now })
+      .where(and(eq(apiKeys.id, row.id), or(isNull(apiKeys.lastUsedAt), lt(apiKeys.lastUsedAt, new Date(now.getTime() - LAST_USED_EVERY_MS)))));
+  }
+
+  // Who is calling: a personal API key, or a login token whose user is still allowed in and whose device is still signed in
   app.addHook("onRequest", async (req) => {
     const route = `${req.method} ${req.routeOptions.url ?? req.url}`;
     const header = req.headers.authorization;
-    if (header?.startsWith("Bearer ")) {
+    if (header?.startsWith("Bearer ") && isKeyLike(header.slice(7))) {
+      if (req.url.startsWith("/api/")) await keyCaller(req, header.slice(7)); // (the web app's pages don't take keys)
+      if (req.auth) return;
+      // otherwise on as nobody: public routes, the 404 handler, or 401 below
+    } else if (header?.startsWith("Bearer ")) {
       const claims = verifyToken(header.slice(7), opts.jwtSecret);
       if (claims) {
         const [user] = await opts.db.select({ tv: users.tokenVersion, isAdmin: users.isAdmin, disabled: users.disabled }).from(users).where(eq(users.id, claims.userId));
@@ -155,6 +194,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(oauthRoutes); // sign in with OAuth / OpenID Connect, Link my account
   app.register(emailSettingsRoutes); // Settings › Email (admin)
   app.register(adminUserRoutes);
+  app.register(inviteRoutes); // Settings › Users › Invite by email, and the invite page
   app.register(profileRoutes);
   app.register(passkeyRoutes);
   app.register(aiSettingsRoutes);
@@ -176,6 +216,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(backupRoutes); // admin: whole-server backups and restore
   app.register(exportRoutes); // Download my data
   app.register(appInfoRoutes); // Settings › App info: fun usage numbers
+  app.register(apiKeyRoutes); // Settings › API keys: a person's own keys for their tools
   scheduleUploadCleanup(app);
   scheduleCountingSince(app); // the day usage counting began
   scheduleLookupCleanup(app); // kept foods and searches past their source's hours (foods in use stay)

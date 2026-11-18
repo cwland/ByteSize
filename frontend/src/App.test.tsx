@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import App from "./App";
-import { setToken } from "./api";
+import userEvent from "@testing-library/user-event";
+import { getToken, setToken } from "./api";
 import { fakeServer, userJson } from "./test/fakeServer";
 
 describe("App", () => {
@@ -33,5 +34,23 @@ describe("App", () => {
     }
     // My foods is in the bar too (§28 ruling: the rail's pages, with Log gone)
     expect(screen.getByRole("button", { name: "Log food" })).toBeInTheDocument();
+  });
+
+  it("an invite link opens the invite page; accepting signs the person in and starts first-run setup", async () => {
+    window.location.hash = "#/invite/abcDEF123_-";
+    fakeServer({
+      "GET /api/auth/status": () => ({ setupRequired: false, passwords: true }),
+      "POST /api/invites/check": () => ({ name: "Dana", username: "dana" }),
+      "POST /api/invites/accept": () => ({ token: "dana-token", user: userJson({ id: 2, username: "dana", displayName: "Dana", isAdmin: false, setupDone: false }) }),
+    });
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Welcome to ByteSize, Dana" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("New password"), "dana-password-1");
+    await userEvent.type(screen.getByLabelText("Confirm new password"), "dana-password-1");
+    await userEvent.click(screen.getByRole("button", { name: "Set password and sign in" }));
+    expect(await screen.findByRole("heading", { name: "Set up ByteSize", level: 1 })).toBeInTheDocument(); // first-run setup
+    expect(window.location.hash).toBe("#/");
+    expect(getToken()).toBe("dana-token");
   });
 });

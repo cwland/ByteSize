@@ -35,6 +35,8 @@ export const SENSITIVE_ROUTES = new Set([
   "POST /api/auth/oauth/start",
   "GET /api/auth/oauth/callback",
   "POST /api/auth/oauth/finish",
+  "POST /api/invites/check", // an invite link's token
+  "POST /api/invites/accept",
   "POST /api/settings/culury/test", // calls out to an address the person typed
   "POST /api/settings/email/test", // connects to an email server the admin typed
   "POST /api/settings/oauth/test", // calls out to the provider the admin typed

@@ -509,4 +509,55 @@ describe("per-user isolation", () => {
     const json = JSON.parse(strFromU8(unzipSync(new Uint8Array(zip.rawPayload))["bytesize-export.json"]));
     expect(json.tables.usage_counts).toEqual([{ userId: a.id, key: "barcodes_scanned", count: 2 }]);
   });
+  it("API keys: a person can't list, show, rename, delete or use another's key, and a key reaches only its owner's data", async () => {
+    const { a, b } = await twoUsers(t);
+    const bens = (await b.as("POST", "/api/keys", { name: "Ben's n8n", access: "log" })).body;
+    const annas = (await a.as("POST", "/api/keys", { name: "Anna's HA", access: "log" })).body;
+    expect((await a.as("GET", "/api/keys")).body.keys.map((k: any) => k.name)).toEqual(["Anna's HA"]);
+    expect((await a.as("GET", `/api/keys/${bens.id}/key`)).status).toBe(404);
+    expect((await a.as("PATCH", `/api/keys/${bens.id}`, { name: "Mine now", access: "read" })).status).toBe(404);
+    expect((await a.as("DELETE", `/api/keys/${bens.id}`)).status).toBe(404);
+    expect((await b.as("GET", "/api/keys")).body.keys).toMatchObject([{ name: "Ben's n8n", access: "log" }]);
+    expect((await t.api("GET", "/api/keys")).body.keys).toEqual([]); // not even the admin sees them
+    expect((await t.api("GET", `/api/keys/${bens.id}/key`)).status).toBe(404);
+
+    // ben logs water; anna's key sees and changes only anna's
+    const day = "2026-11-10";
+    await b.as("POST", "/api/log", { day, water_ml: 400 });
+    const bensEntry = (await b.as("GET", `/api/day/${day}`)).body.entries[0];
+    const withKey = (key: string, method: string, url: string, payload?: object) =>
+      t.app.inject({ method: method as "GET", url, payload, headers: { authorization: `Bearer ${key}` } }).then((r) => ({ status: r.statusCode, body: r.body ? r.json() : null }));
+    expect((await withKey(annas.key, "GET", `/api/day/${day}`)).body.entries).toEqual([]);
+    expect((await withKey(annas.key, "PATCH", `/api/log/${bensEntry.id}`, { quantity: 1 })).status).toBe(404);
+    expect((await withKey(annas.key, "DELETE", `/api/log/${bensEntry.id}`)).status).toBe(404);
+    expect((await withKey(annas.key, "POST", "/api/log", { day, water_ml: 100 })).status).toBe(200);
+    expect((await b.as("GET", `/api/day/${day}`)).body.entries).toMatchObject([{ id: bensEntry.id, quantity: 400 }]);
+    expect((await a.as("GET", `/api/day/${day}`)).body.entries).toMatchObject([{ quantity: 100 }]);
+    // ben's key is ben, never anna
+    expect((await withKey(bens.key, "GET", `/api/day/${day}`)).body.entries).toMatchObject([{ id: bensEntry.id }]);
+  });
+  it("Invites: a member can't invite, resend or cancel; an invite link signs in only the invited person, who sees only their own data", async () => {
+    const { a, b } = await twoUsers(t);
+    const gmail = { enabled: true, host: "smtp.gmail.com", port: 587, security: "starttls", username: "c@gmail.com", password: "pw", fromName: null, fromAddress: "c@gmail.com", appUrl: "https://bytesize.example.com" };
+    await t.api("POST", "/api/settings/email/test", { settings: gmail });
+    expect((await t.api("PUT", "/api/settings/email", gmail)).status).toBe(200);
+    t.mail.sent.length = 0;
+    expect((await a.as("POST", "/api/admin/invites", { name: "Eve", username: "eve", email: "eve@example.com" })).status).toBe(403);
+    const dana = (await t.api("POST", "/api/admin/invites", { name: "Dana", username: "dana", email: "dana@example.com" })).body.user;
+    expect((await a.as("POST", `/api/admin/invites/${dana.id}/resend`)).status).toBe(403);
+    expect((await a.as("DELETE", `/api/admin/invites/${dana.id}`)).status).toBe(403);
+    expect((await a.as("DELETE", `/api/admin/invites/${b.id}`)).status).toBe(403);
+    expect(t.mail.sent).toHaveLength(1); // only the admin's invite went out
+    const token = /#\/invite\/([A-Za-z0-9_-]+)/.exec(t.mail.sent[0].text)![1];
+    // a signed-in member can't use the link to become dana, or change their own password with it
+    const r = await a.as("POST", "/api/invites/accept", { token, password: "password-of-anna" });
+    expect(r.status).toBe(200);
+    expect(r.body.user.username).toBe("dana"); // the link is dana's, whoever presses it
+    expect((await a.as("GET", "/api/auth/me")).body.user.username).toBe("anna"); // anna's own sign-in is untouched
+    expect((await t.app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "anna", password: "password123" } })).statusCode).toBe(200);
+    const danaAs = (await import("./isolation.js")).asUser(t, r.body.token);
+    await a.as("POST", "/api/log", { day: "2026-11-10", water_ml: 300 });
+    expect((await danaAs("GET", "/api/day/2026-11-10")).body.entries).toEqual([]);
+    expect((await danaAs("GET", "/api/admin/users")).status).toBe(403);
+  });
 });

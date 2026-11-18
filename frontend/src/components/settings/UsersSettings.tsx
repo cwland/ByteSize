@@ -3,24 +3,31 @@ import { api } from "../../api";
 import { when } from "../../format";
 import { useSession, type User } from "../../session";
 import { Card } from "../ui/Card";
+import { Confirm } from "../ui/Confirm";
 import { Field } from "../ui/Field";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Toggle } from "../ui/Toggle";
 import { linkButton, primaryButton, secondaryButton } from "../ui/styles";
 
-// A person as GET /api/admin/users sends them
-export type AdminUser = User & { disabled: boolean; createdAt: string; lastSeenAt: string | null };
+// A person as GET /api/admin/users sends them. invited: added by Invite by email and hasn't chosen a password yet.
+export type AdminUser = User & { disabled: boolean; createdAt: string; lastSeenAt: string | null; invited: boolean; inviteSentAt: string | null };
+type InviteAnswer = { user: AdminUser; emailError?: string };
+export const NO_EMAIL = "Set up email in Settings › Email to invite people";
+const sentOn = (iso: string | null) => (iso ? `Sent ${new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" })}` : "Not sent yet");
 
 // Settings › Users (admins): there is no sign-up page, so the admin adds everyone here
 export default function UsersSettings() {
   const { user: me, refresh } = useSession();
   const [people, setPeople] = useState<AdminUser[] | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<false | "person" | "invite">(false);
+  const [canInvite, setCanInvite] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
 
   const load = useCallback(async () => {
     try {
-      setPeople((await api<{ users: AdminUser[] }>("GET", "/api/admin/users")).users);
+      const r = await api<{ users: AdminUser[]; canInvite?: boolean }>("GET", "/api/admin/users");
+      setPeople(r.users);
+      setCanInvite(!!r.canInvite);
     } catch (e) {
       setMsg(errorMsg(e));
     }
@@ -28,6 +35,29 @@ export default function UsersSettings() {
   useEffect(() => void load(), [load]);
 
   const replace = (u: AdminUser) => setPeople((list) => (list ?? []).map((p) => (p.id === u.id ? u : p)));
+  const sent = (r: InviteAnswer, ok: string) => setMsg(r.emailError ? { ok: false, text: r.emailError } : { ok: true, text: ok });
+
+  async function resend(p: AdminUser) {
+    setMsg(null);
+    try {
+      const r = await api<InviteAnswer>("POST", `/api/admin/invites/${p.id}/resend`);
+      replace(r.user);
+      sent(r, `A new invite link went to ${r.user.email}. The old one no longer works.`);
+    } catch (e) {
+      setMsg(errorMsg(e));
+    }
+  }
+
+  async function cancelInvite(p: AdminUser) {
+    setMsg(null);
+    try {
+      await api("DELETE", `/api/admin/invites/${p.id}`);
+      setPeople((list) => (list ?? []).filter((x) => x.id !== p.id));
+      setMsg({ ok: true, text: `${p.username}'s invite is cancelled` });
+    } catch (e) {
+      setMsg(errorMsg(e));
+    }
+  }
 
   async function update(p: AdminUser, change: Partial<Pick<AdminUser, "isAdmin" | "disabled">> | { password: string }) {
     setMsg(null);
@@ -44,14 +74,20 @@ export default function UsersSettings() {
 
   return (
     <Card title="Users" description="Everyone who can sign in to ByteSize. Each person's food log is their own.">
-      <div className="flex justify-end">
-        {!adding && (
-          <button type="button" onClick={() => setAdding(true)} className={secondaryButton}>
-            Add person
-          </button>
-        )}
-      </div>
-      {adding && (
+      {!adding && (
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" onClick={() => setAdding("invite")} disabled={!canInvite} className={secondaryButton}>
+              Invite by email
+            </button>
+            <button type="button" onClick={() => setAdding("person")} className={secondaryButton}>
+              Add person
+            </button>
+          </div>
+          {!canInvite && people !== null && <p className="text-right text-sm text-muted">{NO_EMAIL}</p>}
+        </div>
+      )}
+      {adding === "person" && (
         <AddPerson
           onCancel={() => setAdding(false)}
           onAdded={(u) => {
@@ -61,14 +97,28 @@ export default function UsersSettings() {
           }}
         />
       )}
+      {adding === "invite" && (
+        <InvitePerson
+          onCancel={() => setAdding(false)}
+          onInvited={(r) => {
+            setPeople((list) => [...(list ?? []), r.user]);
+            setAdding(false);
+            sent(r, `Invite sent to ${r.user.email}`);
+          }}
+        />
+      )}
       <Notice msg={msg} />
       {people === null ? (
         <p className="mt-4 text-muted">Loading…</p>
       ) : (
         <ul className="mt-4 divide-y divide-line">
-          {people.map((p) => (
-            <PersonRow key={p.id} person={p} isMe={p.id === me.id} onChange={(c) => update(p, c)} />
-          ))}
+          {people.map((p) =>
+            p.invited ? (
+              <InvitedRow key={p.id} person={p} onResend={() => resend(p)} onCancel={() => cancelInvite(p)} />
+            ) : (
+              <PersonRow key={p.id} person={p} isMe={p.id === me.id} onChange={(c) => update(p, c)} />
+            )
+          )}
         </ul>
       )}
     </Card>
@@ -164,6 +214,112 @@ function AddPerson({ onAdded, onCancel }: { onAdded: (u: AdminUser) => void; onC
       <div className="mt-4 flex gap-2">
         <button type="submit" disabled={busy} className={primaryButton}>
           Add
+        </button>
+        <button type="button" onClick={onCancel} className={secondaryButton}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// Someone invited by email who hasn't chosen a password yet
+function InvitedRow({ person: p, onResend, onCancel }: { person: AdminUser; onResend: () => Promise<void>; onCancel: () => Promise<void> }) {
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const run = async (work: () => Promise<void>) => {
+    setBusy(true);
+    await work();
+    setBusy(false);
+  };
+  return (
+    <li aria-label={p.username} className="py-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">
+            {p.username}
+            <span className="ml-2 rounded-full bg-pressed px-2.5 py-0.5 text-xs font-semibold text-subtle">Invited</span>
+          </p>
+          <p className="text-sm text-muted">{[p.displayName, p.email, sentOn(p.inviteSentAt)].filter(Boolean).join(" · ")}</p>
+        </div>
+        <button type="button" disabled={busy} onClick={() => void run(onResend)} className={`${linkButton} text-sm`}>
+          Resend
+        </button>
+        <button type="button" disabled={busy} onClick={() => setAsking(true)} className={`${linkButton} text-sm`}>
+          Cancel invite
+        </button>
+      </div>
+      {asking && (
+        <Confirm
+          title={`Cancel ${p.username}'s invite?`}
+          text={`${p.username} is removed and the link in their email stops working.`}
+          confirmLabel="Cancel invite"
+          cancelLabel="Keep it"
+          onConfirm={() => {
+            setAsking(false);
+            void run(onCancel);
+          }}
+          onCancel={() => setAsking(false)}
+        />
+      )}
+    </li>
+  );
+}
+
+// The username offered for an email: its part before the @ (the admin can change it)
+export const usernameFromEmail = (email: string) => email.split("@")[0].trim().toLowerCase();
+
+function InvitePerson({ onInvited, onCancel }: { onInvited: (r: InviteAnswer) => void; onCancel: () => void }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [edited, setEdited] = useState(false); // the admin typed their own username: stop suggesting
+  const [msg, setMsg] = useState<Msg>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setMsg(null);
+    try {
+      onInvited(await api<InviteAnswer>("POST", "/api/admin/invites", { name: name.trim(), username: username.trim(), email: email.trim() }));
+    } catch (err) {
+      setMsg(errorMsg(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} aria-label="Invite by email" className="mt-3 rounded-xl bg-page p-4">
+      <Field label="Name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" maxLength={100} required />
+      <Field
+        label="Email"
+        type="email"
+        value={email}
+        onChange={(e) => {
+          setEmail(e.target.value);
+          if (!edited) setUsername(usernameFromEmail(e.target.value));
+        }}
+        autoComplete="off"
+        required
+      />
+      <Field
+        label="Username"
+        value={username}
+        onChange={(e) => {
+          setEdited(true);
+          setUsername(e.target.value);
+        }}
+        autoCapitalize="none"
+        autoComplete="off"
+        maxLength={100}
+        required
+      />
+      <p className="mt-3 text-sm text-subtle">They get an email with a link to choose their own password. The link works once, for 7 days.</p>
+      <Notice msg={msg} />
+      <div className="mt-4 flex gap-2">
+        <button type="submit" disabled={busy} className={primaryButton}>
+          Send invite
         </button>
         <button type="button" onClick={onCancel} className={secondaryButton}>
           Cancel

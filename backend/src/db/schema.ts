@@ -9,7 +9,7 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(), // stored trimmed and lowercased
   displayName: text("display_name"),
   email: text("email"),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash"), // null: invited by email and hasn't accepted yet (can't sign in)
   isAdmin: boolean("is_admin").notNull().default(false), // runs the server: users, AI services, all logs
   disabled: boolean("disabled").notNull().default(false), // can't sign in; current sign-ins stop working
   // Bumped to sign out every device: login tokens carry the version they were issued with
@@ -45,6 +45,21 @@ export const passwordResetCodes = pgTable("password_reset_codes", {
   wrongTries: integer("wrong_tries").notNull().default(0),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Invite by email (Settings › Users): one pending link per invited person (the person is a users row with no
+// password until they accept). Only a hash of the link's token is kept. Good for 7 days, once; Resend replaces
+// it, Cancel invite removes the person. Never backed up (the invited person's row is).
+export const invites = pgTable("invites", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .unique() // a new link replaces the old one
+    .references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  invitedBy: integer("invited_by").references(() => users.id, { onDelete: "set null" }),
+  sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
 
 // OAuth sign-ins on their way: from the button to the provider and back (10 minutes). Never backed up.
@@ -90,6 +105,27 @@ export const sessions = pgTable(
     deviceId: text("device_id"), // a random id the browser keeps, so one browser keeps one row
   },
   (t) => [index("sessions_user_idx").on(t.userId), uniqueIndex("sessions_user_device_idx").on(t.userId, t.deviceId)]
+);
+
+// Settings › API keys: a person's own keys for their tools (lib/apiKeys.ts decides what a key may reach).
+// A key acts as its owner only. key_hash (SHA-256) finds the key; key_enc (encryptSecret, from JWT_SECRET)
+// lets the owner show it again with the eye. The key itself is never stored as it is. Backed up.
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    prefix: text("prefix").notNull(), // the first characters, shown to tell keys apart ("bs_3f9aK2x…")
+    keyHash: text("key_hash").notNull().unique(),
+    keyEnc: text("key_enc").notNull(),
+    access: text("access").$type<"read" | "log">().notNull().default("read"), // Read only, or Read and log
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  },
+  (t) => [index("api_keys_user_idx").on(t.userId)]
 );
 
 // Every sign-in attempt, good or bad (Settings > Security)
