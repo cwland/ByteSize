@@ -1165,3 +1165,26 @@ barcode, refresh from its source, delete, Delete all not in use, in-use marker, 
 - Server: `GET /api/admin/saved-barcodes` takes `pageSize` (10–50, default 10; other values 400) and `sources`
   (comma list of source ids; unknown ids 400) and returns per-source counts for the pills (counts follow the search
   but not the source filter).
+
+## 33. Choose how the date at the top is written (Cory, 2026-11-18)
+
+**Asked for.** "In settings give options for users to change the date format at the top of the app; do variations
+for international users as well. The default is what it is right now."
+Calls made for Cory (to confirm): it's a per-person choice in Settings › Profile (beside units), saved on the server;
+it changes the date in the page header (the compact centred date, §24) only — other dates in the app stay as they are.
+
+**Choices** (shown in a dropdown, each option previewing today's date in that format):
+- **Wednesday, Nov 18** — default (today's look; existing people keep it)
+- Wed, Nov 18
+- Wednesday, November 18
+- 11/18/2026
+- Wednesday 18 Nov
+- Wed 18 Nov
+- Wednesday 18 November
+- 18/11/2026
+- 18.11.2026
+- 2026-11-18
+The "Today"/"Yesterday" wording the header already uses, if any, stays as it is. Stored as a key per format
+(e.g. `weekday-long-month-short`, `dmy-slash`, `iso`) in user_settings; unknown keys 400; included in backups and
+"Download my data" with the rest of user_settings. Formatting is done in one helper (with tests for every choice) so
+other places can adopt it later.
