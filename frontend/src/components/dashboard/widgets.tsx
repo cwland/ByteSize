@@ -16,7 +16,7 @@ import Ring from "./Ring";
 import type { LayoutWidget } from "./layout";
 
 // The Dashboard's widget registry (§28): the one list the Dashboard, the Add widget list and the layout read.
-// Adding a widget later means adding one entry here (and its id to backend/src/lib/widgets.ts, which a test
+// Adding a widget later means adding one entry here (and its id to backend/src/lib/widgets.ts, which backend/tests/widgets-sync.test.ts
 // keeps in step). column: where it sits by default (0 left, 1 middle, 2 right; registry order within a column).
 // fits: a hint for the library (narrow cards suit any column; wide ones want room). onlyWhen: shown only then.
 
