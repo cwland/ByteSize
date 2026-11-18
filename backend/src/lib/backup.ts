@@ -20,8 +20,9 @@ import { decryptSecret } from "./secrets.js";
 // bytesize-2026-11-17-030000.tar.gz, or with a label: bytesize-2026-11-17-142501-before-restore.tar.gz
 export const BACKUP_NAME = /^bytesize-\d{4}-\d{2}-\d{2}-\d{6}(-[a-z-]+)?\.tar\.gz$/;
 // Not backed up: sign-ins (everyone signs in again), forgot-password codes and OAuth sign-ins on their way
-// (minutes long), and kept search answers (restaurant and typed searches: a cache kept for each source's hours)...
-export const SKIP_TABLES = ["sessions", "password_reset_codes", "oauth_flows", "oauth_tickets", "restaurant_searches", "food_searches"];
+// (minutes long), kept search answers (restaurant and typed searches: a cache kept for each source's hours) and
+// what combines did (Undo of a combine, kept a day)...
+export const SKIP_TABLES = ["sessions", "password_reset_codes", "oauth_flows", "oauth_tickets", "restaurant_searches", "food_searches", "log_combines"];
 // ...nor the Spoonacular points counter (an app_settings row: the server keeps its own)
 const SKIP_SETTINGS = [QUOTA_KEY];
 const CACHE_TABLE = "food_cache";

@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, asc, desc, eq, gte, inArray, isNotNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
-import { foodCache, logEntries, userFoods, userSettings, users } from "../db/schema.js";
+import { foodCache, logCombines, logEntries, userFoods, userSettings, users } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
 import { addDays, DAY, localDay, mealFor, MEALS, streak, suggestedFor, todayFor, userTimezone, type Meal } from "../lib/days.js";
@@ -74,7 +74,6 @@ const mealQuery = z.object({ meal: z.enum(MEALS, { error: "Choose a meal" }).opt
 const MAX_LOGGED_DAYS = 62;
 const loggedQuery = z.object({ from: DAY, to: DAY });
 const moveBody = z.object({ ids: z.array(id).min(1, "Choose at least one entry").max(500), day: DAY, meal: z.enum(MEALS), copy: z.boolean().default(false) });
-const splitBody = z.object({ before: z.object(portionFields), added: z.object(portionFields), day: DAY, meal: z.enum(MEALS) });
 
 export function toEntry(r: Row): LogEntry {
   return {
@@ -247,8 +246,14 @@ async function mealNow(db: Db, userId: number, timezone: string, now: Date): Pro
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 /** What a food being added is, for telling whether a meal already has it. */
 type FoodSnapshot = { source: string; sourceRef: string | null; name: string; perServing: Nutrients; servings: Serving[] };
-/** What a combine did: the grown entry, its amount before, the amount added, and where Undo puts the addition back. */
-export type Combined = { entry: LogEntry; before: Portion; added: Portion; splitTo: { day: string; meal: Meal } };
+/**
+ * What a combine did: its id (Undo: POST /api/log/combines/:id/undo), the grown entry, its amount before, the
+ * amount added, and where Undo puts the addition back. The server keeps the same (log_combines), so Undo
+ * splits back exactly what was added, whatever has changed in the food since.
+ */
+export type Combined = { id: number; entry: LogEntry; before: Portion; added: Portion; splitTo: { day: string; meal: Meal } };
+// A combine can be undone for this long (the note offering Undo shows for seconds)
+const COMBINE_KEPT_MS = 24 * 60 * 60 * 1000;
 
 const portionOf = (r: Row): Portion => ({ servingIndex: r.servingIndex, unit: r.unit as Unit, quantity: r.quantity, fraction: r.fraction });
 const snapshotOf = (r: Row): FoodSnapshot => ({ source: r.source, sourceRef: r.sourceRef, name: r.name, perServing: r.perServing as Nutrients, servings: r.servings as Serving[] });
@@ -268,17 +273,36 @@ function sameFood(food: FoodSnapshot, r: Row): boolean {
 }
 
 /**
+ * Adds to a day and meal happen one at a time per person, day and meal (a transaction-long advisory lock), so
+ * two adds of the same food racing in never both see an empty meal and both add a row. Every path that may
+ * combine into a meal takes this first, before any row lock.
+ */
+async function lockMeal(tx: Tx, userId: number, at: { day: string; meal: Meal }) {
+  await tx.execute(sql`select pg_advisory_xact_lock(${userId}::int, hashtext(${`combine:${at.day}:${at.meal}`}))`);
+}
+
+/** The ids' rows and every row of that day and meal, locked in id order (so two moves can't deadlock). */
+async function lockRows(tx: Tx, userId: number, ids: number[], at: { day: string; meal: Meal }) {
+  return tx
+    .select()
+    .from(logEntries)
+    .where(and(eq(logEntries.userId, userId), or(ids.length ? inArray(logEntries.id, ids) : undefined, and(eq(logEntries.day, at.day), eq(logEntries.meal, at.meal)))))
+    .orderBy(asc(logEntries.id))
+    .for("update");
+}
+
+/**
  * Adds `added` of `food` to the first entry of that day and meal holding the same food (never one of `skip`),
  * when the two amounts can meet; nutrients are recomputed from that entry's own snapshot (unknown stays unknown).
- * null: nothing to combine with, so the caller adds a new entry.
+ * What it did is recorded for Undo. null: nothing to combine with, so the caller adds a new entry.
+ * The caller holds the meal's lock (lockMeal) and the rows' locks (lockRows).
  */
 async function combineInto(tx: Tx, userId: number, at: { day: string; meal: Meal }, food: FoodSnapshot, added: Portion, splitTo: { day: string; meal: Meal }, now: Date, skip: number[] = []) {
   const rows = await tx
     .select()
     .from(logEntries)
     .where(and(eq(logEntries.userId, userId), eq(logEntries.day, at.day), eq(logEntries.meal, at.meal)))
-    .orderBy(asc(logEntries.createdAt), asc(logEntries.id))
-    .for("update");
+    .orderBy(asc(logEntries.createdAt), asc(logEntries.id));
   for (const r of rows) {
     if (skip.includes(r.id) || !sameFood(food, r)) continue;
     const before = portionOf(r);
@@ -286,11 +310,20 @@ async function combineInto(tx: Tx, userId: number, at: { day: string; meal: Meal
     if (!amount) continue;
     const nutrients = portionNutrients(r.perServing as Nutrients, r.servings as Serving[], amount);
     const [row] = await tx.update(logEntries).set({ ...amount, nutrients, updatedAt: now }).where(eq(logEntries.id, r.id)).returning();
-    const combined: Combined = { entry: toEntry(row), before, added: { servingIndex: added.servingIndex, unit: added.unit, quantity: added.quantity, fraction: added.fraction }, splitTo };
+    const addedPortion = { servingIndex: added.servingIndex, unit: added.unit, quantity: added.quantity, fraction: added.fraction };
+    await tx.delete(logCombines).where(and(eq(logCombines.userId, userId), lt(logCombines.createdAt, new Date(now.getTime() - COMBINE_KEPT_MS))));
+    const [record] = await tx
+      .insert(logCombines)
+      .values({ userId, entryId: r.id, before, after: portionOf(row), added: addedPortion, addedServings: food.servings, splitDay: splitTo.day, splitMeal: splitTo.meal, createdAt: now })
+      .returning({ id: logCombines.id });
+    const combined: Combined = { id: record.id, entry: toEntry(row), before, added: addedPortion, splitTo };
     return { row, combined };
   }
   return null;
 }
+
+/** The same amount (the same serving and unit, and the same quantity × fraction). */
+const samePortion = (a: Portion, b: Portion) => a.unit === b.unit && a.servingIndex === b.servingIndex && Math.abs(a.quantity * a.fraction - b.quantity * b.fraction) < 1e-6;
 
 async function ownEntry(db: Db, userId: number, entryId: number): Promise<Row> {
   const [row] = await db
@@ -383,6 +416,8 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     const sourceRef = `${food.kind}:${food.id}`;
     const { row, combined } = await db.transaction(async (tx) => {
       // Already in this meal: that entry grows instead
+      await lockMeal(tx, userId, { day, meal });
+      await lockRows(tx, userId, [], { day, meal });
       const grown = await combineInto(tx, userId, { day, meal }, { source: food.kind, sourceRef, name: food.name, perServing: food.nutrients, servings: food.servings }, b, { day, meal }, now);
       const [inserted] = grown
         ? [grown.row]
@@ -434,6 +469,8 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     const { rows, combined } = await db.transaction(async (tx) => {
       // Item by item: one already in this meal grows that entry; the rest are new entries
       // (never into an entry this meal just added: the same food twice in a meal stays as the meal has it)
+      await lockMeal(tx, userId, { day, meal });
+      await lockRows(tx, userId, [], { day, meal });
       const rows: Row[] = [];
       const combined: Combined[] = [];
       const added: number[] = [];
@@ -524,16 +561,15 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     const b = moveBody.parse(req.body ?? {});
     const ids = [...new Set(b.ids)];
     const now = app.now();
+    const to = { day: b.day, meal: b.meal };
     const { rows, combined } = await db.transaction(async (tx) => {
-      const own = await tx
-        .select()
-        .from(logEntries)
-        .where(and(eq(logEntries.userId, userId), inArray(logEntries.id, ids)))
-        .for("update");
+      // The meal they go to first (as an add does), then their rows and that meal's, in id order: two moves in
+      // opposite directions wait for each other instead of each holding a row the other needs
+      await lockMeal(tx, userId, to);
+      const own = (await lockRows(tx, userId, ids, to)).filter((r) => ids.includes(r.id));
       if (own.length !== ids.length) throw new HttpError(404, NOT_FOUND);
       const byId = new Map(own.map((r) => [r.id, r]));
       const ordered = ids.map((i) => byId.get(i)!);
-      const to = { day: b.day, meal: b.meal };
       const rows: Row[] = [];
       const combined: Combined[] = [];
       const copies: number[] = [];
@@ -570,37 +606,42 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     return { entries: rows.map(toEntry), combined };
   });
 
-  // Undo of a combine: the entry goes back to its amount before, and the amount added becomes its own entry
-  // again (from the entry's snapshot) in the day and meal it came from
-  app.post("/api/log/:id/split", async (req) => {
+  // Undo of a combine: the entry goes back to its amount before, and what was added becomes its own entry again
+  // (as recorded when combining: its amount in the servings it was measured in) in the day and meal it came from.
+  // Only while the entry is still what that combine made: once undone, or after the entry was edited, grew
+  // again or was deleted, it's a 409 and nothing changes.
+  app.post("/api/log/combines/:id/undo", async (req) => {
     const userId = requireUser(req);
-    const { id: entryId } = idParam.parse(req.params);
-    const b = splitBody.parse(req.body ?? {});
+    const { id: combineId } = idParam.parse(req.params);
     const now = app.now();
     const rows = await db.transaction(async (tx) => {
-      const [row] = await tx
+      const [c] = await tx
         .select()
-        .from(logEntries)
-        .where(and(eq(logEntries.id, entryId), eq(logEntries.userId, userId)))
+        .from(logCombines)
+        .where(and(eq(logCombines.id, combineId), eq(logCombines.userId, userId)))
         .for("update");
-      if (!row) throw new HttpError(404, NOT_FOUND);
+      if (!c) throw new HttpError(404, NOT_FOUND);
+      if (c.undoneAt || c.entryId === null) throw new HttpError(409, CHANGED_SINCE);
+      const splitTo = { day: c.splitDay, meal: c.splitMeal as Meal };
+      // The meal the addition goes back to, then the rows, as every combining path takes them
+      await lockMeal(tx, userId, splitTo);
+      const [row] = (await lockRows(tx, userId, [c.entryId], splitTo)).filter((r) => r.id === c.entryId);
+      if (!row || !samePortion(portionOf(row), c.after as Portion)) throw new HttpError(409, CHANGED_SINCE);
       const per = row.perServing as Nutrients;
-      const servings = row.servings as Serving[];
-      // Only while the entry is still what that combine made (checked under the row lock): a second Undo, or
-      // one after the entry was edited or grew again, would double the amount or undo that change
-      const made = combineAmounts(servings, b.before, servings, b.added);
-      const same = made && made.unit === row.unit && made.servingIndex === row.servingIndex && Math.abs(made.quantity * made.fraction - row.quantity * row.fraction) < 1e-6;
-      if (!same) throw new HttpError(409, CHANGED_SINCE);
+      const before = c.before as Portion;
+      const added = c.added as Portion;
+      const addedServings = c.addedServings as Serving[];
       const [back] = await tx
         .update(logEntries)
-        .set({ ...b.before, nutrients: portionNutrients(per, servings, b.before), updatedAt: now })
+        .set({ ...before, nutrients: portionNutrients(per, row.servings as Serving[], before), updatedAt: now })
         .where(eq(logEntries.id, row.id))
         .returning();
       const { id: _id, createdAt: _c, updatedAt: _u, ...rest } = row;
       const [split] = await tx
         .insert(logEntries)
-        .values({ ...rest, ...b.added, nutrients: portionNutrients(per, servings, b.added), day: b.day, meal: b.meal, groupRef: null, createdAt: now, updatedAt: now })
+        .values({ ...rest, ...added, servings: addedServings, nutrients: portionNutrients(per, addedServings, added), ...splitTo, groupRef: null, createdAt: now, updatedAt: now })
         .returning();
+      await tx.update(logCombines).set({ undoneAt: now }).where(eq(logCombines.id, c.id));
       return [back, split];
     });
     return { entries: rows.map(toEntry) };

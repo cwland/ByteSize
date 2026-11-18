@@ -311,6 +311,30 @@ export const logEntries = pgTable(
   (t) => [index("log_entries_user_day_idx").on(t.userId, t.day)]
 );
 
+/**
+ * What a combine did (§28), so Undo splits back exactly that: the entry's amount before and after, what was
+ * added (its amount and the servings it was measured in, which can differ from the entry's own), and where the
+ * addition goes back to. Kept a day; the entry gone → null (Undo is then impossible).
+ */
+export type PortionJson = { servingIndex: number; unit: string; quantity: number; fraction: number };
+export const logCombines = pgTable(
+  "log_combines",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    entryId: integer("entry_id").references(() => logEntries.id, { onDelete: "set null" }),
+    before: jsonb("before").$type<PortionJson>().notNull(),
+    after: jsonb("after").$type<PortionJson>().notNull(),
+    added: jsonb("added").$type<PortionJson>().notNull(),
+    addedServings: jsonb("added_servings").$type<ServingJson[]>().notNull(),
+    splitDay: date("split_day").notNull(),
+    splitMeal: text("split_meal").notNull(),
+    undoneAt: timestamp("undone_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("log_combines_user_created_idx").on(t.userId, t.createdAt)]
+);
+
 /** What a recipe item remembers of its food at save time: used when the food is archived or gone. */
 export type RecipeItemSnapshot = {
   name: string;
