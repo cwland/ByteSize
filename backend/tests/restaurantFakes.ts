@@ -56,9 +56,11 @@ export function fsFood(id: number, name: string, brand: string, servings: Record
 export type RestaurantWeb = {
   spoonSearch?: (q: string, url: URL) => { status: number; json?: unknown; headers?: Record<string, string>; text?: string };
   spoonItem?: (id: string) => { status: number; json?: unknown; headers?: Record<string, string>; text?: string };
-  fsToken?: () => { status: number; json?: unknown };
+  fsToken?: (call: { body: any; headers: Record<string, string> }) => { status: number; json?: unknown };
   fsSearch?: (q: string) => { status: number; json?: unknown; text?: string };
   fsGet?: (id: string) => { status: number; json?: unknown };
+  /** food.find_id_for_barcode (Premier "barcode" scope); default: not found (food_id 0). */
+  fsBarcode?: (code: string, call: { body: any; headers: Record<string, string> }) => { status: number; json?: unknown };
 };
 
 /** Routes the fake food web to the given restaurant handlers (anything else: 404). */
@@ -68,10 +70,11 @@ export function restaurantWeb(t: TestApp, web: RestaurantWeb) {
     const url = new URL(raw);
     if (raw.startsWith(SPOON_SEARCH)) return web.spoonSearch ? web.spoonSearch(url.searchParams.get("query") ?? "", url) : { status: 200, json: { menuItems: [] }, headers: quota(40) };
     if (raw.startsWith(SPOON + "/")) return web.spoonItem ? web.spoonItem(url.pathname.split("/").pop()!) : { status: 404, json: {} };
-    if (raw === FS_TOKEN) return web.fsToken ? web.fsToken() : { status: 200, json: { access_token: `tok-${++tokenN}`, token_type: "Bearer", expires_in: 86400 } };
+    if (raw === FS_TOKEN) return web.fsToken ? web.fsToken(call) : { status: 200, json: { access_token: `tok-${++tokenN}`, token_type: "Bearer", expires_in: 86400 } };
     if (raw === FS_API) {
       const p = new URLSearchParams(String(call.body ?? ""));
       if (p.get("method") === "foods.search") return web.fsSearch ? web.fsSearch(p.get("search_expression") ?? "") : { status: 200, json: { foods: { max_results: "20", total_results: "0", page_number: "0" } } };
+      if (p.get("method") === "food.find_id_for_barcode") return web.fsBarcode ? web.fsBarcode(p.get("barcode") ?? "", call) : { status: 200, json: { food_id: { value: "0" } } };
       if (p.get("method") === "food.get.v2") return web.fsGet ? web.fsGet(p.get("food_id") ?? "") : { status: 200, json: { error: { code: 106, message: "Invalid ID" } } };
     }
     return { status: 404, json: {} };

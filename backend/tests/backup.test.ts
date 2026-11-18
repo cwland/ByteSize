@@ -26,6 +26,8 @@ import {
   recipeItems,
   restaurantFavourites,
   restaurantSearches,
+  foodSearches,
+  fatsecretBarcodes,
   sideEffects,
   targets,
   uploads,
@@ -57,6 +59,8 @@ afterEach(() => {
 });
 afterAll(async () => t.close());
 
+// How many migrations this server has (a backup records it as its schema)
+const SCHEMA = (JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8")) as { entries: unknown[] }).entries.length;
 const NOT_A_BACKUP = "That isn't a ByteSize backup.";
 const NEWER = "This backup is from a newer ByteSize. Update first.";
 const backupsDir = () => path.join(t.app.dataDir, "backups");
@@ -78,6 +82,8 @@ async function seed() {
   await t.api("PUT", "/api/admin/food-sources", { usdaApiKey: "usda-key" });
   await t.db.insert(appSettings).values({ key: "restaurant_quota", value: { left: 10, day: "2026-11-17" } });
   await t.db.insert(restaurantSearches).values({ source: "spoonacular", query: "taco", results: [] });
+  await t.db.insert(foodSearches).values({ source: "off", query: "oats", results: [] }); // a kept search answer: not backed up
+  await t.db.insert(fatsecretBarcodes).values({ barcode: "0000000000789", foodId: "555" }); // kept for good: backed up
   await t.db.insert(appLog).values({ category: "food", level: "warning", event: "A lookup was slow", detail: "line one\nline two", userId: a.id });
 
   const [cache] = await t.db
@@ -233,7 +239,7 @@ describe("backups", () => {
     expect(backup.name).toMatch(/^bytesize-\d{4}-\d{2}-\d{2}-\d{6}\.tar\.gz$/);
     expect(backup.size).toBeGreaterThan(0);
     const json = await backupJson(backup.name);
-    expect(json).toMatchObject({ app: "bytesize", format: 1, schema: 12, createdAt: expect.any(String) });
+    expect(json).toMatchObject({ app: "bytesize", format: 1, schema: SCHEMA, createdAt: expect.any(String) });
     expect(Object.keys(json.tables).sort()).toEqual([...BACKED_UP_TABLES].sort());
     expect(json.tables.app_settings.map((r: any) => r.key)).not.toContain("restaurant_quota");
     expect(json.tables.food_cache.map((r: any) => r.id).sort()).toEqual(before.food_cache.map((r) => JSON.parse(r).id).sort());
@@ -253,7 +259,7 @@ describe("backups", () => {
 
     const r = await t.api("POST", "/api/admin/backups/restore", { name: backup.name, confirm: "RESTORE" });
     expect(r.status).toBe(200);
-    expect(r.body).toEqual({ restored: { schema: 12, users: 3, photos: 1 }, unreadableKeys: [] });
+    expect(r.body).toEqual({ restored: { schema: SCHEMA, users: 3, photos: 1 }, unreadableKeys: [] });
 
     sameData(await snapshot(), before);
     // Nothing points at a cached food that isn't there
@@ -350,7 +356,7 @@ describe("backups", () => {
     const { photo } = await seed();
     const before = await snapshot();
     const jpeg = photoBytes(photo.path);
-    const good = JSON.stringify({ app: "bytesize", format: 1, schema: 12, createdAt: "2026-11-17T00:00:00Z", tables: {} });
+    const good = JSON.stringify({ app: "bytesize", format: 1, schema: SCHEMA, createdAt: "2026-11-17T00:00:00Z", tables: {} });
     const cases: [string, Buffer, string][] = [
       ["plain text", Buffer.from("hello, this is not a backup"), NOT_A_BACKUP],
       ["a gzip that isn't a tar", gzipSync(Buffer.from("just some words ".repeat(100))), NOT_A_BACKUP],
@@ -358,7 +364,7 @@ describe("backups", () => {
       ["garbage JSON", tarGz([tarEntry("bytesize.json", { data: "{ not json" })]), NOT_A_BACKUP],
       ["another app's JSON", tarGz([tarEntry("bytesize.json", { data: good.replace('"bytesize"', '"other"') })]), NOT_A_BACKUP],
       ["tables that aren't lists", tarGz([tarEntry("bytesize.json", { data: good.replace('"tables":{}', '"tables":{"users":5}') })]), NOT_A_BACKUP],
-      ["a newer schema", tarGz([tarEntry("bytesize.json", { data: good.replace('"schema":12', '"schema":13') })]), NEWER],
+      ["a newer schema", tarGz([tarEntry("bytesize.json", { data: good.replace(`"schema":${SCHEMA}`, `"schema":${SCHEMA + 1}`) })]), NEWER],
       ["a newer format", tarGz([tarEntry("bytesize.json", { data: good.replace('"format":1', '"format":2') })]), NEWER],
     ];
     for (const [what, data, message] of cases) {
@@ -392,7 +398,7 @@ describe("backups", () => {
     ]);
     const r = await restoreUpload(archive);
     expect(r.status).toBe(200);
-    expect(r.body.restored).toEqual({ schema: 12, users: 3, photos: 1 });
+    expect(r.body.restored).toEqual({ schema: SCHEMA, users: 3, photos: 1 });
     expect(readFileSync(path.join(uploadsDir(), String(admin.id), "ok.jpg"))).toEqual(ok);
     // The backup had a photo but this archive doesn't: the photos are the archive's
     expect(existsSync(path.join(uploadsDir(), photo.path))).toBe(false);
@@ -483,7 +489,7 @@ describe("backups", () => {
     await seed();
     const before = await snapshot();
     backupHooks.maxJsonBytes = 100;
-    const json = JSON.stringify({ app: "bytesize", format: 1, schema: 12, createdAt: "2026-11-17T00:00:00Z", tables: { notes: [{ text: "x".repeat(200) }] } });
+    const json = JSON.stringify({ app: "bytesize", format: 1, schema: SCHEMA, createdAt: "2026-11-17T00:00:00Z", tables: { notes: [{ text: "x".repeat(200) }] } });
     const r = await restoreUpload(tarGz([tarEntry("bytesize.json", { data: json })]));
     expect(r).toMatchObject({ status: 400, body: { error: "This backup is too large to restore here." } });
     sameData(await snapshot(), before);

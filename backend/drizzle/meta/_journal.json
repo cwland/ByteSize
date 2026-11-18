@@ -85,6 +85,13 @@
       "when": 1795012501537,
       "tag": "0011_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795019437756,
+      "tag": "0012_lookups",
+      "breakpoints": true
     }
   ]
 }

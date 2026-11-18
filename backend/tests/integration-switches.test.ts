@@ -41,10 +41,10 @@ function foodWeb() {
 describe("starting state (also for servers set up before the switches)", () => {
   it("a fresh server: Open Food Facts on, the sources that need a key off", async () => {
     expect((await sources()).body).toEqual({
-      off: { enabled: true },
-      usda: { hasKey: false, enabled: false },
-      spoonacular: { hasKey: false, enabled: false },
-      fatsecret: { hasKey: false, enabled: false },
+      off: { enabled: true, hours: 9999 },
+      usda: { hasKey: false, enabled: false, hours: 9999 },
+      spoonacular: { hasKey: false, enabled: false, hours: 1 },
+      fatsecret: { hasKey: false, enabled: false, hours: 24, plan: "basic", barcodeScopeMissing: false },
     });
   });
 
@@ -53,12 +53,12 @@ describe("starting state (also for servers set up before the switches)", () => {
     await setSourceKeys(t.app, { usdaApiKey: "usda-key", spoonacularApiKey: "spoon-key", fatsecretClientId: FS.id, fatsecretClientSecret: FS.secret });
     expect(JSON.stringify(await storedSources())).not.toContain("enabled");
     expect((await sources()).body).toEqual({
-      off: { enabled: true },
-      usda: { hasKey: true, enabled: true },
-      spoonacular: { hasKey: true, enabled: true },
-      fatsecret: { hasKey: true, enabled: true },
+      off: { enabled: true, hours: 9999 },
+      usda: { hasKey: true, enabled: true, hours: 9999 },
+      spoonacular: { hasKey: true, enabled: true, hours: 1 },
+      fatsecret: { hasKey: true, enabled: true, hours: 24, plan: "basic", barcodeScopeMissing: false },
     });
-    expect((await t.api("GET", "/api/restaurants/status")).body.sources).toEqual(["spoonacular", "fatsecret"]);
+    expect((await t.api("GET", "/api/restaurants/status")).body.sources).toEqual(["fatsecret", "spoonacular"]);
   });
 
   it("Culury: on when linked, off when not (no switch stored)", async () => {
@@ -77,7 +77,7 @@ describe("the admin's switches", () => {
     const before = await storedSources();
     const off = await turn({ usda: false, spoonacular: false, off: false });
     expect(off.status).toBe(200);
-    expect(off.body).toEqual({ off: { enabled: false }, usda: { hasKey: true, enabled: false }, spoonacular: { hasKey: true, enabled: false }, fatsecret: { hasKey: false, enabled: false } });
+    expect(off.body).toEqual({ off: { enabled: false, hours: 9999 }, usda: { hasKey: true, enabled: false, hours: 9999 }, spoonacular: { hasKey: true, enabled: false, hours: 1 }, fatsecret: { hasKey: false, enabled: false, hours: 24, plan: "basic", barcodeScopeMissing: false } });
     const after = await storedSources();
     expect(after.usdaApiKey).toBe(before.usdaApiKey);
     expect(after.spoonacularApiKey).toBe(before.spoonacularApiKey);
@@ -86,21 +86,21 @@ describe("the admin's switches", () => {
 
   it("on with no key yet: shown as on, but unused until a key is saved", async () => {
     foodWeb();
-    expect((await turn({ usda: true })).body.usda).toEqual({ hasKey: false, enabled: true });
+    expect((await turn({ usda: true })).body.usda).toMatchObject({ hasKey: false, enabled: true });
     const r = await t.api("GET", "/api/foods/search?q=greek%20yogurt");
     expect(r.body.errors).toEqual([]);
     expect(usdaCalls()).toHaveLength(0);
     // removing a key later leaves a switch that was turned on, on
     await t.api("PUT", "/api/admin/food-sources", { usdaApiKey: "usda-key" });
     await t.api("PUT", "/api/admin/food-sources", { usdaApiKey: null });
-    expect((await sources()).body.usda).toEqual({ hasKey: false, enabled: true });
+    expect((await sources()).body.usda).toMatchObject({ hasKey: false, enabled: true });
   });
 
   it("only the admin can change them", async () => {
     const sam = await t.createUser("sam");
     const as = asUser(t, sam.token);
     expect((await as("PUT", "/api/admin/food-sources", { enabled: { off: false } })).status).toBe(403);
-    expect((await sources()).body.off).toEqual({ enabled: true });
+    expect((await sources()).body.off).toMatchObject({ enabled: true });
   });
 
   it("a switch save and a key save at the same time both stick (no lost update)", async () => {
@@ -177,7 +177,7 @@ describe("Open Food Facts and USDA off", () => {
 
   it("off, then on again: the saved key is kept and used again", async () => {
     await turn({ usda: false });
-    expect((await sources()).body.usda).toEqual({ hasKey: true, enabled: false });
+    expect((await sources()).body.usda).toMatchObject({ hasKey: true, enabled: false });
     await t.api("GET", "/api/foods/search?q=greek%20yogurt");
     expect(usdaCalls()).toHaveLength(0);
     await turn({ usda: true });
@@ -244,7 +244,8 @@ describe("restaurant sources off", () => {
   it("off, then on again: the saved key is used again", async () => {
     await turn({ spoonacular: false });
     await turn({ spoonacular: true });
-    expect((await sources()).body.spoonacular).toEqual({ hasKey: true, enabled: true });
+    expect((await sources()).body.spoonacular).toMatchObject({ hasKey: true, enabled: true });
+    restaurantWeb(t, { spoonSearch: () => ({ status: 200, json: { menuItems: [bowl] }, headers: quota(40) }) }); // FatSecret (asked first) finds nothing
     const r = await t.api("GET", "/api/restaurants/search?q=chipotle");
     expect(r.body.items[0]).toMatchObject({ source: "spoonacular" });
     expect(spoonCalls(t)[0].headers["x-api-key"]).toBe("spoon-key");

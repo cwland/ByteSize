@@ -219,3 +219,14 @@ export const weightImportPreview = {
     { day: "2026-11-15", weightKg: 214.8 * 0.45359237, existing: true },
   ],
 };
+
+// GET /api/admin/food-sources: every source on with its key, default hours, FatSecret on Basic; over: per source
+export function foodSourcesJson(over: Record<string, Record<string, unknown>> = {}) {
+  const base: Record<string, Record<string, unknown>> = {
+    off: { enabled: true, hours: 9999 },
+    usda: { hasKey: true, enabled: true, hours: 9999 },
+    spoonacular: { hasKey: true, enabled: true, hours: 1 },
+    fatsecret: { hasKey: true, enabled: true, hours: 24, plan: "basic", barcodeScopeMissing: false },
+  };
+  return Object.fromEntries(Object.entries(base).map(([k, v]) => [k, { ...v, ...over[k] }]));
+}

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { asUser } from "./isolation.js";
-import { cleanupRestaurants } from "../src/lib/restaurants/index.js";
+import { cleanupLookups } from "../src/lib/lookups.js";
 import { fsCalls, fsFood, fsHit, NO_KEY_MESSAGE, QUOTA_MESSAGE, quota, restaurantWeb, setRestaurantKeys, spoonCalls, spoonItem, tokenCalls } from "./restaurantFakes.js";
 
 let t: TestApp;
@@ -23,10 +23,10 @@ const burrito = fsFood(101, "Chicken Burrito", "Chipotle", [{ serving_descriptio
 
 describe("restaurant keys (admin)", () => {
   it("are saved encrypted, only reported as set, and can be removed", async () => {
-    expect((await t.api("GET", "/api/admin/food-sources")).body).toEqual({ off: { enabled: true }, usda: { hasKey: false, enabled: false }, spoonacular: { hasKey: false, enabled: false }, fatsecret: { hasKey: false, enabled: false } });
+    expect((await t.api("GET", "/api/admin/food-sources")).body).toEqual({ off: { enabled: true, hours: 9999 }, usda: { hasKey: false, enabled: false, hours: 9999 }, spoonacular: { hasKey: false, enabled: false, hours: 1 }, fatsecret: { hasKey: false, enabled: false, hours: 24, plan: "basic", barcodeScopeMissing: false } });
     await setRestaurantKeys(t, { spoonacular: " spoon-key ", fatsecret: FS });
     const got = await t.api("GET", "/api/admin/food-sources");
-    expect(got.body).toEqual({ off: { enabled: true }, usda: { hasKey: false, enabled: false }, spoonacular: { hasKey: true, enabled: true }, fatsecret: { hasKey: true, enabled: true } });
+    expect(got.body).toEqual({ off: { enabled: true, hours: 9999 }, usda: { hasKey: false, enabled: false, hours: 9999 }, spoonacular: { hasKey: true, enabled: true, hours: 1 }, fatsecret: { hasKey: true, enabled: true, hours: 24, plan: "basic", barcodeScopeMissing: false } });
     const stored = JSON.stringify((await t.db.execute(sql`select value from app_settings`)).rows);
     for (const secret of ["spoon-key", "fs-secret", "fs-id"]) {
       expect(JSON.stringify(got.body)).not.toContain(secret);
@@ -34,14 +34,14 @@ describe("restaurant keys (admin)", () => {
     }
     // Leaving a key out keeps it; the USDA key is untouched by restaurant keys
     await t.api("PUT", "/api/admin/food-sources", { usdaApiKey: "usda" });
-    expect((await t.api("GET", "/api/admin/food-sources")).body).toEqual({ off: { enabled: true }, usda: { hasKey: true, enabled: true }, spoonacular: { hasKey: true, enabled: true }, fatsecret: { hasKey: true, enabled: true } });
+    expect((await t.api("GET", "/api/admin/food-sources")).body).toEqual({ off: { enabled: true, hours: 9999 }, usda: { hasKey: true, enabled: true, hours: 9999 }, spoonacular: { hasKey: true, enabled: true, hours: 1 }, fatsecret: { hasKey: true, enabled: true, hours: 24, plan: "basic", barcodeScopeMissing: false } });
     await setRestaurantKeys(t, { spoonacular: null, fatsecret: null });
-    expect((await t.api("GET", "/api/admin/food-sources")).body).toEqual({ off: { enabled: true }, usda: { hasKey: true, enabled: true }, spoonacular: { hasKey: false, enabled: false }, fatsecret: { hasKey: false, enabled: false } });
+    expect((await t.api("GET", "/api/admin/food-sources")).body).toEqual({ off: { enabled: true, hours: 9999 }, usda: { hasKey: true, enabled: true, hours: 9999 }, spoonacular: { hasKey: false, enabled: false, hours: 1 }, fatsecret: { hasKey: false, enabled: false, hours: 24, plan: "basic", barcodeScopeMissing: false } });
   });
 
   it("a FatSecret client ID without a secret doesn't count as set", async () => {
     await t.api("PUT", "/api/admin/food-sources", { fatsecretClientId: "only-id" });
-    expect((await t.api("GET", "/api/admin/food-sources")).body.fatsecret).toEqual({ hasKey: false, enabled: false });
+    expect((await t.api("GET", "/api/admin/food-sources")).body.fatsecret).toMatchObject({ hasKey: false, enabled: false });
     expect((await t.api("GET", "/api/restaurants/status")).body.sources).toEqual([]);
   });
 
@@ -106,21 +106,21 @@ describe("restaurant search", () => {
       lookupsLeft: 38,
       errors: [],
     });
-    expect(fsCalls(t)).toEqual([]); // FatSecret only when Spoonacular can't help
-    expect((await t.api("GET", "/api/restaurants/status")).body).toEqual({ sources: ["spoonacular", "fatsecret"], lookupsLeft: 38, turnedOff: false });
+    expect(fsCalls(t, "foods.search")).toHaveLength(1); // FatSecret is asked first; it found nothing
+    expect((await t.api("GET", "/api/restaurants/status")).body).toEqual({ sources: ["fatsecret", "spoonacular"], lookupsLeft: 38, turnedOff: false });
   });
 
-  it("the same search within 24 h makes one outside call; after 24 h it asks again", async () => {
+  it("the same search within Spoonacular's hours (1 h by default) makes one outside call; after them it asks again", async () => {
     t.clock.date = new Date("2026-11-17T15:00:00Z");
     await setRestaurantKeys(t, { spoonacular: "spoon-key" });
     restaurantWeb(t, { spoonSearch: () => ({ status: 200, json: { menuItems: [bowl] }, headers: quota(40) }) });
     const first = await search("Chipotle bowl");
-    t.clock.date = new Date("2026-11-18T14:59:00Z");
+    t.clock.date = new Date("2026-11-17T15:59:00Z");
     const again = await search("  chipotle   BOWL ");
     expect(spoonCalls(t)).toHaveLength(1);
     expect(again.body.items).toEqual(first.body.items);
     expect(await count("food_cache")).toBe(0); // search results aren't foods yet
-    t.clock.date = new Date("2026-11-18T15:00:01Z");
+    t.clock.date = new Date("2026-11-17T16:00:01Z");
     await search("chipotle bowl");
     expect(spoonCalls(t)).toHaveLength(2);
     expect(await count("restaurant_searches")).toBe(1);
@@ -147,27 +147,24 @@ describe("restaurant search", () => {
     expect(t.sleeps).toEqual([]); // a quiet second: no wait
   });
 
-  it("out of points (402): a clear message, FatSecret instead, and no more Spoonacular calls today", async () => {
+  it("out of points (402): a clear message, and no more Spoonacular calls today", async () => {
     t.clock.date = new Date("2026-11-17T15:00:00Z");
     await setRestaurantKeys(t, { spoonacular: "spoon-key", fatsecret: FS });
     restaurantWeb(t, {
       spoonSearch: () => ({ status: 402, json: { status: "failure", code: 402, message: "Your daily points limit of 50 has been reached." } }),
-      fsSearch: (q) => ({ status: 200, json: { foods: { food: [fsHit(101, "Chicken Burrito", "Chipotle", 1070), fsHit(102, `${q} plate`, "Panda Express", 900)] } } }),
+      fsSearch: (q) => (q === "panda" ? { status: 200, json: { foods: { food: [fsHit(102, "Orange chicken", "Panda Express", 900)] } } } : { status: 200, json: { foods: {} } }),
     });
     const r = await search("chipotle");
     expect(r.status).toBe(200);
-    expect(r.body.items.map((i: any) => [i.source, i.chain, i.name, i.calories])).toEqual([
-      ["fatsecret", "Chipotle", "Chicken Burrito", 1070],
-      ["fatsecret", "Panda Express", "chipotle plate", 900],
-    ]);
-    expect(r.body.lookupsLeft).toBe(0);
-    expect(r.body.errors).toEqual([{ source: "spoonacular", message: QUOTA_MESSAGE }]);
-    await search("panda");
+    expect(r.body).toEqual({ items: [], lookupsLeft: 0, errors: [{ source: "spoonacular", message: QUOTA_MESSAGE }] });
+    const p = await search("panda"); // FatSecret (asked first) still answers
+    expect(p.body.items.map((i: any) => [i.source, i.chain, i.name, i.calories])).toEqual([["fatsecret", "Panda Express", "Orange chicken", 900]]);
+    await search("taco bell");
     expect(spoonCalls(t)).toHaveLength(1); // not asked again today
-    expect(fsCalls(t, "foods.search")).toHaveLength(2);
-    // FatSecret search results are never kept
+    expect(fsCalls(t, "foods.search")).toHaveLength(3);
+    // FatSecret's answers are kept (24 h), never as foods
     expect(await count("food_cache")).toBe(0);
-    expect(await count("restaurant_searches")).toBe(0);
+    expect(await count("restaurant_searches")).toBe(3);
     // A new UTC day: Spoonacular is asked again
     t.clock.date = new Date("2026-11-18T00:00:01Z");
     restaurantWeb(t, { spoonSearch: () => ({ status: 200, json: { menuItems: [bowl] }, headers: quota(48.9) }) });
@@ -206,45 +203,47 @@ describe("restaurant search", () => {
     expect(r.status).toBe(200);
     expect(r.body.items).toEqual([]);
     expect(r.body.errors).toEqual([
-      { source: "spoonacular", message: "Spoonacular sent something unexpected" },
       { source: "fatsecret", message: "FatSecret answered with an error (500)" },
+      { source: "spoonacular", message: "Spoonacular sent something unexpected" },
     ]);
     expect(spoonCalls(t)).toHaveLength(1);
     expect(fsCalls(t, "foods.search")).toHaveLength(1);
     const log = await appLog();
     expect(log.map((l) => [l.category, l.source, l.event])).toEqual([
-      ["food", "Spoonacular", "Spoonacular search failed"],
       ["food", "FatSecret", "FatSecret search failed"],
+      ["food", "Spoonacular", "Spoonacular search failed"],
     ]);
     expect(JSON.stringify(log)).not.toMatch(/spoon-key|fs-secret|tok-/);
     // A failure isn't kept as an answer: the next search asks again
     t.foodWeb.down = true;
     const down = await search("chipotle");
     expect(down.body.errors).toEqual([
-      { source: "spoonacular", message: "Couldn't reach Spoonacular" },
       { source: "fatsecret", message: "Couldn't reach FatSecret" },
+      { source: "spoonacular", message: "Couldn't reach Spoonacular" },
     ]);
   });
 
-  it("Spoonacular finding nothing falls back to FatSecret", async () => {
+  it("FatSecret finding nothing falls back to Spoonacular", async () => {
     await setRestaurantKeys(t, { spoonacular: "spoon-key", fatsecret: FS });
-    restaurantWeb(t, { spoonSearch: () => ({ status: 200, json: { menuItems: [] }, headers: quota(30) }), fsSearch: () => ({ status: 200, json: { foods: { food: fsHit(7, "Baconator", "Wendy's", 950) } } }) });
-    const r = await search("baconator");
-    expect(r.body).toEqual({ items: [{ source: "fatsecret", sourceId: "7", chain: "Wendy's", name: "Baconator", calories: 950, cacheId: null, imageUrl: null }], lookupsLeft: 30, errors: [] });
+    restaurantWeb(t, { spoonSearch: () => ({ status: 200, json: { menuItems: [bowl] }, headers: quota(30) }) });
+    const r = await search("chipotle bowl");
+    expect(r.body).toEqual({ items: [{ source: "spoonacular", sourceId: "1001", chain: "Chipotle", name: "Chicken Burrito Bowl", calories: 655, cacheId: null, imageUrl: bowl.image }], lookupsLeft: 30, errors: [] });
+    expect(fsCalls(t, "foods.search")).toHaveLength(1);
   });
 
-  it("FatSecret alone: no lookup count, its token reused, nothing stored", async () => {
+  it("FatSecret alone: no lookup count; its answer kept (one call), never stored as a food", async () => {
     await setRestaurantKeys(t, { fatsecret: FS });
     restaurantWeb(t, { fsSearch: () => ({ status: 200, json: { foods: { food: fsHit(7, "Baconator", "Wendy's", 950) } } }) });
     expect((await t.api("GET", "/api/restaurants/status")).body).toEqual({ sources: ["fatsecret"], lookupsLeft: null, turnedOff: false });
     await search("baconator");
     const r = await search("baconator");
     expect(r.body.lookupsLeft).toBeNull();
-    expect(fsCalls(t, "foods.search")).toHaveLength(2); // not kept between requests
+    expect(r.body.items.map((i: any) => i.name)).toEqual(["Baconator"]);
+    expect(fsCalls(t, "foods.search")).toHaveLength(1); // kept for FatSecret's hours (24 h)
     expect(tokenCalls(t)).toHaveLength(1);
     expect(spoonCalls(t)).toEqual([]);
     expect(await count("food_cache")).toBe(0);
-    expect(await count("restaurant_searches")).toBe(0);
+    expect(await count("restaurant_searches")).toBe(1);
   });
 });
 
@@ -261,7 +260,8 @@ describe("restaurant items", () => {
     expect(one.body.lookupsLeft).toBe(39);
     expect(one.body.food).toMatchObject({ kind: "cache", name: "Chicken Burrito Bowl", brand: "Chipotle", source: "spoonacular", servings: [{ label: "1 item", grams: 500 }], nutrients: { calories: 655, fat_g: 21, protein_g: 32, carbs_g: 40 } });
     const two = await t.api("POST", "/api/restaurants/item", { source: "spoonacular", sourceId: "1001" });
-    expect(two.body.food).toEqual(one.body.food);
+    expect(one.body.food.savedAt).toBeNull(); // fetched just now
+    expect(two.body.food).toEqual({ ...one.body.food, savedAt: expect.any(String) }); // the kept copy
     expect(spoonCalls(t).filter((c) => !c.url.includes("/search"))).toHaveLength(1);
     // The cached search now points at the saved food (no new call)
     const again = await search("chipotle bowl");
@@ -408,20 +408,23 @@ describe("restaurant cleanup", () => {
     return row.id;
   }
 
-  it("reopening a cached FatSecret item keeps it for another 24 h, so cleanup can't remove it mid-log", async () => {
+  it("opening a FatSecret item past its hours fetches it again (one call), so cleanup keeps it another 24 h", async () => {
     await setRestaurantKeys(t, { fatsecret: FS });
+    restaurantWeb(t, { fsGet: () => ({ status: 200, json: { food: burrito } }) });
     const now = new Date("2026-11-20T12:00:00Z");
-    const id = await fsRow(101, new Date(now.getTime() - day + 60_000)); // opened 23 h 59 m ago
+    const id = await fsRow(101, new Date(now.getTime() - day - 60_000)); // fetched 24 h 1 m ago
     t.clock.date = now;
     const r = await t.api("POST", "/api/restaurants/item", { source: "fatsecret", sourceId: "101" });
-    expect(r.body.food.id).toBe(id);
+    expect(r.body.food).toMatchObject({ id, name: "Chicken Burrito", savedAt: null });
+    expect(fsCalls(t, "food.get.v2")).toHaveLength(1);
     t.clock.date = new Date(now.getTime() + 2 * 60_000);
-    await cleanupRestaurants(t.app);
+    await cleanupLookups(t.app);
     expect(await count("food_cache")).toBe(1);
     expect((await t.api("POST", "/api/restaurants/item", { source: "fatsecret", sourceId: "101" })).status).toBe(200);
+    expect(fsCalls(t, "food.get.v2")).toHaveLength(1);
   });
 
-  it("removes old FatSecret foods nobody starred, logged, used in a recipe or corrected; keeps the rest", async () => {
+  it("removes old restaurant foods nobody starred, logged, used in a recipe or corrected; keeps the rest", async () => {
     const now = new Date("2026-11-20T12:00:00Z");
     const old = new Date(now.getTime() - day - 1000);
     const userId = (await t.db.execute<{ id: number }>(sql`select id from users where username = 'cory'`)).rows[0].id;
@@ -431,7 +434,7 @@ describe("restaurant cleanup", () => {
     const logged = await fsRow(4, old);
     const inRecipe = await fsRow(5, old);
     const overridden = await fsRow(6, old);
-    await t.db.execute(sql`insert into food_cache (source, source_id, name, servings, nutrients, fetched_at) values ('spoonacular', '9', 'Spoon', '[]', '{}', ${old.toISOString()})`);
+    await t.db.execute(sql`insert into food_cache (source, source_id, name, servings, nutrients, fetched_at) values ('spoonacular', '9', 'Spoon', '[]', '{}', ${old.toISOString()}), ('spoonacular', '10', 'Spoon new', '[]', '{}', ${new Date(now.getTime() - 30 * 60_000).toISOString()})`);
     await t.db.execute(sql`insert into restaurant_favourites (user_id, cache_id, chain) values (${userId}, ${starred}, 'Chipotle')`);
     await t.db.execute(sql`insert into log_entries (user_id, day, meal, name, icon, source, source_ref, unit, quantity, per_serving, servings, nutrients) values (${userId}, '2026-11-17', 'lunch', 'x', 'x', 'cache', ${"cache:" + logged}, 'serving', 1, '{}', '[]', '{}')`);
     const [recipe] = (await t.db.execute<{ id: number }>(sql`insert into user_foods (user_id, kind, name, servings, nutrients) values (${userId}, 'recipe', 'R', '[]', '{}') returning id`)).rows;
@@ -440,14 +443,14 @@ describe("restaurant cleanup", () => {
     // searches: one stale, one fresh
     await t.db.execute(sql`insert into restaurant_searches (source, query, results, fetched_at) values ('spoonacular', 'stale', '[]', ${old.toISOString()}), ('spoonacular', 'fresh', '[]', ${now.toISOString()})`);
     t.clock.date = now;
-    await cleanupRestaurants(t.app);
+    await cleanupLookups(t.app);
     const left = (await t.db.execute<{ id: number; source: string }>(sql`select id, source from food_cache order by id`)).rows;
     const fsLeft = left.filter((r) => r.source === "fatsecret").map((r) => r.id);
     expect(fsLeft).not.toContain(unused);
     expect(fsLeft).toEqual(expect.arrayContaining([recent, starred, logged, inRecipe, overridden]));
-    expect(left.some((r) => r.source === "spoonacular")).toBe(true); // Spoonacular items are kept
+    expect(left.filter((r) => r.source === "spoonacular")).toHaveLength(1); // Spoonacular items: kept 1 h
     expect((await t.db.execute<{ query: string }>(sql`select query from restaurant_searches`)).rows.map((r) => r.query)).toEqual(["fresh"]);
     const log = await appLog();
-    expect(log.some((l) => l.category === "schedule" && l.source === "Restaurant cleanup")).toBe(true);
+    expect(log.some((l) => l.category === "schedule" && l.source === "Lookup cleanup")).toBe(true);
   });
 });

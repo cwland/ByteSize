@@ -7,6 +7,7 @@ import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
 import { addDays, DAY, localDay, mealFor, MEALS, streak, suggestedFor, todayFor, userTimezone, type Meal } from "../lib/days.js";
 import { cleanNutrients, loadFood, toResult, type FoodResult } from "../lib/foods.js";
+import { wholeKeptFood } from "../lib/restaurants/index.js";
 import { loadCuluryRecipe } from "../lib/culury.js";
 import { itemList, portionFields, quickMealParts } from "../lib/recipes.js";
 import { amountFactor, scaleNutrients, sumNutrients, UnitError, type Nutrients, type Serving, type Unit } from "../lib/nutrients.js";
@@ -318,7 +319,8 @@ export default async function foodLogRoutes(app: FastifyInstance) {
       }
     } else {
       if (b.nutrients) throw badRequest(ESTIMATE_ONLY);
-      food = await loadFood(db, userId, { kind: b.food.kind, id: b.food.id });
+      // A kept food is used now; a FatSecret search summary is fetched whole before it is snapshotted
+      food = b.food.kind === "cache" ? await wholeKeptFood(app, userId, b.food.id) : await loadFood(db, userId, { kind: b.food.kind, id: b.food.id });
     }
     // A quick meal is logged as one entry per item (POST /api/log/meal), never as one opaque entry
     if (food.foodKind === "quick_meal") throw badRequest(QUICK_MEAL_HERE);

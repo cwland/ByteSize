@@ -2,8 +2,11 @@ import type { Nutrients, Serving } from "../nutrients.js";
 
 // A food as an outside source describes it, already in ByteSize's shape (nutrients for servings[0]).
 export type SourceName = "off" | "usda" | "spoonacular" | "fatsecret";
-/** quota: out of today's lookups; down: unreachable, slow or erroring; bad_key: credentials refused; bad_data: an unusable answer. */
-export type SourceErrorKind = "quota" | "down" | "bad_key" | "bad_data";
+/**
+ * quota: out of today's lookups; down: unreachable, slow or erroring; bad_key: credentials refused; bad_data: an
+ * unusable answer; no_scope: the key's plan doesn't include this kind of lookup (FatSecret barcodes on Basic).
+ */
+export type SourceErrorKind = "quota" | "down" | "bad_key" | "bad_data" | "no_scope";
 
 export type SourceFood = {
   source: SourceName;

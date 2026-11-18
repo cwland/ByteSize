@@ -1,4 +1,5 @@
-// USDA FoodData Central: /foods/search for text and (Branded) barcodes. Values are per 100 g (100 ml).
+// USDA FoodData Central: /foods/search for text and (Branded) barcodes, /food/{fdcId} for one kept food again.
+// Values are per 100 g (100 ml).
 import { normalizeBarcode } from "../barcode.js";
 import type { Nutrients, Serving } from "../nutrients.js";
 import { num, requestJson, round, sourceStatusError, type FoodFetch, type SourceFood } from "./types.js";
@@ -122,4 +123,14 @@ export async function usdaByBarcode(fetchFn: FoodFetch, apiKey: string, code: st
   const foods = await search(fetchFn, apiKey, code, ["Branded"], timeoutMs);
   const hit = foods.find((f) => f?.gtinUpc && normalizeBarcode(String(f.gtinUpc)) === want);
   return hit ? normalizeUsda(hit) : null;
+}
+
+/** One food by its FDC id (Check for changes); null when USDA no longer has it. */
+export async function usdaById(fetchFn: FoodFetch, apiKey: string, fdcId: string, timeoutMs: number): Promise<SourceFood | null> {
+  if (!/^\d{1,19}$/.test(fdcId)) return null;
+  const url = `https://api.nal.usda.gov/fdc/v1/food/${fdcId}?api_key=${encodeURIComponent(apiKey)}`;
+  const { status, json } = await requestJson(fetchFn, "usda", url, { method: "GET", headers: { Accept: "application/json" } }, timeoutMs);
+  if (status === 404) return null;
+  if (status < 200 || status >= 300) throw sourceStatusError("usda", status);
+  return json && typeof json === "object" && text(json.description) ? normalizeUsda(json) : null;
 }
