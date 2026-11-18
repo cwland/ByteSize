@@ -16,7 +16,7 @@ import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
 import { secondaryButton } from "../ui/styles";
 import DayTotals from "./DayTotals";
-import PageHeader, { longDate } from "../PageHeader";
+import { DayHeader } from "../PageHeader";
 import { useWide } from "../../wide";
 
 // What one base serving of a logged food has (entries keep the scaled numbers; the preview needs per-serving)
@@ -94,11 +94,11 @@ export default function LogPage() {
   return (
     <div className={`flex flex-col ${wide ? "gap-5" : "gap-3"}`}>
       {wide ? (
-        <PageHeader title="Log" note={longDate(day)} days>
+        <DayHeader title="Log">
           <a href={myFoodsHref("/log")} className="rounded-full bg-container px-4 py-2 text-sm font-bold text-link hover:bg-pressed">
             My foods
           </a>
-        </PageHeader>
+        </DayHeader>
       ) : (
         <h1 className="sr-only">Log</h1>
       )}

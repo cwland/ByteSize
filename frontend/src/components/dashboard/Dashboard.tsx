@@ -16,7 +16,7 @@ import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { primaryButton, secondaryButton } from "../ui/styles";
 import WeightCard from "../weight/WeightCard";
 import Glp1Card from "../glp1/Glp1Card";
-import PageHeader, { longDate } from "../PageHeader";
+import { DayHeader } from "../PageHeader";
 import TodaysFood from "./TodaysFood";
 import { useWide } from "../../wide";
 
@@ -30,6 +30,9 @@ function greeting(timeZone: string) {
   }
   return hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 }
+
+// "Cory Landers" -> "Cory"
+const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 
 // The wide Dashboard's quick buttons: each opens Add food at that view for the meal of the moment
 const QUICK: { start: AddFoodStart; label: string; Icon: typeof Search }[] = [
@@ -157,7 +160,7 @@ export default function Dashboard() {
   const column = "flex min-w-0 flex-col gap-4";
   const layout = wide ? (
     <div className="flex flex-col gap-5">
-      <PageHeader title={longDate(day)} sub={`${greeting(user.timezone)}, ${user.displayName ?? user.username}${streakNote}`} days />
+      <DayHeader sub={`${greeting(user.timezone)}, ${firstName(user.displayName ?? user.username)}${streakNote}`} />
       {error && <Notice msg={{ ok: false, text: error }} />}
       <NewBadge />
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,19rem),1fr))] items-start gap-5">

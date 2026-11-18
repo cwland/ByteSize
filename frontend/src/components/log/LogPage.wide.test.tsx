@@ -51,6 +51,12 @@ describe("Log on a wide screen", () => {
     show();
     expect(screen.getByRole("heading", { level: 1, name: "Log" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Days" })).toBeInTheDocument();
+    // The same compact, centred block as the Dashboard's, without the greeting line
+    const header = screen.getByRole("banner", { name: "Day" });
+    expect(header).toHaveClass("items-center", "text-center");
+    expect(within(header).getByText("Monday, Nov 16")).toHaveClass("text-lg", "font-bold");
+    expect(within(header).getByRole("group", { name: "Days" })).toBeInTheDocument();
+    expect(header).not.toHaveTextContent(/Good (morning|afternoon|evening)/);
     expect(screen.getByRole("link", { name: "My foods" })).toHaveAttribute("href", "#/log/my-foods?from=/log");
     expect(await screen.findByRole("region", { name: "Breakfast" })).toBeInTheDocument();
   });

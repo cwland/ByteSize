@@ -57,11 +57,32 @@ beforeEach(() => {
 afterEach(() => void vi.useRealTimers());
 
 describe("Dashboard on a wide screen", () => {
-  it("has a header with the selected day, a greeting with the streak, and the week strip", async () => {
+  it("has one compact, centred header: the day above the week strip, a greeting with the streak under it", async () => {
     show();
-    expect(screen.getByRole("heading", { level: 1, name: "Monday, November 16" })).toBeInTheDocument();
-    expect(await screen.findByText("Good afternoon, Cory · 3-day streak")).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "Days" })).toBeInTheDocument();
+    const header = screen.getByRole("banner", { name: "Day" });
+    expect(header).toHaveClass("items-center", "text-center");
+    const date = within(header).getByRole("heading", { level: 1, name: "Monday, Nov 16" });
+    expect(date).toHaveClass("text-lg", "font-bold");
+    const strip = within(header).getByRole("group", { name: "Days" });
+    const greeting = await within(header).findByText("Good afternoon, Cory · 3-day streak");
+    expect(greeting).toHaveClass("text-sm", "text-subtle");
+    // in that order: day, strip, greeting
+    expect(date.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(strip.compareDocumentPosition(greeting) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // smaller day buttons: about 40 px wide and 52 px tall
+    expect(within(strip).getByRole("button", { name: "Mon 16" })).toHaveClass("w-10", "h-13");
+  });
+
+  it("the greeting uses the first name only, and leaves out the streak when there is none", async () => {
+    wideScreen();
+    fakeServer({ ...m3Routes, ...culuryOff, ...restaurantRoutes, "GET /api/day/:date": () => ({ ...day, streak: 0 }), "GET /api/settings/me": () => settingsMe, "GET /api/weight": () => weightJson(), "GET /api/foods/recent": () => ({ foods: [] }) });
+    renderWithSession(
+      <SelectedDayProvider timeZone="America/Boise">
+        <Dashboard />
+      </SelectedDayProvider>,
+      { timezone: "America/Boise", displayName: "Cory Landers" },
+    );
+    expect(await screen.findByText("Good afternoon, Cory")).toBeInTheDocument();
   });
 
   it("lays out three sections: budget and quick buttons, Today's food, and water/weight/GLP-1/streak", async () => {
