@@ -9,7 +9,13 @@ import { appOriginsFromEnv } from "../src/routes/oauth.js";
 // Sign in with OAuth / OpenID Connect (Settings › Security, admin config)
 let t: TestApp;
 const idp = fakeIdp();
-beforeAll(async () => (t = await setupTestApp({ oauthFetch: idp.fetchImpl })));
+const authentik = fakeIdp("https://auth.test/application/o/bytesize/"); // Authentik's issuers end in a slash
+// The pretend internet: each provider answers at its own host
+const oauthFetch = ((input: string | URL | Request, init?: RequestInit) => {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  return (new URL(url).host === "auth.test" ? authentik : idp).fetchImpl(input, init);
+}) as typeof fetch;
+beforeAll(async () => (t = await setupTestApp({ oauthFetch })));
 beforeEach(async () => {
   await t.reset();
   await t.login(); // cory, cory@example.com, admin
@@ -42,9 +48,9 @@ async function callback(url: string, cookie: string | null) {
   return { to, params: new URLSearchParams(to.hash.split("?")[1] ?? ""), res: cb };
 }
 // Click the button, approve at the provider, come back: where the app sends the browser, and its hash's parameters
-async function oauth(who: { sub: string; email?: string; verified?: boolean }, path = "/api/auth/oauth/start", token: string | null = null, cookie?: string | null) {
+async function oauth(who: { sub: string; email?: string; verified?: boolean }, path = "/api/auth/oauth/start", token: string | null = null, cookie?: string | null, provider = idp) {
   const b = await begin(path, token);
-  const back = idp.approve(b.url, who);
+  const back = provider.approve(b.url, who);
   return callback(back.pathname + back.search, cookie === undefined ? b.cookie : cookie);
 }
 const NOT_LINKED = "This sign-in isn't linked to a ByteSize account yet. Sign in with your password, then use Link my account in Settings › Security.";
@@ -302,6 +308,41 @@ describe("OAuth only", () => {
     expect((await t.api("PUT", "/api/settings/oauth", settings({ issuerUrl: `${idp.issuer}/.well-known/openid-configuration`, oauthOnly: true }))).body.settings.oauthOnly).toBe(true);
   });
 
+  it("an issuer with a trailing slash is a different issuer without it (as discovery sees it)", async () => {
+    await save({ issuerUrl: authentik.issuer });
+    const linked = await oauth({ sub: "ak-cory" }, "/api/auth/oauth/link/start", t.getToken(), undefined, authentik);
+    expect(linked.params.get("oauth"), linked.params.get("oauth_error") ?? "").toBe("linked");
+    expect((await t.api("PUT", "/api/settings/oauth", settings({ issuerUrl: authentik.issuer, oauthOnly: true }))).body.settings.oauthOnly).toBe(true);
+    // the same address without its slash: OAuth only goes off, and can't come back on there
+    const noSlash = authentik.issuer.replace(/\/$/, "");
+    const moved = await t.api("PUT", "/api/settings/oauth", settings({ issuerUrl: noSlash, oauthOnly: true }));
+    expect(moved.body.settings.oauthOnly).toBe(false);
+    expect((await t.api("PUT", "/api/settings/oauth", settings({ issuerUrl: noSlash, oauthOnly: true }))).body.error).toMatch(/Link your account first/);
+    // back to the issuer as the provider writes it (a change again: OAuth only stays off), then on
+    await save({ issuerUrl: authentik.issuer });
+    const on = await t.api("PUT", "/api/settings/oauth", settings({ issuerUrl: authentik.issuer, oauthOnly: true }));
+    expect(on.body.settings?.oauthOnly, JSON.stringify(on.body)).toBe(true);
+  });
+
+  it("turns itself off when the client ID changes (a provider may give each client its own subjects)", async () => {
+    await save();
+    await link();
+    await save({ oauthOnly: true });
+    const r = await t.api("PUT", "/api/settings/oauth", settings({ clientId: "another-client", oauthOnly: true }));
+    expect(r.body.settings.oauthOnly).toBe(false);
+    expect(r.body.message).toMatch(/OAuth only is off/);
+  });
+
+  it("checks with the provider that it is the one the admin is linked at", async () => {
+    await save();
+    await link();
+    idp.state.down = true;
+    const r = await t.api("PUT", "/api/settings/oauth", settings({ oauthOnly: true }));
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/Couldn't reach the provider/);
+    expect((await t.api("GET", "/api/settings/oauth")).body.settings.oauthOnly).toBe(false);
+  });
+
   it("needs OAuth on", async () => {
     await save();
     await link();
@@ -319,6 +360,29 @@ describe("each sign-in belongs to the browser that started it", () => {
     expect(b.setCookie).toMatch(/Max-Age=600/i);
     expect(b.setCookie).toMatch(/Path=\/api\/auth\/oauth/i);
     expect(b.setCookie).not.toContain(state);
+  });
+
+  it("two tabs: each sign-in has its own cookie, so starting a second doesn't break the first", async () => {
+    await save();
+    await link();
+    // a browser's cookie jar: one value per cookie name
+    const jar = new Map<string, string>();
+    const keep = (setCookie: string) => {
+      const [pair] = setCookie.split(";");
+      const at = pair.indexOf("=");
+      jar.set(pair.slice(0, at), pair.slice(at + 1));
+    };
+    const header = () => [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
+    const a = await begin();
+    keep(a.setCookie);
+    const b = await begin();
+    keep(b.setCookie);
+    expect(jar.size).toBe(2);
+    for (const flow of [a, b]) {
+      const back = idp.approve(flow.url, { sub: "ak-cory" });
+      const r = await callback(back.pathname + back.search, header());
+      expect(r.params.get("ticket"), r.params.get("oauth_error") ?? "").toBeTruthy();
+    }
   });
 
   it("coming back without the cookie, or with another sign-in's, fails (sign in and Link my account)", async () => {

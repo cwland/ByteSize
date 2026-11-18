@@ -845,7 +845,7 @@ same at start. README "Locked out?" section with the Docker and Mac commands.
 **OAuth / OpenID Connect sign-in (Settings › Security, admin config).** Copied from Culury: on/off, button name,
 issuer/discovery URL, client ID, client secret (encrypted, eye + copy), redirect URI shown to copy, **Test
 connection**, **Link my account** for each person, optional **OAuth only** (hides the password form; not allowed
-until the admin's own account is linked at that provider; turns itself off when the provider changes). PKCE + state +
+until the admin's own account is linked at that provider; turns itself off when the provider or client ID changes). PKCE + state +
 nonce as Culury, and each sign-in is tied to the browser that started it. New accounts are not created by OAuth
 (admins add people as today).
 

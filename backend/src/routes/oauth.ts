@@ -33,15 +33,16 @@ const hashTicket = sha256;
 const NOT_LINKED = "This sign-in isn't linked to a ByteSize account yet. Sign in with your password, then use Link my account in Settings › Security.";
 const OTHER_BROWSER = "That sign-in was started in another browser (or its cookie is gone). Start again here.";
 
-// The flow's cookie: only sent back to the OAuth routes, gone after 10 minutes, unreadable by scripts.
-// SameSite=Lax still comes along when the provider sends the browser back (a top-level GET).
-const COOKIE = "bytesize_oauth";
-const flowCookie = (value: string, origin: string, maxAge: number) =>
-  `${COOKIE}=${value}; Path=/api/auth/oauth; Max-Age=${maxAge}; HttpOnly; SameSite=Lax${origin.startsWith("https:") ? "; Secure" : ""}`;
-function cookieOf(req: FastifyRequest) {
+// Each flow's cookie: only sent back to the OAuth routes, gone after 10 minutes, unreadable by scripts.
+// SameSite=Lax still comes along when the provider sends the browser back (a top-level GET). Its name
+// carries a short hash of the state, so sign-ins started in two tabs each keep their own.
+const cookieName = (state: string) => `bytesize_oauth_${sha256(`name:${state}`).slice(0, 12)}`;
+const flowCookie = (state: string, value: string, origin: string, maxAge: number) =>
+  `${cookieName(state)}=${value}; Path=/api/auth/oauth; Max-Age=${maxAge}; HttpOnly; SameSite=Lax${origin.startsWith("https:") ? "; Secure" : ""}`;
+function cookieOf(req: FastifyRequest, name: string) {
   for (const part of (req.headers.cookie ?? "").split(";")) {
     const [k, ...v] = part.trim().split("=");
-    if (k === COOKIE) return v.join("=");
+    if (k === name) return v.join("=");
   }
   return null;
 }
@@ -61,8 +62,17 @@ export function appOriginsFromEnv(env: NodeJS.ProcessEnv) {
   return [...new Set(all)];
 }
 
-// The issuer as written (with or without a trailing slash or its discovery address) is one provider
-const sameIssuer = (u: string | null | undefined) => (u ? u.trim().replace(/\/\.well-known\/openid-configuration\/?$/, "").replace(/\/+$/, "") : null);
+// The issuer as discovery sees it: its discovery address counts as the issuer, but a trailing slash matters
+// ("…/bytesize/" and "…/bytesize" are different issuers, as openid-client requires the exact one)
+const issuerHref = (u: string | null | undefined) => {
+  if (!u) return null;
+  const bare = u.trim().replace(/\/\.well-known\/openid-configuration\/?$/, "");
+  try {
+    return new URL(bare).href;
+  } catch {
+    return bare;
+  }
+};
 
 export const callbackUri = (origin: string) => `${origin}/api/auth/oauth/callback`;
 
@@ -127,18 +137,28 @@ export default async function oauthRoutes(app: FastifyInstance) {
     };
     if (next.enabled && !next.clientId) throw new HttpError(400, "Enter the Client ID");
     if (next.enabled && !next.issuerUrl) throw new HttpError(400, "Enter the provider's issuer (discovery) URL");
-    // A new provider: nobody's link works there yet, so OAuth only goes off until it's chosen again
+    // A new provider or client: nobody's link is known to work there (a provider may give each client its
+    // own subjects), so OAuth only goes off until it's chosen again
     let message: string | undefined;
-    if (next.oauthOnly && sameIssuer(current.issuerUrl) !== sameIssuer(next.issuerUrl)) {
+    if (next.oauthOnly && (issuerHref(current.issuerUrl) !== issuerHref(next.issuerUrl) || current.clientId !== next.clientId)) {
       next.oauthOnly = false;
       message = "The provider changed, so OAuth only is off. Link your account there, then turn OAuth only on again.";
     }
-    // Lockout prevention: OAuth only needs OAuth on, and this admin's account linked at this provider (which proves it works)
+    // Lockout prevention: OAuth only needs OAuth on, and this admin's account linked at this very provider
+    // (which proves it works): the issuer the provider reports must be the one the link was made with
     if (next.oauthOnly) {
       if (!next.enabled) throw new HttpError(400, "Turn OAuth on before choosing OAuth only.");
+      const linkFirst = new HttpError(400, "Link your account first (Link my account): that signs in with the provider once, so you know it works before passwords are turned off.");
       const [me] = await db.select({ subject: users.oauthSubject, issuer: users.oauthIssuer }).from(users).where(eq(users.id, userId));
-      if (!me?.subject || sameIssuer(me.issuer) !== sameIssuer(next.issuerUrl))
-        throw new HttpError(400, "Link your account first (Link my account): that signs in with the provider once, so you know it works before passwords are turned off.");
+      if (!me?.subject || me.issuer !== issuerHref(next.issuerUrl)) throw linkFirst;
+      resetOAuthCache();
+      let reported: string;
+      try {
+        reported = (await providerConfig(next, app.jwtSecret, fetchImpl)).serverMetadata().issuer;
+      } catch (e) {
+        throw new HttpError(400, `Couldn't reach the provider to check your link: ${(e as Error).message}`);
+      }
+      if (reported !== me.issuer) throw linkFirst;
     }
     await saveOAuth(db, next);
     return { settings: view(next, app.jwtSecret), ...(message ? { message } : {}) };
@@ -212,7 +232,7 @@ export default async function oauthRoutes(app: FastifyInstance) {
       ...(purpose === "link" ? { prompt: "login" } : {}),
     });
     await db.insert(oauthFlows).values({ state, purpose, userId: userId ?? null, verifier, nonce, redirectUri, appOrigin: origin, expiresAt: new Date(now.getTime() + FLOW_MS) });
-    reply.header("set-cookie", flowCookie(sha256(state), origin, FLOW_MS / 1000));
+    reply.header("set-cookie", flowCookie(state, sha256(state), origin, FLOW_MS / 1000));
     return { url: authUrl.href };
   }
 
@@ -230,8 +250,8 @@ export default async function oauthRoutes(app: FastifyInstance) {
     const [flow] = q.state ? await db.delete(oauthFlows).where(eq(oauthFlows.state, q.state)).returning() : [];
     const back = (origin: string, path: string, params: Record<string, string>) => reply.redirect(`${origin}/#${path}?${new URLSearchParams(params)}`);
     if (!flow || flow.expiresAt <= now) return reply.redirect(`/#/?${new URLSearchParams({ oauth_error: "That sign-in took too long or was already used. Try again." })}`);
-    const fromCookie = cookieOf(req);
-    reply.header("set-cookie", flowCookie("", flow.appOrigin, 0)); // used: cleared
+    const fromCookie = cookieOf(req, cookieName(flow.state));
+    reply.header("set-cookie", flowCookie(flow.state, "", flow.appOrigin, 0)); // used: cleared
     const fail = async (message: string, logReason: string): Promise<FastifyReply> => {
       if (flow.purpose === "login") {
         recordFailure(req);

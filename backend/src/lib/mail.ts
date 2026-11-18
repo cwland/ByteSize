@@ -47,17 +47,19 @@ export interface Transport {
 }
 export type TransportFactory = (config: EmailConfig) => Transport;
 
-export const smtpTransport: TransportFactory = (c) =>
-  nodemailer.createTransport({
-    host: c.host,
-    port: c.port,
-    secure: c.security === "ssl",
-    requireTLS: c.security === "starttls",
-    ignoreTLS: c.security === "none",
-    auth: c.username ? { user: c.username, pass: c.password ?? "" } : undefined,
-    connectionTimeout: 15_000,
-    greetingTimeout: 10_000,
-  });
+// A mail server that doesn't answer is given up on, so it can't hold up a send (or shutting down)
+export const smtpOptions = (c: EmailConfig) => ({
+  host: c.host,
+  port: c.port,
+  secure: c.security === "ssl",
+  requireTLS: c.security === "starttls",
+  ignoreTLS: c.security === "none",
+  auth: c.username ? { user: c.username, pass: c.password ?? "" } : undefined,
+  connectionTimeout: 10_000,
+  greetingTimeout: 10_000,
+  socketTimeout: 20_000,
+});
+export const smtpTransport: TransportFactory = (c) => nodemailer.createTransport(smtpOptions(c));
 
 const trimUrl = (u: string) => u.replace(/\/+$/, "");
 
@@ -178,10 +180,19 @@ export class MailService {
 
   private pending = new Set<Promise<void>>();
 
-  /** Runs work without the caller waiting for it (errors go to onError). */
+  /** Runs work without the caller waiting for it (errors go to onError). Never rejects: nothing waits for it. */
   background(work: () => Promise<void>, onError: (err: unknown) => void | Promise<void>) {
-    const p: Promise<void> = work()
-      .catch(onError)
+    const handle = async (err: unknown) => {
+      try {
+        await onError(err);
+      } catch (again) {
+        console.error("Background work failed, and so did its error handler:", err, again); // e.g. the database is down
+      }
+    };
+    const p: Promise<void> = Promise.resolve()
+      .then(work)
+      .catch(handle)
+      .catch(() => {})
       .finally(() => this.pending.delete(p));
     this.pending.add(p);
   }

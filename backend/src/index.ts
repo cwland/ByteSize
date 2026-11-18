@@ -4,7 +4,7 @@ import { createDb } from "./db/index.js";
 import { runMigrations } from "./db/migrate.js";
 import { buildApp } from "./app.js";
 import { serveWeb } from "./web.js";
-import { startupProblem } from "./lib/startup.js";
+import { logUnhandledRejection, startupProblem } from "./lib/startup.js";
 import { emailConfigFromEnv } from "./lib/mail.js";
 import { applyEmergencyOAuthSwitch } from "./lib/oauth.js";
 
@@ -31,6 +31,8 @@ try {
 }
 
 const app = buildApp({ db, jwtSecret, logger: true, emailEnv: emailConfigFromEnv(process.env) });
+// A promise nobody handled is logged instead of stopping the server
+process.on("unhandledRejection", logUnhandledRejection((m) => app.log.error(m)));
 // Locked out by OAuth? EMERGENCY_DISABLE_OAUTH=true turns OAuth only and OAuth sign-in off at every start
 const emergency = await applyEmergencyOAuthSwitch(db, process.env);
 if (emergency) app.log.warn(`EMERGENCY_DISABLE_OAUTH: OAuth sign-in and OAuth only are off (OAuth was ${emergency.was.enabled ? "on" : "off"}, OAuth only ${emergency.was.oauthOnly ? "on" : "off"}). Remove the setting once you're back in.`);

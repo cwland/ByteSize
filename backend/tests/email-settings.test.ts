@@ -2,7 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { asUser } from "./isolation.js";
-import { emailConfigFromEnv } from "../src/lib/mail.js";
+import { emailConfigFromEnv, smtpOptions } from "../src/lib/mail.js";
+import { logUnhandledRejection } from "../src/lib/startup.js";
 
 // Settings › Email (admin): the server's email account, used for forgot-password codes
 let t: TestApp;
@@ -154,6 +155,51 @@ describe("Settings › Email", () => {
     await t.api("POST", "/api/settings/email/test", { settings: gmail });
     const logs = (await t.api("GET", "/api/logs?category=email")).body;
     expect(logs[0]).toMatchObject({ level: "info", source: "Test email", event: 'Sent "ByteSize test email" to cory@example.com' });
+  });
+});
+
+describe("work done after answering", () => {
+  it("never rejects, even when the work and its error handler both fail (a database that's down); idle() still resolves", async () => {
+    const unhandled: unknown[] = [];
+    const note = (e: unknown) => unhandled.push(e);
+    process.on("unhandledRejection", note);
+    try {
+      t.app.mail.background(
+        async () => {
+          throw new Error("send failed");
+        },
+        async () => {
+          throw new Error("logging failed too");
+        }
+      );
+      t.app.mail.background(
+        async () => {
+          throw new Error("send failed");
+        },
+        () => {
+          throw new Error("a handler that throws at once");
+        }
+      );
+      // nobody waits for it in the server: give Node a turn to report an unhandled rejection
+      await new Promise((r) => setTimeout(r, 50));
+      expect(unhandled).toEqual([]);
+      await t.app.mail.idle();
+    } finally {
+      process.off("unhandledRejection", note);
+    }
+  });
+
+  it("the server's last resort logs an unhandled rejection and keeps running", () => {
+    const lines: string[] = [];
+    logUnhandledRejection((m) => lines.push(m))(new Error("boom"));
+    expect(lines[0]).toMatch(/Unhandled rejection: .*boom/);
+  });
+});
+
+describe("SMTP", () => {
+  it("gives up on a mail server that doesn't answer (connection 10 s, greeting 10 s, socket 20 s)", () => {
+    const o = smtpOptions({ host: "smtp.example.com", port: 587, security: "starttls", username: "me", password: "pw", fromName: null, fromAddress: "me@example.com", appUrl: null });
+    expect(o).toMatchObject({ host: "smtp.example.com", port: 587, secure: false, requireTLS: true, connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000 });
   });
 });
 

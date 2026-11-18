@@ -32,3 +32,7 @@ export function startupProblem(err: unknown, databaseUrl: string): string | null
   if (found.includes("28P01") || found.includes("28000")) return "PostgreSQL refused the sign-in for this DATABASE_URL.";
   return null;
 }
+
+/** The server's last resort: a promise nobody handled is logged, and the server keeps running. */
+export const logUnhandledRejection = (log: (message: string) => void) => (reason: unknown) =>
+  log(`Unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`);

@@ -89,7 +89,7 @@ OpenID Connect provider:
 The sign-in screen then shows **Sign in with …**. It only signs in accounts their owners linked with **Link my
 account**; emails are never matched. OAuth never creates accounts: the admin adds people in Settings › Users.
 **OAuth only** hides the password form (passkeys still work); it can only be turned on once your own account is
-linked at that provider, and it turns itself off when you change the provider.
+linked at that provider, and it turns itself off when you change the provider or the client ID.
 
 ### Locked out?
 
