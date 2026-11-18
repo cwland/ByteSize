@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Dashboard from "./Dashboard";
 import { SelectedDayProvider } from "../../selectedDay";
@@ -85,19 +85,28 @@ describe("Dashboard on a wide screen", () => {
     expect(await screen.findByText("Good afternoon, Cory")).toBeInTheDocument();
   });
 
-  it("lays out three sections: budget and quick buttons, Today's food, and water/weight/GLP-1/streak", async () => {
+  it("lays out three columns: Today's food; the budget with water under it; Day totals, weight, GLP-1 and streak", async () => {
     show({ "GET /api/glp1": () => glp1View() });
     const columns = await screen.findAllByTestId("dashboard-column");
     expect(columns).toHaveLength(3);
-    expect(within(columns[0]).getByRole("region", { name: "Budget" })).toBeInTheDocument();
-    for (const b of ["Search food", "Barcode photo", "Label photo", "Restaurants"]) expect(within(columns[0]).getByRole("button", { name: b })).toBeInTheDocument();
-    expect(within(columns[1]).getByRole("region", { name: "Today's food" })).toBeInTheDocument();
-    expect(within(columns[2]).getByRole("region", { name: "Water" })).toBeInTheDocument();
-    expect(within(columns[2]).getByRole("region", { name: "Weight" })).toBeInTheDocument();
-    expect(await within(columns[2]).findByRole("region", { name: "GLP-1" })).toBeInTheDocument();
-    expect(await within(columns[2]).findByRole("region", { name: "Streak" })).toBeInTheDocument();
-    // The phone's single Photo button gives way to the quick buttons
-    expect(screen.queryByRole("button", { name: "Photo" })).not.toBeInTheDocument();
+    expect(within(columns[0]).getByRole("region", { name: "Today's food" })).toBeInTheDocument();
+    const middle = [...columns[1].querySelectorAll("section")].map((s) => s.getAttribute("aria-label"));
+    expect(middle).toEqual(["Budget", "Water"]);
+    const right = within(columns[2]);
+    expect(await right.findByRole("region", { name: "Day totals" })).toBe(columns[2].firstElementChild);
+    expect(right.getByRole("region", { name: "Weight" })).toBeInTheDocument();
+    expect(await right.findByRole("region", { name: "GLP-1" })).toBeInTheDocument();
+    expect(await right.findByRole("region", { name: "Streak" })).toBeInTheDocument();
+    // No quick buttons any more (Add food is in Today's food), and no phone Photo button
+    for (const b of ["Search food", "Barcode photo", "Label photo", "Restaurants", "Photo"]) expect(screen.queryByRole("button", { name: b })).not.toBeInTheDocument();
+  });
+
+  it("Day totals: the Log's card for the selected day, from the day already loaded (no new request)", async () => {
+    const server = show();
+    const table = await screen.findByRole("table", { name: "Day totals" });
+    expect(within(table).getByRole("rowheader", { name: "Calories" }).closest("tr")).toHaveTextContent("287");
+    expect(within(table).getByRole("rowheader", { name: "Water" })).toBeInTheDocument();
+    expect(server.sent.filter((s) => s.path.startsWith("/api/day/")).map((s) => s.path)).toEqual(["/api/day/2026-11-16"]);
   });
 
   it("Today's food lists the day's entries by meal with calories, and invites food under an empty meal", async () => {
@@ -124,37 +133,15 @@ describe("Dashboard on a wide screen", () => {
     expect(await screen.findByRole("dialog", { name: "Add food to Dinner" })).toBeInTheDocument();
   });
 
-  it("Search food opens Add food on its search for the meal of the moment", async () => {
+  it("every meal has + Add food, after its last item when it has food", async () => {
     show();
-    await userEvent.setup().click(screen.getByRole("button", { name: "Search food" }));
-    const sheet = await screen.findByRole("dialog", { name: "Add food to Lunch" });
-    expect(within(sheet).getByRole("searchbox", { name: "Search foods" })).toBeInTheDocument();
-  });
-
-  it("Barcode photo and Label photo open Add food on the photo step, sending the photo in that mode", async () => {
-    const server = show({ "POST /api/photos/analyze": () => ({ photoIds: ["p1"], errors: [], labelReading: true }) });
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Label photo" }));
-    let sheet = await screen.findByRole("dialog", { name: "Add food to Lunch" });
-    expect(within(sheet).getByRole("heading", { name: "Photo" })).toBeInTheDocument();
-    await user.click(within(sheet).getByRole("button", { name: "Choose a photo" }));
-    await user.upload(within(sheet).getByLabelText("Photo file"), new File(["x"], "label.jpg", { type: "image/jpeg" }));
-    await waitFor(() => expect(server.sent.find((s) => s.path === "/api/photos/analyze")?.body.get("mode")).toBe("label"));
-    await user.click(within(sheet).getByRole("button", { name: "Close" }));
-
-    await user.click(screen.getByRole("button", { name: "Barcode photo" }));
-    sheet = await screen.findByRole("dialog", { name: "Add food to Lunch" });
-    expect(within(sheet).getByRole("heading", { name: "Photo" })).toBeInTheDocument();
-    await user.click(within(sheet).getByRole("button", { name: "Choose a photo" }));
-    await user.upload(within(sheet).getByLabelText("Photo file"), new File(["x"], "barcode.jpg", { type: "image/jpeg" }));
-    await waitFor(() => expect(server.sent.filter((s) => s.path === "/api/photos/analyze")[1]?.body.get("mode")).toBe("barcode"));
-  });
-
-  it("Restaurants opens Add food on Restaurants", async () => {
-    show({ "GET /api/restaurants/status": () => ({ sources: ["fatsecret"], lookupsLeft: null, turnedOff: false }) });
-    await userEvent.setup().click(screen.getByRole("button", { name: "Restaurants" }));
-    const sheet = await screen.findByRole("dialog", { name: "Add food to Lunch" });
-    expect(await within(sheet).findByRole("searchbox", { name: "Search restaurants" })).toBeInTheDocument();
+    const food = await screen.findByRole("region", { name: "Today's food" });
+    const lunch = await within(food).findByRole("group", { name: "Lunch" });
+    const add = within(lunch).getByRole("button", { name: "Add food to Lunch" });
+    expect(within(lunch).getByRole("listitem").compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    for (const meal of ["Breakfast", "Dinner", "Snacks"]) expect(within(within(food).getByRole("group", { name: meal })).getByRole("button", { name: `Add food to ${meal}` })).toBeInTheDocument();
+    await userEvent.setup().click(add);
+    expect(await screen.findByRole("dialog", { name: "Add food to Lunch" })).toBeInTheDocument();
   });
 
   it("the Weight card draws a small trend line of recent weigh-ins", async () => {

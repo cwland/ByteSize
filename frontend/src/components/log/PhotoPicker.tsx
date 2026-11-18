@@ -40,7 +40,7 @@ export function usePhotoInput(onFile: (f: File) => void): { open: () => void; in
 }
 
 // The photo step of Add Food. With no photo yet: choose one (barcode or label) or "Read a label"; the
-// photo chosen is sent in the step's mode ("auto", or "barcode"/"label" from the wide Dashboard's buttons).
+// photo chosen is sent in the step's mode ("auto", or "barcode" from Add food › barcode › Upload a barcode photo).
 // With photos: sends them; a found food or a label draft is handed back, anything else is explained
 // here with the next steps (add a second photo, try another, or create the food by hand). In barcode mode
 // (Add food › barcode › Upload a barcode photo) a photo with no barcode offers another photo or typing the

@@ -13,6 +13,7 @@ import { itemList, portionFields, quickMealParts } from "../lib/recipes.js";
 import { amountFactor, scaleNutrients, sumNutrients, UnitError, type Nutrients, type Serving, type Unit } from "../lib/nutrients.js";
 import { DEFAULT_MEAL_WINDOWS } from "./settings-me.js";
 import { signImageUrl, unsignImageUrl } from "../lib/photos.js";
+import { entryIcon } from "../lib/foodIcons.js";
 import { targetsOn } from "./body-plans.js";
 
 // The food log: entries keep a snapshot of the food (per-serving nutrients and servings), so editing
@@ -80,7 +81,7 @@ export function toEntry(r: Row): LogEntry {
     meal: r.meal as Meal,
     name: r.name,
     brand: r.brand,
-    icon: r.icon,
+    icon: entryIcon(r.name, r.icon),
     imageUrl: signImageUrl(r.imageUrl), // our photos signed on the way out (stored plain)
     servingIndex: r.servingIndex,
     unit: r.unit as Unit,
@@ -204,7 +205,7 @@ function culurySnapshot(r: Row): FoodResult {
     id: Number(r.sourceRef!.slice("culury:".length)),
     name: r.name,
     brand: r.brand,
-    icon: r.icon,
+    icon: entryIcon(r.name, r.icon),
     barcode: null,
     servings: r.servings as Serving[],
     nutrients,

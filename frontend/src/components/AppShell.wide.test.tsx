@@ -34,13 +34,14 @@ describe("AppShell on a wide screen", () => {
     expect(within(rail).getAllByRole("link").map((a) => a.getAttribute("aria-label") ?? a.textContent)).toEqual(["ByteSize home", "Dashboard", "Log", "Goals", "My foods", "Settings", "Your profile"]);
     expect(within(rail).getByRole("link", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
     expect(within(rail).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "#/settings");
-    expect(within(rail).getByRole("button", { name: "Log food" })).toBeInTheDocument();
+    // No + in the rail: food is added from Today's food and the Log
+    expect(within(rail).queryByRole("button")).not.toBeInTheDocument();
     // The phone top bar's avatar link is gone (the rail has the account)
     expect(screen.queryByRole("link", { name: "Open settings" })).not.toBeInTheDocument();
   });
 
-  it("the rail's + opens Add food for the meal of the moment", async () => {
-    wideScreen();
+  it("the phone bottom bar's + still opens Add food for the meal of the moment", async () => {
+    wideScreen(false);
     fakeServer(routes);
     renderWithSession(<AppShell />, { timezone: "America/Boise" });
     await userEvent.setup().click(within(screen.getByRole("navigation", { name: "Main" })).getByRole("button", { name: "Log food" }));

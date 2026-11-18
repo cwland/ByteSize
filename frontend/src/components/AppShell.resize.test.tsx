@@ -30,27 +30,27 @@ afterEach(() => void vi.useRealTimers());
 
 // An iPad turned, a window dragged across 1024 px: what's open and typed stays
 describe("Crossing 1024 px", () => {
-  it("keeps the + sheet open with what was typed, narrowing and widening", async () => {
-    const size = wideScreen();
+  it("keeps the + sheet open with what was typed, widening and narrowing", async () => {
+    const size = wideScreen(false);
     fakeServer(routes);
     renderWithSession(<AppShell />, { timezone: "America/Boise" });
     const user = userEvent.setup();
     await user.click(within(screen.getByRole("navigation", { name: "Main" })).getByRole("button", { name: "Log food" }));
     await user.type(await screen.findByRole("searchbox", { name: "Search foods" }), "apple");
-    size.set(false);
+    size.set(true); // the rail has no +, but the sheet the bottom bar's + opened stays
     expect(screen.getByRole("dialog", { name: "Add food to Lunch" })).toBeInTheDocument();
     expect(screen.getByRole("searchbox", { name: "Search foods" })).toHaveValue("apple");
-    size.set(true);
+    size.set(false);
     expect(screen.getByRole("dialog", { name: "Add food to Lunch" })).toBeInTheDocument();
     expect(screen.getByRole("searchbox", { name: "Search foods" })).toHaveValue("apple");
   });
 
-  it("keeps the Dashboard's Add food (quick button) open with what was typed", async () => {
+  it("keeps the Dashboard's Add food (Today's food) open with what was typed", async () => {
     const size = wideScreen();
     fakeServer(routes);
     renderWithSession(<AppShell />, { timezone: "America/Boise" });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Search food" }));
+    await user.click(await screen.findByRole("button", { name: "Add food to Lunch" }));
     await user.type(await screen.findByRole("searchbox", { name: "Search foods" }), "pear");
     size.set(false);
     expect(screen.getByRole("dialog", { name: "Add food to Lunch" })).toBeInTheDocument();
