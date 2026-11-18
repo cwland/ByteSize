@@ -697,6 +697,35 @@ describe("backups", () => {
     }
   });
 
+  it("closing the server waits for a daily backup still being written (nothing runs on after it)", async () => {
+    await seed();
+    process.env.BACKUP_HOUR = "0"; // due as soon as it starts
+    const dir = mkdtempSync(path.join(tmpdir(), "bytesize-close-"));
+    let entered!: () => void;
+    const inside = new Promise<void>((r) => (entered = r));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    backupHooks.started = async () => {
+      entered();
+      await gate;
+    };
+    try {
+      const app = buildApp({ db: t.db, jwtSecret: TEST_SECRET, rateLimit: false, dataDir: dir });
+      await app.ready();
+      await inside; // the start-up check is writing one
+      let closed = false;
+      const closing = app.close().then(() => void (closed = true));
+      await new Promise((r) => setTimeout(r, 200));
+      expect(closed).toBe(false);
+      release();
+      await closing;
+      expect(readdirSync(path.join(dir, "backups")).filter((n) => n.endsWith(".tar.gz"))).toHaveLength(1);
+    } finally {
+      release();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("a cleanup that fails on start never stops the server from starting", async () => {
     const errors: unknown[] = [];
     // no data folder to look in: the cleanup itself throws

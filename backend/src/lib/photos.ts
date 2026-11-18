@@ -242,10 +242,16 @@ export function scheduleUploadCleanup(app: FastifyInstance) {
       logEvent(app.db, { category: "schedule", level: "error", source: "Photo cleanup", event: "The photo cleanup failed", detail: (err as Error).message })
     );
   let timer: NodeJS.Timeout | undefined;
+  let running: Promise<unknown> = Promise.resolve();
+  const start = () => (running = run());
   app.addHook("onReady", async () => {
-    void run();
-    timer = setInterval(run, CLEANUP_EVERY_MS);
+    await start(); // the first run finishes before the app is ready (it never throws), so nothing races it at start
+    timer = setInterval(start, CLEANUP_EVERY_MS);
     timer.unref();
   });
-  app.addHook("onClose", async () => clearInterval(timer));
+  // Closing waits for a run still going (nothing runs on against a database the server has let go of)
+  app.addHook("onClose", async () => {
+    clearInterval(timer);
+    await running;
+  });
 }

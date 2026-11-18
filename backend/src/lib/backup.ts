@@ -585,14 +585,21 @@ export async function backupProblem(app: FastifyInstance): Promise<string | null
 }
 
 /** Checks when the server starts, then every hour (a server that was off at BACKUP_HOUR still gets its backup). */
+// Closing the server waits for a check still running (a backup half written would be left behind, and its
+// queries would run on against a database the server has let go of)
 export function scheduleBackups(app: FastifyInstance) {
   let timer: NodeJS.Timeout | undefined;
+  let running: Promise<unknown> = Promise.resolve();
+  const check = () => (running = dailyBackupCheck(app).catch(() => null));
   app.addHook("onReady", async () => {
-    void dailyBackupCheck(app);
-    timer = setInterval(() => void dailyBackupCheck(app), CHECK_EVERY_MS);
+    void check();
+    timer = setInterval(() => void check(), CHECK_EVERY_MS);
     timer.unref();
   });
-  app.addHook("onClose", async () => clearInterval(timer));
+  app.addHook("onClose", async () => {
+    clearInterval(timer);
+    await running;
+  });
 }
 
 export function formatSize(bytes: number) {
