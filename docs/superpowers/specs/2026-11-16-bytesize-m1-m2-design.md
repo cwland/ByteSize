@@ -903,3 +903,28 @@ updates the kept copy, and says "Up to date" or "Updated". It is the "re-cache" 
   "Delete all not in use".
 
 **Not in this step.** App info stats (next step).
+
+## 22. Source pills on food search (Cory, 2026-11-18)
+
+**Asked for.** "When I search for a food when logging, it's showing me Culury first based on ingredients. Let's have
+pills at the top that show sources; FatSecret highlighted by default, Basic and Culury off; users can toggle them;
+show the number of results, e.g. (Culury (8))." "USDA and Open Food Facts should be on by default."
+
+**Pills.** Above the search results in Add food (typed search only — a barcode match shows as today), one pill per
+source group that was searched: My foods, FatSecret, Basic (USDA whole foods), USDA (branded), Open Food Facts, Culury, each
+with its result count, e.g. "Culury (8)". A pill that is on is highlighted and its group shows; off hides it.
+Order: My foods, FatSecret, Basic, USDA, Open Food Facts, Culury. Pills are real toggle buttons (`aria-pressed`, 44 px tall,
+wrap on phones).
+- Defaults: My foods, FatSecret, USDA and Open Food Facts on; Basic and Culury off.
+- **My foods** is a pill too, first and on by default ("my foods should also be a pill that is turned on").
+  Recents (shown before you type) and saved restaurant items are not pills.
+- The **My Foods** button in Add food's row of options (Describe it, Create food, My Foods, Restaurants) is removed
+  ("it doesn't need to take you to that screen when searching"); the My foods page stays reachable from the side
+  rail / Log header / phone navigation as today.
+- A source with no results still shows its pill with (0); a source switched off in Integrations (§18) or with no key
+  gets no pill; a source that failed shows its pill with "!" and the existing error line in its group when on.
+- If every pill that is on has 0 results but another has some: "Nothing from FatSecret. Tap Basic (12) to see those."
+  (names the pills that are on, and the first pill with results).
+- **Remembered** per person on that device (browser storage, keyed by user id; wrapped so a browser without storage
+  just uses the defaults). Builder's call — Cory answered the defaults question only.
+- Search still asks all sources at once (no extra calls when a pill is turned on).
