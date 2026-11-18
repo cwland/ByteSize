@@ -6,7 +6,7 @@ import { primaryButton } from "../ui/styles";
 import ShotSheet from "./ShotSheet";
 import { statusText } from "./glp1";
 
-// Dashboard GLP-1 card: "Next shot Fri" / "Injection day" / "Injection overdue by N days", with Log shot.
+// Dashboard GLP-1 card: "Next shot Fri, Nov 20" / "Injection day" / "Injection overdue by N days", with Log shot.
 // Shown when GLP-1 is set up, or when the body profile says GLP-1 (then it invites setup). Hidden otherwise,
 // and hidden if either request fails (the rest of the Dashboard doesn't depend on it).
 export default function Glp1Card() {

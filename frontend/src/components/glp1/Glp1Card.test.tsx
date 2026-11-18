@@ -28,7 +28,7 @@ describe("Glp1Card", () => {
   it("before the due day says when the next shot is", async () => {
     show(glp1View());
     const card = await screen.findByRole("region", { name: "GLP-1" });
-    expect(within(card).getByText("Next shot Fri")).toBeInTheDocument();
+    expect(within(card).getByText("Next shot Fri, Nov 20")).toBeInTheDocument();
   });
 
   it("on the due day says Injection day", async () => {
@@ -62,7 +62,7 @@ describe("Glp1Card", () => {
 
   it("shows with settings even when the body profile doesn't say GLP-1", async () => {
     show(glp1View(), { ...bodyA, glp1: false });
-    expect(await screen.findByText("Next shot Fri")).toBeInTheDocument();
+    expect(await screen.findByText("Next shot Fri, Nov 20")).toBeInTheDocument();
   });
 
   it("Log shot opens the sheet with the suggested site chosen; saving sends PUT and updates the card", async () => {
@@ -86,7 +86,7 @@ describe("Glp1Card", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     const put = server.writes()[0];
     expect(put).toMatchObject({ method: "PUT", path: "/api/glp1/shots/2026-11-17", body: { site: "thigh_left", doseMg: 1, note: "Left thigh, no bruise" } });
-    expect(screen.getByText("Next shot Tue")).toBeInTheDocument();
+    expect(screen.getByText("Next shot Tue, Nov 24")).toBeInTheDocument();
   });
 
   it("a changed date (a day with no shot), dose and site are what is sent", async () => {

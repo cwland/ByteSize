@@ -42,16 +42,23 @@ const ADJECTIVES = new Set(["small", "medium", "large", "extra", "whole", "jumbo
 const plural = (w: string) => (/(ss|sh|ch|x)$/i.test(w) ? `${w}es` : /[^aeiou]y$/i.test(w) ? `${w.slice(0, -1)}ies` : /s$/i.test(w) ? w : `${w}s`);
 const singular = (w: string) => (/[^aeiou]ies$/i.test(w) ? `${w.slice(0, -3)}y` : /(ss|sh|ch|x)es$/i.test(w) ? w.slice(0, -2) : /[^s]s$/i.test(w) ? w.slice(0, -1) : w);
 
-// Pluralise (or singularise) the noun in "slice", "medium banana", "cup, chopped"
+const PREPOSITIONS = new Set(["of", "with", "without", "in", "from", "for"]);
+
+// Pluralise (or singularise) the noun of "slice", "medium banana", "pitted prunes", "cup, chopped", "piece of
+// bread": the last word before any comma or preposition ("6 pitted prunes", "2 pieces of bread"). A size on its
+// own ("small") stays as it is.
 function nounFor(noun: string, many: boolean): string {
   if (/\(s\)/.test(noun)) return noun;
-  const words = noun.split(" ");
-  const i = words.findIndex((w) => w && !ADJECTIVES.has(w.toLowerCase()));
-  if (i < 0) return noun;
+  const comma = noun.indexOf(",");
+  const head = comma < 0 ? noun : noun.slice(0, comma);
+  const words = head.split(" ");
+  const prep = words.findIndex((w, i) => i > 0 && PREPOSITIONS.has(w.toLowerCase()));
+  const i = (prep < 0 ? words.length : prep) - 1;
+  if (i < 0 || ADJECTIVES.has(words[i].toLowerCase())) return noun;
   const [, word, tail] = words[i].match(/^([A-Za-z]+)(.*)$/) ?? [];
   if (!word) return noun;
   words[i] = (many ? plural(word) : singular(word)) + tail;
-  return words.join(" ");
+  return words.join(" ") + (comma < 0 ? "" : noun.slice(comma));
 }
 
 const leadingNumber = (s: string): number | null => {
