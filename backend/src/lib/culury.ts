@@ -111,13 +111,19 @@ async function storedLink(app: FastifyInstance, userId: number) {
   return { url: row?.url ?? null, key: row?.keyEnc ? decryptSecret(row.keyEnc, app.jwtSecret) : null };
 }
 
+/** This person's saved Culury key as stored (encrypted), or null. */
+export async function savedCuluryKeyEnc(app: FastifyInstance, userId: number): Promise<string | null> {
+  const [row] = await app.db.select({ keyEnc: userSettings.culuryKeyEnc }).from(userSettings).where(eq(userSettings.userId, userId));
+  return row?.keyEnc ?? null;
+}
+
 /** This person's Culury link, or null when they haven't linked one (or its key can't be read any more). */
 export async function culuryLink(app: FastifyInstance, userId: number): Promise<CuluryLink | null> {
   const { url, key } = await storedLink(app, userId);
   return url && key ? { url, key } : null;
 }
 
-/** What Settings shows: the address and whether a key is saved (the key itself is never sent back). */
+/** What Settings shows: the address and whether a key is saved (the key itself only comes from GET /api/settings/culury/key). */
 export async function culurySummary(app: FastifyInstance, userId: number) {
   const { url, key } = await storedLink(app, userId);
   return { url, hasKey: key !== null };

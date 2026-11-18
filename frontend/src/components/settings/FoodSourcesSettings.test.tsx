@@ -1,13 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import FoodSourcesSettings from "./FoodSourcesSettings";
+import { FoodDatabasesSettings, RestaurantMenusSettings } from "./FoodSourcesSettings";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
 
 const none = { usda: { hasKey: false }, spoonacular: { hasKey: false }, fatsecret: { hasKey: false } };
 
-describe("Food sources settings", () => {
+describe("Food databases and restaurant menus settings", () => {
   it("saves a USDA key without ever showing it again", async () => {
     let hasKey = false;
     const server = fakeServer({
@@ -17,7 +17,7 @@ describe("Food sources settings", () => {
         return { ...none, usda: { hasKey } };
       },
     });
-    renderWithSession(<FoodSourcesSettings />, { isAdmin: true });
+    renderWithSession(<FoodDatabasesSettings />, { isAdmin: true });
     expect(await screen.findByText(/No USDA key yet/)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("USDA API key"), "abc123");
     await userEvent.click(screen.getByRole("button", { name: "Save USDA key" }));
@@ -31,7 +31,7 @@ describe("Food sources settings", () => {
       "GET /api/admin/food-sources": () => ({ ...none, usda: { hasKey: true } }),
       "PUT /api/admin/food-sources": () => none,
     });
-    renderWithSession(<FoodSourcesSettings />, { isAdmin: true });
+    renderWithSession(<FoodDatabasesSettings />, { isAdmin: true });
     await userEvent.click(await screen.findByRole("button", { name: "Remove USDA key" }));
     expect(server.sent.find((r) => r.method === "PUT")?.body).toEqual({ usdaApiKey: null });
     expect(await screen.findByText(/No USDA key yet/)).toBeInTheDocument();
@@ -47,7 +47,7 @@ describe("Food sources settings", () => {
       },
       "POST /api/admin/food-sources/test": () => ({ ok: true, lookupsLeft: 49 }),
     });
-    renderWithSession(<FoodSourcesSettings />, { isAdmin: true });
+    renderWithSession(<RestaurantMenusSettings />, { isAdmin: true });
     expect(await screen.findByText(/No Spoonacular key yet/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Test Spoonacular" })).not.toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("Spoonacular API key"), "sp-secret");
@@ -71,7 +71,7 @@ describe("Food sources settings", () => {
       },
       "POST /api/admin/food-sources/test": () => ({ ok: false, error: "FatSecret refused this server's IP address" }),
     });
-    renderWithSession(<FoodSourcesSettings />, { isAdmin: true });
+    renderWithSession(<RestaurantMenusSettings />, { isAdmin: true });
     expect(await screen.findByText(/No FatSecret credentials yet/)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("FatSecret client ID"), "fs-id");
     expect(screen.getByRole("button", { name: "Save FatSecret credentials" })).toBeDisabled(); // needs both
@@ -91,9 +91,57 @@ describe("Food sources settings", () => {
       "GET /api/admin/food-sources": () => ({ ...none, fatsecret: { hasKey: true } }),
       "PUT /api/admin/food-sources": () => none,
     });
-    renderWithSession(<FoodSourcesSettings />, { isAdmin: true });
+    renderWithSession(<RestaurantMenusSettings />, { isAdmin: true });
     await userEvent.click(await screen.findByRole("button", { name: "Remove FatSecret credentials" }));
     expect(server.sent.find((r) => r.method === "PUT")?.body).toEqual({ fatsecretClientId: null, fatsecretClientSecret: null });
     expect(await screen.findByText(/No FatSecret credentials yet/)).toBeInTheDocument();
+  });
+
+  it("Food databases: Open Food Facts needs no key; the USDA eye fetches the saved key and copy copies it", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const server = fakeServer({
+      "GET /api/admin/food-sources": () => ({ ...none, usda: { hasKey: true } }),
+      "GET /api/admin/food-sources/usda/key": () => ({ key: "usda-saved" }),
+    });
+    renderWithSession(<FoodDatabasesSettings />, { isAdmin: true });
+    expect(await screen.findByText(/Open Food Facts/)).toBeInTheDocument();
+    expect(screen.queryByText(/Spoonacular/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Copy USDA key" }));
+    expect(await screen.findByText("Copied")).toBeInTheDocument();
+    expect(writeText).toHaveBeenCalledWith("usda-saved");
+    expect(screen.queryByDisplayValue("usda-saved")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Show USDA key" }));
+    expect(await screen.findByDisplayValue("usda-saved")).toBe(screen.getByLabelText("USDA API key"));
+    // shown, not typed: Save stays off and nothing is sent
+    expect(screen.getByRole("button", { name: "Save USDA key" })).toBeDisabled();
+    expect(server.writes()).toHaveLength(0);
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+  });
+
+  it("Restaurant menus: eyes on the Spoonacular key and on FatSecret's ID and secret, each named apart, and the credits", async () => {
+    const server = fakeServer({
+      "GET /api/admin/food-sources": () => ({ ...none, spoonacular: { hasKey: true }, fatsecret: { hasKey: true } }),
+      "GET /api/admin/food-sources/spoonacular/key": () => ({ key: "spoon-saved" }),
+      "GET /api/admin/food-sources/fatsecret/key": () => ({ clientId: "fs-id-saved", clientSecret: "fs-secret-saved" }),
+    });
+    renderWithSession(<RestaurantMenusSettings />, { isAdmin: true });
+    expect(await screen.findByText(/A Spoonacular key is saved/)).toBeInTheDocument();
+    expect(screen.queryByText(/USDA/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Restaurant data from spoonacular.com/)).toBeInTheDocument();
+    expect(screen.getByText(/Powered by FatSecret/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Show Spoonacular key" }));
+    expect(await screen.findByDisplayValue("spoon-saved")).toBe(screen.getByLabelText("Spoonacular API key"));
+    await userEvent.click(screen.getByRole("button", { name: "Show FatSecret client ID" }));
+    expect(await screen.findByDisplayValue("fs-id-saved")).toBe(screen.getByLabelText("FatSecret client ID"));
+    expect(screen.queryByDisplayValue("fs-secret-saved")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Show FatSecret client secret" }));
+    expect(await screen.findByDisplayValue("fs-secret-saved")).toBe(screen.getByLabelText("FatSecret client secret"));
+    expect(server.sent.filter((r) => r.path.endsWith("/key")).map((r) => r.path)).toEqual([
+      "/api/admin/food-sources/spoonacular/key",
+      "/api/admin/food-sources/fatsecret/key",
+      "/api/admin/food-sources/fatsecret/key",
+    ]);
+    expect(server.writes()).toHaveLength(0);
   });
 });

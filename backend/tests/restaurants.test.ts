@@ -66,9 +66,9 @@ describe("restaurant keys (admin)", () => {
     restaurantWeb(t, { spoonSearch: () => ({ status: 401, json: { message: "bad key spoon-key" } }), fsToken: () => ({ status: 401, json: { error: "invalid_client" } }) });
     const s = await t.api("POST", "/api/admin/food-sources/test", { source: "spoonacular" });
     expect(s.body.ok).toBe(false);
-    expect(s.body.error).toMatch(/Spoonacular refused the key/);
+    expect(s.body.error).toMatch(/Spoonacular refused the key — check it in Settings › Integrations/);
     const f = await t.api("POST", "/api/admin/food-sources/test", { source: "fatsecret" });
-    expect(f.body).toEqual({ ok: false, error: "FatSecret refused the client ID or secret — check them in Settings › Food sources" });
+    expect(f.body).toEqual({ ok: false, error: "FatSecret refused the client ID or secret — check them in Settings › Integrations" });
     expect(JSON.stringify([s.body, f.body])).not.toMatch(/spoon-key|fs-secret/);
     await setRestaurantKeys(t, { spoonacular: null });
     expect((await t.api("POST", "/api/admin/food-sources/test", { source: "spoonacular" })).body).toEqual({ ok: false, error: NO_KEY_MESSAGE });

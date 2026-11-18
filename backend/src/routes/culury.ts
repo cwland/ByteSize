@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireUser } from "../lib/guards.js";
 import { badRequest } from "../lib/errors.js";
+import { openSaved, revealRateLimit, sendSavedKey } from "../lib/savedKeys.js";
 import { DAY, MEALS, todayFor } from "../lib/days.js";
 import {
   cleanCuluryUrl,
@@ -12,12 +13,14 @@ import {
   logCuluryFailure,
   mealPlan,
   removeCuluryLink,
+  savedCuluryKeyEnc,
   saveCuluryLink,
   testCulury,
 } from "../lib/culury.js";
 
 // The person's Culury link (Settings › Integrations), their Culury meal plan and recipes. Per person: the
-// link used is always the caller's own. The API key is never sent back.
+// link used is always the caller's own. The API key is never sent with the summary; the eye and copy
+// buttons fetch it from /api/settings/culury/key (the caller's own only).
 const linkBody = z.object({ url: z.string().trim().min(1, "Enter Culury's address").max(300), apiKey: z.string().max(300).optional() });
 const testBody = z.object({ url: z.string().trim().max(300).optional(), apiKey: z.string().max(300).optional() });
 const planQuery = z.object({ day: DAY, meal: z.enum(MEALS).optional() });
@@ -31,6 +34,11 @@ export default async function culuryRoutes(app: FastifyInstance) {
     const b = linkBody.parse(req.body ?? {});
     await saveCuluryLink(app, userId, b.url, b.apiKey);
     return culurySummary(app, userId);
+  });
+
+  app.get("/api/settings/culury/key", { config: revealRateLimit }, async (req, reply) => {
+    const userId = requireUser(req);
+    return sendSavedKey(app, reply, userId, "Culury key", { key: openSaved(await savedCuluryKeyEnc(app, userId), app.jwtSecret) });
   });
 
   app.delete("/api/settings/culury", async (req) => {

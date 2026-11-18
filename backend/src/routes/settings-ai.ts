@@ -3,8 +3,12 @@ import { z } from "zod";
 import { HttpError } from "../lib/errors.js";
 import { requireAdmin, requireUser } from "../lib/guards.js";
 import { logEvent } from "../lib/appLog.js";
-import { AI_PROVIDERS, AiError, type AiConfig } from "../lib/ai.js";
+import { AI_PROVIDERS, AiError, type AiConfig, type AiProvider } from "../lib/ai.js";
+import { openSaved, revealRateLimit, sendSavedKey } from "../lib/savedKeys.js";
 import { recommendModels } from "../lib/aiModels.js";
+
+// Whose key it is, in the activity log ("OpenAI key for Main AI")
+const KEY_OWNERS: Record<AiProvider, string> = { openai: "OpenAI", anthropic: "Anthropic", gemini: "Gemini", openrouter: "OpenRouter", local: "Home AI" };
 
 const optionalText = (max: number) =>
   z
@@ -50,7 +54,7 @@ export default async function aiSettingsRoutes(app: FastifyInstance) {
     });
   };
   const aiSettings = z.union([
-    // Settings › AI saves the services (on/off is the switch at the top of Settings › AI)
+    // Settings › Integrations › AI services saves the services (on/off is the switch at the top of that section)
     z
       .object({ ...common, enabled: z.boolean().optional(), mode: z.enum(["auto", "manual"]).optional(), services: z.array(service).max(10) })
       .superRefine((v, ctx) => checkReady(true, v.services, ctx, (i) => ["services", i])),
@@ -98,6 +102,15 @@ export default async function aiSettingsRoutes(app: FastifyInstance) {
       await app.ai.save({ enabled, mode, maxPerRun, timeoutSec, askNextOnNoMatch, services: [{ ...clean({ ...first, enabled: true }), id: current?.services[0]?.id }, ...rest] });
     }
     return { settings: await app.ai.summary() };
+  });
+
+  // One service's saved key, for the eye and copy buttons in Settings › Integrations
+  app.get("/api/settings/ai/:id/key", { config: revealRateLimit }, async (req, reply) => {
+    const userId = requireAdmin(req);
+    const { id } = z.object({ id: z.string().max(40) }).parse(req.params);
+    const sv = (await app.ai.stored())?.services.find((x) => x.id === id);
+    if (!sv) throw new HttpError(404, "No key is saved");
+    return sendSavedKey(app, reply, userId, `${KEY_OWNERS[sv.provider] ?? "AI"} key for ${sv.name}`, { key: openSaved(sv.apiKeyEnc, app.jwtSecret) });
   });
 
   app.delete("/api/settings/ai", async (req, reply) => {

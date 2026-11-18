@@ -1,26 +1,26 @@
-import { Bot, ChevronLeft, ChevronRight, LogOut, ScrollText, Shield, User, Users, Database, HardDrive, Link2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, LogOut, ScrollText, Shield, User, Users, HardDrive, Link2 } from "lucide-react";
 import { settingsSectionFromHash, useHash } from "../../routes";
 import { useSession } from "../../session";
-import AiSettings from "./AiSettings";
 import LogsSettings from "./LogsSettings";
 import DataSettings from "./DataSettings";
-import FoodSourcesSettings from "./FoodSourcesSettings";
 import IntegrationsSettings from "./IntegrationsSettings";
 import ProfileSettings from "./ProfileSettings";
 import SecuritySettings from "./SecuritySettings";
 import UsersSettings from "./UsersSettings";
 
-// admin: only admins see it (people, AI keys, everyone's logs)
+// admin: only admins see it (people, everyone's logs). Integrations is everyone's: admins also see the
+// server-wide services there (AI, food data, restaurants).
 const TABS = [
   { id: "profile", label: "Profile", hint: "Name, units, time zone, appearance", admin: false, Icon: User, Panel: ProfileSettings },
   { id: "security", label: "Security", hint: "Password, passkeys, devices", admin: false, Icon: Shield, Panel: SecuritySettings },
-  { id: "integrations", label: "Integrations", hint: "Culury meal plan and recipes", admin: false, Icon: Link2, Panel: IntegrationsSettings },
+  { id: "integrations", label: "Integrations", hint: "Culury meal plan and recipes", adminHint: "AI, food data, restaurants, Culury", admin: false, Icon: Link2, Panel: IntegrationsSettings },
   { id: "data", label: "Data", hint: "Download your data", adminHint: "Your data and backups", admin: false, Icon: HardDrive, Panel: DataSettings },
   { id: "users", label: "Users", hint: "Add and manage people", admin: true, Icon: Users, Panel: UsersSettings },
-  { id: "ai", label: "AI services", hint: "Providers and failover order", admin: true, Icon: Bot, Panel: AiSettings },
-  { id: "food-sources", label: "Food sources", hint: "Open Food Facts, USDA, restaurants", admin: true, Icon: Database, Panel: FoodSourcesSettings },
   { id: "logs", label: "Logs", hint: "What ByteSize has been doing", admin: true, Icon: ScrollText, Panel: LogsSettings },
 ] as const;
+
+// Addresses from before Integrations held them (#/settings/ai, #/settings/food-sources)
+const MOVED: Record<string, string> = { ai: "integrations", "food-sources": "integrations" };
 
 const row = "flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-pressed";
 const rowIcon = "flex size-9 shrink-0 items-center justify-center rounded-full bg-pressed text-action";
@@ -29,7 +29,8 @@ const rowIcon = "flex size-9 shrink-0 items-center justify-center rounded-full b
 export default function SettingsPage() {
   const { user, signOut } = useSession();
   const tabs = TABS.filter((t) => user.isAdmin || !t.admin);
-  const wanted = settingsSectionFromHash(useHash());
+  const asked = settingsSectionFromHash(useHash());
+  const wanted = MOVED[asked] ?? asked;
   const tab = tabs.find((t) => t.id === wanted);
 
   if (tab) {

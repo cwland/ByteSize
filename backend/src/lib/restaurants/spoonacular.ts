@@ -103,7 +103,7 @@ export function normalizeSpoonacular(item: any): SourceFood {
 /** A non-2xx answer as a typed error (never echoes the body, which may repeat the key). */
 function statusError(status: number): SourceError {
   if (status === 402) return new SourceError("spoonacular", "Spoonacular's daily lookups are used up", "quota");
-  if (status === 401 || status === 403) return new SourceError("spoonacular", "Spoonacular refused the key — check it in Settings › Food sources", "bad_key");
+  if (status === 401 || status === 403) return new SourceError("spoonacular", "Spoonacular refused the key — check it in Settings › Integrations", "bad_key");
   if (status === 429) return new SourceError("spoonacular", "Spoonacular is busy — try again in a moment", "down");
   return new SourceError("spoonacular", `Spoonacular answered with an error (${status})`, "down");
 }

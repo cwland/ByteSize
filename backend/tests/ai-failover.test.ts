@@ -101,7 +101,7 @@ describe("backup AI services", () => {
     expect(await t.app.ai.active()).not.toBeNull();
     await t.api("PUT", "/api/settings/ai", settings({ enabled: false }));
     expect(await t.app.ai.active()).toBeNull();
-    await expect(t.app.ai.ask("food", "system", "hello")).rejects.toThrow(/Turn it on in Settings › AI/);
+    await expect(t.app.ai.ask("food", "system", "hello")).rejects.toThrow(/Turn it on in Settings › Integrations\./);
   });
 
   it("a person's AI failures are logged as theirs", async () => {

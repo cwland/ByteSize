@@ -1,6 +1,6 @@
 import type { AiProvider } from "./ai.js";
 
-// Which models to suggest first in Settings › AI. Picked by family and version rather than a fixed
+// Which models to suggest first in Settings › Integrations › AI services. Picked by family and version rather than a fixed
 // list of names, so it keeps working as providers release new models:
 //  - Claude: newest Haiku (fast, reads photos), then newest Sonnet
 //  - OpenAI: newest "gpt-N[.N][o]-mini" or "oN-mini" (never codex), then the newest plain "gpt-N[.N]"

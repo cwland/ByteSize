@@ -207,7 +207,8 @@ export class AiService {
     return { key, unreadable: key === null };
   }
 
-  // What the Settings page shows (admins only). A saved key is never sent back: only whether
+  // What the Settings page shows (admins only). A saved key is never sent with it (only the eye and copy
+  // buttons fetch one, from GET /api/settings/ai/:id/key): only whether
   // there is one (hasKey), and whether it can still be read (apiKeyUnreadable).
   // The first service is also repeated at the top level (older screens read it there).
   async summary() {
@@ -241,7 +242,7 @@ export class AiService {
   async active(task: AiTask = "food"): Promise<{ mode: StoredAi["mode"]; maxPerRun: number; timeoutSec: number; askNextOnNoMatch: boolean; services: ActiveService[] } | null> {
     const s = await this.stored();
     if (!s) return null;
-    if (!s.enabled) return null; // Settings › AI switched off
+    if (!s.enabled) return null; // switched off in Settings › Integrations › AI services
     let services = s.services
       .filter((sv) => sv.model && (sv.provider !== "local" || sv.baseUrl))
       .map((sv) => ({ id: sv.id, name: sv.name, provider: sv.provider, model: sv.model, baseUrl: sv.baseUrl, apiKey: sv.apiKeyEnc ? decryptSecret(sv.apiKeyEnc, this.secret) : null, quick: sv.quick, photos: sv.photos }));
@@ -507,8 +508,8 @@ export class AiService {
     const found = await this.active(task);
     // Services the person chose to skip this time (too slow)
     const active = found && opts.skip?.length ? { ...found, services: found.services.filter((sv) => !opts.skip!.includes(sv.id)) } : found;
-    if (found && active && !active.services.length) throw new AiError("There's no other AI service to ask. Try again without skipping, or add another service in Settings › AI.");
-    if (!active) throw new AiError(opts.off ?? (task === "photo" ? "Reading photos needs an AI service that can see pictures. Turn on AI in Settings › AI, and tick “Can read photos” on a service." : "This needs AI. Turn it on in Settings › AI."));
+    if (found && active && !active.services.length) throw new AiError("There's no other AI service to ask. Try again without skipping, or add another service in Settings › Integrations.");
+    if (!active) throw new AiError(opts.off ?? (task === "photo" ? "Reading photos needs an AI service that can see pictures. Turn on AI in Settings › Integrations, and tick “Can read photos” on a service." : "This needs AI. Turn it on in Settings › Integrations."));
     // An answer that can't be read (cut off because it ran out of room, or not JSON) is like a
     // service that's down: the next one is asked
     let left = active.services;
