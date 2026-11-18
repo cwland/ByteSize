@@ -186,6 +186,7 @@ export type WeightImportPreview = WeightImportOptions & {
   existingDays: number;
   unreadable: number;
   problems: { line: number; reason: string }[];
-  rows: { day: string; weightKg: number }[];
+  // existing: the day already has a weigh-in in ByteSize
+  rows: { day: string; weightKg: number; existing: boolean }[];
 };
 export type WeightImportResult = { imported: number; kept: number; replaced: number; from: string; to: string };

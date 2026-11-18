@@ -104,7 +104,8 @@ export default async function weightImportRoutes(app: FastifyInstance) {
     const userId = requireUser(req);
     const { file, options } = await readUpload(req);
     const read = await readFor(app, userId, file, options);
-    const { columns, dateColumn, weightColumn, units, dateFormat, dateFormatMatters, weighIns: rows, problems } = read;
+    const { columns, dateColumn, weightColumn, units, dateFormat, dateFormatMatters, weighIns: rows, problems, unreadable } = read;
+    const existing = await existingDays(db, userId, rows);
     return {
       columns,
       dateColumn,
@@ -114,10 +115,11 @@ export default async function weightImportRoutes(app: FastifyInstance) {
       dateFormatMatters,
       count: rows.length,
       ...rangeOf(rows),
-      existingDays: (await existingDays(db, userId, rows)).size,
-      unreadable: problems.length,
+      existingDays: existing.size,
+      unreadable,
       problems: problems.slice(0, PREVIEW_PROBLEMS),
-      rows: rows.slice(0, PREVIEW_ROWS).map((w) => ({ day: w.day, weightKg: w.weightKg })),
+      // existing: the day already has a weigh-in in ByteSize (kept or replaced, as the person chooses)
+      rows: rows.slice(0, PREVIEW_ROWS).map((w) => ({ day: w.day, weightKg: w.weightKg, existing: existing.has(w.day) })),
     };
   });
 
@@ -135,8 +137,8 @@ export default async function weightImportRoutes(app: FastifyInstance) {
       const rows = replace ? read.weighIns : read.weighIns.filter((w) => !existing.has(w.day));
       for (let i = 0; i < rows.length; i += CHUNK) {
         const insert = tx.insert(weighIns).values(rows.slice(i, i + CHUNK).map((w) => ({ userId, day: w.day, weightKg: w.weightKg, note: w.note })));
-        // Replacing: the file's weight, and its note only when the file has notes (else the day keeps its note)
-        const set = read.noteColumn === null ? { weightKg: sql`excluded.weight_kg` } : { weightKg: sql`excluded.weight_kg`, note: sql`excluded.note` };
+        // Replacing: the file's weight; its note only when the file has one for that day (else the day keeps its note)
+        const set = { weightKg: sql`excluded.weight_kg`, note: sql`coalesce(excluded.note, ${weighIns.note})` };
         await (replace ? insert.onConflictDoUpdate({ target: [weighIns.userId, weighIns.day], set }) : insert.onConflictDoNothing());
       }
       // The body weight follows the latest weigh-in; an older history leaves it alone
@@ -151,7 +153,7 @@ export default async function weightImportRoutes(app: FastifyInstance) {
       level: "info",
       source: "Weight import",
       event: `Imported ${plural(result.imported, "weigh-in")}`,
-      detail: `${longDay(result.from!)} to ${longDay(result.to!)}; ${plural(replace ? result.replaced : result.kept, "day")} already in ByteSize ${replace ? "replaced" : "kept"}; ${plural(read.problems.length, "row")} skipped; by ${who?.username ?? `user ${userId}`}`,
+      detail: `${longDay(result.from!)} to ${longDay(result.to!)}; ${plural(replace ? result.replaced : result.kept, "day")} already in ByteSize ${replace ? "replaced" : "kept"}; ${plural(read.unreadable, "row")} skipped; by ${who?.username ?? `user ${userId}`}`,
       userId,
     });
     return result;

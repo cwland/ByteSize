@@ -58,9 +58,9 @@ describe("POST /api/weight/import/preview", () => {
       unreadable: 1,
       problems: [{ line: 4, reason: 'Can\'t read the weight "abc"' }],
       rows: [
-        { day: "2026-11-16", weightKg: 214.2 * KG_PER_LB },
-        { day: "2026-11-15", weightKg: 214.8 * KG_PER_LB },
-        { day: "2025-01-03", weightKg: 251 * KG_PER_LB },
+        { day: "2026-11-16", weightKg: 214.2 * KG_PER_LB, existing: false },
+        { day: "2026-11-15", weightKg: 214.8 * KG_PER_LB, existing: true },
+        { day: "2025-01-03", weightKg: 251 * KG_PER_LB, existing: false },
       ],
     });
     expect((await stored()).map((w) => w.day)).toEqual(["2026-11-15"]);
@@ -68,7 +68,7 @@ describe("POST /api/weight/import/preview", () => {
 
   it("guesses units from the person's setting when the file doesn't say", async () => {
     await t.api("PATCH", "/api/profile", { units: "metric" });
-    expect((await preview("Date,Weight\n2025-01-03,98.4")).body).toMatchObject({ units: "kg", rows: [{ day: "2025-01-03", weightKg: 98.4 }] });
+    expect((await preview("Date,Weight\n2025-01-03,98.4")).body).toMatchObject({ units: "kg", rows: [{ day: "2025-01-03", weightKg: 98.4, existing: false }] });
   });
 
   it("re-reads with the person's choices of columns, units and date format", async () => {
@@ -122,6 +122,60 @@ describe("POST /api/weight/import/preview", () => {
     expect(await preview(tooBig)).toMatchObject({ status: 413, body: { error: "The file must be 5 MB or less." } });
   });
 
+  // Shapes that once took seconds per 100 KB: each must answer within 2 s at the full 5 MB
+  describe("big or odd files answer quickly", () => {
+    const MB5 = 5 * 1024 * 1024;
+    const fill = (unit: string, head = "") => head + unit.repeat(Math.floor((MB5 - head.length) / unit.length));
+    const timed = async (csv: string) => {
+      expect(Buffer.byteLength(csv)).toBeLessThanOrEqual(MB5);
+      const start = performance.now();
+      const res = await preview(csv);
+      return { ...res, ms: performance.now() - start };
+    };
+    it("a first row of only dates", async () => {
+      const res = await timed(fill("2025-01-03,"));
+      expect(res.ms).toBeLessThan(2000);
+      expect(res.body.error).toMatch(/more than 50 columns/);
+    });
+    it("rows of only dates", async () => {
+      const res = await timed(fill("2025-01-03,2025-01-04\n"));
+      expect(res.ms).toBeLessThan(2000);
+      expect(res.status).toBe(200);
+    });
+    it("a wide junk header with many short rows", async () => {
+      const res = await timed(fill("1,2\n", Array.from({ length: 5000 }, (_, i) => `junk${i}`).join(",") + "\n"));
+      expect(res.ms).toBeLessThan(2000);
+      expect(res.body).toEqual({ error: "This file has more than 50 columns. Export just the date and weight, or remove extra columns." });
+    });
+    it("a 50-column junk header with many short rows", async () => {
+      const res = await timed(fill("1,2\n", Array.from({ length: 50 }, (_, i) => `junk${i}`).join(",") + "\n"));
+      expect(res.ms).toBeLessThan(2000);
+      expect(res.status).toBe(200);
+    });
+    it("5 MB of commas", async () => {
+      const res = await timed(fill(","));
+      expect(res.ms).toBeLessThan(2000);
+      expect(res.status).toBe(400);
+    });
+    it("one 5 MB line", async () => {
+      const res = await timed(fill("a1b2c3"));
+      expect(res.ms).toBeLessThan(2000);
+      expect(res.status).toBe(400);
+    });
+  });
+
+  it("reads a Windows-1252 file and a UTF-16 (Excel Unicode Text) file", async () => {
+    const cp1252 = Buffer.concat([Buffer.from("Date,Weight,Note\n2025-01-03,180,caf"), Buffer.from([0xe9])]);
+    expect((await importCsv(cp1252)).status).toBe(200);
+    expect((await stored()).map((w) => w.note)).toEqual(["caf\u00e9"]);
+    const utf16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("Date\tWeight\n2025-01-04\t181\n", "utf16le")]);
+    expect((await preview(utf16)).body).toMatchObject({ columns: ["Date", "Weight"], count: 1, rows: [{ day: "2025-01-04" }] });
+  });
+
+  it("names the line of a quote that is never closed", async () => {
+    expect(await preview('Date,Weight,Note\n2025-01-03,180,"oops\n2025-01-04,181,')).toMatchObject({ status: 400, body: { error: "Line 2 has a quote that is never closed." } });
+  });
+
   it("needs a login", async () => {
     t.setToken("");
     expect((await preview(LOSE_IT)).status).toBe(401);
@@ -140,7 +194,7 @@ describe("POST /api/weight/import", () => {
     ]);
   });
 
-  it("replaces days already in ByteSize when asked; their notes stay unless the file has notes", async () => {
+  it("replaces days already in ByteSize when asked; their notes stay unless the file has a note for that day", async () => {
     await weigh("2026-11-15", 97, "mine");
     await weigh("2026-11-16", 96, "keep me");
     const res = await importCsv(LOSE_IT, { existing: "replace" });
@@ -153,7 +207,7 @@ describe("POST /api/weight/import", () => {
     await importCsv("Date,Weight,Notes\n2026-11-16,214,from the file\n2026-11-15,215,", { existing: "replace" });
     expect((await stored()).map((w) => [w.day, w.lb, w.note])).toEqual([
       ["2025-01-03", 251, null],
-      ["2026-11-15", 215, null],
+      ["2026-11-15", 215, "mine"], // an empty note cell keeps the note
       ["2026-11-16", 214, "from the file"],
     ]);
   });

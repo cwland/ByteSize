@@ -52,6 +52,7 @@ export default function WeightImport() {
       if (n !== reads.current) return;
       setPreview(p);
       setChoices(next);
+      if (!p.existingDays) setExisting("keep"); // the choice is hidden: back to the default
     } catch (e) {
       if (n === reads.current) setMsg(errorMsg(e));
     } finally {
@@ -189,7 +190,11 @@ export default function WeightImport() {
                 {preview.rows.map((r) => (
                   <tr key={r.day}>
                     <td className="py-1.5">{longDay(r.day)}</td>
-                    <td className="py-1.5 text-right tabular-nums">{formatWeight(r.weightKg, user.units)}</td>
+                    {r.existing && existing === "keep" ? (
+                      <td className="py-1.5 text-right text-subtle">Already in ByteSize — kept</td>
+                    ) : (
+                      <td className="py-1.5 text-right tabular-nums">{formatWeight(r.weightKg, user.units)}</td>
+                    )}
                   </tr>
                 ))}
               </tbody>

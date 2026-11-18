@@ -47,7 +47,7 @@ describe("Import weight history", () => {
     expect(screen.getByText('Line 5: Can\'t read the weight "abc"')).toBeInTheDocument();
     expect(screen.getByText("Line 9: Date is in the future")).toBeInTheDocument();
     const rows = within(screen.getByRole("table", { name: "First rows as they will be saved" })).getAllByRole("row");
-    expect(rows.map((r) => r.textContent)).toEqual(["DateWeight", "Nov 16, 2026214.2 lb", "Nov 15, 2026214.8 lb"]);
+    expect(rows.map((r) => r.textContent)).toEqual(["DateWeight", "Nov 16, 2026214.2 lb", "Nov 15, 2026Already in ByteSize — kept"]);
     expect(screen.getByRole("radio", { name: "Keep what's in ByteSize" })).toBeChecked();
     expect(screen.getByRole("button", { name: "Import" })).toBeEnabled();
   });
@@ -100,6 +100,33 @@ describe("Import weight history", () => {
     // Back to the start, ready for another file
     expect(screen.queryByRole("button", { name: "Import" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Choose a CSV file")).toBeInTheDocument();
+  });
+
+  it("a day already in ByteSize shows the file's weight once Replace is chosen", async () => {
+    fakeServer({ "POST /api/weight/import/preview": () => weightImportPreview });
+    renderWithSession(<WeightImport />);
+    await choose();
+    expect(await screen.findByText("Already in ByteSize — kept")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: "Replace with the file's" }));
+    expect(screen.queryByText("Already in ByteSize — kept")).not.toBeInTheDocument();
+    expect(screen.getByText("214.8 lb")).toBeInTheDocument();
+  });
+
+  it("the choice goes back to Keep when a new preview has no days already in ByteSize", async () => {
+    const { sent } = fakeServer({
+      "POST /api/weight/import/preview": (body: FormData) => ({ ...weightImportPreview, existingDays: body.get("dateFormat") === "dmy" ? 0 : 3 }),
+      "POST /api/weight/import": () => imported,
+    });
+    renderWithSession(<WeightImport />);
+    await choose();
+    await userEvent.click(await screen.findByRole("radio", { name: "Replace with the file's" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Date format" }), "Day/Month/Year");
+    await waitFor(() => expect(screen.queryByRole("radio", { name: "Replace with the file's" })).not.toBeInTheDocument());
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Date format" }), "Month/Day/Year");
+    expect(await screen.findByRole("radio", { name: "Keep what's in ByteSize" })).toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
+    await waitFor(() => expect(imports(sent)).toHaveLength(1));
+    expect(fields(imports(sent)[0]).existing).toBe("keep");
   });
 
   it("sends replace when the person chooses the file's weigh-ins for days already in ByteSize", async () => {

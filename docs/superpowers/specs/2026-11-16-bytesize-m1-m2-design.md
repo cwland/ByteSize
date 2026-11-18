@@ -760,7 +760,7 @@ own history only.
   and month-name forms like "Jan 3, 2025" / "3 Jan 2025". A date with a time keeps its calendar day as written
   (no time-zone shifting).
 - Weight: a number (a decimal comma like "98,4" is accepted when the separator isn't a comma); text after the
-  number such as "lb"/"kg" is ignored; must be 20–700 lb (9–318 kg) or the row is skipped as unreadable.
+  number such as "lb"/"kg" is ignored; must be 30–350 kg (about 66–771 lb), the weigh-in form's own range, or the row is skipped as unreadable.
 - Several rows for the same day: the last one in the file wins (most apps export one per day; Withings-style
   exports can have more).
 - Future dates are skipped. Blank lines are ignored.

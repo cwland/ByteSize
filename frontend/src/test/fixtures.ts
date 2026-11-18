@@ -213,7 +213,7 @@ export const weightImportPreview = {
     { line: 9, reason: "Date is in the future" },
   ],
   rows: [
-    { day: "2026-11-16", weightKg: 214.2 * 0.45359237 },
-    { day: "2026-11-15", weightKg: 214.8 * 0.45359237 },
+    { day: "2026-11-16", weightKg: 214.2 * 0.45359237, existing: false },
+    { day: "2026-11-15", weightKg: 214.8 * 0.45359237, existing: true },
   ],
 };

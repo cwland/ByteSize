@@ -37,6 +37,11 @@ describe("splitCsv", () => {
     expect(rows[2].line).toBe(3);
   });
 
+  it("says which line has a quote that is never closed, instead of reading the rest of the file as one cell", () => {
+    expect(() => splitCsv('Date,Weight,Note\n2025-01-03,180,ok\n2025-01-04,181,"oops\n2025-01-05,182,fine')).toThrow("Line 3 has a quote that is never closed.");
+    expect(() => splitCsv('Date,Weight\n2025-01-03,180')).not.toThrow();
+  });
+
   it("skips blank lines (and lines of only separators) but keeps counting them", () => {
     const { rows } = splitCsv("Date,Weight\n\n2025-01-03,180\n , \n,\n2025-01-04,181\n\n");
     expect(rows.map((r) => r.line)).toEqual([1, 3, 6]);
@@ -48,10 +53,25 @@ describe("decodeCsv", () => {
     expect(decodeCsv(Buffer.from("Date,Weight\n2025-01-03,180"))).toBe("Date,Weight\n2025-01-03,180");
   });
 
+  it("reads Excel's UTF-16 exports (little- and big-endian, with their byte-order mark)", () => {
+    const text = "Date\tWeight\tNote\n2025-01-03\t180\tcaf\u00e9";
+    const le = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, "utf16le")]);
+    expect(decodeCsv(le)).toBe(text);
+    const be = Buffer.from(le);
+    be.swap16(); // FF FE + LE pairs -> FE FF + BE pairs
+    expect(decodeCsv(be)).toBe(text);
+  });
+
+  it("falls back to Windows-1252 when the bytes aren't UTF-8", () => {
+    const bytes = Buffer.concat([Buffer.from("Date,Weight,Note\n2025-01-03,180,caf"), Buffer.from([0xe9, 0x20, 0x97]), Buffer.from(" ok")]); // é, em dash
+    expect(decodeCsv(bytes)).toBe("Date,Weight,Note\n2025-01-03,180,caf\u00e9 \u2014 ok");
+  });
+
   it("refuses something that isn't text with a plain message", () => {
     expect(() => decodeCsv(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0xff, 0xfe]))).toThrow(CsvError);
     expect(() => decodeCsv(Buffer.from("Date,Weight\u0000\n"))).toThrow("That file isn't a CSV file");
     expect(() => decodeCsv(Buffer.from("  \n\n"))).toThrow("That file is empty");
+    expect(() => decodeCsv(Buffer.from([0x44, 0x61, 0x74, 0x65, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15]))).toThrow(CsvError);
   });
 });
 
@@ -81,6 +101,16 @@ describe("parseDay", () => {
     expect(parseDay("3-Sep-2025", "mdy")).toBe("2025-09-03");
     expect(parseDay("Sept. 30, 2025 6:00 PM", "mdy")).toBe("2025-09-30");
     expect(parseDay("Fri, Jan 3, 2025", "mdy")).toBe("2025-01-03");
+  });
+
+  it("reads two-digit years as 20YY, or 19YY when 20YY would be after today", () => {
+    expect(parseDay("1/3/25", "mdy", "2026-11-17")).toBe("2025-01-03");
+    expect(parseDay("03-Jan-25", "mdy", "2026-11-17")).toBe("2025-01-03");
+    expect(parseDay("Jan 3, 25", "mdy", "2026-11-17")).toBe("2025-01-03");
+    expect(parseDay("3.1.25 07:00", "dmy", "2026-11-17")).toBe("2025-01-03");
+    expect(parseDay("12/1/26", "mdy", "2026-11-17")).toBe("1926-12-01"); // Dec 1, 2026 is still to come
+    expect(parseDay("11/17/26", "mdy", "2026-11-17")).toBe("2026-11-17");
+    expect(parseDay("5/6/97", "mdy", "2026-11-17")).toBe("1997-05-06");
   });
 
   it("refuses days that don't exist and things that aren't dates", () => {
@@ -135,6 +165,13 @@ describe("readWeightCsv", () => {
     expect(read("date;weight;weight trend\n2025-01-03;98,4;98,2", { units: "kg" }).weighIns[0].weightKg).toBe(98.4);
   });
 
+  it("prefers an exact header (date, day, weight, weight (lb), weight (kg), body weight) over one that only contains the word", () => {
+    expect(read("Weekday,Date,Weight\nFri,2025-01-03,180")).toMatchObject({ dateColumn: 1, weightColumn: 2 });
+    expect(read("Date,Lean weight,Weight\n2025-01-03,150,180")).toMatchObject({ dateColumn: 0, weightColumn: 2 });
+    expect(read("Time,Weight trend,Body Weight\n2025-01-03,179,180")).toMatchObject({ weightColumn: 2 });
+    expect(read("Timestamp,Day,Weight (kg)\n1,2025-01-03,80")).toMatchObject({ dateColumn: 1, weightColumn: 2 });
+  });
+
   it("uses the person's choice of columns over the guess", () => {
     const r = read("Date,Weight,Trend\n2025-01-03,180,179", { weightColumn: 2 });
     expect(r.weightColumn).toBe(2);
@@ -175,19 +212,26 @@ describe("readWeightCsv", () => {
     expect(r.problems).toEqual([{ line: 3, reason: 'Can\'t read the date "25/04/2025"' }]);
   });
 
-  it("skips weights outside 20–700 lb or 9–318 kg, unreadable weights and empty cells, saying why", () => {
-    const lb = read("Date,Weight\n2025-01-01,19.9\n2025-01-02,20\n2025-01-03,700\n2025-01-04,700.1\n2025-01-05,abc\n2025-01-06,\n,180");
+  it("skips weights outside the app's 30–350 kg (66.2–771.6 lb), unreadable weights and empty cells, saying why", () => {
+    const lb = read("Date,Weight\n2025-01-01,66.1\n2025-01-02,66.2\n2025-01-03,771.6\n2025-01-04,771.7\n2025-01-05,abc\n2025-01-06,\n,180");
     expect(days(lb)).toEqual(["2025-01-02", "2025-01-03"]);
     expect(lb.problems).toEqual([
-      { line: 2, reason: "Weight must be between 20 and 700 lb" },
-      { line: 5, reason: "Weight must be between 20 and 700 lb" },
+      { line: 2, reason: "Weight must be between 66.2 and 771.6 lb" },
+      { line: 5, reason: "Weight must be between 66.2 and 771.6 lb" },
       { line: 6, reason: 'Can\'t read the weight "abc"' },
       { line: 7, reason: "No weight" },
       { line: 8, reason: "No date" },
     ]);
-    const kg = read("Date,Weight (kg)\n2025-01-01,8.9\n2025-01-02,9\n2025-01-03,318\n2025-01-04,318.5");
+    const kg = read("Date,Weight (kg)\n2025-01-01,29.9\n2025-01-02,30\n2025-01-03,350\n2025-01-04,350.1");
     expect(days(kg)).toEqual(["2025-01-02", "2025-01-03"]);
-    expect(kg.problems.map((p) => p.reason)).toEqual(["Weight must be between 9 and 318 kg", "Weight must be between 9 and 318 kg"]);
+    expect(kg.problems.map((p) => p.reason)).toEqual(["Weight must be between 30 and 350 kg", "Weight must be between 30 and 350 kg"]);
+  });
+
+  it("counts every unreadable row but keeps the reasons for the first 100", () => {
+    const r = read(["Date,Weight", ...Array.from({ length: 150 }, () => "2025-01-03,abc")].join("\n"));
+    expect(r.unreadable).toBe(150);
+    expect(r.problems).toHaveLength(100);
+    expect(r.problems[99].line).toBe(101);
   });
 
   it("skips future days (today is fine)", () => {
@@ -222,6 +266,13 @@ describe("readWeightCsv", () => {
     const r = read("Body\nDate,Weight\n2025-01-03,180");
     expect(r.columns).toEqual(["Date", "Weight"]);
     expect(days(r)).toEqual(["2025-01-03"]);
+  });
+
+  it("refuses a file with more than 50 columns", () => {
+    const head = Array.from({ length: 51 }, (_, i) => `c${i}`).join(",");
+    expect(() => read(`${head}\n2025-01-03,180`)).toThrow("This file has more than 50 columns. Export just the date and weight, or remove extra columns.");
+    expect(() => read(`Date,Weight\n2025-01-03,180${",x".repeat(60)}`)).toThrow(/more than 50 columns/);
+    expect(read(`${Array.from({ length: 50 }, (_, i) => (i === 0 ? "Date" : i === 1 ? "Weight" : `c${i}`)).join(",")}\n2025-01-03,180`).weighIns).toHaveLength(1);
   });
 
   it("refuses a file without two columns, or columns it doesn't have, with a plain message", () => {
