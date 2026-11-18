@@ -1188,3 +1188,9 @@ The "Today"/"Yesterday" wording the header already uses, if any, stays as it is.
 (e.g. `weekday-long-month-short`, `dmy-slash`, `iso`) in user_settings; unknown keys 400; included in backups and
 "Download my data" with the rest of user_settings. Formatting is done in one helper (with tests for every choice) so
 other places can adopt it later.
+
+## 34. No greeting line; widgets closer to the dates (Cory, 2026-11-18)
+
+**Asked for.** "Remove the greeting 'Good afternoon, Cory · 2-day streak' and move the widgets up closer to the
+dates." The Dashboard header loses the greeting/streak line (the Streak widget still shows the streak); the gap
+between the week strip and the first row of widgets shrinks to the normal card gap (about 12–16 px).
