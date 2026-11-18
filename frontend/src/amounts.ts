@@ -39,8 +39,19 @@ const METRIC_WORDS = new Set(["g", "kg", "mg", "ml", "l"]);
 const UNIT_WORDS = new Set([...METRIC_WORDS, "oz", "lb", "lbs", "tbsp", "tsp", "fl", "floz"]);
 const ADJECTIVES = new Set(["small", "medium", "large", "extra", "whole", "jumbo", "mini", "thin", "thick", "regular", "big"]);
 
+// Nouns ending in -ie: their plural is -ies too ("cookies"), so singular() can't just turn -ies into -y
+const IE_NOUNS = new Set("cookie brownie smoothie pie veggie hoagie goalie beanie rookie sweetie birdie zombie movie calorie tie".split(" "));
 const plural = (w: string) => (/(ss|sh|ch|x)$/i.test(w) ? `${w}es` : /[^aeiou]y$/i.test(w) ? `${w.slice(0, -1)}ies` : /s$/i.test(w) ? w : `${w}s`);
-const singular = (w: string) => (/[^aeiou]ies$/i.test(w) ? `${w.slice(0, -3)}y` : /(ss|sh|ch|x)es$/i.test(w) ? w.slice(0, -2) : /[^s]s$/i.test(w) ? w.slice(0, -1) : w);
+const singular = (w: string) =>
+  /ies$/i.test(w) && IE_NOUNS.has(w.slice(0, -1).toLowerCase())
+    ? w.slice(0, -1)
+    : /[^aeiou]ies$/i.test(w)
+      ? `${w.slice(0, -3)}y`
+      : /(ss|sh|ch|x)es$/i.test(w)
+        ? w.slice(0, -2)
+        : /[^s]s$/i.test(w)
+          ? w.slice(0, -1)
+          : w;
 
 const PREPOSITIONS = new Set(["of", "with", "without", "in", "from", "for"]);
 // Measures and containers: when a serving name starts with one ("cup sliced", "can soda", "slice whole wheat
@@ -49,9 +60,17 @@ const MEASURES = new Set(
   "cup can slice bottle bar piece scoop packet serving container link stick glass bowl pouch package pack box bag jar carton handful patty fillet strip wedge sheet envelope tablet capsule pinch dash leaf clove spear square cube pod sprig ring shot portion tablespoon teaspoon spoonful loaf bun roll tortilla cookie cracker".split(" "),
 );
 
+// Words that are the counted thing when they end a name, even after a measure word ("tortilla chips",
+// "cookie dough bites", "peanut butter cups"): the measure word there says what kind, not how much
+const COUNTED_LAST = new Set(
+  "chip bite crisp ball cluster nugget wafer round triangle twist puff drop cup bar square stick ring piece strip wedge cracker cookie".split(" "),
+);
+
 // Pluralise (or singularise) the noun of a serving name: a measure or container word that comes first (after
-// any size: "2 cups sliced", "2 large slices bread"); otherwise the last word before a comma or a preposition
+// any size: "2 cups sliced", "2 large slices bread"), unless the name ends in a word that is itself counted
+// ("2 tortilla chips", "2 cookie dough bites"); otherwise the last word before a comma or a preposition
 // ("6 pitted prunes", "2 pieces of bread", "2 fruits without skin"). A size on its own ("large") stays.
+// In a hyphenated word the last part takes it ("2 roll-ups").
 function nounFor(noun: string, many: boolean): string {
   if (/\(s\)/.test(noun)) return noun;
   const comma = noun.indexOf(",");
@@ -59,12 +78,14 @@ function nounFor(noun: string, many: boolean): string {
   const words = head.split(" ");
   const first = words.findIndex((w) => w && !ADJECTIVES.has(w.toLowerCase()));
   const prep = words.findIndex((w, i) => i > 0 && PREPOSITIONS.has(w.toLowerCase()));
-  const measure = first >= 0 && MEASURES.has(singular(words[first].toLowerCase()));
-  const i = measure ? first : (prep < 0 ? words.length : prep) - 1;
+  const last = (prep < 0 ? words.length : prep) - 1;
+  const counts = (w: string | undefined) => !!w && COUNTED_LAST.has(singular(w.toLowerCase()));
+  const measure = first >= 0 && MEASURES.has(singular(words[first].toLowerCase())) && !(last > first && counts(words[last]));
+  const i = measure ? first : last;
   if (i < 0 || ADJECTIVES.has(words[i].toLowerCase())) return noun;
-  const [, word, tail] = words[i].match(/^([A-Za-z]+)(.*)$/) ?? [];
+  const [, lead, word, tail] = words[i].match(/^((?:[A-Za-z]+-)*)([A-Za-z]+)(.*)$/) ?? [];
   if (!word) return noun;
-  words[i] = (many ? plural(word) : singular(word)) + tail;
+  words[i] = lead + (many ? plural(word) : singular(word)) + tail;
   return words.join(" ") + (comma < 0 ? "" : noun.slice(comma));
 }
 
