@@ -928,3 +928,91 @@ wrap on phones).
 - **Remembered** per person on that device (browser storage, keyed by user id; wrapped so a browser without storage
   just uses the defaults). Builder's call — Cory answered the defaults question only.
 - Search still asks all sources at once (no extra calls when a pill is turned on).
+
+## 23. Describe it: feedback, "Did you mean", and no more "ran out of room" (Cory, 2026-11-18)
+
+**Asked for.** "When using Describe it it needs some feedback on the screen when you push the button — right now it
+just sits there." "It needs to make assumptions: if I misspell cheerios as 'cherios' it should assume I mean
+Cheerios instead of failing, with feedback like 'Did you mean XXX' and let the user say yes." "I got 'OpenRouter's
+answer couldn't be read (it ran out of room)' on several queries." Follow-up: "Don't say OpenRouter — just say
+'Estimating… asking AI'."
+
+**Feedback.** Pressing the Describe it button (and the AI estimate button anywhere it appears, e.g. Estimate with
+AI on a recipe) shows at once: the button disabled, and right next to the line "Estimating… asking AI" a spinning wheel that keeps turning the whole time it works (so it is plainly doing something); the wheel respects reduced-motion settings by pulsing instead of spinning. If the
+first AI service fails and another is asked, the line becomes "Still estimating… trying another AI". A **Cancel**
+button stops waiting (the request is aborted; nothing is logged). No AI service names are shown in these lines.
+Errors that reach the person don't name the service either: "The AI couldn't estimate that. Try again, or describe
+it differently."
+
+**Assumptions.** The AI is told: assume the most likely food the person meant (misspellings, brand names written
+loosely, missing words); only give up when nothing sensible fits. The answer says what it took the text to mean
+(`name`) and whether that differs from what was typed in a way worth confirming (`assumed: true` plus
+`interpretedAs`, e.g. "Cheerios"). When `assumed` is true, the estimate is shown with **Did you mean Cheerios?**
+above it and two buttons: **Yes** (carries on to Track food with that estimate) and **No, change it** (back to the
+text box with the person's words, ready to edit). When the AI truly can't guess, it answers so and the person sees
+"Couldn't work out what that is. Try describing it differently."
+
+**"Ran out of room".** Cause: the estimate allowed 1,200 tokens, and models that "think" first (common on
+OpenRouter) used them up before answering. Fix:
+- The food estimate (and the other AI asks that return JSON) gets a larger budget (4,000 tokens for an estimate).
+- OpenRouter asks for low reasoning effort on these asks (already supported in ai.ts; pass it here).
+- When an answer is cut off for length, the same service is asked once more with double the budget before moving to
+  the next service; only then is it a failure.
+
+**Not in this step.** Estimating from a photo (unchanged), voice input.
+
+## 24. Compact, centred date header (Cory, 2026-11-18)
+
+**Asked for.** "Clean this up a bit — make something more compact and centred for the date" (the wide Dashboard
+header: big "Wednesday, November 18" on the left, greeting under it, a large week strip far right).
+
+**Change (wide screens, Dashboard and Log):** one centred block at the top of the page:
+- the week strip in the middle, smaller (day buttons about 40 px wide, 52 px tall, single-letter day over the
+  number, dot under logged days, ‹ › at the ends), with the selected day filled as now;
+- directly above it, one short centred line: "Wednesday, Nov 18" (about 18 px, bold);
+- directly below it, one small subtle line: "Good morning, Cory · 2-day streak" (first name only; the streak part
+  only when there is a streak). On Log the subtle line is left out.
+Total header height about 120 px instead of about 160. Phones unchanged.
+
+## 25. Barcode: upload a photo of it too (Cory, 2026-11-18)
+
+**Asked for.** "When using the barcode scanner it should allow a user to upload a photo of the barcode as well, just
+like the photo scan." (Add food › barcode button opens "Type the barcode number" only.)
+
+**Change.** Under the barcode number box, a button **Upload a barcode photo** (camera/image icon) opens the same
+photo picker the camera button uses, already set to barcode mode (the server reads the barcode from the photo as it
+does today); on phones it offers the camera or the photo library as the photo picker already does. Reading the
+photo shows the same feedback as other photo reads; a found barcode goes through the usual barcode lookup; "No
+barcode found in that photo" offers to try another photo or type the number. The barcode number box also tells
+password managers to leave it alone (`autocomplete="off"`, `data-1p-ignore`, `data-lpignore`), so the 1Password
+button no longer appears in it.
+
+## 26. Password managers only on sign-in fields (Cory, 2026-11-18)
+
+**Asked for.** "1Password should ignore all fields other than username and passwords."
+
+**Change.** Every text, number, search and textarea field in the app carries `data-1p-ignore`, `data-lpignore="true"`
+and `data-bwignore` (1Password, LastPass, Bitwarden) and a suitable `autocomplete` value (`off` for search and data
+fields), done once in the shared input components/class helpers rather than field by field where possible, so new
+fields get it too. Exceptions — left for password managers, with the right `autocomplete`: the sign-in username
+(`username`) and password (`current-password`); setting or changing a password and the forgot-password new
+password (`new-password`); the forgot-password email (`email`) and the 6-digit code (`one-time-code`). Saved API-key
+fields (§16) are ignored too (their reveal/copy covers that). A test walks the main screens and asserts every
+input outside that list carries the ignore attributes.
+
+## 27. Dashboard rearranged; no + in the side rail (Cory, 2026-11-18)
+
+**Asked for.** "Remove the + from the menu — users can select Add food from the food log area." "Move the budget
+widget to the middle and the food log on the left; put water under the middle widget." "Remove the buttons for
+Search food etc. on the budget widget — users don't need them there."
+
+**Change (wide screens):**
+- The side rail loses the + button (logo, then Dashboard, Log, Goals, My foods; Settings and account at the bottom).
+  Adding food is from "+ Add food" in Today's food and on the Log page. Phones keep their + in the bottom bar
+  (the iPhone template is unchanged).
+- Dashboard columns: **left** Today's food; **middle** the budget card with **water** directly under it; **right**
+  weight, next shot, streak. Still wraps to two/one columns as the width shrinks, in that order (food, budget,
+  water, …).
+- The four quick buttons (Search food, Barcode photo, Label photo, Restaurants) are removed from the Dashboard.
+- Today's food: every meal gets a "+ Add food" button (also meals that already have food, after their last item),
+  so food can always be added from there.
