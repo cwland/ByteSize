@@ -1132,3 +1132,14 @@ cup's-worth fallback meant for drinks known only per 100 g.
 at 1 of that serving, whatever the source. Only a serving that names no item — just an amount like "100 g" or
 "100 ml" — falls back to a cup's worth (8 fl oz / 240 ml). Everything else in `defaultPortion` is unchanged
 (a grams-only second serving still starts in fl oz/ml, same amount).
+
+## 31. Unknown nutrients count as 0 on screen (Cory, 2026-11-18)
+
+**Asked for.** "When calculating macros, if something is unknown or blank, treat it as 0 instead of saying unknown."
+This replaces the earlier "unknown is never 0" rule **for what's shown**: totals, rings, day totals, meal lines,
+entry pills, food details and recipe/meal sums add a missing value as 0 and show the number (no "?", no "+ some
+unknown", no "N foods missing fiber", no "—" for a sum). **Stored data doesn't change**: a food that doesn't say its
+fiber is still saved without it, so "fill in missing nutrients", Check for changes and later lookups can still fill
+it, and editing a food still shows the field blank. Combining duplicate entries (§28) adds known amounts and leaves
+a missing nutrient missing in storage. Places that aren't nutrient amounts keep their own wording (e.g. a restaurant
+item with no calories in the menu list, a day with no food in the after-injection chart).
