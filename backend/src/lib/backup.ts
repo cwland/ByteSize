@@ -29,14 +29,22 @@ export const FORMAT = 1;
 export const NOT_A_BACKUP = "That isn't a ByteSize backup.";
 export const NEWER_BACKUP = "This backup is from a newer ByteSize. Update first.";
 export const BACKUP_BUSY = "A backup is already running.";
-const TOO_LARGE = "That backup is too large to restore.";
+const TOO_LARGE = "This backup is too large to restore here.";
+const DOESNT_FIT = "This backup couldn't be restored, so nothing was changed. Some of its data doesn't fit this server; the details are in Settings › Logs.";
+const DIDNT_FINISH = "The restore didn't finish, and nothing was changed. Try again.";
 
-const MAX_JSON_BYTES = 200 * 1024 * 1024;
 const MAX_PHOTO_BYTES = 50 * 1024 * 1024; // each (kept photos are ≤1600 px JPEGs)
 const MAX_EXTRACT_BYTES = 20 * 1024 * 1024 * 1024; // everything taken out of one archive
 const PHOTO_ENTRY = /^uploads\/\d{1,10}\/[A-Za-z0-9][A-Za-z0-9._-]{0,200}$/;
 const INSERT_BATCH = 500;
 const CHECK_EVERY_MS = 60 * 60 * 1000;
+
+/** Limits and file moves, swappable in tests. */
+export const backupHooks = {
+  maxJsonBytes: 200 * 1024 * 1024,
+  lockTimeoutMs: 30_000, // a restore waits this long for a table someone is using, then says to try again
+  rename: (from: string, to: string) => fs.rename(from, to),
+};
 
 // ---------- the tables, from the Drizzle schema (a new table is backed up without touching this file) ----------
 
@@ -139,12 +147,17 @@ export async function pruneBackups(app: FastifyInstance, keep: number): Promise<
   return old.map((b) => b.name);
 }
 
-export async function deleteBackup(app: FastifyInstance, name: string): Promise<boolean> {
-  const file = await backupFile(app, name);
-  if (!file) return false;
-  await fs.rm(file, { force: true });
-  return true;
+/** Deletes a backup (not while a backup or restore is running: 409). False when there's no such backup. */
+export function deleteBackup(app: FastifyInstance, name: string): Promise<boolean> {
+  return exclusive(async () => {
+    const file = await backupFile(app, name);
+    if (!file) return false;
+    await fs.rm(file, { force: true });
+    return true;
+  });
 }
+
+const exists = (file: string) => fs.lstat(file).then(() => true, () => false);
 
 // ---------- writing ----------
 
@@ -196,10 +209,14 @@ async function gatherPhotos(from: string, to: string): Promise<number> {
 
 async function createBackup(app: FastifyInstance, label?: string) {
   const now = app.now();
-  const name = `bytesize-${stamp(now)}${label ? `-${label}` : ""}.tar.gz`;
-  if (!BACKUP_NAME.test(name)) throw new Error(`Not a backup name: ${name}`);
   const dir = backupsDir(app);
   await fs.mkdir(dir, { recursive: true });
+  // Never over an existing backup: one made in the same second gets the next free second
+  const nameAt = (d: Date) => `bytesize-${stamp(d)}${label ? `-${label}` : ""}.tar.gz`;
+  let at = now;
+  while (await exists(path.join(dir, nameAt(at)))) at = new Date(at.getTime() + 1000);
+  const name = nameAt(at);
+  if (!BACKUP_NAME.test(name)) throw new Error(`Not a backup name: ${name}`);
   const tmp = path.join(dir, `.${name}.tmp`);
   // The work folder sits in the data folder, so photos are hard-linked (instant), not copied
   const work = await fs.mkdtemp(path.join(dir, ".work-"));
@@ -250,6 +267,7 @@ async function openBackup(app: FastifyInstance, file: string): Promise<{ data: B
   try {
     let total = 0;
     let tooLarge = false;
+    const maxJson = backupHooks.maxJsonBytes;
     try {
       await tar.x({
         file,
@@ -261,7 +279,8 @@ async function openBackup(app: FastifyInstance, file: string): Promise<{ data: B
         filter: (p, entry) => {
           if (!("type" in entry) || entry.type !== "File") return false;
           const size = entry.size ?? 0;
-          const keep = (p === DATA_FILE && size <= MAX_JSON_BYTES) || (PHOTO_ENTRY.test(p) && size <= MAX_PHOTO_BYTES);
+          if (p === DATA_FILE && size > maxJson) tooLarge = true;
+          const keep = (p === DATA_FILE && size <= maxJson) || (PHOTO_ENTRY.test(p) && size <= MAX_PHOTO_BYTES);
           if (keep && (total += size) > MAX_EXTRACT_BYTES) tooLarge = true;
           return keep && !tooLarge;
         },
@@ -291,6 +310,7 @@ async function openBackup(app: FastifyInstance, file: string): Promise<{ data: B
 /** Empties every backed-up table (and every sign-in) and loads the backup's rows, in one transaction. */
 async function loadTables(app: FastifyInstance, data: BackupData) {
   await app.db.transaction(async (tx) => {
+    await tx.execute(sql.raw(`set local lock_timeout = ${Math.max(1, Math.floor(backupHooks.lockTimeoutMs))}`));
     const emptied = [...TABLES.map((t) => t.name).filter((n) => n !== "app_settings"), "sessions"];
     await tx.execute(sql`truncate ${sql.join(emptied.map((n) => sql.identifier(n)), sql`, `)} cascade`);
     await tx.delete(appSettings).where(sql`${appSettings.key} not in (${sql.join(SKIP_SETTINGS.map((k) => sql`${k}`), sql`, `)})`);
@@ -335,16 +355,24 @@ async function swapUploads(app: FastifyInstance, from: string, safety: string) {
   const old = path.join(app.dataDir, `.uploads-old-${randomBytes(6).toString("hex")}`);
   let moved = false;
   try {
-    await fs.rename(live, old).then(
+    await backupHooks.rename(live, old).then(
       () => (moved = true),
       (err) => {
         if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
       },
     );
-    await fs.rename(from, live);
+    await backupHooks.rename(from, live);
   } catch (err) {
-    if (moved) await fs.rename(old, live).catch(() => {});
-    const detail = `The data was restored, but the photos weren't swapped in. The photos from before are in ${safety}. ${(err as Error).message}`;
+    let oldAt = "";
+    if (moved) {
+      try {
+        await backupHooks.rename(old, live);
+      } catch (backErr) {
+        oldAt = ` They couldn't be moved back either (${(backErr as Error).message}): they are in the folder ${path.basename(old)} in the data folder.`;
+        await logEvent(app.db, { category: "api", level: "error", source: "Restore", event: "The old photos couldn't be moved back after a restore", detail: `They are in ${old}, and in the safety backup ${safety}. ${(backErr as Error).message}` });
+      }
+    }
+    const detail = `The data was restored, but the photos weren't swapped in. The photos from before are in ${safety}.${oldAt} ${(err as Error).message}`;
     await logEvent(app.db, { category: "api", level: "error", source: "Restore", event: "A restore's photos couldn't be put in place", detail });
     throw new HttpError(500, `The data was restored, but its photos couldn't be put in place. The photos from before are in the backup ${safety}. See Settings › Logs.`);
   }
@@ -373,11 +401,15 @@ export function restoreBackup(app: FastifyInstance, file: string, by: { userId: 
       try {
         await loadTables(app, data);
       } catch (err) {
-        // PostgreSQL's own words (the query's message would carry the rows: password hashes, saved keys)
-        const pg = ((err as { cause?: unknown }).cause ?? err) as { message?: string; table?: string; detail?: string };
-        const detail = `${from}: ${pg.table ? `table ${pg.table}: ` : ""}${pg.message ?? "unknown error"}${pg.detail ? ` (${pg.detail})` : ""}`;
-        await logEvent(app.db, { category: "api", level: "error", source: "Restore", event: "A restore failed; nothing was changed", detail, userId: by.userId });
-        throw badRequest("This backup couldn't be restored, so nothing was changed. Some of its data doesn't fit this server; the details are in Settings › Logs.");
+        // PostgreSQL's message, table, column and constraint only: the query's text and PostgreSQL's detail
+        // ("Failing row contains (...)") would carry the rows themselves (password hashes, saved keys)
+        const pg = ((err as { cause?: unknown }).cause ?? err) as { message?: string; code?: string; table?: string; column?: string; constraint?: string };
+        const where = [pg.table && `table ${pg.table}`, pg.column && `column ${pg.column}`, pg.constraint && `constraint ${pg.constraint}`].filter(Boolean).join(", ");
+        const message = pg.code ? (pg.message ?? "unknown error") : "unknown error";
+        // SQLSTATE class 22 (bad data) or 23 (a broken rule): the backup's data; anything else (a lock wait, a lost connection): try again
+        const dataProblem = /^2[23]/.test(pg.code ?? "");
+        await logEvent(app.db, { category: "api", level: "error", source: "Restore", event: "A restore failed; nothing was changed", detail: `${from}: ${where ? `${where}: ` : ""}${message}${pg.code ? ` [${pg.code}]` : ""}`, userId: by.userId });
+        throw badRequest(dataProblem ? DOESNT_FIT : DIDNT_FINISH);
       }
       await swapUploads(app, path.join(work, "uploads"), safety.name);
       const photos = await countPhotos(uploadsDir(app));

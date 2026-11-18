@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 import * as tar from "tar";
+import pg from "pg";
 import { eq, getTableName, is, sql } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -36,7 +37,7 @@ import {
 } from "../src/db/schema.js";
 import { encryptSecret } from "../src/lib/secrets.js";
 import { storePhoto } from "../src/lib/photos.js";
-import { BACKED_UP_TABLES, SKIP_TABLES, dailyBackupCheck } from "../src/lib/backup.js";
+import { BACKED_UP_TABLES, SKIP_TABLES, backupHooks, dailyBackupCheck, writeBackup } from "../src/lib/backup.js";
 
 let t: TestApp;
 beforeAll(async () => (t = await setupTestApp()));
@@ -46,7 +47,9 @@ beforeEach(async () => {
   delete process.env.BACKUP_HOUR;
   delete process.env.BACKUP_KEEP;
 });
+const defaultHooks = { ...backupHooks };
 afterEach(() => {
+  Object.assign(backupHooks, defaultHooks);
   delete process.env.BACKUP_HOUR;
   delete process.env.BACKUP_KEEP;
 });
@@ -236,9 +239,8 @@ describe("backups", () => {
     await t.db.insert(logEntries).values({ userId: a.id, day: "2026-11-17", meal: "lunch", name: "After", icon: "🍎", source: "cache", unit: "g", quantity: 1, perServing: {}, servings: [], nutrients: {} });
     await t.db.insert(userFoods).values({ userId: a.id, kind: "custom", name: "After", servings: [], nutrients: {} });
     // Everyone signs in again
-    expect((await t.api("GET", "/api/admin/backups")).status).toBe(401);
+    expect((await asUser(t, adminToken)("GET", "/api/admin/backups")).status).toBe(401);
     expect((await asUser(t, a.token)("GET", "/api/day/2026-11-15")).status).toBe(401);
-    expect(adminToken).toBeTruthy();
     await signIn();
     const list = await t.api("GET", "/api/admin/backups");
     expect(list.body.backups.map((x: any) => x.name)).toEqual([expect.stringMatching(/-before-restore\.tar\.gz$/), backup.name].sort().reverse());
@@ -393,8 +395,88 @@ describe("backups", () => {
     expect(photoBytes(photo.path)).toEqual(jpeg);
     expect((await t.api("GET", "/api/admin/backups")).status).toBe(200); // still signed in
     const [line] = await t.db.select().from(appLog).where(eq(appLog.level, "error"));
-    expect(line).toMatchObject({ category: "api", event: expect.stringMatching(/restore/i), detail: expect.stringMatching(/table users: duplicate key/) });
+    expect(line).toMatchObject({ category: "api", event: expect.stringMatching(/restore/i), detail: expect.stringMatching(/table users.*duplicate key/) });
     expect(line.detail).not.toMatch(/\$2[ab]\$|password_hash|v1:/); // never the rows themselves
+  });
+
+  it("failure mid-restore: no password hash or saved key from the backup reaches the log or the answer", async () => {
+    await seed();
+    const b = await makeBackup();
+    const json = await backupJson(b.name);
+    const withHash = structuredClone(json);
+    withHash.tables.users[0].username = null; // NOT NULL: PostgreSQL would quote the whole failing row
+    expect(withHash.tables.users[0].password_hash).toMatch(/^\$2[ab]\$/);
+    const withKey = structuredClone(json);
+    const anna = withKey.tables.user_settings.find((r: any) => r.culury_key_enc);
+    anna.culury_key_enc = encryptSecret("cul_key", TEST_SECRET);
+    anna.user_id = null;
+    await t.db.delete(weighIns);
+    const before = await snapshot();
+    for (const data of [withHash, withKey]) {
+      const r = await restoreUpload(tarGz([tarEntry("bytesize.json", { data: JSON.stringify(data) })]));
+      expect(r.status).toBe(400);
+      expect(r.body.error).toMatch(/doesn't fit/);
+      expect(JSON.stringify(r.body)).not.toMatch(/\$2[ab]\$|v1:/);
+    }
+    sameData(await snapshot(), before);
+    const lines = await t.db.select().from(appLog);
+    const failures = lines.filter((l) => l.level === "error");
+    expect(failures).toHaveLength(2);
+    expect(failures.map((l) => l.detail)).toEqual([expect.stringMatching(/table users.*column username/), expect.stringMatching(/table user_settings.*column user_id/)]);
+    for (const l of lines) expect(JSON.stringify(l)).not.toMatch(/\$2[ab]\$|v1:/);
+  });
+
+  it("a restore that fails for another reason (a lock wait) says to try again", async () => {
+    await seed();
+    const b = await makeBackup();
+    await t.db.delete(weighIns);
+    const before = await snapshot();
+    backupHooks.lockTimeoutMs = 200;
+    const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL ?? "postgresql://bytesize:bytesize@localhost:5432/bytesize_test" });
+    const holder = await pool.connect();
+    try {
+      await holder.query("begin");
+      await holder.query("lock table weigh_ins in access share mode"); // someone reading: the restore can't empty it
+      const r = await t.api("POST", "/api/admin/backups/restore", { name: b.name, confirm: "RESTORE" });
+      expect(r).toMatchObject({ status: 400, body: { error: "The restore didn't finish, and nothing was changed. Try again." } });
+    } finally {
+      await holder.query("rollback");
+      holder.release();
+      await pool.end();
+    }
+    sameData(await snapshot(), before);
+  });
+
+  it("a bytesize.json over the size cap is reported as too large", async () => {
+    await seed();
+    const before = await snapshot();
+    backupHooks.maxJsonBytes = 100;
+    const json = JSON.stringify({ app: "bytesize", format: 1, schema: 10, createdAt: "2026-11-17T00:00:00Z", tables: { notes: [{ text: "x".repeat(200) }] } });
+    const r = await restoreUpload(tarGz([tarEntry("bytesize.json", { data: json })]));
+    expect(r).toMatchObject({ status: 400, body: { error: "This backup is too large to restore here." } });
+    sameData(await snapshot(), before);
+    expect(backupFiles()).toEqual([]);
+  });
+
+  it("photos that can't be swapped in or moved back: logged with where the old ones are", async () => {
+    const { photo } = await seed();
+    const b = await makeBackup();
+    const jpeg = photoBytes(photo.path);
+    let calls = 0;
+    backupHooks.rename = async (from, to) => {
+      calls++;
+      if (calls === 1) return defaultHooks.rename(from, to); // the old photos moved aside
+      throw new Error("disk full"); // the new ones in, and the old ones back
+    };
+    const r = await t.api("POST", "/api/admin/backups/restore", { name: b.name, confirm: "RESTORE" });
+    expect(r.status).toBe(500);
+    expect(r.body.error).toMatch(/before-restore\.tar\.gz/);
+    const old = readdirSync(t.app.dataDir).find((n) => n.startsWith(".uploads-old-"))!;
+    expect(old).toBeTruthy();
+    expect(readFileSync(path.join(t.app.dataDir, old, photo.path))).toEqual(jpeg); // not lost
+    const errors = (await t.db.select().from(appLog)).filter((l) => l.level === "error");
+    expect(errors.map((l) => l.detail).join(" ")).toContain(old);
+    expect(errors.map((l) => l.detail).join(" ")).toMatch(/-before-restore\.tar\.gz/);
   });
 
   it("older schema: missing columns take their defaults, extra ones and unknown tables are ignored", async () => {
@@ -429,6 +511,26 @@ describe("backups", () => {
       const r = await t.api("POST", "/api/admin/backups/restore", { name, confirm: "RESTORE" });
       expect(r.status, name).toBe(400);
     }
+  });
+
+  it("lock: a delete while a backup is running is told one is running", async () => {
+    await t.login();
+    const first = await makeBackup();
+    const running = writeBackup(t.app);
+    const r = await t.api("DELETE", `/api/admin/backups/${first.name}`);
+    expect(r).toMatchObject({ status: 409, body: { error: "A backup is already running." } });
+    await running;
+    expect(backupFiles()).toContain(first.name);
+  });
+
+  it("two backups in the same second don't overwrite each other", async () => {
+    await t.login();
+    t.clock.date = new Date(2026, 10, 17, 9, 0, 0);
+    const x = await makeBackup();
+    const y = await makeBackup();
+    expect(x.name).toBe("bytesize-2026-11-17-090000.tar.gz");
+    expect(y.name).toBe("bytesize-2026-11-17-090001.tar.gz");
+    expect(backupFiles()).toEqual([x.name, y.name]);
   });
 
   it("lock: two backups at once, the second is told one is running", async () => {
