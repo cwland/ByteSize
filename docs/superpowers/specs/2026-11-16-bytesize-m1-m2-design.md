@@ -1247,3 +1247,35 @@ like a newly added person. Used, cancelled, superseded or expired (7 days) links
 was already used. Ask <admin> for a new one." Tokens: 32 random bytes, only a hash stored, single use, compared in
 constant time; the accept route is rate-limited. An invited person can't sign in until they accept (no password).
 Pending invites are skipped by backups like other short-lived tokens (the invited person row itself is kept).
+
+## 37. Cleanup round (Cory, 2026-11-18)
+
+**Asked for.** Cory: "let's do … 3" — the small items deferred from the reviews of §23–34. Each is a fix with a test;
+none changes how a feature is meant to work.
+- **Describe it**: ‹ Back while an estimate runs cancels it (as Cancel does). The AI is told to fill
+  `interpretedAs` only when it changed or guessed what was typed (a misspelling, an unclear name), not when it merely
+  reworded clear input ("a large banana" must not ask "Did you mean Banana, large?").
+- **Estimate area**: no stray gap above it while idle (the always-mounted status region takes no space when empty).
+- **Header date**: shows the person's chosen format from the first paint (remembered on this device and confirmed
+  when settings load), instead of the default flashing first; the same for week start if it has the same flash.
+- **Combining entries** (§28): two adds of the same food racing into a meal never leave two rows (serialise per
+  person, day and meal, e.g. an advisory lock); moves in opposite directions can't deadlock (lock rows in id order);
+  Undo splits using what the combine actually added (unit, serving and amount recorded when combining) so a later
+  change to the food's servings can't make Undo fail or pick the wrong serving; a note whose Undo became impossible
+  (409) says so and then goes away on its own like any note; a note that appears while an are-you-sure is open is
+  reachable inside it.
+- **Plurals**: compound names whose first word is a measure but isn't the counted thing stay right — "2 tortilla
+  chips", "2 cookie dough bites", "2 roll-ups" style names pluralise the last word; "cookies" etc. singularise
+  correctly. Tests for each.
+- **Edit dashboard**: keyboard focus stays on the moved widget's button after a move across columns (or on the
+  nearest sensible control when that button becomes disabled).
+- **Drag in a real browser**: check edit-mode drag within and across columns with a real browser (puppeteer, mouse
+  events) on the wide layout, fix what doesn't work, and keep the script as a smoke test outside the unit suites.
+- **Layout constants**: the frontend's layout version/column count are checked against the backend's by a test
+  (as the ids already are).
+- **Tests that flake when the machine is busy**: the backup "two backups at once" lock test and the occasional
+  deadlock in the truncate between tests — make them deterministic rather than retried.
+- **App info tests**: the failing-count test asserts the app_log line; Culury counts exactly; Check for changes is
+  counted for every source (USDA, FatSecret, Spoonacular), not just Open Food Facts.
+- **Drinks**: the comment on bare amounts says that "1 cup"/"2 tbsp" style servings count as bare amounts or not —
+  whichever the code does — and a test pins it.
