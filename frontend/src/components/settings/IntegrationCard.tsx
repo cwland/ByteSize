@@ -45,7 +45,7 @@ export function IntegrationCard({
       {on === false && <p className="mt-1 text-sm text-subtle">{OFF_STATUS}</p>}
       {on && (
         <>
-          {description && <p className="mt-1 text-subtle">{description}</p>}
+          {description && <p className="mt-1 text-sm text-subtle">{description}</p>}
           <div className="mt-4">{children}</div>
         </>
       )}

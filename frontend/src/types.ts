@@ -164,7 +164,8 @@ export type CuluryPlan = { linked: boolean; days: { day: string; items: { slot: 
 export type CuluryRecipe = { food: FoodResult; hasNutrition: boolean; outdated: boolean };
 // Restaurants (§14 B): lookupsLeft is Spoonacular points left today (null: not set up / not known yet)
 export type RestaurantSource = "spoonacular" | "fatsecret";
-export type RestaurantStatus = { sources: RestaurantSource[]; lookupsLeft: number | null };
+// turnedOff: keys are saved but the admin switched every source off (Settings › Integrations)
+export type RestaurantStatus = { sources: RestaurantSource[]; lookupsLeft: number | null; turnedOff: boolean };
 export type MenuHit = { source: RestaurantSource; sourceId: string; chain: string; name: string; calories: number | null; cacheId: number | null; imageUrl: string | null };
 export type MenuSearch = { items: MenuHit[]; lookupsLeft: number | null; errors: { source: RestaurantSource; message: string }[] };
 export type RestaurantFavourites = { chains: { chain: string; foods: FoodResult[] }[] };

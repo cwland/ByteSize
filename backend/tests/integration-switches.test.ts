@@ -5,8 +5,8 @@ import { asUser } from "./isolation.js";
 import { aiSettings, OFF_PRODUCT, OFF_SEARCH, offProduct, USDA, usdaFood, usdaReply } from "./foodFakes.js";
 import { barcodePhoto, photoUpload } from "./photoFakes.js";
 import { CULURY, CULURY_KEY, culuryCalls, culuryKnows, culuryRecipe, resetFakeDns } from "./culuryFakes.js";
-import { fsCalls, fsFood, fsHit, quota, restaurantWeb, setRestaurantKeys, spoonCalls, spoonItem } from "./restaurantFakes.js";
-import { setSourceKeys } from "../src/lib/foodSources/settings.js";
+import { fsCalls, fsFood, fsHit, NO_KEY_MESSAGE, quota, restaurantWeb, setRestaurantKeys, spoonCalls, spoonItem } from "./restaurantFakes.js";
+import { restaurantKeys, setSourceKeys, setSourceSwitches, sourceSwitches, usdaKey } from "../src/lib/foodSources/settings.js";
 import { userSettings } from "../src/db/schema.js";
 
 // § 18: an on/off switch per integration. A source that is off is never called and never reported.
@@ -19,6 +19,7 @@ beforeEach(async () => {
 });
 afterAll(async () => t.close());
 
+const TURN_ON_MESSAGE = "Turn on FatSecret or Spoonacular in Settings › Integrations.";
 const CODE = "3000000000007"; // a real EAN-13 (check digit 7), so it can be drawn as a photo
 const FS = { id: "fs-id", secret: "fs-secret" };
 const sources = () => t.api("GET", "/api/admin/food-sources");
@@ -100,6 +101,24 @@ describe("the admin's switches", () => {
     const as = asUser(t, sam.token);
     expect((await as("PUT", "/api/admin/food-sources", { enabled: { off: false } })).status).toBe(403);
     expect((await sources()).body.off).toEqual({ enabled: true });
+  });
+
+  it("a switch save and a key save at the same time both stick (no lost update)", async () => {
+    for (let i = 0; i < 25; i++) {
+      const on = i % 2 === 0;
+      await Promise.all([setSourceSwitches(t.app, { usda: on }), setSourceKeys(t.app, { usdaApiKey: `usda-${i}` }), setSourceSwitches(t.app, { fatsecret: !on }), setSourceKeys(t.app, { spoonacularApiKey: `spoon-${i}` })]);
+      expect(await usdaKey(t.app)).toBe(`usda-${i}`);
+      expect((await restaurantKeys(t.app)).spoonacular).toBe(`spoon-${i}`);
+      expect(await sourceSwitches(t.app)).toMatchObject({ usda: on, fatsecret: !on });
+    }
+  });
+
+  it("two saves through the API at once both stick", async () => {
+    for (let i = 0; i < 10; i++) {
+      await Promise.all([turn({ off: i % 2 === 0 }), t.api("PUT", "/api/admin/food-sources", { usdaApiKey: `k${i}` }), turn({ spoonacular: i % 2 === 1 })]);
+      expect((await sources()).body).toMatchObject({ off: { enabled: i % 2 === 0 }, usda: { hasKey: true }, spoonacular: { enabled: i % 2 === 1 } });
+      expect(await usdaKey(t.app)).toBe(`k${i}`);
+    }
   });
 
   it("refuses a switch that isn't true or false, or an unknown source", async () => {
@@ -184,13 +203,14 @@ describe("restaurant sources off", () => {
 
   it("Spoonacular off: search goes straight to FatSecret, Spoonacular is never asked or reported", async () => {
     await turn({ spoonacular: false });
-    expect((await t.api("GET", "/api/restaurants/status")).body).toEqual({ sources: ["fatsecret"], lookupsLeft: null });
+    expect((await t.api("GET", "/api/restaurants/status")).body).toEqual({ sources: ["fatsecret"], lookupsLeft: null, turnedOff: false });
     const r = await t.api("GET", "/api/restaurants/search?q=chipotle");
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ items: [{ source: "fatsecret", name: "Chicken Burrito" }], lookupsLeft: null, errors: [] });
     expect(spoonCalls(t)).toHaveLength(0);
     const item = await t.api("POST", "/api/restaurants/item", { source: "spoonacular", sourceId: "1001" });
     expect(item.status).toBe(400);
+    expect(item.body.error).toBe(TURN_ON_MESSAGE);
     expect(spoonCalls(t)).toHaveLength(0);
   });
 
@@ -205,11 +225,20 @@ describe("restaurant sources off", () => {
     expect(t.foodWeb.calls.filter((c) => !c.url.startsWith("https://api.spoonacular.com"))).toHaveLength(0);
   });
 
-  it("both off: no restaurant sources, and search makes no outside call", async () => {
+  it("both off: no restaurant sources, and search makes no outside call; the message says to turn one on", async () => {
     await turn({ spoonacular: false, fatsecret: false });
-    expect((await t.api("GET", "/api/restaurants/status")).body).toEqual({ sources: [], lookupsLeft: null });
-    expect((await t.api("GET", "/api/restaurants/search?q=chipotle")).status).toBe(400);
+    expect((await t.api("GET", "/api/restaurants/status")).body).toEqual({ sources: [], lookupsLeft: null, turnedOff: true });
+    const r = await t.api("GET", "/api/restaurants/search?q=chipotle");
+    expect(r.status).toBe(400);
+    expect(r.body.error).toBe(TURN_ON_MESSAGE);
+    expect((await t.api("POST", "/api/restaurants/item", { source: "fatsecret", sourceId: "101" })).body.error).toBe(TURN_ON_MESSAGE);
     expect(t.foodWeb.calls).toHaveLength(0);
+  });
+
+  it("no key saved at all: still asks for a key", async () => {
+    await setRestaurantKeys(t, { spoonacular: null, fatsecret: null });
+    expect((await t.api("GET", "/api/restaurants/status")).body).toEqual({ sources: [], lookupsLeft: null, turnedOff: false });
+    expect((await t.api("GET", "/api/restaurants/search?q=chipotle")).body.error).toBe(NO_KEY_MESSAGE);
   });
 
   it("off, then on again: the saved key is used again", async () => {

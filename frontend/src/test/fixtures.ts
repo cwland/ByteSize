@@ -180,7 +180,7 @@ export const culuryChili = {
 // Restaurants (§14 B): Add Food asks for the status on open; answered as nothing set up, so a test that
 // isn't about restaurants renders no notice. The Restaurants view's own GETs, empty.
 export const restaurantRoutes = {
-  "GET /api/restaurants/status": () => ({ sources: [], lookupsLeft: null }),
+  "GET /api/restaurants/status": () => ({ sources: [], lookupsLeft: null, turnedOff: false }),
   "GET /api/restaurants/favourites": () => ({ chains: [] }),
   "GET /api/restaurants/recent-chains": () => ({ chains: [] }),
 };

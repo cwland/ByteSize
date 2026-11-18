@@ -132,6 +132,14 @@ describe("Settings › Integrations switches", () => {
     expect(server.writes().map((w) => w.body)).toEqual([{ enabled: false }, { enabled: true }]);
   });
 
+  it("every card's description is the same size (small, subtle)", async () => {
+    adminTab({ usda: { hasKey: true, enabled: true } }, { culury: { url: null, hasKey: false, enabled: true } });
+    await screen.findByLabelText("USDA API key");
+    for (const text of [/Used to look up foods and read meal photos/, /Packaged foods and barcodes/, /FoodData Central adds whole foods/, /Log meals you planned in Culury/]) {
+      expect(await screen.findByText(text)).toHaveClass("text-sm", "text-subtle");
+    }
+  });
+
   it("AI that was off starts closed", async () => {
     adminTab({}, { ai: false });
     expect(await within(await screen.findByRole("region", { name: "AI services" })).findByText("Off — not used")).toBeInTheDocument();

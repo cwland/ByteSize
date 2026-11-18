@@ -130,7 +130,7 @@ describe("Dashboard on a wide screen", () => {
   });
 
   it("Restaurants opens Add food on Restaurants", async () => {
-    show({ "GET /api/restaurants/status": () => ({ sources: ["fatsecret"], lookupsLeft: null }) });
+    show({ "GET /api/restaurants/status": () => ({ sources: ["fatsecret"], lookupsLeft: null, turnedOff: false }) });
     await userEvent.setup().click(screen.getByRole("button", { name: "Restaurants" }));
     const sheet = await screen.findByRole("dialog", { name: "Add food to Lunch" });
     expect(await within(sheet).findByRole("searchbox", { name: "Search restaurants" })).toBeInTheDocument();

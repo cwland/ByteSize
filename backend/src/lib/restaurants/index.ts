@@ -16,6 +16,7 @@ import { RESTAURANT_SOURCES, type MenuHit, type RestaurantAdapter, type Restaura
 
 export const QUOTA_MESSAGE = "Today's restaurant lookups are used up. They reset at midnight UTC — or use Describe it.";
 export const NO_KEY_MESSAGE = "Add a restaurant data key in Settings › Integrations";
+export const TURN_ON_MESSAGE = "Turn on FatSecret or Spoonacular in Settings › Integrations.";
 export const MIN_QUERY_MESSAGE = "Type at least 3 letters";
 const SEARCH_FRESH_MS = 24 * 60 * 60 * 1000;
 const SPACING_MS = 1000; // Spoonacular free plan: 1 request a second
@@ -132,9 +133,18 @@ async function failed(app: FastifyInstance, userId: number | null, source: Resta
 
 // ---------- status and search ----------
 
+/** No source in use although a key is saved: the admin switched them off. */
+async function switchedOff(app: FastifyInstance, inUse: RestaurantKeys): Promise<boolean> {
+  return configured(inUse).length === 0 && configured(await restaurantKeys(app)).length > 0;
+}
+
+/** Why a request can't use a source: a key is saved but switched off, or there's no key. */
+const unusable = async (app: FastifyInstance, inUse: RestaurantKeys) => badRequest((await switchedOff(app, inUse)) ? TURN_ON_MESSAGE : NO_KEY_MESSAGE);
+
+/** turnedOff: keys are saved but every source is switched off (Add food says to turn one on). */
 export async function restaurantStatus(app: FastifyInstance) {
   const keys = await restaurantKeysInUse(app);
-  return { sources: configured(keys), lookupsLeft: await lookupsLeft(app, keys) };
+  return { sources: configured(keys), lookupsLeft: await lookupsLeft(app, keys), turnedOff: await switchedOff(app, keys) };
 }
 
 const normalise = (q: string) => q.trim().replace(/\s+/g, " ");
@@ -161,7 +171,7 @@ async function withCacheIds(app: FastifyInstance, items: MenuHit[]): Promise<Res
 
 export async function searchRestaurants(app: FastifyInstance, userId: number, raw: string | undefined): Promise<RestaurantSearch> {
   const keys = await restaurantKeysInUse(app);
-  if (!keys.spoonacular && !keys.fatsecret) throw badRequest(NO_KEY_MESSAGE);
+  if (!keys.spoonacular && !keys.fatsecret) throw await unusable(app, keys);
   const q = normalise(raw ?? "");
   if (q.length < 3) throw badRequest(MIN_QUERY_MESSAGE);
   const errors: RestaurantSearch["errors"] = [];
@@ -220,7 +230,8 @@ export async function restaurantItem(app: FastifyInstance, userId: number, sourc
   }
 
   const adapter = adapterFor(app, keys, source);
-  if (!adapter) throw badRequest(NO_KEY_MESSAGE);
+  // This source isn't in use: switched off (its key is saved) or no key
+  if (!adapter) throw badRequest((await restaurantKeys(app))[source] ? TURN_ON_MESSAGE : NO_KEY_MESSAGE);
   if (source === "spoonacular" && (await outOfPoints(app))) throw new HttpError(503, QUOTA_MESSAGE);
   // Two opens of the same item at once share one fetch (and one stored row)
   const inflight = state(app).inflight;

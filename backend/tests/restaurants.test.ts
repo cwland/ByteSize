@@ -77,7 +77,7 @@ describe("restaurant keys (admin)", () => {
 
 describe("restaurant search", () => {
   it("with no keys: no sources, and search says how to add one", async () => {
-    expect((await t.api("GET", "/api/restaurants/status")).body).toEqual({ sources: [], lookupsLeft: null });
+    expect((await t.api("GET", "/api/restaurants/status")).body).toEqual({ sources: [], lookupsLeft: null, turnedOff: false });
     const r = await search("chipotle");
     expect(r.status).toBe(400);
     expect(r.body.error).toBe(NO_KEY_MESSAGE);
@@ -107,7 +107,7 @@ describe("restaurant search", () => {
       errors: [],
     });
     expect(fsCalls(t)).toEqual([]); // FatSecret only when Spoonacular can't help
-    expect((await t.api("GET", "/api/restaurants/status")).body).toEqual({ sources: ["spoonacular", "fatsecret"], lookupsLeft: 38 });
+    expect((await t.api("GET", "/api/restaurants/status")).body).toEqual({ sources: ["spoonacular", "fatsecret"], lookupsLeft: 38, turnedOff: false });
   });
 
   it("the same search within 24 h makes one outside call; after 24 h it asks again", async () => {
@@ -236,7 +236,7 @@ describe("restaurant search", () => {
   it("FatSecret alone: no lookup count, its token reused, nothing stored", async () => {
     await setRestaurantKeys(t, { fatsecret: FS });
     restaurantWeb(t, { fsSearch: () => ({ status: 200, json: { foods: { food: fsHit(7, "Baconator", "Wendy's", 950) } } }) });
-    expect((await t.api("GET", "/api/restaurants/status")).body).toEqual({ sources: ["fatsecret"], lookupsLeft: null });
+    expect((await t.api("GET", "/api/restaurants/status")).body).toEqual({ sources: ["fatsecret"], lookupsLeft: null, turnedOff: false });
     await search("baconator");
     const r = await search("baconator");
     expect(r.body.lookupsLeft).toBeNull();
