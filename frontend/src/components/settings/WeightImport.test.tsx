@@ -48,7 +48,7 @@ describe("Import weight history", () => {
     expect(screen.getByText("Line 9: Date is in the future")).toBeInTheDocument();
     const rows = within(screen.getByRole("table", { name: "First rows as they will be saved" })).getAllByRole("row");
     expect(rows.map((r) => r.textContent)).toEqual(["DateWeight", "Nov 16, 2026214.2 lb", "Nov 15, 2026214.8 lb"]);
-    expect(screen.getByRole("radio", { name: "Keep what's in ByteSize" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Keep what's in ByteSize" })).toBeChecked();
     expect(screen.getByRole("button", { name: "Import" })).toBeEnabled();
   });
 

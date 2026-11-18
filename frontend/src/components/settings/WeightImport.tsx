@@ -5,7 +5,6 @@ import type { WeightImportOptions, WeightImportPreview, WeightImportResult } fro
 import { formatWeight } from "../../units";
 import { longDay, notifyWeightChanged } from "../../weight";
 import { Card } from "../ui/Card";
-import { Choice } from "../ui/Choice";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { field, label as labelClass, primaryButton, secondaryButton } from "../ui/styles";
 
@@ -198,18 +197,20 @@ export default function WeightImport() {
           )}
 
           {preview.existingDays > 0 && (
-            <div className="mt-4">
-              <p className={`${labelClass} mb-1`}>Days that already have a weigh-in</p>
-              <Choice
-                label="Days that already have a weigh-in"
-                value={existing}
-                onChange={setExisting}
-                options={[
-                  { value: "keep", label: "Keep what's in ByteSize" },
-                  { value: "replace", label: "Replace with the file's" },
-                ]}
-              />
-            </div>
+            <fieldset className="mt-4">
+              <legend className={`${labelClass} mb-1`}>Days that already have a weigh-in</legend>
+              {(
+                [
+                  ["keep", "Keep what's in ByteSize"],
+                  ["replace", "Replace with the file's"],
+                ] as const
+              ).map(([value, text]) => (
+                <label key={value} className="flex items-center gap-2 py-1">
+                  <input type="radio" name="existing" value={value} checked={existing === value} disabled={!!busy} onChange={() => setExisting(value)} className="size-4 accent-[var(--color-action)]" />
+                  {text}
+                </label>
+              ))}
+            </fieldset>
           )}
 
           <div className="mt-4 flex flex-wrap gap-3">
