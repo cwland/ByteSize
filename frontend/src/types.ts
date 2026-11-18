@@ -158,12 +158,14 @@ export type Badge = { id: string; earnedOn: string | null; seen: boolean };
 export type Vacation = { id: number; from: string; to: string };
 // Culury link (§14 A): GET/PUT/DELETE /api/settings/culury (the key never comes back), GET /api/culury/plan
 // (selected day first; recipeId null = a note, not loggable), GET /api/culury/recipes/:id
-export type CuluryLink = { url: string | null; hasKey: boolean };
+// enabled: the person's own Culury switch (PUT /api/settings/culury/enabled); off = Culury is never asked
+export type CuluryLink = { url: string | null; hasKey: boolean; enabled: boolean };
 export type CuluryPlan = { linked: boolean; days: { day: string; items: { slot: string; title: string; recipeId: number | null; servings: number | null; note: string | null }[] }[]; errors: SourceError[] };
 export type CuluryRecipe = { food: FoodResult; hasNutrition: boolean; outdated: boolean };
 // Restaurants (§14 B): lookupsLeft is Spoonacular points left today (null: not set up / not known yet)
 export type RestaurantSource = "spoonacular" | "fatsecret";
-export type RestaurantStatus = { sources: RestaurantSource[]; lookupsLeft: number | null };
+// turnedOff: keys are saved but the admin switched every source off (Settings › Integrations)
+export type RestaurantStatus = { sources: RestaurantSource[]; lookupsLeft: number | null; turnedOff: boolean };
 export type MenuHit = { source: RestaurantSource; sourceId: string; chain: string; name: string; calories: number | null; cacheId: number | null; imageUrl: string | null };
 export type MenuSearch = { items: MenuHit[]; lookupsLeft: number | null; errors: { source: RestaurantSource; message: string }[] };
 export type RestaurantFavourites = { chains: { chain: string; foods: FoodResult[] }[] };

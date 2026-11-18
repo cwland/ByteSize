@@ -183,13 +183,13 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
   const [describe, setDescribe] = useState("");
   const [msg, setMsg] = useState<Msg>(null);
   const [attempt, setAttempt] = useState(0); // "Try again" re-runs the lookup
-  const [culury, setCulury] = useState(false); // linked: the Meal plan button shows
+  const [culury, setCulury] = useState(false); // on and linked: the Meal plan button shows
   const [opening, setOpening] = useState<number | null>(null); // the Culury recipe a row is opening
   const viewSeq = useRef(0); // bumps on every view change, so a late Culury answer can tell it's stale
   useEffect(() => void viewSeq.current++, [view]);
 
   useEffect(() => {
-    api<CuluryLink>("GET", "/api/settings/culury").then((l) => setCulury(!!l.url && l.hasKey), () => {});
+    api<CuluryLink>("GET", "/api/settings/culury").then((l) => setCulury(l.enabled && !!l.url && l.hasKey), () => {});
   }, []);
 
   const [restaurants, setRestaurants] = useState<RestaurantStatus | null>(null);
@@ -496,7 +496,13 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
         )}
       </div>
       {restaurants?.sources.length === 0 && (
-        <p className="mt-2 px-1 text-xs text-muted">{user?.isAdmin ? "Add a restaurant data key in Settings › Integrations to search restaurant menus." : "Ask an admin to add a restaurant data key to search restaurant menus."}</p>
+        <p className="mt-2 px-1 text-xs text-muted">{restaurants.turnedOff
+            ? user?.isAdmin
+              ? "Turn on FatSecret or Spoonacular in Settings › Integrations."
+              : "Ask an admin to turn on restaurant menus."
+            : user?.isAdmin
+              ? "Add a restaurant data key in Settings › Integrations to search restaurant menus."
+              : "Ask an admin to add a restaurant data key to search restaurant menus."}</p>
       )}
       <Notice msg={msg} />
         </>

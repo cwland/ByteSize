@@ -303,6 +303,32 @@ describe("per-user isolation", () => {
     expect((await a.as("GET", "/api/trends/weekly?weeks=1")).body.weeks[0]).toMatchObject({ daysLogged: 1, avg: { calories: 80 } });
   });
 
+  it("a person's Culury switch only turns their own Culury on or off", async () => {
+    const { a, b } = await twoUsers(t);
+    const BENS = "http://bens-culury.lan:4000";
+    const plan = [{ date: "2026-11-17", slot: "dinner", recipeId: 7, title: "Chili" }];
+    culuryKnows(t, { key: "annas-key", recipes: [culuryRecipe(7, "Anna's chili")], plan });
+    culuryKnows(t, { base: BENS, key: "bens-key", recipes: [culuryRecipe(7, "Ben's chili")], plan });
+    await a.as("PUT", "/api/settings/culury", { url: CULURY, apiKey: "annas-key" });
+    await b.as("PUT", "/api/settings/culury", { url: BENS, apiKey: "bens-key" });
+    t.foodWeb.calls.length = 0;
+
+    expect((await b.as("PUT", "/api/settings/culury/enabled", { enabled: false })).body).toEqual({ url: BENS, hasKey: true, enabled: false });
+    expect((await a.as("GET", "/api/settings/culury")).body).toEqual({ url: CULURY, hasKey: true, enabled: true });
+    expect((await a.as("GET", "/api/culury/plan?day=2026-11-17")).body).toMatchObject({ linked: true, days: [{ day: "2026-11-17" }] });
+    expect((await a.as("GET", "/api/foods/search?q=chili")).body.groups.map((g: any) => g.source)).toContain("culury");
+    expect((await b.as("GET", "/api/culury/plan?day=2026-11-17")).body).toEqual({ linked: false, days: [], errors: [] });
+    expect((await b.as("GET", "/api/foods/search?q=chili")).body.groups.map((g: any) => g.source)).not.toContain("culury");
+    expect(culuryCalls(t, BENS)).toHaveLength(0);
+    expect(culuryCalls(t).length).toBeGreaterThan(0);
+
+    // anna turning hers off leaves ben's switch where he put it
+    await a.as("PUT", "/api/settings/culury/enabled", { enabled: false });
+    await b.as("PUT", "/api/settings/culury/enabled", { enabled: true });
+    expect((await a.as("GET", "/api/settings/culury")).body.enabled).toBe(false);
+    expect((await b.as("GET", "/api/culury/plan?day=2026-11-17")).body).toMatchObject({ linked: true });
+  });
+
   it("a person's Culury link (address and key) is only ever used for their own requests", async () => {
     const { a, b } = await twoUsers(t);
     const BENS = "http://bens-culury.lan:4000";
@@ -313,7 +339,7 @@ describe("per-user isolation", () => {
     t.foodWeb.calls.length = 0;
 
     // ben, not linked: nothing of anna's link, and her Culury is never called for him
-    expect((await b.as("GET", "/api/settings/culury")).body).toEqual({ url: null, hasKey: false });
+    expect((await b.as("GET", "/api/settings/culury")).body).toEqual({ url: null, hasKey: false, enabled: false });
     expect((await b.as("GET", "/api/culury/plan?day=2026-11-17")).body).toEqual({ linked: false, days: [], errors: [] });
     expect((await b.as("GET", "/api/culury/recipes/7")).status).toBe(400);
     expect((await b.as("POST", "/api/settings/culury/test")).status).toBe(400);
@@ -332,7 +358,7 @@ describe("per-user isolation", () => {
     expect(culuryCalls(t).map((c) => c.headers["x-api-key"])).toEqual(["annas-key"]);
     // removing his link leaves hers
     await b.as("DELETE", "/api/settings/culury");
-    expect((await a.as("GET", "/api/settings/culury")).body).toEqual({ url: CULURY, hasKey: true });
+    expect((await a.as("GET", "/api/settings/culury")).body).toEqual({ url: CULURY, hasKey: true, enabled: true });
 
     // with his Culury unreachable, re-logging never falls back to anna's snapshot of "her" recipe 7
     fakeDns["bens-down.lan"] = [];

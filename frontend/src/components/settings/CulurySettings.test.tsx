@@ -8,15 +8,16 @@ import { restoreClipboard, stubClipboard } from "../../test/clipboard";
 
 afterEach(restoreClipboard);
 
-const linked = { url: "http://culury.lan:4000", hasKey: true };
-const unlinked = { url: null, hasKey: false };
+// The card is on (its switch): the form shows. Linked, or switched on before linking.
+const linked = { url: "http://culury.lan:4000", hasKey: true, enabled: true };
+const unlinked = { url: null, hasKey: false, enabled: true };
 
 describe("Culury settings", () => {
   it("saves the address and key, then only says a key is saved", async () => {
-    let link: { url: string | null; hasKey: boolean } = unlinked;
+    let link: { url: string | null; hasKey: boolean; enabled: boolean } = unlinked;
     const server = fakeServer({
       "GET /api/settings/culury": () => link,
-      "PUT /api/settings/culury": (b) => (link = { url: b.url, hasKey: true }),
+      "PUT /api/settings/culury": (b) => (link = { url: b.url, hasKey: true, enabled: true }),
     });
     renderWithSession(<CulurySettings />, { isAdmin: false });
     expect(await screen.findByText(/Not linked yet/)).toBeInTheDocument();
@@ -33,7 +34,7 @@ describe("Culury settings", () => {
   it("with a saved link, the address shows, the key never does, and Save without a key keeps it", async () => {
     const server = fakeServer({
       "GET /api/settings/culury": () => linked,
-      "PUT /api/settings/culury": (b) => ({ url: b.url, hasKey: true }),
+      "PUT /api/settings/culury": (b) => ({ url: b.url, hasKey: true, enabled: true }),
     });
     renderWithSession(<CulurySettings />, { isAdmin: false });
     expect(await screen.findByLabelText("Culury address")).toHaveValue("http://culury.lan:4000");
@@ -90,7 +91,7 @@ describe("Culury settings", () => {
     const server = fakeServer({
       "GET /api/settings/culury": () => linked,
       "GET /api/settings/culury/key": () => ({ key: "cul_saved_key" }),
-      "PUT /api/settings/culury": (b) => ({ url: b.url, hasKey: true }),
+      "PUT /api/settings/culury": (b) => ({ url: b.url, hasKey: true, enabled: true }),
     });
     renderWithSession(<CulurySettings />, { isAdmin: false });
     const key = await screen.findByLabelText("API key");

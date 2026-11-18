@@ -727,3 +727,35 @@ spacing: Main = Dashboard, OptionA-Log, OptionA-Goals, Settings-Integrations for
 
 **Not in this step.** New data or routes; the Log mockup's Shortcuts box; the Email and App info tabs (their own
 steps); option C's docked Add food panel.
+
+## 18. An on/off switch per integration (Cory, 2026-11-18)
+
+**Asked for.** "In the integrations, there should be a slider to turn each one on; if they are on they are
+expanded, if they are off they are closed."
+
+**Cards.** Settings › Integrations shows one card per integration, each with a switch in its title row:
+AI services, Open Food Facts, USDA, FatSecret, Spoonacular (admin) and Culury (everyone, their own link). The
+existing "Food databases" / "Restaurant menus" grouping becomes these separate cards (order: AI services, Open Food
+Facts, USDA, FatSecret, Spoonacular, Culury; on wide screens two columns as now). The restaurant credits line moves
+to the Spoonacular and FatSecret cards (one line each).
+- **On**: the card is open — its keys, fields and buttons show — and ByteSize uses the source.
+- **Off**: the card shows only its title row and a one-line status ("Off — not used"), and ByteSize does not use
+  the source anywhere: food search, barcode lookups, photo/label lookups that fall back to search, restaurant
+  search and items, Culury plan/recipes/search. A source that is off is skipped silently — not reported as an
+  error, not counted as a failure, no outside call made.
+- The switch is a real switch (`role="switch"`, labelled "<Name> on"), saves at once (no Save button), and the
+  card opens/closes with it. Switching on a card that has nothing set up opens it with its key field ready.
+- **Turning off keeps** the saved key and settings; switching back on uses them again. Removing a key stays the
+  separate button inside the card.
+- **Starting state** (also for existing servers): Open Food Facts on; USDA, FatSecret, Spoonacular on if a key is
+  saved, else off; Culury on if linked, else off; AI services keeps its existing on/off ("AI is on" moves into the
+  card's title row).
+- An off source cannot be "on but missing a key" the other way round: if a card is on with no key yet, it behaves
+  as today (source unused until a key is saved) and the card says so.
+- Members see only the Culury card; the server-wide switches are admin-only on the server too.
+- Restaurants view in Add food: shown only when FatSecret or Spoonacular is on and has a key. Meal plan button and
+  Culury results: only when the person's Culury is on and linked.
+
+**Storage.** The admin switches live with the food-source settings in `app_settings` (no secret involved); the
+Culury switch is a column on the person's settings row (migration). Both are included in backups automatically
+(they are rows of backed-up tables).

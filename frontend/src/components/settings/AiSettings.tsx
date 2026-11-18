@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { api } from "../../api";
-import { Card } from "../ui/Card";
+import { IntegrationCard } from "./IntegrationCard";
 import { KeyField } from "../ui/KeyField";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { Toggle } from "../ui/Toggle";
 import { field, label, linkButton, primaryButton, secondaryButton } from "../ui/styles";
 
 type Provider = "openai" | "anthropic" | "gemini" | "openrouter" | "local";
@@ -157,15 +156,25 @@ export default function AiSettings() {
     }
   }
 
+  // The switch in the title row saves at once and alone: the saved services stay, and so do unsaved edits
+  const onSwitch = async (next: boolean) => {
+    const r = await api<{ settings: Summary | null }>("PUT", "/api/settings/ai", { enabled: next });
+    setEnabled(r.settings?.enabled ?? next);
+  };
+
   const allChecked = !!services?.every((d) => d.checked);
-  if (!services || !shown) return <Card title="AI services">{msg ? <Notice msg={msg} /> : <p className="text-muted">Loading…</p>}</Card>;
+  const ready = !!services && !!shown;
   return (
-    <Card title="AI services" description="Used to look up foods and read meal photos and nutrition labels. If one service is down, the next one is used.">
-      <div className="flex items-center gap-3">
-        <Toggle label="Use AI" checked={enabled} onChange={setEnabled} />
-        <span>{enabled ? "AI is on" : "AI is off. Your services are kept for when you turn it back on."}</span>
-      </div>
-      <p className="mt-4 text-sm text-subtle">Tried from the top. If one is down or doesn't answer in time, the next one is asked. Drag ⠿ (or use the arrow keys) to change the order.</p>
+    <IntegrationCard
+      title="AI services"
+      on={ready ? enabled : null}
+      onSwitch={onSwitch}
+      loading={msg ? <Notice msg={msg} /> : <p className="text-muted">Loading…</p>}
+      description="Used to look up foods and read meal photos and nutrition labels. If one service is down, the next one is used."
+    >
+      {services && shown && (
+        <>
+      <p className="text-sm text-subtle">Tried from the top. If one is down or doesn't answer in time, the next one is asked. Drag ⠿ (or use the arrow keys) to change the order.</p>
       <ol ref={listRef} className="mt-3 flex flex-col gap-3">
         {shown.map((d, i) => (
           <ServiceForm
@@ -197,7 +206,9 @@ export default function AiSettings() {
       <button type="button" onClick={save} disabled={busy || !allChecked} className={`${primaryButton} mt-5 block`}>
         Save
       </button>
-    </Card>
+        </>
+      )}
+    </IntegrationCard>
   );
 }
 

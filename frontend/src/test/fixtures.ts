@@ -138,8 +138,10 @@ export const m3Routes = {
 
 // Culury (§14 A). Not linked is the default for any screen that opens Add food:
 // fakeServer({ ...culuryOff, … })
-export const culuryOff = { "GET /api/settings/culury": () => ({ url: null, hasKey: false }) };
-export const culuryOn = { "GET /api/settings/culury": () => ({ url: "http://culury.lan:4000", hasKey: true }) };
+export const culuryOff = { "GET /api/settings/culury": () => ({ url: null, hasKey: false, enabled: false }) };
+export const culuryOn = { "GET /api/settings/culury": () => ({ url: "http://culury.lan:4000", hasKey: true, enabled: true }) };
+// Linked, but the person switched Culury off in Settings › Integrations
+export const culuryLinkedOff = { "GET /api/settings/culury": () => ({ url: "http://culury.lan:4000", hasKey: true, enabled: false }) };
 
 // As GET /api/culury/plan sends it: the selected day (Wed) first, its dinner first; then the rest in date order
 export const culuryPlan = {
@@ -178,7 +180,7 @@ export const culuryChili = {
 // Restaurants (§14 B): Add Food asks for the status on open; answered as nothing set up, so a test that
 // isn't about restaurants renders no notice. The Restaurants view's own GETs, empty.
 export const restaurantRoutes = {
-  "GET /api/restaurants/status": () => ({ sources: [], lookupsLeft: null }),
+  "GET /api/restaurants/status": () => ({ sources: [], lookupsLeft: null, turnedOff: false }),
   "GET /api/restaurants/favourites": () => ({ chains: [] }),
   "GET /api/restaurants/recent-chains": () => ({ chains: [] }),
 };

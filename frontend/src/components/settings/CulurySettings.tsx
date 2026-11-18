@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { api } from "../../api";
 import type { CuluryLink } from "../../types";
-import { Card } from "../ui/Card";
+import { IntegrationCard } from "./IntegrationCard";
 import { Field } from "../ui/Field";
 import { KeyField } from "../ui/KeyField";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
@@ -10,12 +10,19 @@ import { primaryButton, secondaryButton } from "../ui/styles";
 // Settings › Integrations › Culury (per person): the link to Culury, the recipe and meal-planning app.
 // The summary only says whether a key is saved; the eye and copy buttons fetch the person's own key when
 // pressed. A new address needs the key again (the server keeps a saved key with its own address).
+// The card's switch is the person's own: off, ByteSize never asks their Culury (the link is kept).
 export default function CulurySettings() {
   const [link, setLink] = useState<CuluryLink | null>(null);
   const [url, setUrl] = useState("");
   const [key, setKey] = useState("");
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
+  const [loadMsg, setLoadMsg] = useState<Msg>(null);
+  const addressId = useId();
+  const [focus, setFocus] = useState(false); // switched on with nothing linked: the address box takes the focus
+  useEffect(() => {
+    if (focus && link?.enabled) document.getElementById(addressId)?.focus();
+  }, [focus, link?.enabled, addressId]);
 
   const show = (l: CuluryLink) => {
     setLink(l);
@@ -23,7 +30,7 @@ export default function CulurySettings() {
     setKey("");
   };
   useEffect(() => {
-    api<CuluryLink>("GET", "/api/settings/culury").then(show, (e) => setMsg(errorMsg(e)));
+    api<CuluryLink>("GET", "/api/settings/culury").then(show, (e) => setLoadMsg(errorMsg(e)));
   }, []);
 
   const run = async (work: () => Promise<Msg>) => {
@@ -56,10 +63,23 @@ export default function CulurySettings() {
       return { ok: true, text: "Culury unlinked" };
     });
 
+  // The switch alone: the address and key stay as they are
+  const onSwitch = async (enabled: boolean) => {
+    const l = await api<CuluryLink>("PUT", "/api/settings/culury/enabled", { enabled });
+    setLink(l);
+    setFocus(enabled && !(l.url && l.hasKey));
+  };
+
   const linked = !!link?.url && link.hasKey;
   return (
-    <Card title="Culury" description="Log meals you planned in Culury, your recipe app. ByteSize reads your meal plan and recipes; nothing changes in Culury.">
-      {link && <p className="text-sm text-subtle">{linked ? "Linked. A key is saved — leave the key empty to keep it." : "Not linked yet."}</p>}
+    <IntegrationCard
+      title="Culury"
+      on={link ? link.enabled : null}
+      onSwitch={onSwitch}
+      loading={loadMsg ? <Notice msg={loadMsg} /> : <p className="text-muted">Loading…</p>}
+      description="Log meals you planned in Culury, your recipe app. ByteSize reads your meal plan and recipes; nothing changes in Culury."
+    >
+      <p className="text-sm text-subtle">{linked ? "Linked. A key is saved — leave the key empty to keep it." : "Not linked yet."}</p>
       <form
         className="mt-3 flex flex-col gap-3"
         onSubmit={(e) => {
@@ -67,7 +87,7 @@ export default function CulurySettings() {
           void save();
         }}
       >
-        <Field label="Culury address" type="url" autoComplete="off" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://192.168.1.20:4000" />
+        <Field id={addressId} label="Culury address" type="url" autoComplete="off" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://192.168.1.20:4000" />
         <KeyField
           label="API key"
           keyName="Culury key"
@@ -94,6 +114,6 @@ export default function CulurySettings() {
         </div>
       </form>
       <Notice msg={msg} />
-    </Card>
+    </IntegrationCard>
   );
 }

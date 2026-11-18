@@ -71,6 +71,13 @@
       "when": 1794955811947,
       "tag": "0009_restaurants",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794985846644,
+      "tag": "0010_culury_switch",
+      "breakpoints": true
     }
   ]
 }

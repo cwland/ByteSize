@@ -7,7 +7,7 @@ import { renderWithSession } from "../../test/renderWithSession";
 import { barFood, dayJson, restaurantRoutes } from "../../test/fixtures";
 
 const USED_UP = "Today's restaurant lookups are used up. They reset at midnight UTC — or use Describe it.";
-const both = { sources: ["spoonacular", "fatsecret"], lookupsLeft: 44 };
+const both = { sources: ["spoonacular", "fatsecret"], lookupsLeft: 44, turnedOff: false };
 const hit = (over: Record<string, unknown>) => ({ source: "spoonacular", sourceId: "101", chain: "Chipotle", name: "Chicken Burrito Bowl", calories: 665, cacheId: null, imageUrl: null, ...over });
 const results = {
   items: [
@@ -48,14 +48,31 @@ async function search(user: ReturnType<typeof userEvent.setup>, text: string) {
 
 describe("Restaurants tab", () => {
   it("is hidden when no restaurant source is set up; an admin sees how to add one", async () => {
-    const { server } = open({ "GET /api/restaurants/status": () => ({ sources: [], lookupsLeft: null }) });
+    const { server } = open({ "GET /api/restaurants/status": () => ({ sources: [], lookupsLeft: null, turnedOff: false }) });
     expect(await screen.findByText(/Add a restaurant data key in Settings › Integrations to search restaurant menus/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Restaurants" })).not.toBeInTheDocument();
     expect(server.sent.some((s) => s.path.startsWith("/api/restaurants/search"))).toBe(false);
   });
 
+  it("shows when only one source is on (the server leaves out a source that is off)", async () => {
+    open({ "GET /api/restaurants/status": () => ({ sources: ["fatsecret"], lookupsLeft: null, turnedOff: false }) });
+    expect(await screen.findByRole("button", { name: "Restaurants" })).toBeInTheDocument();
+  });
+
+  it("keys saved but both sources switched off: an admin is told to turn one on, a member to ask", async () => {
+    open({ "GET /api/restaurants/status": () => ({ sources: [], lookupsLeft: null, turnedOff: true }) });
+    expect(await screen.findByText("Turn on FatSecret or Spoonacular in Settings › Integrations.")).toBeInTheDocument();
+    expect(screen.queryByText(/Add a restaurant data key/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Restaurants" })).not.toBeInTheDocument();
+  });
+
+  it("switched off, for a member: ask an admin to turn restaurant menus on", async () => {
+    open({ "GET /api/restaurants/status": () => ({ sources: [], lookupsLeft: null, turnedOff: true }) }, false);
+    expect(await screen.findByText("Ask an admin to turn on restaurant menus.")).toBeInTheDocument();
+  });
+
   it("tells someone who can't add a key to ask an admin", async () => {
-    open({ "GET /api/restaurants/status": () => ({ sources: [], lookupsLeft: null }) }, false);
+    open({ "GET /api/restaurants/status": () => ({ sources: [], lookupsLeft: null, turnedOff: false }) }, false);
     expect(await screen.findByText(/Ask an admin to add a restaurant data key/)).toBeInTheDocument();
     expect(screen.queryByText(/Settings › Integrations/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Restaurants" })).not.toBeInTheDocument();
@@ -112,7 +129,7 @@ describe("Restaurants tab", () => {
   });
 
   it("shows no source label when only one source is set up", async () => {
-    open({ "GET /api/restaurants/status": () => ({ sources: ["spoonacular"], lookupsLeft: 44 }) });
+    open({ "GET /api/restaurants/status": () => ({ sources: ["spoonacular"], lookupsLeft: 44, turnedOff: false }) });
     const user = userEvent.setup();
     const sheet = await openRestaurants(user);
     await search(user, "chicken bowl");
@@ -232,7 +249,7 @@ describe("Restaurants tab", () => {
   });
 
   it("shows no count when only FatSecret is in use, and its credit only", async () => {
-    open({ "GET /api/restaurants/status": () => ({ sources: ["fatsecret"], lookupsLeft: null }) });
+    open({ "GET /api/restaurants/status": () => ({ sources: ["fatsecret"], lookupsLeft: null, turnedOff: false }) });
     const user = userEvent.setup();
     const sheet = await openRestaurants(user);
     expect(await within(sheet).findByRole("link", { name: "Powered by FatSecret" })).toBeInTheDocument();
@@ -250,7 +267,7 @@ describe("Restaurants tab", () => {
 
   it("when today's lookups are used up, says so and offers Describe it", async () => {
     open({
-      "GET /api/restaurants/status": () => ({ sources: ["spoonacular"], lookupsLeft: 5 }),
+      "GET /api/restaurants/status": () => ({ sources: ["spoonacular"], lookupsLeft: 5, turnedOff: false }),
       "GET /api/restaurants/search": () => ({ items: [], lookupsLeft: 0, errors: [{ source: "spoonacular", message: USED_UP }] }),
     });
     const user = userEvent.setup();
@@ -265,7 +282,7 @@ describe("Restaurants tab", () => {
 
   it("Back from Describe it, opened from the used-up banner, returns to Restaurants", async () => {
     open({
-      "GET /api/restaurants/status": () => ({ sources: ["spoonacular"], lookupsLeft: 5 }),
+      "GET /api/restaurants/status": () => ({ sources: ["spoonacular"], lookupsLeft: 5, turnedOff: false }),
       "GET /api/restaurants/search": () => ({ items: [], lookupsLeft: 0, errors: [{ source: "spoonacular", message: USED_UP }] }),
     });
     const user = userEvent.setup();
@@ -326,7 +343,7 @@ describe("Restaurants tab", () => {
   });
 
   it("opens on the used-up banner when Spoonacular is the only source and has no points left", async () => {
-    const { server } = open({ "GET /api/restaurants/status": () => ({ sources: ["spoonacular"], lookupsLeft: 0 }) });
+    const { server } = open({ "GET /api/restaurants/status": () => ({ sources: ["spoonacular"], lookupsLeft: 0, turnedOff: false }) });
     const user = userEvent.setup();
     const sheet = await openRestaurants(user);
     expect(within(sheet).getByText(USED_UP)).toBeInTheDocument();

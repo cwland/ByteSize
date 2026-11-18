@@ -195,6 +195,16 @@ export class AiService {
       .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
   }
 
+  /** AI on or off; the services and keys are kept (nothing set up yet: remembered for when it is). */
+  async setEnabled(enabled: boolean) {
+    const current = await this.stored();
+    const value: StoredAi = current ? { ...current, enabled } : { enabled, mode: "auto", maxPerRun: 50, timeoutSec: 15, askNextOnNoMatch: false, services: [] };
+    await this.db
+      .insert(appSettings)
+      .values({ key: "ai", value })
+      .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
+  }
+
   async clear() {
     await this.db.delete(appSettings).where(eq(appSettings.key, "ai"));
   }
