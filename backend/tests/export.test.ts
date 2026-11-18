@@ -127,6 +127,16 @@ describe("GET /api/export", () => {
     expect(json.tables.passkeys).toBeUndefined();
   });
 
+  it("API keys go out as name, first characters, access and dates only: never the key, its hash or its encrypted copy", async () => {
+    await seed();
+    const made = (await t.api("POST", "/api/keys", { name: "Home Assistant", access: "log" })).body;
+    const { text } = await download();
+    const raw = text("bytesize-export.json");
+    expect(JSON.parse(raw).tables.api_keys).toEqual([{ id: made.id, userId: 1, name: "Home Assistant", prefix: made.prefix, access: "log", createdAt: expect.any(String), lastUsedAt: null }]);
+    expect(raw).not.toContain(made.key);
+    expect(raw).not.toContain(made.key.slice(11));
+  });
+
   it("the json carries the date format choice with the rest of the person's settings", async () => {
     await t.api("PUT", "/api/settings/me", { mealWindows: { breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" }, waterButtonsMl: [237], dateFormat: "dmy-dot" });
     const json = JSON.parse((await download()).text("bytesize-export.json"));

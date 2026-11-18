@@ -108,6 +108,7 @@ async function seed() {
     await t.db.insert(restaurantFavourites).values({ userId: u.id, cacheId: cache.id, chain: "Acme Diner" });
     await t.db.insert(passkeys).values({ userId: u.id, credentialId: `cred-${u.id}`, publicKey: "pk", transports: ["internal"], rpId: "localhost", name: "Phone" });
   }
+  const apiKey = (await a.as("POST", "/api/keys", { name: "Anna's HA", access: "log" })).body.key as string; // backed up (encrypted)
   const photo = await storePhoto(t.app, a.id, await plainPhoto(40, 30));
   await t.db.update(uploads).set({ linkedAt: new Date() }).where(eq(uploads.id, photo.id));
   const [custom] = await t.db
@@ -129,7 +130,7 @@ async function seed() {
     ]);
   }
   await t.db.insert(logEntries).values({ userId: a.id, day: "2026-11-14", meal: "lunch", name: "Food logged", icon: "🥣", source: "cache", sourceRef: `cache:${loggedOnly.id}`, unit: "g", quantity: 5, perServing: {}, servings: [], nutrients: {} });
-  return { admin, a, b, photo, cacheId: cache.id, unusedCacheId: unused.id };
+  return { admin, a, b, photo, cacheId: cache.id, unusedCacheId: unused.id, apiKey };
 }
 
 /** Every backed-up table's rows (as PostgreSQL writes them, so timestamps keep their microseconds). */
@@ -228,7 +229,7 @@ describe("backups", () => {
   });
 
   it("round trip: a backup restores every table, the photos and the id counters exactly", async () => {
-    const { a, b, photo, unusedCacheId } = await seed();
+    const { a, b, photo, unusedCacheId, apiKey } = await seed();
     const all = await snapshot();
     // A cached food nobody used (a search result) isn't kept
     const before: Record<string, string[]> = { ...all, food_cache: all.food_cache.filter((r) => JSON.parse(r).id !== unusedCacheId) };
@@ -248,6 +249,8 @@ describe("backups", () => {
     // Secrets stay as stored (encrypted)
     expect(JSON.stringify(json)).not.toContain("sk-home-ai");
     expect(JSON.stringify(json)).not.toContain("cul_key");
+    expect(JSON.stringify(json)).not.toContain(apiKey);
+    expect(json.tables.api_keys).toEqual([expect.objectContaining({ user_id: a.id, name: "Anna's HA", key_hash: expect.any(String), key_enc: expect.stringMatching(/^v1:/) })]);
 
     // Change things after the backup
     await t.db.update(users).set({ displayName: "Changed" }).where(eq(users.id, a.id));
@@ -281,6 +284,9 @@ describe("backups", () => {
     expect((await asUser(t, adminToken)("GET", "/api/admin/backups")).status).toBe(401);
     expect((await asUser(t, a.token)("GET", "/api/day/2026-11-15")).status).toBe(401);
     await signIn();
+    // A personal API key from the backup works again, and its owner's eye can show it (same JWT_SECRET)
+    const keyed = await t.app.inject({ method: "GET", url: "/api/day/2026-11-15", headers: { authorization: `Bearer ${apiKey}` } });
+    expect(keyed.statusCode).toBe(200);
     const list = await t.api("GET", "/api/admin/backups");
     expect(list.body.backups.map((x: any) => x.name)).toEqual([expect.stringMatching(/-before-restore\.tar\.gz$/), backup.name].sort().reverse());
     // The safety backup holds what was there just before (the changed name)

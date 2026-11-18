@@ -92,6 +92,27 @@ export const sessions = pgTable(
   (t) => [index("sessions_user_idx").on(t.userId), uniqueIndex("sessions_user_device_idx").on(t.userId, t.deviceId)]
 );
 
+// Settings › API keys: a person's own keys for their tools (lib/apiKeys.ts decides what a key may reach).
+// A key acts as its owner only. key_hash (SHA-256) finds the key; key_enc (encryptSecret, from JWT_SECRET)
+// lets the owner show it again with the eye. The key itself is never stored as it is. Backed up.
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    prefix: text("prefix").notNull(), // the first characters, shown to tell keys apart ("bs_3f9aK2x…")
+    keyHash: text("key_hash").notNull().unique(),
+    keyEnc: text("key_enc").notNull(),
+    access: text("access").$type<"read" | "log">().notNull().default("read"), // Read only, or Read and log
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  },
+  (t) => [index("api_keys_user_idx").on(t.userId)]
+);
+
 // Every sign-in attempt, good or bad (Settings > Security)
 export const loginEvents = pgTable(
   "login_events",
