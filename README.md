@@ -99,6 +99,22 @@ account**; emails are never matched. OAuth never creates accounts: the admin add
 **OAuth only** hides the password form (passkeys still work); it can only be turned on once your own account is
 linked at that provider, and it turns itself off when you change the provider or the client ID.
 
+### API keys
+
+Settings › API keys lets each person make keys for their own tools (Home Assistant, n8n, Shortcuts, scripts), up
+to 20. A key works as its owner only, never as an admin. **Read only** reads your day, foods, My Foods, weight,
+GLP-1, goals and trends; **Read and log** can also add, edit and delete log entries, water, weigh-ins and shots.
+Send it as `Authorization: Bearer <key>`:
+
+```sh
+curl -H "Authorization: Bearer bs_…" https://<your ByteSize>/api/day/2026-11-18
+curl -X POST -H "Authorization: Bearer bs_…" -H "Content-Type: application/json" -d '{"water_ml": 250}' https://<your ByteSize>/api/log
+```
+
+No key can reach admin, settings or integrations, API keys, backups or Download my data, any "show a saved key"
+route, or sign-in, devices, passkeys and passwords. A key gets 120 requests a minute. Keys are stored encrypted
+with `JWT_SECRET` (so the eye can show them again) and as a hash; a backup plus that `JWT_SECRET` can read them.
+
 ### Locked out?
 
 Reset a password from the server (no email needed). Without a username it resets the first admin. It prints a new

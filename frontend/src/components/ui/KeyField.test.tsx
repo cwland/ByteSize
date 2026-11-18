@@ -221,4 +221,17 @@ describe("KeyField", () => {
     await userEvent.click(screen.getByRole("button", { name: "Hide K key" }));
     expect(onRevealChange).toHaveBeenLastCalledWith(false);
   });
+
+  it("readOnly and defaultShown: a key to look at and copy (a new API key), shown at once and not editable", async () => {
+    const clip = clipboard(async () => {});
+    render(<KeyField label="Your new key" keyName="new key" value="bs_new" onChange={() => {}} saved={false} fetchSaved={async () => ""} readOnly defaultShown />);
+    const input = screen.getByLabelText("Your new key");
+    expect(input).toHaveAttribute("type", "text");
+    expect(input).toHaveAttribute("readOnly");
+    expect(input).toHaveValue("bs_new");
+    await userEvent.click(screen.getByRole("button", { name: "Copy new key" }));
+    expect(clip.writeText).toHaveBeenCalledWith("bs_new");
+    await userEvent.click(screen.getByRole("button", { name: "Hide new key" }));
+    expect(input).toHaveAttribute("type", "password");
+  });
 });
