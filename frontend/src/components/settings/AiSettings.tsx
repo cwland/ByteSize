@@ -361,13 +361,13 @@ function ServiceForm({
             </label>
           )}
 
-          {/* The key, with show / hide, and Validate right beside it */}
+          {/* The key (eye and copy inside it), and Validate: beside it from sm up, under it on a phone */}
           <div role="group" aria-label="API key and Validate">
             <label htmlFor={`ai-key-${d.key}`} className={sub}>
               API key {d.provider === "local" && <span className="font-normal">(optional)</span>}
             </label>
-            <div className="mt-1 flex items-center gap-2">
-              <div className="min-w-0 flex-1">
+            <div className="mt-1 flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+              <div className="w-full min-w-0 sm:flex-1">
                 <KeyField
                   id={`ai-key-${d.key}`}
                   label="API key"

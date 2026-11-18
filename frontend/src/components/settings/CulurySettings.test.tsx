@@ -1,9 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import CulurySettings from "./CulurySettings";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
+import { restoreClipboard, stubClipboard } from "../../test/clipboard";
+
+afterEach(restoreClipboard);
 
 const linked = { url: "http://culury.lan:4000", hasKey: true };
 const unlinked = { url: null, hasKey: false };
@@ -103,7 +106,7 @@ describe("Culury settings", () => {
 
   it("copy puts the saved key on the clipboard without showing it", async () => {
     const writeText = vi.fn(async () => {});
-    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    stubClipboard({ writeText });
     fakeServer({
       "GET /api/settings/culury": () => linked,
       "GET /api/settings/culury/key": () => ({ key: "cul_saved_key" }),
@@ -113,7 +116,6 @@ describe("Culury settings", () => {
     expect(await screen.findByText("Copied")).toBeInTheDocument();
     expect(writeText).toHaveBeenCalledWith("cul_saved_key");
     expect(screen.queryByDisplayValue("cul_saved_key")).not.toBeInTheDocument();
-    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
   });
 
   it("a saved key that can't be read says so", async () => {

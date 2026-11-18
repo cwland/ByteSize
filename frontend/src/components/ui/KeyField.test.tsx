@@ -3,12 +3,10 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { KeyField } from "./KeyField";
+import { FakeClipboardItem, restoreClipboard, stubClipboard, stubClipboardItem } from "../../test/clipboard";
 
 // The browser's clipboard: writeText works, is missing (plain http on a LAN address) or refuses
-function clipboard(writeText: ((text: string) => Promise<void>) | undefined) {
-  Object.defineProperty(navigator, "clipboard", { value: writeText ? { writeText: vi.fn(writeText) } : undefined, configurable: true });
-  return navigator.clipboard;
-}
+const clipboard = (writeText: ((text: string) => Promise<void>) | undefined) => stubClipboard(writeText ? { writeText } : undefined)!;
 // The old way: a hidden textarea and execCommand("copy"); records what was selected when it ran
 function execCommand(works: boolean) {
   const copied: string[] = [];
@@ -21,7 +19,7 @@ function execCommand(works: boolean) {
   return { fn, copied };
 }
 afterEach(() => {
-  Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+  restoreClipboard();
   vi.useRealTimers();
 });
 
@@ -154,5 +152,73 @@ describe("KeyField", () => {
     expect(screen.getByLabelText("USDA API key")).toHaveAttribute("type", "password");
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
+  });
+
+  describe("Safari's clipboard (ClipboardItem with a promised key)", () => {
+    it("writes in the click itself, before the saved key arrives, and reads Copied", async () => {
+      stubClipboardItem();
+      let written: FakeClipboardItem[] = [];
+      const cb = stubClipboard({ write: async (items) => void (written = items as FakeClipboardItem[]), writeText: async () => {} })!;
+      let answer!: (k: string) => void;
+      const fetchSaved = vi.fn(() => new Promise<string>((res) => (answer = res)));
+      render(<Harness fetchSaved={fetchSaved} />);
+      fireEvent.click(screen.getByRole("button", { name: "Copy USDA key" }));
+      expect(cb.write).toHaveBeenCalledTimes(1); // synchronously, still inside the click
+      expect(fetchSaved).toHaveBeenCalledTimes(1);
+      answer("saved-key-123");
+      expect(await screen.findByText("Copied")).toBeInTheDocument();
+      expect(written).toHaveLength(1);
+      expect(written[0]).toBeInstanceOf(FakeClipboardItem);
+      expect(await written[0].text()).toBe("saved-key-123");
+      expect(cb.writeText).not.toHaveBeenCalled();
+      expect(screen.queryByDisplayValue("saved-key-123")).not.toBeInTheDocument();
+    });
+
+    it("when that write is refused, falls back to writeText with the fetched key (one fetch)", async () => {
+      stubClipboardItem();
+      const cb = stubClipboard({ write: async () => Promise.reject(new DOMException("no", "NotAllowedError")), writeText: async () => {} })!;
+      const fetchSaved = vi.fn(async () => "saved-key-123");
+      render(<Harness fetchSaved={fetchSaved} />);
+      await userEvent.click(screen.getByRole("button", { name: "Copy USDA key" }));
+      expect(await screen.findByText("Copied")).toBeInTheDocument();
+      expect(cb.writeText).toHaveBeenCalledWith("saved-key-123");
+      expect(fetchSaved).toHaveBeenCalledTimes(1);
+    });
+
+    it("a key that can't be read says so, not Couldn't copy", async () => {
+      stubClipboardItem();
+      stubClipboard({ write: async (items) => void (await (items[0] as FakeClipboardItem).text()), writeText: async () => {} });
+      render(<Harness fetchSaved={async () => Promise.reject(new Error("This key can't be read. Enter it again."))} />);
+      await userEvent.click(screen.getByRole("button", { name: "Copy USDA key" }));
+      expect(await screen.findByText("This key can't be read. Enter it again.")).toBeInTheDocument();
+      expect(screen.queryByText(/Couldn't copy/)).not.toBeInTheDocument();
+      expect(screen.queryByText("Copied")).not.toBeInTheDocument();
+    });
+
+    it("what is typed is copied with writeText as before", async () => {
+      stubClipboardItem();
+      const cb = stubClipboard({ write: async () => {}, writeText: async () => {} })!;
+      render(<Harness start="typed-3" />);
+      await userEvent.click(screen.getByRole("button", { name: "Copy USDA key" }));
+      expect(cb.writeText).toHaveBeenCalledWith("typed-3");
+      expect(cb.write).not.toHaveBeenCalled();
+    });
+  });
+
+  it("the label names the box without holding the buttons", () => {
+    render(<Harness />);
+    const label = screen.getByText("USDA API key", { selector: "label" });
+    expect(label.querySelector("button")).toBeNull();
+    expect(label).toHaveAttribute("for", screen.getByLabelText("USDA API key").id);
+  });
+
+  it("tells the parent while a saved key is shown", async () => {
+    const onRevealChange = vi.fn();
+    render(<KeyField label="K" keyName="K key" value="" onChange={() => {}} saved fetchSaved={async () => "abc"} onRevealChange={onRevealChange} />);
+    await userEvent.click(screen.getByRole("button", { name: "Show K key" }));
+    await screen.findByDisplayValue("abc");
+    expect(onRevealChange).toHaveBeenLastCalledWith(true);
+    await userEvent.click(screen.getByRole("button", { name: "Hide K key" }));
+    expect(onRevealChange).toHaveBeenLastCalledWith(false);
   });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "../../api";
 import { lookupsText } from "../log/RestaurantsView";
 import { Card } from "../ui/Card";
@@ -48,6 +48,25 @@ function KeyBlock({
   const [values, setValues] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
+  // The saved key(s) as fetched for the eye and copy buttons. FatSecret's ID and secret come in one answer
+  // (one activity-log line), so it is kept while either is shown, or for a minute after a copy, and dropped
+  // when both are hidden again, on a save (the boxes start afresh: generation) and when the card goes away.
+  const fetched = useRef<{ answer: Promise<Record<string, string>>; at: number } | null>(null);
+  const shownBoxes = useRef(new Set<string>());
+  const [generation, setGeneration] = useState(0);
+  const savedPart = (pick: KeyBox["pick"]) => {
+    const f = fetched.current;
+    if (!f || (shownBoxes.current.size === 0 && Date.now() - f.at > 60_000)) {
+      const answer = api<Record<string, string>>("GET", `/api/admin/food-sources/${source}/key`);
+      fetched.current = { answer, at: Date.now() };
+      answer.catch(() => (fetched.current = null)); // a failed fetch is tried again next time
+    }
+    return fetched.current!.answer.then((r) => r[pick]);
+  };
+  const revealChanged = (name: string, shown: boolean) => {
+    if (shown) shownBoxes.current.add(name);
+    else if (shownBoxes.current.delete(name) && shownBoxes.current.size === 0) fetched.current = null;
+  };
   const what = `${title} ${noun}`;
   const filled = fields.every((f) => values[f.name]?.trim());
 
@@ -59,6 +78,9 @@ function KeyBlock({
       const r = await api<Summary>("PUT", "/api/admin/food-sources", body);
       onSaved(r);
       setValues({});
+      fetched.current = null;
+      shownBoxes.current.clear();
+      setGeneration((g) => g + 1);
       setMsg({ ok: true, text: `${what} ${r[source].hasKey ? "saved" : "removed"}` });
     } catch (e) {
       setMsg(errorMsg(e));
@@ -94,13 +116,14 @@ function KeyBlock({
       >
         {fields.map((f) => (
           <KeyField
-            key={f.name}
+            key={`${f.name}-${generation}`}
             label={f.label}
             keyName={fields.length > 1 ? f.label : `${title} key`}
             value={values[f.name] ?? ""}
             onChange={(v) => setValues((vs) => ({ ...vs, [f.name]: v }))}
             saved={!!hasKey}
-            fetchSaved={async () => (await api<Record<string, string>>("GET", `/api/admin/food-sources/${source}/key`))[f.pick]}
+            fetchSaved={() => savedPart(f.pick)}
+            onRevealChange={(shown) => revealChanged(f.name, shown)}
             placeholder={hasKey ? "Enter a new one to replace it" : "Paste it here"}
           />
         ))}
@@ -126,8 +149,9 @@ function KeyBlock({
   );
 }
 
-// The summary of which keys are saved (admins only), shared by the two sections below
-function useSourceKeys() {
+// The summary of which keys are saved (admins only). IntegrationsSettings fetches it once for both cards.
+export type SourceKeys = ReturnType<typeof useSourceKeys>;
+export function useSourceKeys() {
   const [keys, setKeys] = useState<Summary | null>(null);
   const [msg, setMsg] = useState<Msg>(null);
   useEffect(() => {
@@ -140,8 +164,7 @@ function useSourceKeys() {
 }
 
 // Settings › Integrations › Food databases (admin): Open Food Facts needs nothing; USDA needs a free key
-export function FoodDatabasesSettings() {
-  const { has, setKeys, msg } = useSourceKeys();
+export function FoodDatabasesSettings({ sources: { has, setKeys, msg } }: { sources: SourceKeys }) {
   return (
     <Card title="Food databases" description="Where food searches look, beside your own foods.">
       <section aria-label="Open Food Facts" className="mb-4 border-b border-line pb-4">
@@ -166,8 +189,7 @@ export function FoodDatabasesSettings() {
 
 // Settings › Integrations › Restaurant menus (admin): the Restaurants tab needs Spoonacular's key and/or
 // FatSecret's credentials
-export function RestaurantMenusSettings() {
-  const { has, setKeys, msg } = useSourceKeys();
+export function RestaurantMenusSettings({ sources: { has, setKeys, msg } }: { sources: SourceKeys }) {
   return (
     <Card title="Restaurant menus" description="Chain restaurants' menus for the Log › Restaurants tab. Each source needs a free key of your own.">
       <KeyBlock

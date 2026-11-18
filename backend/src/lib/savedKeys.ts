@@ -26,10 +26,11 @@ export function openSaved(enc: string | null | undefined, secret: string): strin
  * what: the key in plain words for the activity log ("USDA key").
  */
 export async function sendSavedKey(app: FastifyInstance, reply: FastifyReply, userId: number, what: string, value: Record<string, string | null | undefined>) {
+  reply.header("cache-control", "no-store"); // the 404 and 409 answers too
   const parts = Object.values(value);
   if (parts.some((v) => v === undefined)) throw new HttpError(404, "No key is saved");
   if (parts.some((v) => v === null)) throw new HttpError(409, UNREADABLE_KEY);
   const [who] = await app.db.select({ username: users.username }).from(users).where(eq(users.id, userId));
   await logEvent(app.db, { category: "api", level: "info", source: "Settings › Integrations", event: "Saved key shown", detail: `${what}, shown to ${who?.username ?? `user ${userId}`}`, userId });
-  return reply.header("cache-control", "no-store").send(value);
+  return reply.send(value);
 }

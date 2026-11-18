@@ -109,7 +109,7 @@ export default async function aiSettingsRoutes(app: FastifyInstance) {
     const userId = requireAdmin(req);
     const { id } = z.object({ id: z.string().max(40) }).parse(req.params);
     const sv = (await app.ai.stored())?.services.find((x) => x.id === id);
-    if (!sv) throw new HttpError(404, "No key is saved");
+    if (!sv) return sendSavedKey(app, reply, userId, "AI key", { key: undefined });
     return sendSavedKey(app, reply, userId, `${KEY_OWNERS[sv.provider] ?? "AI"} key for ${sv.name}`, { key: openSaved(sv.apiKeyEnc, app.jwtSecret) });
   });
 

@@ -83,7 +83,9 @@ describe("GET /api/settings/ai/:id/key", () => {
     const r = await t.api("PUT", "/api/settings/ai", { ...base, services: [{ name: "Home", provider: "local", model: "llama", baseUrl: "http://192.168.1.5:11434/v1" }] });
     const id = r.body.settings.services[0].id;
     expect((await t.api("GET", `/api/settings/ai/${id}/key`)).status).toBe(404);
-    expect((await t.api("GET", "/api/settings/ai/nope/key")).status).toBe(404);
+    const missing = await t.api("GET", "/api/settings/ai/nope/key");
+    expect(missing.status).toBe(404);
+    expect(missing.headers["cache-control"]).toBe("no-store");
     expect(await everythingLogged()).not.toContain("Saved key shown");
   });
 
@@ -155,6 +157,7 @@ describe("GET /api/admin/food-sources/:source/key", () => {
       const r = await t.api("GET", `/api/admin/food-sources/${s}/key`);
       expect(r.status).toBe(409);
       expect(r.body.error).toBe(UNREADABLE);
+      expect(r.headers["cache-control"]).toBe("no-store");
     }
   });
 });
@@ -179,13 +182,16 @@ describe("GET /api/settings/culury/key", () => {
     expect(JSON.stringify((await as("GET", "/api/settings/culury")).body)).not.toContain(CULURY_KEY);
   });
 
-  it("404 when none is saved, 409 when it can't be read", async () => {
-    expect((await t.api("GET", "/api/settings/culury/key")).status).toBe(404);
+  it("404 when none is saved, 409 when it can't be read (neither cached)", async () => {
+    const none = await t.api("GET", "/api/settings/culury/key");
+    expect(none.status).toBe(404);
+    expect(none.headers["cache-control"]).toBe("no-store");
     await t.api("PUT", "/api/settings/culury", { url: CULURY, apiKey: CULURY_KEY });
     await t.db.update(userSettings).set({ culuryKeyEnc: foreign(CULURY_KEY) }).where(eq(userSettings.userId, 1));
     const r = await t.api("GET", "/api/settings/culury/key");
     expect(r.status).toBe(409);
     expect(r.body.error).toBe(UNREADABLE);
+    expect(r.headers["cache-control"]).toBe("no-store");
     t.setToken("");
     expect((await t.api("GET", "/api/settings/culury/key")).status).toBe(401);
   });

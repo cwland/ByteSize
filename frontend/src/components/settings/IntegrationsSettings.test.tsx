@@ -13,12 +13,14 @@ const adminRoutes = {
 
 describe("Settings › Integrations", () => {
   it("admins see four titled sections, in order: AI services, Food databases, Restaurant menus, Culury", async () => {
-    fakeServer(adminRoutes);
+    const server = fakeServer(adminRoutes);
     renderWithSession(<IntegrationsSettings />, { isAdmin: true });
     expect(await screen.findByText(/No USDA key yet/)).toBeInTheDocument();
     expect(await screen.findByText(/Not linked yet/)).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["AI services", "Food databases", "Restaurant menus", "Culury"]);
     for (const name of ["AI services", "Food databases", "Restaurant menus", "Culury"]) expect(screen.getByRole("region", { name })).toBeInTheDocument();
+    // one summary of the food-source keys for both cards
+    expect(server.sent.filter((r) => r.path === "/api/admin/food-sources")).toHaveLength(1);
   });
 
   it("members see only Culury, and no admin route is asked", async () => {

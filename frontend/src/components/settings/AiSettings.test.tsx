@@ -1,9 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import AiSettings from "./AiSettings";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
+import { restoreClipboard, stubClipboard } from "../../test/clipboard";
+
+afterEach(restoreClipboard);
 
 // A service exactly as GET /api/settings/ai sends it
 const svc = (over: Record<string, unknown> = {}) => ({
@@ -358,7 +361,7 @@ describe("AiSettings", () => {
 
   it("copy puts a saved service's key on the clipboard without showing it", async () => {
     const writeText = vi.fn(async () => {});
-    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    stubClipboard({ writeText });
     fakeServer({
       "GET /api/settings/ai": () => settings([svc()]),
       "GET /api/settings/ai/s1/key": () => ({ key: "sk-saved-main" }),
@@ -369,7 +372,6 @@ describe("AiSettings", () => {
     expect(await within(row).findByText("Copied")).toBeInTheDocument();
     expect(writeText).toHaveBeenCalledWith("sk-saved-main");
     expect(screen.queryByDisplayValue("sk-saved-main")).not.toBeInTheDocument();
-    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
   });
 
   it("a new service (not saved yet) has no saved key to fetch", async () => {

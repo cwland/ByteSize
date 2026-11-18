@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Copy, Eye, EyeOff } from "lucide-react";
 import { field, label as labelClass } from "./styles";
 
@@ -39,6 +39,23 @@ export async function copyText(text: string): Promise<boolean> {
 }
 
 /**
+ * Safari and iOS only allow a clipboard write that starts inside the click. When the browser has
+ * ClipboardItem, the write is started at once with the key still on its way (a promise of it), so fetching
+ * the saved key first doesn't lose the click. Undefined when this browser has no such write.
+ */
+function writeLater(key: Promise<string>): Promise<void> | undefined {
+  const Item = (window as { ClipboardItem?: typeof ClipboardItem }).ClipboardItem;
+  if (!Item || !navigator.clipboard?.write) return undefined;
+  const blob = key.then((k) => new Blob([k], { type: "text/plain" }));
+  blob.catch(() => {}); // a failed fetch is reported by the caller
+  try {
+    return navigator.clipboard.write([new Item({ "text/plain": blob })]);
+  } catch (e) {
+    return Promise.reject(e);
+  }
+}
+
+/**
  * A key or secret box with an eye (show / hide) and a copy button at its end.
  * - Eye: shows what is typed; with nothing typed and a key saved, fetches the saved key and shows it.
  *   Again hides it (a shown saved key is dropped, back to the "saved" placeholder).
@@ -59,6 +76,7 @@ export function KeyField({
   showLabel = true,
   autoComplete = "off",
   inputClassName = "",
+  onRevealChange,
 }: {
   label: string;
   keyName: string;
@@ -71,7 +89,10 @@ export function KeyField({
   showLabel?: boolean;
   autoComplete?: string;
   inputClassName?: string;
+  onRevealChange?: (shown: boolean) => void; // a saved key is (or is no longer) shown in the box
 }) {
+  const ownId = useId();
+  const boxId = id ?? ownId;
   const [shown, setShown] = useState(false);
   const [revealed, setRevealed] = useState<string | null>(null); // the saved key, while it's shown
   const [busy, setBusy] = useState(false);
@@ -85,6 +106,12 @@ export function KeyField({
     if (!value) setShown(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saved]);
+
+  const isRevealed = revealed !== null;
+  useEffect(() => {
+    onRevealChange?.(isRevealed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRevealed]);
 
   const typed = value !== "";
   const canUse = typed || saved;
@@ -108,28 +135,54 @@ export function KeyField({
     }
   };
 
-  const copy = async () => {
+  const copied2s = () => {
+    setCopied(true);
+    clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Not async: the Safari write has to start before anything is awaited
+  const copy = () => {
     setProblem(null);
     setCopied(false);
     setBusy(true);
-    try {
-      const text = typed ? value : (revealed ?? (await fetchSaved()));
-      if (!(await copyText(text))) return setProblem(COPY_FAILED);
-      setCopied(true);
-      clearTimeout(copiedTimer.current);
-      copiedTimer.current = setTimeout(() => setCopied(false), 2000);
-    } catch (e) {
-      setProblem((e as Error).message || COPY_FAILED);
-    } finally {
-      setBusy(false);
+    const done = () => setBusy(false);
+    if (typed || revealed !== null || !saved) {
+      void copyText(typed ? value : (revealed ?? ""))
+        .then((ok) => (ok ? copied2s() : setProblem(COPY_FAILED)))
+        .finally(done);
+      return;
     }
+    // The saved key: fetched, never shown
+    const key = fetchSaved();
+    key.catch(() => {}); // (handled below)
+    const writing = writeLater(key);
+    void (async () => {
+      try {
+        if (writing) {
+          try {
+            await writing;
+            return copied2s();
+          } catch {
+            // refused, or the key didn't come: the fetch's own message, or the old ways
+          }
+        }
+        const text = await key;
+        if (await copyText(text)) copied2s();
+        else setProblem(COPY_FAILED);
+      } catch (e) {
+        setProblem((e as Error).message || COPY_FAILED);
+      } finally {
+        done();
+      }
+    })();
   };
 
   const button = "flex min-w-10 items-center justify-center text-subtle hover:text-ink disabled:opacity-40";
   const box = (
     <div className={`relative ${showLabel ? "mt-1" : ""}`}>
       <input
-        id={id}
+        id={boxId}
         aria-label={label}
         type={shown ? "text" : "password"}
         autoComplete={autoComplete}
@@ -146,7 +199,7 @@ export function KeyField({
         <button type="button" aria-label={`${shown ? "Hide" : "Show"} ${keyName}`} title={shown ? "Hide" : "Show"} aria-pressed={shown} disabled={busy || !canUse} onClick={() => void toggle()} className={button}>
           {shown ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
         </button>
-        <button type="button" aria-label={`Copy ${keyName}`} title="Copy" disabled={busy || !canUse} onClick={() => void copy()} className={`${button} min-w-10 rounded-r-xl px-2`}>
+        <button type="button" aria-label={`Copy ${keyName}`} title="Copy" disabled={busy || !canUse} onClick={() => void copy()} className={`${button} rounded-r-xl px-2`}>
           {copied ? <span className="text-xs font-semibold text-success">Copied</span> : <Copy className="size-4" />}
         </button>
       </div>
@@ -154,14 +207,12 @@ export function KeyField({
   );
   return (
     <div className="min-w-0">
-      {showLabel ? (
-        <label className={labelClass}>
+      {showLabel && (
+        <label htmlFor={boxId} className={labelClass}>
           {label}
-          {box}
         </label>
-      ) : (
-        box
       )}
+      {box}
       {copied && (
         <span role="status" className="sr-only">
           {keyName} copied
