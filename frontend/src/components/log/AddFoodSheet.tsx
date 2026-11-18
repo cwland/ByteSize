@@ -14,6 +14,7 @@ import FoodRow, { QuickAddButton, tagOf, useQuickAdd } from "./FoodRow";
 import { SavedCopyNote } from "./SavedCopy";
 import { TrackMeal } from "../myfoods/QuickMealEditor";
 import Pills from "./Pills";
+import { NothingFrom, SourcePills, useSourceChoice, viewOf } from "./SourcePills";
 import MealPlanView from "./MealPlanView";
 import CuluryTrack from "./CuluryTrack";
 import RestaurantsView, { newRestaurantsMemo } from "./RestaurantsView";
@@ -168,6 +169,7 @@ export type AddFoodStart = "search" | "barcode" | "label" | "restaurants";
 export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "search", onClose }: { day: string; meal: Meal; photo?: File; start?: AddFoodStart; onClose: () => void }) {
   const { user } = useSession();
   const units = user?.units ?? "imperial";
+  const sources = useSourceChoice(user.id);
   const [meal, setMeal] = useState<Meal>(initialMeal);
   const [view, setView] = useState<View>(() => {
     if (photo) return { k: "photo", files: [photo], mode: "auto" };
@@ -572,29 +574,34 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
             )}
           </div>
         ))}
-      {found?.kind === "search" && (
-        <>
-          {found.suggestion && (
-            <p className="mt-3 px-1">
-              <button type="button" onClick={() => setQuery(found.suggestion!)} className="rounded-full px-2 py-1 text-sm font-semibold text-link hover:bg-pressed">
-                Did you mean {found.suggestion}?
-              </button>
-            </p>
-          )}
-          {found.groups.map((g) => (
-            <section key={g.source} className="mt-3">
-              <h3 className="px-1 text-xs font-bold tracking-wide text-muted uppercase">{g.label}</h3>
-              <ul className="mt-2 flex flex-col gap-2">{g.foods.map((f) => row(f, startPortion(f)))}</ul>
-            </section>
-          ))}
-          {found.groups.length === 0 && <p className="mt-4 px-2 text-subtle">No foods found. Try other words, or create it.</p>}
-          {found.errors.map((e) => (
-            <p key={e.source} className="mt-2 px-2 text-xs text-muted">
-              {e.message}
-            </p>
-          ))}
-        </>
-      )}
+      {found?.kind === "search" && (() => {
+        const seen = viewOf(found, sources.choice);
+        return (
+          <>
+            <SourcePills pills={seen.pills} onToggle={sources.toggle} />
+            {found.suggestion && (
+              <p className="mt-3 px-1">
+                <button type="button" onClick={() => setQuery(found.suggestion!)} className="rounded-full px-2 py-1 text-sm font-semibold text-link hover:bg-pressed">
+                  Did you mean {found.suggestion}?
+                </button>
+              </p>
+            )}
+            {seen.groups.map((g) => (
+              <section key={g.source} className="mt-3">
+                <h3 className="px-1 text-xs font-bold tracking-wide text-muted uppercase">{g.label}</h3>
+                <ul className="mt-2 flex flex-col gap-2">{g.foods.map((f) => row(f, startPortion(f)))}</ul>
+              </section>
+            ))}
+            {seen.nothing && <NothingFrom nothing={seen.nothing} />}
+            {found.groups.length === 0 && <p className="mt-4 px-2 text-subtle">No foods found. Try other words, or create it.</p>}
+            {seen.errors.map((e) => (
+              <p key={e.source} className="mt-2 px-2 text-xs text-muted">
+                {e.message}
+              </p>
+            ))}
+          </>
+        );
+      })()}
     </Sheet>
   );
 }

@@ -44,7 +44,8 @@ export const COMPOUND_KINDS = ["recipe", "quick_meal"] as const;
 export type GroupSource = "mine" | "culury" | "basic" | "fatsecret" | "usda" | "off" | "cache";
 export type SearchGroup = { source: GroupSource; label: string; foods: FoodResult[] };
 /** suggestion: a close spelling from saved food names ("Did you mean …?"), only when little was found. */
-export type SearchResult = { groups: SearchGroup[]; errors: { source: string; message: string }[]; suggestion?: string };
+// searched: the sources a typed search asked (pill order), so a source with nothing found still has its pill (§22)
+export type SearchResult = { groups: SearchGroup[]; errors: { source: string; message: string }[]; searched: GroupSource[]; suggestion?: string };
 
 type CacheRow = typeof foodCache.$inferSelect;
 type UserFoodRow = typeof userFoods.$inferSelect;
@@ -347,7 +348,7 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
   // A typed barcode: the same answer as a scan
   if (DIGITS.test(q) && normalizeBarcode(q)) {
     const hit = await lookupBarcode(app, userId, q);
-    return { groups: hit.food && hit.from ? [{ source: hit.from, label: GROUP_LABELS[hit.from], foods: [hit.food] }] : [], errors: hit.errors };
+    return { groups: hit.food && hit.from ? [{ source: hit.from, label: GROUP_LABELS[hit.from], foods: [hit.food] }] : [], errors: hit.errors, searched: [] };
   }
 
   const { db } = app;
@@ -376,6 +377,8 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
   // The person's own Culury recipes (only their own link), at the same time
   const culury = await culuryLink(app, userId);
   const culuryRun = culury ? searchCulury(app, culury, q) : null;
+  // Pill order; Basic foods are USDA's whole foods, so they are asked whenever USDA is
+  const searched: GroupSource[] = [...(fs ? (["fatsecret"] as const) : []), ...(key ? (["basic", "usda"] as const) : []), ...(outside.some((o) => o.source === "off") ? (["off"] as const) : []), ...(culury ? (["culury"] as const) : [])];
   culuryRun?.catch(() => {}); // handled below
 
   const mine = await findMyFoods(db, userId, q, 10);
@@ -459,7 +462,7 @@ export async function searchFoods(app: FastifyInstance, userId: number, raw: str
     .filter((g) => g.foods.length);
   const total = groups.reduce((n, g) => n + g.foods.length, 0);
   const suggestion = total < SUGGEST_BELOW ? await suggestSpelling(db, userId, q) : undefined;
-  return { groups, errors, ...(suggestion ? { suggestion } : {}) };
+  return { groups, errors, searched, ...(suggestion ? { suggestion } : {}) };
 }
 
 // ---------- did you mean ----------
