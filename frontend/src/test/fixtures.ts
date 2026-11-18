@@ -192,4 +192,5 @@ export const backupList = {
   ],
   keep: 14,
   unreadableKeys: [] as string[],
+  problem: null as string | null,
 };

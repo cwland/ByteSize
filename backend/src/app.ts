@@ -91,7 +91,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     if (err instanceof ZodError) {
       return reply.status(400).send({ error: "Invalid request", details: err.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
     }
-    if (err instanceof HttpError) return reply.status(err.statusCode).send({ error: err.message });
+    if (err instanceof HttpError) return reply.status(err.statusCode).send({ ...err.extra, error: err.message });
     const status = (err as { statusCode?: number }).statusCode;
     if (status && status < 500) return reply.status(status).send({ error: (err as Error).message });
     req.log.error(err);

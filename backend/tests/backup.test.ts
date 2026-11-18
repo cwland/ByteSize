@@ -8,6 +8,7 @@ import { eq, getTableName, is, sql } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { TEST_SECRET, setupTestApp, type TestApp } from "./helpers.js";
+import { buildApp } from "../src/app.js";
 import { asUser, twoUsers } from "./isolation.js";
 import { aiSettings } from "./foodFakes.js";
 import { setRestaurantKeys } from "./restaurantFakes.js";
@@ -37,7 +38,7 @@ import {
 } from "../src/db/schema.js";
 import { encryptSecret } from "../src/lib/secrets.js";
 import { storePhoto } from "../src/lib/photos.js";
-import { BACKED_UP_TABLES, SKIP_TABLES, backupHooks, dailyBackupCheck, writeBackup } from "../src/lib/backup.js";
+import { BACKED_UP_TABLES, CACHE_REFERENCES, SKIP_TABLES, backupHooks, cleanLeftovers, dailyBackupCheck, dailyStatus, writeBackup } from "../src/lib/backup.js";
 
 let t: TestApp;
 beforeAll(async () => (t = await setupTestApp()));
@@ -50,6 +51,7 @@ beforeEach(async () => {
 const defaultHooks = { ...backupHooks };
 afterEach(() => {
   Object.assign(backupHooks, defaultHooks);
+  dailyStatus.failure = null;
   delete process.env.BACKUP_HOUR;
   delete process.env.BACKUP_KEEP;
 });
@@ -82,6 +84,9 @@ async function seed() {
     .insert(foodCache)
     .values({ source: "off", sourceId: "123", barcode: "0000000000123", name: "Oats, rolled", brand: "Acme", servings: [{ label: "1/2 cup", grams: 40 }], nutrients: { calories: 150, protein_g: 5.25 }, raw: { nested: { a: [1, "two", null, true] } } })
     .returning();
+  // Cached foods each kept by one kind of use, and one nobody used (a search result: not backed up)
+  const cached = (sourceId: string) => ({ source: "usda", sourceId, name: `Food ${sourceId}`, servings: [], nutrients: { calories: 1 } });
+  const [corrected, loggedOnly, inRecipeOnly, unused] = await t.db.insert(foodCache).values([cached("corrected"), cached("logged"), cached("recipe"), cached("unused")]).returning();
   for (const [i, u] of [a, b].entries()) {
     await t.db.insert(userBody).values({ userId: u.id, sex: i ? "male" : "female", birthDate: "1985-03-0" + (i + 1), heightCm: 170.18 + i, weightKg: 81.123456789, goalWeightKg: 70, activity: "some", glp1: i === 0, targetsWeightKg: null });
     await t.db.insert(userSettings).values({ userId: u.id, weekStart: 1, waterButtonsMl: [250, 500], culuryUrl: i ? null : "http://culury.lan:4000", culuryKeyEnc: i ? null : encryptSecret("cul_key", TEST_SECRET) });
@@ -101,19 +106,22 @@ async function seed() {
     .insert(userFoods)
     .values({ userId: a.id, kind: "custom", name: "Protein bar", servings: [{ label: "1 bar", grams: 60 }], nutrients: { calories: 210, protein_g: 20 }, aiFields: ["fiber_g", "sugar_g"], imagePath: photo.path, barcode: "0000000000456" })
     .returning();
+  await t.db.insert(userFoods).values({ userId: b.id, kind: "override", name: "Food corrected", baseCacheId: corrected.id, servings: [], nutrients: { calories: 2 } });
   const [recipe] = await t.db.insert(userFoods).values({ userId: a.id, kind: "recipe", name: "Overnight oats", servings: [{ label: "1 serving" }], nutrients: { calories: 360 }, recipeServings: 2, servingGrams: null }).returning();
   await t.db.insert(recipeItems).values([
     { recipeId: recipe.id, position: 0, foodKind: "cache", foodId: cache.id, unit: "g", quantity: 80, snapshot: { name: "Oats", brand: null, icon: "🥣", foodKind: "cache", nutrients: { calories: 300 }, perServing: { calories: 150 }, servings: [], aiFields: [] } },
     { recipeId: recipe.id, position: 1, foodKind: "user_food", foodId: custom.id, unit: "serving", quantity: 1, fraction: 0.5, snapshot: { name: "Protein bar", brand: null, icon: "🍫", foodKind: "custom", nutrients: { calories: 105 }, perServing: { calories: 210 }, servings: [], aiFields: [] } },
+    { recipeId: recipe.id, position: 2, foodKind: "cache", foodId: inRecipeOnly.id, unit: "g", quantity: 10, snapshot: { name: "Food recipe", brand: null, icon: "🥣", foodKind: "cache", nutrients: { calories: 1 }, perServing: { calories: 1 }, servings: [], aiFields: [] } },
   ]);
   for (const u of [a, b]) {
     await t.db.insert(logEntries).values([
       // nutrients unknown (fiber, sodium...) stay absent
-      { userId: u.id, day: "2026-11-15", meal: "breakfast", name: "Oats", icon: "🥣", source: "cache", sourceRef: String(cache.id), unit: "g", quantity: 40, perServing: { calories: 150 }, servings: [{ label: "1/2 cup", grams: 40 }], nutrients: { calories: 150 } },
+      { userId: u.id, day: "2026-11-15", meal: "breakfast", name: "Oats", icon: "🥣", source: "cache", sourceRef: `cache:${cache.id}`, unit: "g", quantity: 40, perServing: { calories: 150 }, servings: [{ label: "1/2 cup", grams: 40 }], nutrients: { calories: 150 } },
       { userId: u.id, day: "2026-11-15", meal: "snacks", name: "Protein bar", icon: "🍫", imageUrl: `/api/photos/${photo.id}`, source: "user_food", sourceRef: String(custom.id), unit: "serving", quantity: 1, fraction: 0.333333333333, perServing: { calories: 210 }, servings: [], nutrients: { calories: 69.99999993 }, aiEstimated: true },
     ]);
   }
-  return { admin, a, b, photo, cacheId: cache.id };
+  await t.db.insert(logEntries).values({ userId: a.id, day: "2026-11-14", meal: "lunch", name: "Food logged", icon: "🥣", source: "cache", sourceRef: `cache:${loggedOnly.id}`, unit: "g", quantity: 5, perServing: {}, servings: [], nutrients: {} });
+  return { admin, a, b, photo, cacheId: cache.id, unusedCacheId: unused.id };
 }
 
 /** Every backed-up table's rows (as PostgreSQL writes them, so timestamps keep their microseconds). */
@@ -197,9 +205,24 @@ describe("backups", () => {
     expect(inDb.rows.map((r) => r.tablename).sort()).toEqual(inSchema);
   });
 
+  it("food_cache: every column that points at a cached food is considered (a new one must be added)", async () => {
+    // Foreign keys to food_cache, as the database has them
+    const fks = await t.db.execute<{ ref: string }>(sql`
+      select c.conrelid::regclass::text || '.' || a.attname as ref
+      from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey)
+      where c.contype = 'f' and c.confrelid = 'food_cache'::regclass`);
+    expect(fks.rows.length).toBeGreaterThan(0);
+    for (const { ref } of fks.rows) expect(CACHE_REFERENCES, ref).toContain(ref);
+    // ...and the ones without a foreign key: a log line's or a recipe ingredient's "cache:<id>" / (cache, id)
+    expect(CACHE_REFERENCES).toEqual(expect.arrayContaining(["log_entries.source_ref", "recipe_items.food_id"]));
+  });
+
   it("round trip: a backup restores every table, the photos and the id counters exactly", async () => {
-    const { a, b, photo } = await seed();
-    const before = await snapshot();
+    const { a, b, photo, unusedCacheId } = await seed();
+    const all = await snapshot();
+    // A cached food nobody used (a search result) isn't kept
+    const before: Record<string, string[]> = { ...all, food_cache: all.food_cache.filter((r) => JSON.parse(r).id !== unusedCacheId) };
+    expect(before.food_cache).toHaveLength(all.food_cache.length - 1);
     for (const name of BACKED_UP_TABLES) expect(before[name].length, `${name} has rows to check`).toBeGreaterThan(0);
     const jpeg = photoBytes(photo.path);
     const adminToken = t.getToken();
@@ -211,6 +234,7 @@ describe("backups", () => {
     expect(json).toMatchObject({ app: "bytesize", format: 1, schema: 10, createdAt: expect.any(String) });
     expect(Object.keys(json.tables).sort()).toEqual([...BACKED_UP_TABLES].sort());
     expect(json.tables.app_settings.map((r: any) => r.key)).not.toContain("restaurant_quota");
+    expect(json.tables.food_cache.map((r: any) => r.id).sort()).toEqual(before.food_cache.map((r) => JSON.parse(r).id).sort());
     // Secrets stay as stored (encrypted)
     expect(JSON.stringify(json)).not.toContain("sk-home-ai");
     expect(JSON.stringify(json)).not.toContain("cul_key");
@@ -230,6 +254,11 @@ describe("backups", () => {
     expect(r.body).toEqual({ restored: { schema: 10, users: 3, photos: 1 }, unreadableKeys: [] });
 
     sameData(await snapshot(), before);
+    // Nothing points at a cached food that isn't there
+    const dangling = await t.db.execute<{ n: number }>(sql`select
+      (select count(*) from log_entries where source = 'cache' and source_ref not in (select 'cache:' || id from food_cache))
+      + (select count(*) from recipe_items where food_kind = 'cache' and food_id not in (select id from food_cache)) as n`);
+    expect(Number(dangling.rows[0].n)).toBe(0);
     expect(photoBytes(photo.path)).toEqual(jpeg);
     expect(existsSync(path.join(uploadsDir(), String(b.id), "stray.jpg"))).toBe(false);
     // The points counter is the server's, not the backup's
@@ -267,6 +296,7 @@ describe("backups", () => {
       ],
       keep: 7,
       unreadableKeys: [],
+      problem: null,
     });
     delete process.env.BACKUP_KEEP;
     expect((await t.api("GET", "/api/admin/backups")).body.keep).toBe(14);
@@ -470,7 +500,10 @@ describe("backups", () => {
     };
     const r = await t.api("POST", "/api/admin/backups/restore", { name: b.name, confirm: "RESTORE" });
     expect(r.status).toBe(500);
+    expect(r.body.restored).toBe(true); // the data is the backup's: the page treats it as a finished restore
     expect(r.body.error).toMatch(/before-restore\.tar\.gz/);
+    expect(r.body.error).toMatch(/data was restored/);
+    expect(r.body.error).toMatch(/Sign in again/);
     const old = readdirSync(t.app.dataDir).find((n) => n.startsWith(".uploads-old-"))!;
     expect(old).toBeTruthy();
     expect(readFileSync(path.join(t.app.dataDir, old, photo.path))).toEqual(jpeg); // not lost
@@ -541,19 +574,120 @@ describe("backups", () => {
     expect(backupFiles()).toHaveLength(1);
   });
 
-  it("activity log: backup, delete and restore each say who and which file", async () => {
+  it("a backup too large for a restore to take fails: nothing is listed and the reason is logged", async () => {
+    await seed();
+    backupHooks.maxJsonBytes = 100;
+    const r = await t.api("POST", "/api/admin/backups");
+    expect(r.status).toBe(507);
+    expect(r.body.error).toMatch(/^The backup is too large for ByteSize to restore \([\d.]+ MB of data; the limit is [\d.]+ MB\)\.$/);
+    expect(backupFiles()).toEqual([]);
+    expect(readdirSync(backupsDir()), "no temp files left").toEqual([]);
+    const errors = (await t.db.select().from(appLog)).filter((l) => l.level === "error");
+    expect(errors).toHaveLength(1);
+    expect(`${errors[0].event} ${errors[0].detail}`).toContain(r.body.error);
+
+    // The daily one: not saved either, and logged
+    t.clock.date = new Date(2026, 10, 17, 4, 0, 0);
+    expect(await dailyBackupCheck(t.app)).toBeNull();
+    expect(backupFiles()).toEqual([]);
+    const daily = (await t.db.select().from(appLog).where(eq(appLog.category, "schedule"))).filter((l) => l.level === "error");
+    expect(daily).toHaveLength(1);
+    expect(daily[0].detail).toMatch(/too large for ByteSize to restore/);
+  });
+
+  it("a backup with no admin account is refused before anything is emptied, with no safety backup", async () => {
+    await seed();
+    const b = await makeBackup();
+    const json = await backupJson(b.name);
+    for (const u of json.tables.users) u.is_admin = false;
+    await t.db.delete(weighIns);
+    const before = await snapshot();
+    const r = await restoreUpload(tarGz([tarEntry("bytesize.json", { data: JSON.stringify(json) })]));
+    expect(r).toMatchObject({ status: 400, body: { error: "This backup has no admin account, so it can't be restored." } });
+    const none = await restoreUpload(tarGz([tarEntry("bytesize.json", { data: JSON.stringify({ ...json, tables: { ...json.tables, users: [] } }) })]));
+    expect(none).toMatchObject({ status: 400, body: { error: "This backup has no admin account, so it can't be restored." } });
+    sameData(await snapshot(), before);
+    expect(backupFiles()).toEqual([b.name]);
+  });
+
+  it("a value of the wrong kind: the log says where, never the value", async () => {
+    await seed();
+    const b = await makeBackup();
+    const json = await backupJson(b.name);
+    const marker = "ZQX-MARKER-4711";
+    json.tables.weigh_ins[0].weight_kg = `${marker} kilos`;
+    await t.db.delete(weighIns);
+    const before = await snapshot();
+    const r = await restoreUpload(tarGz([tarEntry("bytesize.json", { data: JSON.stringify(json) })]));
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/doesn't fit/);
+    expect(JSON.stringify(r.body)).not.toContain(marker);
+    sameData(await snapshot(), before);
+    const lines = await t.db.select().from(appLog);
+    const [failure] = lines.filter((l) => l.level === "error");
+    expect(failure.detail).toMatch(/\[22/); // the error code is kept
+    for (const l of lines) expect(JSON.stringify(l)).not.toContain(marker);
+  });
+
+  it("on start, leftovers of an interrupted backup or restore are removed; old photos are kept and pointed out", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "bytesize-leftovers-"));
+    try {
+      const at = (...p: string[]) => path.join(dir, ...p);
+      mkdirSync(at("backups", ".work-abc123", "uploads", "1"), { recursive: true });
+      writeFileSync(at("backups", ".work-abc123", "bytesize.json"), "{}");
+      writeFileSync(at("backups", ".upload-0123456789abcdef.tmp"), "half an upload");
+      writeFileSync(at("backups", ".bytesize-2026-11-17-030000.tar.gz.tmp"), "half a backup");
+      writeFileSync(at("backups", "bytesize-2026-11-16-030000.tar.gz"), "a backup");
+      writeFileSync(at("backups", "notes.txt"), "someone's notes");
+      mkdirSync(at(".restore-xyz789", "uploads"), { recursive: true });
+      mkdirSync(at(".uploads-old-a1b2c3", "1"), { recursive: true });
+      writeFileSync(at(".uploads-old-a1b2c3", "1", "p.jpg"), "photo");
+      mkdirSync(at("uploads", "1"), { recursive: true });
+      writeFileSync(at("uploads", "1", "q.jpg"), "photo");
+      writeFileSync(at(".env"), "SECRET=1");
+
+      const app = buildApp({ db: t.db, jwtSecret: TEST_SECRET, rateLimit: false, dataDir: dir, backupSchedule: false });
+      await app.ready();
+      await app.close();
+
+      expect(readdirSync(at("backups")).sort()).toEqual(["bytesize-2026-11-16-030000.tar.gz", "notes.txt"]);
+      expect(readdirSync(dir).sort()).toEqual([".env", ".uploads-old-a1b2c3", "backups", "uploads"]);
+      expect(readFileSync(at(".uploads-old-a1b2c3", "1", "p.jpg"), "utf8")).toBe("photo");
+      const warnings = (await t.db.select().from(appLog)).filter((l) => l.level === "warning");
+      expect(warnings).toHaveLength(1);
+      expect(`${warnings[0].event} ${warnings[0].detail}`).toContain(".uploads-old-a1b2c3");
+      expect(`${warnings[0].event} ${warnings[0].detail}`).toMatch(/interrupted restore/);
+
+      // No photo folder and one old one: nothing is moved, only the warning again
+      rmSync(at("uploads"), { recursive: true });
+      await cleanLeftovers({ db: t.db, dataDir: dir } as never);
+      expect(readdirSync(dir).sort()).toEqual([".env", ".uploads-old-a1b2c3", "backups"]);
+      expect((await t.db.select().from(appLog)).filter((l) => l.level === "warning")).toHaveLength(2);
+
+      // Nothing left over: nothing logged
+      rmSync(at(".uploads-old-a1b2c3"), { recursive: true });
+      await cleanLeftovers({ db: t.db, dataDir: dir } as never);
+      expect((await t.db.select().from(appLog)).filter((l) => l.level === "warning")).toHaveLength(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("activity log: backup, download, delete and restore each say who and which file", async () => {
     const { admin } = await seed();
     const apiLines = () => t.db.select().from(appLog).where(eq(appLog.category, "api"));
     const b = await makeBackup();
     // (checked before the restore: the restore puts back the log as it was when the backup was made)
     const made = (await apiLines()).find((l) => /backup made/i.test(l.event));
+    expect((await t.app.inject({ method: "GET", url: `/api/admin/backups/${b.name}`, headers: { authorization: `Bearer ${t.getToken()}` } })).statusCode).toBe(200);
+    const downloaded = (await apiLines()).find((l) => /downloaded/i.test(l.event));
     await t.api("POST", "/api/admin/backups/restore", { name: b.name, confirm: "RESTORE" });
     await signIn();
     await t.api("DELETE", `/api/admin/backups/${b.name}`);
     const lines = await apiLines();
     const restored = lines.find((l) => /restored/i.test(l.event));
     const deleted = lines.find((l) => /deleted/i.test(l.event));
-    for (const l of [made, restored, deleted]) {
+    for (const l of [made, downloaded, restored, deleted]) {
       expect(l).toMatchObject({ level: "info", userId: admin.id });
       expect(l!.detail).toContain(b.name);
       expect(l!.detail).toContain("cory");
@@ -615,6 +749,71 @@ describe("daily backup", () => {
     at(18, 4, 0);
     expect(await dailyBackupCheck(t.app)).toBeNull();
     expect(backupFiles()).toHaveLength(14);
+  });
+});
+
+describe("daily backup problems", () => {
+  const at = (day: number, h: number, m = 0) => {
+    t.clock.date = new Date(2026, 10, day, h, m, 0);
+  };
+  const problem = async () => (await t.api("GET", "/api/admin/backups")).body.problem;
+
+  it("a failing daily backup shows in the list until one works, and is logged once per new reason", async () => {
+    await t.login();
+    expect(await problem()).toBeNull();
+    backupHooks.maxJsonBytes = 10;
+    at(17, 3, 0);
+    expect(await dailyBackupCheck(t.app)).toBeNull();
+    expect(await problem()).toMatch(/^The last backup failed: The backup is too large for ByteSize to restore/);
+    at(17, 4, 0);
+    expect(await dailyBackupCheck(t.app)).toBeNull(); // the next hour: the same failure
+    const failures = () => t.db.select().from(appLog).where(eq(appLog.level, "error"));
+    expect(await failures()).toHaveLength(1);
+    backupHooks.maxJsonBytes = defaultHooks.maxJsonBytes;
+    rmSync(backupsDir(), { recursive: true, force: true });
+    writeFileSync(backupsDir(), "not a folder"); // a different reason: logged
+    at(17, 5, 0);
+    expect(await dailyBackupCheck(t.app)).toBeNull();
+    expect(await failures()).toHaveLength(2);
+    expect(await problem()).not.toMatch(/too large/);
+    rmSync(backupsDir());
+    at(17, 6, 0);
+    expect(await dailyBackupCheck(t.app)).toBe("bytesize-2026-11-17-060000.tar.gz");
+    expect(await problem()).toBeNull();
+    // Failing again after a success is a new failure: logged
+    backupHooks.maxJsonBytes = 10;
+    at(18, 3, 0);
+    expect(await dailyBackupCheck(t.app)).toBeNull();
+    expect(await failures()).toHaveLength(3);
+  });
+
+  it("no daily backup for more than 36 hours shows in the list (not when the daily backup is off)", async () => {
+    await t.login();
+    mkdirSync(backupsDir(), { recursive: true });
+    writeFileSync(path.join(backupsDir(), "bytesize-2026-11-15-030000.tar.gz"), "x");
+    at(16, 15, 0); // 36 hours later
+    expect(await problem()).toBeNull();
+    writeFileSync(path.join(backupsDir(), "bytesize-2026-11-17-010000-before-restore.tar.gz"), "x"); // a labelled one doesn't count
+    at(16, 15, 1);
+    expect(await problem()).toMatch(/^No backup has been saved since Nov 15, 2026, 3:00 AM\.$/);
+    process.env.BACKUP_KEEP = "0";
+    expect(await problem()).toBeNull();
+  });
+
+  it("the prune after a daily backup runs while the backup lock is still held", async () => {
+    await t.login();
+    process.env.BACKUP_KEEP = "1";
+    mkdirSync(backupsDir(), { recursive: true });
+    writeFileSync(path.join(backupsDir(), "bytesize-2026-11-01-030000.tar.gz"), "x");
+    const during: string[] = [];
+    backupHooks.remove = async (file) => {
+      during.push(await writeBackup(t.app).then(() => "ran", (e: Error) => e.message));
+      return defaultHooks.remove(file);
+    };
+    at(17, 3, 0);
+    expect(await dailyBackupCheck(t.app)).toBe("bytesize-2026-11-17-030000.tar.gz");
+    expect(during).toEqual(["A backup is already running."]);
+    expect(backupFiles()).toEqual(["bytesize-2026-11-17-030000.tar.gz"]);
   });
 });
 

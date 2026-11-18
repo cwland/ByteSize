@@ -7,7 +7,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import multipart from "@fastify/multipart";
 import { z } from "zod";
 import { logEvent } from "../lib/appLog.js";
-import { backupFile, backupKeep, backupsDir, deleteBackup, formatSize, listBackups, restoreBackup, unreadableKeys, whoIs, writeBackup } from "../lib/backup.js";
+import { backupFile, backupKeep, backupProblem, backupsDir, cleanLeftovers, deleteBackup, formatSize, listBackups, restoreBackup, unreadableKeys, whoIs, writeBackup } from "../lib/backup.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireAdmin } from "../lib/guards.js";
 
@@ -54,25 +54,34 @@ async function receiveUpload(app: FastifyInstance, req: FastifyRequest): Promise
 export default async function backupRoutes(app: FastifyInstance) {
   await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 2, fieldSize: 100, parts: 3, headerPairs: 50 } });
 
+  app.addHook("onReady", () => cleanLeftovers(app)); // what a backup or restore the server stopped in the middle of left
+
   const nameParam = (req: FastifyRequest) => (req.params as { name: string }).name;
 
   app.get("/api/admin/backups", async (req) => {
     requireAdmin(req);
-    return { backups: await listBackups(app), keep: backupKeep(), unreadableKeys: await unreadableKeys(app) };
+    return { backups: await listBackups(app), keep: backupKeep(), unreadableKeys: await unreadableKeys(app), problem: await backupProblem(app) };
   });
 
   app.post("/api/admin/backups", async (req) => {
     const userId = requireAdmin(req);
-    const b = await writeBackup(app);
+    const b = await writeBackup(app).catch(async (err) => {
+      if (!(err instanceof HttpError && err.statusCode === 409)) {
+        await logEvent(app.db, { category: "api", level: "error", source: "Backups", event: "A backup failed", detail: `${(err as Error).message} (started by ${await whoIs(app, userId)})`, userId });
+      }
+      throw err;
+    });
     await logEvent(app.db, { category: "api", level: "info", source: "Backups", event: "Backup made", detail: `${b.name} (${formatSize(b.size)}, ${b.photos} photos) by ${await whoIs(app, userId)}`, userId });
     return { backup: { name: b.name, size: b.size, createdAt: b.createdAt } };
   });
 
   app.get("/api/admin/backups/:name", async (req, reply) => {
-    requireAdmin(req);
+    const userId = requireAdmin(req);
     const name = nameParam(req);
     const file = await backupFile(app, name);
     if (!file) throw new HttpError(404, NO_SUCH_BACKUP);
+    // A backup holds everyone's data (and password hashes): who took one is kept
+    await logEvent(app.db, { category: "api", level: "info", source: "Backups", event: "Backup downloaded", detail: `${name} by ${await whoIs(app, userId)}`, userId });
     return reply.type("application/gzip").header("content-disposition", `attachment; filename="${name}"`).send(createReadStream(file));
   });
 

@@ -23,6 +23,7 @@ export const BACKUP_NAME = /^bytesize-\d{4}-\d{2}-\d{2}-\d{6}(-[a-z-]+)?\.tar\.g
 export const SKIP_TABLES = ["sessions", "restaurant_searches"];
 // ...nor the Spoonacular points counter (an app_settings row: the server keeps its own)
 const SKIP_SETTINGS = [QUOTA_KEY];
+const CACHE_TABLE = "food_cache";
 export const DATA_FILE = "bytesize.json";
 export const FORMAT = 1;
 
@@ -31,6 +32,7 @@ export const NEWER_BACKUP = "This backup is from a newer ByteSize. Update first.
 export const BACKUP_BUSY = "A backup is already running.";
 const TOO_LARGE = "This backup is too large to restore here.";
 const DOESNT_FIT = "This backup couldn't be restored, so nothing was changed. Some of its data doesn't fit this server; the details are in Settings › Logs.";
+const NO_ADMIN = "This backup has no admin account, so it can't be restored.";
 const DIDNT_FINISH = "The restore didn't finish, and nothing was changed. Try again.";
 
 const MAX_PHOTO_BYTES = 50 * 1024 * 1024; // each (kept photos are ≤1600 px JPEGs)
@@ -44,11 +46,12 @@ export const backupHooks = {
   maxJsonBytes: 200 * 1024 * 1024,
   lockTimeoutMs: 30_000, // a restore waits this long for a table someone is using, then says to try again
   rename: (from: string, to: string) => fs.rename(from, to),
+  remove: (file: string) => fs.rm(file, { force: true }), // pruning old backups
 };
 
 // ---------- the tables, from the Drizzle schema (a new table is backed up without touching this file) ----------
 
-type TableInfo = { name: string; columns: string[]; serials: string[]; refs: string[]; nullOnRestore: string[] };
+type TableInfo = { name: string; columns: string[]; serials: string[]; refs: string[]; nullOnRestore: string[]; cacheRefs: string[] };
 
 function tableInfo(): TableInfo[] {
   const tables = (Object.values(schema) as unknown[]).filter((v): v is PgTable => is(v, PgTable));
@@ -56,13 +59,15 @@ function tableInfo(): TableInfo[] {
     const cfg = getTableConfig(t);
     const refs: string[] = [];
     const nullOnRestore: string[] = []; // columns pointing at a table that isn't backed up (login_events.session_id)
+    const cacheRefs: string[] = []; // columns pointing at food_cache (what keeps a cached food in a backup)
     for (const fk of cfg.foreignKeys) {
       const ref = fk.reference();
       const target = getTableName(ref.foreignTable);
       if (SKIP_TABLES.includes(target)) nullOnRestore.push(...ref.columns.map((c) => c.name));
       else if (target !== cfg.name) refs.push(target);
+      if (target === CACHE_TABLE) cacheRefs.push(...ref.columns.map((c) => c.name));
     }
-    return { name: cfg.name, columns: cfg.columns.map((c) => c.name), serials: cfg.columns.filter((c) => c.columnType === "PgSerial").map((c) => c.name), refs, nullOnRestore };
+    return { name: cfg.name, columns: cfg.columns.map((c) => c.name), serials: cfg.columns.filter((c) => c.columnType === "PgSerial").map((c) => c.name), refs, nullOnRestore, cacheRefs };
   });
   // Foreign-key order: a table comes after every table it points at
   const kept = all.filter((t) => !SKIP_TABLES.includes(t.name));
@@ -82,6 +87,17 @@ function tableInfo(): TableInfo[] {
 const TABLES = tableInfo();
 /** Every table a backup holds, in foreign-key order. */
 export const BACKED_UP_TABLES = TABLES.map((t) => t.name);
+
+// Cached foods (food_cache) are kept only when something backed up uses them: search results nobody picked
+// would make backups grow without end. Foreign keys to it come from the schema; these two point at it by value.
+const LOOSE_CACHE_REFS: { ref: string; uses: SQL }[] = [
+  { ref: "log_entries.source_ref", uses: sql`('cache:' || x.id) in (select source_ref from log_entries where source_ref like 'cache:%')` },
+  { ref: "recipe_items.food_id", uses: sql`x.id in (select food_id from recipe_items where food_kind = 'cache')` },
+];
+const FK_CACHE_REFS = TABLES.flatMap((t) => t.cacheRefs.map((c) => ({ ref: `${t.name}.${c}`, uses: sql`x.id in (select ${sql.identifier(c)} from ${sql.identifier(t.name)})` })));
+/** Every "table.column" that keeps a cached food in a backup. */
+export const CACHE_REFERENCES = [...FK_CACHE_REFS, ...LOOSE_CACHE_REFS].map((r) => r.ref);
+const cacheInUse = sql.join([...FK_CACHE_REFS, ...LOOSE_CACHE_REFS].map((r) => sql`(${r.uses})`), sql` or `);
 
 // ---------- one backup or restore at a time ----------
 
@@ -140,10 +156,10 @@ export async function listBackups(app: FastifyInstance): Promise<BackupInfo[]> {
   return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.name.localeCompare(a.name));
 }
 
-/** Keeps the newest `keep` backups; deletes the rest. Returns the names deleted. */
-export async function pruneBackups(app: FastifyInstance, keep: number): Promise<string[]> {
+/** Keeps the newest `keep` backups; deletes the rest. Returns the names deleted. Run it under the lock. */
+async function pruneBackups(app: FastifyInstance, keep: number): Promise<string[]> {
   const old = (await listBackups(app)).slice(Math.max(0, keep));
-  for (const b of old) await fs.rm(path.join(backupsDir(app), b.name), { force: true });
+  for (const b of old) await backupHooks.remove(path.join(backupsDir(app), b.name));
   return old.map((b) => b.name);
 }
 
@@ -166,7 +182,8 @@ async function migrationCount(db: { execute: FastifyInstance["db"]["execute"] })
   return r.rows[0].n;
 }
 
-const keptRows = (table: string): SQL => (table === "app_settings" ? sql`where x.key not in (${sql.join(SKIP_SETTINGS.map((k) => sql`${k}`), sql`, `)})` : sql``);
+const keptRows = (table: string): SQL =>
+  table === "app_settings" ? sql`where x.key not in (${sql.join(SKIP_SETTINGS.map((k) => sql`${k}`), sql`, `)})` : table === CACHE_TABLE ? sql`where ${cacheInUse}` : sql``;
 
 /** bytesize.json: every backed-up table, all read in one repeatable-read snapshot, as PostgreSQL writes it. */
 async function writeData(app: FastifyInstance, file: string, createdAt: string) {
@@ -207,6 +224,9 @@ async function gatherPhotos(from: string, to: string): Promise<number> {
   return count;
 }
 
+const mb = (bytes: number) => String(Math.round((bytes / 1024 / 1024) * 10) / 10);
+const tooLargeToRestore = (bytes: number) => `The backup is too large for ByteSize to restore (${mb(bytes)} MB of data; the limit is ${mb(backupHooks.maxJsonBytes)} MB).`;
+
 async function createBackup(app: FastifyInstance, label?: string) {
   const now = app.now();
   const dir = backupsDir(app);
@@ -222,6 +242,9 @@ async function createBackup(app: FastifyInstance, label?: string) {
   const work = await fs.mkdtemp(path.join(dir, ".work-"));
   try {
     await writeData(app, path.join(work, DATA_FILE), now.toISOString());
+    // Never keep a backup a restore would refuse
+    const { size: dataBytes } = await fs.stat(path.join(work, DATA_FILE));
+    if (dataBytes > backupHooks.maxJsonBytes) throw new HttpError(507, tooLargeToRestore(dataBytes));
     const photos = await gatherPhotos(uploadsDir(app), path.join(work, "uploads"));
     await tar.c({ gzip: true, cwd: work, file: tmp, portable: true }, photos ? [DATA_FILE, "uploads"] : [DATA_FILE]);
     await fs.rename(tmp, path.join(dir, name)); // a half-written backup is never listed
@@ -374,7 +397,7 @@ async function swapUploads(app: FastifyInstance, from: string, safety: string) {
     }
     const detail = `The data was restored, but the photos weren't swapped in. The photos from before are in ${safety}.${oldAt} ${(err as Error).message}`;
     await logEvent(app.db, { category: "api", level: "error", source: "Restore", event: "A restore's photos couldn't be put in place", detail });
-    throw new HttpError(500, `The data was restored, but its photos couldn't be put in place. The photos from before are in the backup ${safety}. See Settings › Logs.`);
+    throw new HttpError(500, `The data was restored, but its photos couldn't be put in place. The photos from before are in the backup ${safety}; see Settings › Logs. Sign in again to continue.`, { restored: true });
   }
   await fs.rm(old, { recursive: true, force: true });
 }
@@ -397,16 +420,20 @@ export function restoreBackup(app: FastifyInstance, file: string, by: { userId: 
     const from = by.from ?? path.basename(file);
     const { data, work } = await openBackup(app, file);
     try {
+      // With no admin, an empty server would offer its first-run setup to anyone
+      if (!(data.tables.users ?? []).some((u) => u.is_admin === true)) throw badRequest(NO_ADMIN);
       const safety = await createBackup(app, "before-restore");
       try {
         await loadTables(app, data);
       } catch (err) {
-        // PostgreSQL's message, table, column and constraint only: the query's text and PostgreSQL's detail
-        // ("Failing row contains (...)") would carry the rows themselves (password hashes, saved keys)
+        // Table, column, constraint and (not for bad values) PostgreSQL's message only: the query's text and its
+        // detail ("Failing row contains (...)") would carry the rows themselves (password hashes, saved keys)
         const pg = ((err as { cause?: unknown }).cause ?? err) as { message?: string; code?: string; table?: string; column?: string; constraint?: string };
-        const where = [pg.table && `table ${pg.table}`, pg.column && `column ${pg.column}`, pg.constraint && `constraint ${pg.constraint}`].filter(Boolean).join(", ");
-        const message = pg.code ? (pg.message ?? "unknown error") : "unknown error";
-        // SQLSTATE class 22 (bad data) or 23 (a broken rule): the backup's data; anything else (a lock wait, a lost connection): try again
+        // SQLSTATE class 22 (bad data): PostgreSQL's message can quote the value itself, so only where it was
+        const badValue = /^22/.test(pg.code ?? "");
+        const where = [pg.table && `table ${pg.table}`, pg.column && `column ${pg.column}`, !badValue && pg.constraint && `constraint ${pg.constraint}`].filter(Boolean).join(", ");
+        const message = badValue ? "a value of the wrong kind" : pg.code ? (pg.message ?? "unknown error") : "unknown error";
+        // Class 22 or 23 (a broken rule): the backup's data; anything else (a lock wait, a lost connection): try again
         const dataProblem = /^2[23]/.test(pg.code ?? "");
         await logEvent(app.db, { category: "api", level: "error", source: "Restore", event: "A restore failed; nothing was changed", detail: `${from}: ${where ? `${where}: ` : ""}${message}${pg.code ? ` [${pg.code}]` : ""}`, userId: by.userId });
         throw badRequest(dataProblem ? DOESNT_FIT : DIDNT_FINISH);
@@ -427,6 +454,32 @@ export function restoreBackup(app: FastifyInstance, file: string, by: { userId: 
       await fs.rm(work, { recursive: true, force: true });
     }
   });
+}
+
+// ---------- leftovers of a backup or restore the server stopped in the middle of ----------
+
+/**
+ * On start: removes the work folders and half-written files an interrupted backup, upload or restore left
+ * (backups/.work-*, backups/.*.tmp, .restore-*). The photos moved aside by a restore (.uploads-old-*) are
+ * never touched: a warning says where they are.
+ */
+export async function cleanLeftovers(app: Pick<FastifyInstance, "db" | "dataDir">) {
+  const dir = path.join(app.dataDir, "backups");
+  for (const n of await fs.readdir(dir).catch(() => [] as string[])) {
+    if (n.startsWith(".work-") || (n.startsWith(".") && n.endsWith(".tmp"))) await fs.rm(path.join(dir, n), { recursive: true, force: true });
+  }
+  const top = await fs.readdir(app.dataDir).catch(() => [] as string[]);
+  for (const n of top) if (n.startsWith(".restore-")) await fs.rm(path.join(app.dataDir, n), { recursive: true, force: true });
+  const old = top.filter((n) => n.startsWith(".uploads-old-"));
+  if (old.length) {
+    await logEvent(app.db, {
+      category: "api",
+      level: "warning",
+      source: "Restore",
+      event: "Photos from before an interrupted restore are still in the data folder",
+      detail: `They are in ${old.join(", ")} in the data folder (${app.dataDir}). Move back any you need, then delete the folder.`,
+    });
+  }
 }
 
 // ---------- keys that a different JWT_SECRET can't open ----------
@@ -478,8 +531,12 @@ export async function dailyBackupCheck(app: FastifyInstance): Promise<string | n
   const done = (await listBackups(app)).some((b) => !labelled(b.name) && new Date(b.createdAt) >= since);
   if (done) return null;
   try {
-    const b = await writeBackup(app);
-    const removed = await pruneBackups(app, keep);
+    // The prune runs under the same lock: a restore never reads a file being deleted
+    const { b, removed } = await exclusive(async () => {
+      const b = await createBackup(app);
+      return { b, removed: await pruneBackups(app, keep) };
+    });
+    dailyStatus.failure = null;
     await logEvent(app.db, {
       category: "schedule",
       level: "info",
@@ -490,9 +547,28 @@ export async function dailyBackupCheck(app: FastifyInstance): Promise<string | n
     return b.name;
   } catch (err) {
     if (err instanceof HttpError && err.statusCode === 409) return null; // another one is running: next hour
-    await logEvent(app.db, { category: "schedule", level: "error", source: "Daily backup", event: "The daily backup failed", detail: (err as Error).message });
+    const message = (err as Error).message;
+    // Logged when it starts failing or the reason changes, not every hour
+    if (dailyStatus.failure !== message) await logEvent(app.db, { category: "schedule", level: "error", source: "Daily backup", event: "The daily backup failed", detail: message });
+    dailyStatus.failure = message;
     return null;
   }
+}
+
+/** The last daily backup's failure (in memory: cleared by the next one that works). */
+export const dailyStatus = { failure: null as string | null };
+
+const STALE_MS = 36 * 60 * 60 * 1000;
+// Nov 15, 2026, 3:00 AM (server local time, like the backups' names)
+const whenText = (iso: string) => new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }).replace(/\s/g, " ");
+
+/** What's wrong with the daily backup, for Settings › Data; null when nothing is. */
+export async function backupProblem(app: FastifyInstance): Promise<string | null> {
+  if (backupKeep() === 0) return null;
+  if (dailyStatus.failure) return `The last backup failed: ${dailyStatus.failure}`;
+  const newest = (await listBackups(app)).find((b) => !labelled(b.name));
+  if (newest && app.now().getTime() - new Date(newest.createdAt).getTime() > STALE_MS) return `No backup has been saved since ${whenText(newest.createdAt)}.`;
+  return null;
 }
 
 /** Checks when the server starts, then every hour (a server that was off at BACKUP_HOUR still gets its backup). */

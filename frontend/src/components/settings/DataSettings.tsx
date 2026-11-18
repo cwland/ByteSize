@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, download, saveFile } from "../../api";
+import { ApiError, api, download, saveFile } from "../../api";
 import { useSession } from "../../session";
 import type { Backup, BackupList, RestoreResult } from "../../types";
 import { Card } from "../ui/Card";
@@ -68,7 +68,8 @@ function Backups() {
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [restoring, setRestoring] = useState<Source | null>(null);
-  const [restored, setRestored] = useState<RestoreResult | null>(null);
+  // A finished restore; warning: the data was restored but something after it (the photos) wasn't
+  const [restored, setRestored] = useState<{ unreadableKeys: string[]; warning?: string } | null>(null);
   const [restoreError, setRestoreError] = useState<Msg>(null);
   const picks = useRef(0);
 
@@ -97,7 +98,7 @@ function Backups() {
   const backUp = () =>
     run(async () => {
       await api<{ backup: Backup }>("POST", "/api/admin/backups");
-      await load(); // the server may have deleted the oldest ones to keep to its limit
+      await load(); // the new backup, with its size, from the server's own list
     });
   const get = (name: string) => run(async () => saveFile(await download(backupPath(name))));
   const remove = (name: string) =>
@@ -115,7 +116,14 @@ function Backups() {
       setRestored(await api<RestoreResult>("POST", "/api/admin/backups/restore", body));
       setRestoring(null);
     } catch (e) {
+      if (e instanceof ApiError && e.body?.restored === true) {
+        // The data is the backup's (every sign-in ended), only its photos failed: as good as finished
+        setRestored({ unreadableKeys: [], warning: e.message });
+        setRestoring(null);
+        return;
+      }
       setRestoreError(errorMsg(e));
+      await load(); // a safety backup was likely saved before it failed
     } finally {
       setBusy(false);
     }
@@ -128,7 +136,7 @@ function Backups() {
   if (restored) {
     return (
       <Card title="Backups">
-        <Notice msg={{ ok: true, text: "Restored. Sign in again to continue." }} />
+        <Notice msg={restored.warning ? { ok: false, text: restored.warning } : { ok: true, text: "Restored. Sign in again to continue." }} />
         {restored.unreadableKeys.length > 0 && <Notice msg={{ ok: false, text: keysWarning(restored.unreadableKeys) }} />}
         <button type="button" onClick={signOut} className={`${primaryButton} mt-4`}>
           Sign in
@@ -140,7 +148,8 @@ function Backups() {
   const panel = (source: Source) => <RestorePanel key={source.kind === "file" ? source.pick : source.name} error={restoreError} busy={busy} onRestore={() => void restore(source)} onCancel={() => setRestoring(null)} />;
 
   return (
-    <Card title="Backups" description={list ? `ByteSize backs up everything each night and keeps the newest ${list.keep}.` : undefined}>
+    <Card title="Backups" description={list ? (list.keep === 0 ? "The nightly backup is turned off (BACKUP_KEEP=0)." : `ByteSize backs up everything each night and keeps the newest ${list.keep}.`) : undefined}>
+      {list?.problem && <Notice msg={{ ok: false, text: list.problem }} />}
       {list && list.unreadableKeys.length > 0 && <Notice msg={{ ok: false, text: keysWarning(list.unreadableKeys) }} />}
       <button type="button" onClick={() => void backUp()} disabled={busy} className={primaryButton}>
         Back up now

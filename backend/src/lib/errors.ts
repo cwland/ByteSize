@@ -1,5 +1,6 @@
 export class HttpError extends Error {
-  constructor(public statusCode: number, message: string) {
+  // extra: more fields for the answer beside { error } (a restore whose photos failed: { restored: true })
+  constructor(public statusCode: number, message: string, public extra?: Record<string, unknown>) {
     super(message);
   }
 }

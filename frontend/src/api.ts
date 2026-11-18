@@ -20,7 +20,8 @@ export function setToken(token: string | null) {
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string, public details?: { path: string; message: string }[]) {
+  // body: the server's whole answer, for the few that carry more than { error } (a restore: { restored: true })
+  constructor(public status: number, message: string, public details?: { path: string; message: string }[], public body?: Record<string, unknown>) {
     super(message);
   }
 }
@@ -69,7 +70,7 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
   if (res.status === 204) return undefined as T;
 
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, errorText(data, res.status), data.details);
+  if (!res.ok) throw new ApiError(res.status, errorText(data, res.status), data.details, data);
   return data as T;
 }
 

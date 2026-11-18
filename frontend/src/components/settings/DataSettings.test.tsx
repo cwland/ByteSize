@@ -79,7 +79,7 @@ describe("DataSettings", () => {
   });
 
   it("says when there are no backups", async () => {
-    fakeServer({ "GET /api/admin/backups": () => ({ backups: [], keep: 14, unreadableKeys: [] }) });
+    fakeServer({ "GET /api/admin/backups": () => ({ backups: [], keep: 14, unreadableKeys: [], problem: null }) });
     renderWithSession(<DataSettings />);
     expect(await screen.findByText("No backups yet.")).toBeInTheDocument();
   });
@@ -266,6 +266,61 @@ describe("DataSettings", () => {
     const cls = within(screen.getByRole("group", { name: "Confirm restore" })).getByRole("button", { name: "Restore" }).className;
     expect(cls).toContain("bg-error");
     expect(cls).not.toContain("bg-primary");
+  });
+
+  it("shows a problem with the nightly backup at the top of the Backups card", async () => {
+    fakeServer({ "GET /api/admin/backups": () => ({ ...backupList, problem: "The last backup failed: the disk is full" }) });
+    renderWithSession(<DataSettings />);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("The last backup failed: the disk is full");
+    const card = screen.getByRole("region", { name: "Backups" });
+    expect(within(card).getByRole("alert")).toBe(alert);
+    // before the Back up now button
+    expect(alert.compareDocumentPosition(screen.getByRole("button", { name: "Back up now" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("no problem: no alert", async () => {
+    fakeServer({ "GET /api/admin/backups": () => backupList });
+    renderWithSession(<DataSettings />);
+    await screen.findAllByRole("listitem");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("with BACKUP_KEEP=0 it says the nightly backup is off", async () => {
+    fakeServer({ "GET /api/admin/backups": () => ({ ...backupList, keep: 0 }) });
+    renderWithSession(<DataSettings />);
+    expect(await screen.findByText("The nightly backup is turned off (BACKUP_KEEP=0).")).toBeInTheDocument();
+    expect(screen.queryByText(/keeps the newest/)).not.toBeInTheDocument();
+  });
+
+  it("a failed restore re-reads the list, so its safety backup appears", async () => {
+    const safety = { name: "bytesize-2026-11-17-160000-before-restore.tar.gz", size: 512000, createdAt: "2026-11-17T23:00:00.000Z" };
+    let tried = false;
+    fakeServer({
+      "GET /api/admin/backups": () => (tried ? { ...backupList, backups: [safety, ...backupList.backups] } : backupList),
+      "POST /api/admin/backups/restore": () => ((tried = true), { status: 400, json: { error: "This backup couldn't be restored, so nothing was changed." } }),
+    });
+    renderWithSession(<DataSettings />);
+    await userEvent.click(within((await screen.findAllByRole("listitem"))[0]).getByRole("button", { name: "Restore" }));
+    await userEvent.type(screen.getByLabelText("Type RESTORE to confirm"), "RESTORE");
+    await userEvent.click(within(screen.getByRole("group", { name: "Confirm restore" })).getByRole("button", { name: "Restore" }));
+    expect(await screen.findByText("500.0 KB")).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(4);
+  });
+
+  it("data restored but its photos not: shows the server's message with the Sign in button", async () => {
+    const message = "The data was restored, but its photos couldn't be put in place. The photos from before are in the backup x; see Settings › Logs. Sign in again to continue.";
+    fakeServer({ "GET /api/admin/backups": () => backupList, "POST /api/admin/backups/restore": () => ({ status: 500, json: { error: message, restored: true } }) });
+    const { session } = renderWithSession(<DataSettings />);
+    await userEvent.click(within((await screen.findAllByRole("listitem"))[0]).getByRole("button", { name: "Restore" }));
+    await userEvent.type(screen.getByLabelText("Type RESTORE to confirm"), "RESTORE");
+    await userEvent.click(within(screen.getByRole("group", { name: "Confirm restore" })).getByRole("button", { name: "Restore" }));
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.queryByText("Restored. Sign in again to continue.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Restore" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Confirm restore" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(session.signOut).toHaveBeenCalled();
   });
 
   it("a stray % in a download's file name doesn't break the download", async () => {

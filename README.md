@@ -41,6 +41,7 @@ into `./data/app/backups` as `bytesize-<date>-<time>.tar.gz`. The newest 14 are 
 `BACKUP_KEEP` in `.env` change that (`BACKUP_KEEP=0` turns the daily backup off). The server checks every hour,
 so if it was off at 03:00 it backs up when it's next running. The admin can also back up, download, delete
 and restore in Settings › Data. Copy the backups folder somewhere else with your usual backup tools.
+Foods that turned up in a search but that nobody logged, starred, corrected or put in a recipe aren't kept in backups.
 
 A restore replaces everything on the server with the backup. A `…-before-restore` backup is saved first, and
 everyone has to sign in again afterwards.
@@ -48,6 +49,7 @@ everyone has to sign in again afterwards.
 Restore onto a fresh server: start ByteSize, create the first admin account, then Settings › Data › Restore from
 a file. Keep the same `JWT_SECRET` as the old server: saved keys (AI, USDA, Spoonacular, FatSecret, Culury) only
 open with it. With a different one, Settings › Data lists the keys to enter again.
+Behind a reverse proxy, restoring a large backup file needs the proxy's upload size limit and timeout raised.
 
 ### Locked out?
 
