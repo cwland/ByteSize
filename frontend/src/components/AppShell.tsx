@@ -1,4 +1,5 @@
 import Navigation from "./Navigation";
+import Rail from "./Rail";
 import TopBar from "./TopBar";
 import LogPage from "./log/LogPage";
 import AddFoodSheet from "./log/AddFoodSheet";
@@ -15,15 +16,18 @@ import MyFoodsPage from "./myfoods/MyFoodsPage";
 import Glp1Page from "./glp1/Glp1Page";
 import { isGlp1, isMyFoods, pageFromHash, useHash, type Page } from "../routes";
 import { useSession } from "../session";
-import { SelectedDayProvider, todayIn, useSelectedDay } from "../selectedDay";
+import { SelectedDayProvider, takeKeepDay, todayIn, useSelectedDay } from "../selectedDay";
+import { useWide } from "../wide";
 
 // The signed-in app: top bar (week strip on Dashboard and Log), the page for the address, and the bottom tab bar.
-// Mobile-first; on desktop the content stays a centered phone-width column.
+// Mobile-first; up to 1024 px the content stays a centered phone-width column. Wider (useWide): a side rail
+// and a content column up to about 1180 px, the pages drawing their own headers (PageHeader).
 export default function AppShell() {
   const hash = useHash();
   const page: Page = pageFromHash(hash);
   const myFoods = page === "log" && isMyFoods(hash); // My Foods sits under the Log tab
   const { user } = useSession();
+  const wide = useWide();
   // First run after setup: no targets yet → the plan flow, full screen, before the tabs.
   // Saved details that need a review (the questions changed) → the same flow, asked once; "Not now" skips it.
   // If a check fails (server hiccup) the app shows as usual; Goals can still pick a plan.
@@ -47,43 +51,59 @@ export default function AppShell() {
     );
   }
 
+  const content = (
+    <>
+      {page === "dashboard" && (isGlp1(hash) ? <Glp1Page /> : <Dashboard />)}
+      {page === "log" && (myFoods ? <MyFoodsPage /> : <LogPage />)}
+      {page === "goals" && <GoalsPage />}
+      {page === "settings" && <SettingsPage />}
+    </>
+  );
+
+  // One tree for both layouts, so crossing 1024 px (an iPad turned, a window resized) keeps the page and
+  // any open sheet with what was typed: only classes change, the top bar's slot empties, and LogButton
+  // draws the rail or the bottom tab bar in the same place (after main).
   return (
     <SelectedDayProvider timeZone={user.timezone}>
-      <div className="min-h-screen bg-page">
+      <div className={wide ? "flex min-h-screen bg-page" : "min-h-screen bg-page"}>
         <TodayOnEnter page={page} />
-        <TopBar days={(page === "dashboard" && !isGlp1(hash)) || (page === "log" && !myFoods)} />
-        <main className="mx-auto max-w-[560px] px-3 pt-2 pb-32">
-          {page === "dashboard" && (isGlp1(hash) ? <Glp1Page /> : <Dashboard />)}
-          {page === "log" && (myFoods ? <MyFoodsPage /> : <LogPage />)}
-          {page === "goals" && <GoalsPage />}
-          {page === "settings" && <SettingsPage />}
+        {!wide && <TopBar days={(page === "dashboard" && !isGlp1(hash)) || (page === "log" && !myFoods)} />}
+        <main className={wide ? "min-w-0 flex-1 px-9 pt-7 pb-12" : "mx-auto max-w-[560px] px-3 pt-2 pb-32"}>
+          <div className={wide ? "mx-auto max-w-[1180px]" : undefined}>{content}</div>
         </main>
-        <LogButton page={page} />
+        {/* After the page, as on phones (tab and screen-reader order); the rail moves itself first (order-first) */}
+        <LogButton page={page} myFoods={myFoods} wide={wide} />
       </div>
     </SelectedDayProvider>
   );
 }
 
-// Entering the Dashboard or Log from another page always selects today
+// Entering the Dashboard or Log from another page always selects today, except through a link that
+// asked to keep the day (the wide Dashboard's "Open the log": keepDayOnNextPage)
 function TodayOnEnter({ page }: { page: Page }) {
   const { today } = useSelectedDay();
   const was = useRef(page);
   useEffect(() => {
-    if (page !== was.current && (page === "dashboard" || page === "log")) today();
+    if (page === was.current) return;
+    // Used up by every page change, so a click that set it without navigating can't keep a day later
+    const keep = takeKeepDay();
+    if ((page === "dashboard" || page === "log") && !keep) today();
     was.current = page;
   }, [page, today]);
   return null;
 }
 
-// The bottom tab bar's floating +: Add food for the meal of the moment (meal windows) on the day shown
-function LogButton({ page }: { page: Page }) {
+// The bottom tab bar's floating + (the rail's + on wide screens): Add food for the meal of the moment
+// (meal windows) on the day shown
+function LogButton({ page, myFoods, wide = false }: { page: Page; myFoods: boolean; wide?: boolean }) {
   const { user } = useSession();
   const { day } = useSelectedDay();
   const settings = useSettingsMe();
   const [meal, setMeal] = useState<Meal | null>(null);
+  const add = () => setMeal(mealFor(user.timezone, new Date(), settings.mealWindows));
   return (
     <>
-      <Navigation page={page} onAdd={() => setMeal(mealFor(user.timezone, new Date(), settings.mealWindows))} />
+      {wide ? <Rail page={page} myFoods={myFoods} onAdd={add} /> : <Navigation page={page} onAdd={add} />}
       {meal && <AddFoodSheet day={day} meal={meal} onClose={() => setMeal(null)} />}
     </>
   );

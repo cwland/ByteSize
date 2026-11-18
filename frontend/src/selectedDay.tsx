@@ -30,6 +30,18 @@ export const weekOf = (day: string, weekStart: number) => {
   return Array.from({ length: 7 }, (_, i) => addDays(first, i));
 };
 
+// A link that moves to another page but should keep the selected day (the wide Dashboard's "Open the
+// log") calls keepDayOnNextPage() on click; the shell takes the flag once when the page changes.
+let keepNext = false;
+export const keepDayOnNextPage = () => {
+  keepNext = true;
+};
+export const takeKeepDay = () => {
+  const keep = keepNext;
+  keepNext = false;
+  return keep;
+};
+
 export interface SelectedDay {
   day: string;
   isToday: boolean;

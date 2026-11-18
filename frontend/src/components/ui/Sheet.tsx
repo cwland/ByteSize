@@ -1,7 +1,8 @@
 import { useEffect, type ReactNode } from "react";
 import { X } from "lucide-react";
 
-// A bottom sheet on phones, a centered panel on desktop. Escape or the backdrop closes it.
+// A bottom sheet on phones, a centered panel from 640 px; on wide screens (lg) a centred window about
+// 640 px wide and 85% of the screen tall (tall sheets fill it). Escape or the backdrop closes it.
 // heading: a title (default: the label) or your own header content (e.g. a dropdown)
 // top: content pinned under the header (e.g. a search box); then only the children scroll, in a region named bodyLabel
 export function Sheet({ label, heading = label, onClose, onBack, tall = false, top, bodyLabel = "Content", children }: { label: string; heading?: ReactNode; onClose: () => void; onBack?: () => void; tall?: boolean; top?: ReactNode; bodyLabel?: string; children: ReactNode }) {
@@ -12,13 +13,13 @@ export function Sheet({ label, heading = label, onClose, onBack, tall = false, t
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 sm:items-center" onClick={onClose}>
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 sm:items-center lg:items-center lg:p-6" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label={label}
         onClick={(e) => e.stopPropagation()}
-        className={`pb-safe max-h-[92vh] ${tall ? "min-h-[92vh]" : ""} flex flex-col overflow-hidden w-full max-w-[560px] rounded-t-3xl bg-container p-5 sm:rounded-3xl`}
+        className={`pb-safe max-h-[92vh] ${tall ? "min-h-[92vh] lg:h-[85vh] lg:min-h-0" : ""} flex flex-col overflow-hidden w-full max-w-[560px] rounded-t-3xl bg-container p-5 sm:rounded-3xl lg:max-h-[85vh] lg:max-w-[640px] lg:rounded-3xl lg:shadow-2xl lg:shadow-black/50`}
       >
         <div className="mb-4 flex shrink-0 items-center gap-2">
           {onBack && (

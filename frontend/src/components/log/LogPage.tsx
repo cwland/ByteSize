@@ -15,6 +15,9 @@ import { Confirm } from "../ui/Confirm";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
 import { secondaryButton } from "../ui/styles";
+import DayTotals from "./DayTotals";
+import PageHeader, { longDate } from "../PageHeader";
+import { useWide } from "../../wide";
 
 // What one base serving of a logged food has (entries keep the scaled numbers; the preview needs per-serving)
 function perServing(e: LogEntry): Nutrients {
@@ -29,10 +32,13 @@ function perServing(e: LogEntry): Nutrients {
 
 type Moving = { ids: number[]; copy: boolean; meal: Meal };
 
-// The day's food by meal: tap a food to change its portion, move, copy or delete it; Select for several
+// The day's food by meal: tap a food to change its portion, move, copy or delete it; Select for several.
+// Wide screens: a header (title, the day, week strip, My foods), the meal cards in a grid (two across when
+// there is room; supplements & water full width) and Day totals beside them.
 export default function LogPage() {
   const { user } = useSession();
   const { day } = useSelectedDay();
+  const wide = useWide();
   const { data, error } = useDay(day);
   const [adding, setAdding] = useState<Meal | null>(null);
   const [editing, setEditing] = useState<LogEntry | null>(null);
@@ -66,13 +72,40 @@ export default function LogPage() {
   };
 
   const entries = data?.entries ?? [];
+  const mealCard = (m: Meal) => (
+    <MealCard
+      key={m}
+      meal={m}
+      entries={entries.filter((e) => e.meal === m)}
+      totals={data!.meals[m]}
+      units={user.units}
+      selecting={selecting}
+      selected={selected}
+      onAdd={() => setAdding(m)}
+      onOpen={setEditing}
+      onToggle={toggle}
+      onLongPress={(e) => {
+        setSelecting(true);
+        setSelected(new Set([e.id]));
+      }}
+      onSaveAsMeal={() => setSavingMeal(m)}
+    />
+  );
   return (
-    <div className="flex flex-col gap-3">
-      <h1 className="sr-only">Log</h1>
+    <div className={`flex flex-col ${wide ? "gap-5" : "gap-3"}`}>
+      {wide ? (
+        <PageHeader title="Log" note={longDate(day)} days>
+          <a href={myFoodsHref("/log")} className="rounded-full bg-container px-4 py-2 text-sm font-bold text-link hover:bg-pressed">
+            My foods
+          </a>
+        </PageHeader>
+      ) : (
+        <h1 className="sr-only">Log</h1>
+      )}
       {error && <Notice msg={{ ok: false, text: error }} />}
       <Notice msg={msg} />
       <div className="flex items-center justify-end gap-2">
-        {!selecting && (
+        {!selecting && !wide && (
           <a href={myFoodsHref("/log")} className="mr-auto rounded-full px-3 py-1.5 text-sm font-semibold text-link hover:bg-pressed">
             My Foods
           </a>
@@ -94,26 +127,23 @@ export default function LogPage() {
           </button>
         )}
       </div>
-      {data &&
-        MEALS.map((m) => (
-          <MealCard
-            key={m}
-            meal={m}
-            entries={entries.filter((e) => e.meal === m)}
-            totals={data.meals[m]}
-            units={user.units}
-            selecting={selecting}
-            selected={selected}
-            onAdd={() => setAdding(m)}
-            onOpen={setEditing}
-            onToggle={toggle}
-            onLongPress={(e) => {
-              setSelecting(true);
-              setSelected(new Set([e.id]));
-            }}
-            onSaveAsMeal={() => setSavingMeal(m)}
-          />
-        ))}
+      {data && !wide && MEALS.map(mealCard)}
+      {data && wide && (
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div data-testid="meal-grid" className="grid items-start gap-4 xl:grid-cols-2">
+            {MEALS.map((m) =>
+              m === "supplements" ? (
+                <div key={m} className="xl:col-span-2">
+                  {mealCard(m)}
+                </div>
+              ) : (
+                mealCard(m)
+              ),
+            )}
+          </div>
+          <DayTotals day={data} units={user.units} />
+        </div>
+      )}
 
       {savingMeal && <SaveAsMealSheet meal={savingMeal} ids={entries.filter((e) => e.meal === savingMeal).map((e) => e.id)} onClose={() => setSavingMeal(null)} />}
       {adding && <AddFoodSheet day={day} meal={adding} onClose={() => setAdding(null)} />}

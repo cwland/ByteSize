@@ -162,11 +162,17 @@ function AddBarcodePhoto({ onBarcode }: { onBarcode: (code: string) => void }) {
 // One sheet for finding a food (same as yesterday, recently tracked for this meal, search, barcode,
 // photo, describe it, create) and tracking it. Quick add (+) logs as shown and keeps the sheet open.
 // photo: a photo already chosen (Dashboard's Photo button) opens straight on the photo step with it.
-export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }: { day: string; meal: Meal; photo?: File; onClose: () => void }) {
+// start: the view to open on (the wide Dashboard's quick buttons): a barcode or label photo, or Restaurants.
+export type AddFoodStart = "search" | "barcode" | "label" | "restaurants";
+export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "search", onClose }: { day: string; meal: Meal; photo?: File; start?: AddFoodStart; onClose: () => void }) {
   const { user } = useSession();
   const units = user?.units ?? "imperial";
   const [meal, setMeal] = useState<Meal>(initialMeal);
-  const [view, setView] = useState<View>(() => (photo ? { k: "photo", files: [photo], mode: "auto" } : { k: "search" }));
+  const [view, setView] = useState<View>(() => {
+    if (photo) return { k: "photo", files: [photo], mode: "auto" };
+    if (start === "barcode" || start === "label") return { k: "photo", files: [], mode: start };
+    return start === "restaurants" ? { k: "restaurants" } : { k: "search" };
+  });
   const [query, setQuery] = useState("");
   const [barcodeOpen, setBarcodeOpen] = useState(false);
   const [code, setCode] = useState("");
@@ -344,7 +350,8 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
       </Sheet>
     );
   }
-  if (view.k === "restaurants" && restaurants) {
+  // No restaurant source set up (the wide Dashboard's Restaurants button): the search, which says how to add one
+  if (view.k === "restaurants" && restaurants?.sources.length) {
     return (
       <RestaurantsView label={label} onClose={onClose} onBack={back} status={restaurants} memo={restaurantsMemo.current} onDescribe={() => setView({ k: "describe", from: "restaurants" })} onPick={(food) => pick(food, undefined, "restaurants")} />
     );
