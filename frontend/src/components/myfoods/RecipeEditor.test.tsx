@@ -50,8 +50,8 @@ describe("Recipe editor", () => {
     renderWithSession(<RecipeEditor onDone={done} onBack={() => {}} />);
     const user = userEvent.setup();
     expect(screen.getByRole("heading", { level: 1, name: "New recipe" })).toBeInTheDocument();
-    // Nothing yet: unknown, not 0
-    expect(total("Calories")).toHaveTextContent("—");
+    // Nothing yet: 0 (§31)
+    expect(total("Calories")).toHaveTextContent("0");
 
     await user.type(screen.getByRole("textbox", { name: "Name" }), "Chili");
     await addIngredient(user, "beef", /^Ground beef/, { unit: "g", whole: "500" });
@@ -79,10 +79,10 @@ describe("Recipe editor", () => {
     expect(total("Calories")).toHaveTextContent("246"); // (1250 + 225) / 6
     expect(total("Fiber")).toHaveTextContent("1.9 g");
 
-    // Chili sauce has no fiber: the recipe's fiber becomes unknown
+    // Chili sauce has no fiber: it adds as 0 (§31), so the fiber stays what the others have
     await addIngredient(user, "sauce", /^Chili sauce/, { whole: "3" });
     expect(total("Calories")).toHaveTextContent("256"); // (1250 + 225 + 60) / 6
-    expect(total("Fiber")).toHaveTextContent("—");
+    expect(total("Fiber")).toHaveTextContent("1.9 g");
 
     const items = screen.getByRole("list", { name: "Ingredients" });
     expect(within(items).getAllByRole("listitem").map((li) => within(li).getByText(/^(Ground|Kidney|Chili)/).textContent)).toEqual(["Ground beef 85%", "Kidney beans", "Chili sauce"]);

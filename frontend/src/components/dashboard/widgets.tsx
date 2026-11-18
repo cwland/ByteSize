@@ -32,10 +32,8 @@ export type WidgetDef = LayoutWidget & {
 
 function Budget({ data }: WidgetProps) {
   const { user } = useSession();
-  const [calWhy, setCalWhy] = useState(false);
   const t = data?.targets ?? null;
   const food = data?.totals.calories ?? 0;
-  const unknown = data?.totals.unknownCount ?? {};
   const water = (ml: number) => waterValue(ml, user.units);
   return (
     <section aria-label="Budget" className="rounded-2xl bg-container p-5">
@@ -45,19 +43,8 @@ function Budget({ data }: WidgetProps) {
           <div className="text-center">
             <p data-testid="food-calories" className="text-xl font-bold tabular">
               {fmt(food)}
-              {(unknown.calories ?? 0) > 0 && (
-                <button
-                  type="button"
-                  aria-label="Why are calories uncertain?"
-                  onClick={() => setCalWhy((w) => !w)}
-                  className="ml-1 inline-flex size-5 items-center justify-center rounded-full bg-pressed align-top text-xs font-bold text-subtle"
-                >
-                  ?
-                </button>
-              )}
             </p>
             <p className="text-xs text-muted">Food</p>
-            {calWhy && <p className="mt-1 text-xs text-muted">{`${unknown.calories} ${unknown.calories === 1 ? "food" : "foods"} missing calories`}</p>}
           </div>
           <Gauge food={food} min={t.calories.min} max={t.calories.max} />
           <div className="text-center">
@@ -79,8 +66,8 @@ function Budget({ data }: WidgetProps) {
       )}
       {data && (
         <div className="mt-6 grid grid-cols-3 gap-2">
-          <Ring name="Protein" value={data.totals.protein_g ?? 0} min={t?.protein_g.min} max={t?.protein_g.max} unit="g" unknown={unknown.protein_g} />
-          <Ring name="Fiber" value={data.totals.fiber_g ?? 0} min={t?.fiber_g.min} max={t?.fiber_g.max} unit="g" unknown={unknown.fiber_g} />
+          <Ring name="Protein" value={data.totals.protein_g ?? 0} min={t?.protein_g.min} max={t?.protein_g.max} unit="g" />
+          <Ring name="Fiber" value={data.totals.fiber_g ?? 0} min={t?.fiber_g.min} max={t?.fiber_g.max} unit="g" />
           <Ring
             name="Water"
             value={water(data.totals.water_ml ?? 0)}

@@ -87,7 +87,7 @@ describe("Food widget (everything the Log page did)", () => {
     const barRow = within(breakfast).getByRole("button", { name: /Peanut butter bar/ });
     expect(within(barRow).getByText("½ bar")).toBeInTheDocument();
     expect(within(barRow).getByText("127 cal")).toBeInTheDocument();
-    expect(within(barRow).getByText("? g fiber")).toBeInTheDocument(); // unknown, not 0
+    expect(within(barRow).getByText("0 g fiber")).toBeInTheDocument(); // §31: missing shows as 0
     expect(within(breakfast).queryByText(/×/)).not.toBeInTheDocument();
   });
 
@@ -165,16 +165,16 @@ describe("Food widget (everything the Log page did)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Can't measure this food in ml");
   });
 
-  it("a food with unknown calories shows a question mark, not 0, in the row and the sheet", async () => {
+  it("a food without calories shows 0, not a question mark, in the row and the sheet (§31)", async () => {
     const mystery = entryJson({ id: 3, name: "Mystery soup", icon: "🍲", nutrients: { protein_g: 8 } });
     show({ "GET /api/day/:date": () => ({ ...day, entries: [mystery] }) });
     const row = await screen.findByRole("button", { name: /Mystery soup/ });
-    expect(within(row).getByText("? cal")).toBeInTheDocument();
-    expect(within(row).queryByText("0 cal")).not.toBeInTheDocument();
+    expect(within(row).getByText("0 cal")).toBeInTheDocument();
+    expect(within(row).queryByText(/\?/)).not.toBeInTheDocument();
     await userEvent.setup().click(row);
     const cal = within(screen.getByRole("region", { name: "Summary" })).getByText("Calories").parentElement!;
-    expect(cal).toHaveTextContent("?");
-    expect(cal).not.toHaveTextContent("0");
+    expect(cal).toHaveTextContent("0");
+    expect(cal).not.toHaveTextContent("?");
   });
   it("My foods is a link from the Food widget, back to the Dashboard", async () => {
     show();

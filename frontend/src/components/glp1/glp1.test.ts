@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { statusText } from "./glp1";
-import { glp1View } from "../../test/glp1Fixtures";
+import { glp1View as fixture } from "../../test/glp1Fixtures";
+import type { Glp1View } from "../../types";
+
+const glp1View = (over: Record<string, unknown>) => fixture(over) as unknown as Glp1View;
 
 describe("the next shot line", () => {
   it("shows the date, not just the weekday; the year only when it isn't this year", () => {

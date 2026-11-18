@@ -139,7 +139,7 @@ export default function FoodDetail({
         {summary.map(([label, v, unit]) => (
           <p key={label} className="flex items-center justify-between py-3">
             <span>{label}</span>
-            <span className="font-semibold tabular">{v === undefined ? "?" : `${fmt(v)}${unit}`}</span>
+            <span className="font-semibold tabular">{`${fmt(v ?? 0)}${unit}` /* not said: 0 (§31) */}</span>
           </p>
         ))}
       </section>
@@ -186,7 +186,7 @@ export default function FoodDetail({
             return (
               <p key={f.key} className={`flex items-center justify-between py-2 text-sm ${f.sub ? "pl-4 text-subtle" : ""}`}>
                 <span>{f.label}</span>
-                <span className="tabular">{v === undefined ? "—" : f.key === "calories" ? fmt(v) : `${one(v)} ${f.unit}`}</span>
+                <span className="tabular">{f.key === "calories" ? fmt(v ?? 0) : `${one(v ?? 0)} ${f.unit}`}</span>
               </p>
             );
           })}

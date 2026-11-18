@@ -52,12 +52,10 @@ const barcodeDigits = (q: string) => {
 
 const amountOf = (servings: FoodResult["servings"], p: Portion) => formatAmount(servings, p.servingIndex, p.unit, p.quantity, p.fraction);
 
-// Totals of several entries; a nutrient any of them doesn't know stays unknown (never a partial sum)
+// Totals of several entries; a nutrient one of them doesn't say adds as 0 (§31)
 function totalOf(entries: LogEntry[]): Nutrients {
   const out: Nutrients = {};
-  for (const k of ["calories", "protein_g", "fiber_g"] as const) {
-    if (entries.every((e) => e.nutrients[k] !== undefined)) out[k] = entries.reduce((s, e) => s + (e.nutrients[k] as number), 0);
-  }
+  for (const k of ["calories", "protein_g", "fiber_g"] as const) out[k] = entries.reduce((s, e) => s + (e.nutrients[k] ?? 0), 0);
   return out;
 }
 
