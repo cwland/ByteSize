@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import LogPage from "./LogPage";
+import FoodHost from "../../test/FoodHost";
 import { SelectedDayProvider } from "../../selectedDay";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
@@ -47,7 +47,7 @@ function open(estimate: (b: any) => unknown) {
   });
   renderWithSession(
     <SelectedDayProvider timeZone="America/Boise">
-      <LogPage />
+      <FoodHost />
     </SelectedDayProvider>,
   );
   return server;

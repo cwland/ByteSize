@@ -37,6 +37,38 @@ describe("formatAmount", () => {
     expect(formatAmount(bar, 0, "g", 33.300000004, 1)).toBe("33 g");
   });
 
+  it("pluralises only the noun of a multi-word serving name (§28: '6 pitted prunes', not '6 pitteds prunes')", () => {
+    const one = (label: string, q: number) => formatAmount([{ label, grams: 10 }], 0, "serving", q, 1);
+    expect(one("pitted prunes", 6)).toBe("6 pitted prunes");
+    expect(one("1 pitted prune", 6)).toBe("6 pitted prunes");
+    expect(one("pitted prunes", 1)).toBe("1 pitted prune");
+    expect(one("1 large egg", 2)).toBe("2 large eggs");
+    expect(one("1 medium banana", 2)).toBe("2 medium bananas");
+    expect(one("1 cup, chopped", 2)).toBe("2 cups, chopped");
+    expect(one("1 slice, large", 3)).toBe("3 slices, large");
+    expect(one("1 piece of bread", 2)).toBe("2 pieces of bread");
+    expect(one("1 container (6 oz)", 2)).toBe("2 containers (12 oz)");
+    expect(one("1 NLEA serving", 2)).toBe("2 NLEA servings");
+    expect(one("1 fruit without skin and seeds", 2)).toBe("2 fruits without skin and seeds");
+    expect(one("1 frozen waffle", 3)).toBe("3 frozen waffles");
+    expect(one("1 peeled baby carrot", 5)).toBe("5 peeled baby carrots");
+    expect(one("1 extra large egg", 2)).toBe("2 extra large eggs");
+    expect(one("1 small", 2)).toBe("2 small"); // a size on its own stays as it is
+    // a measure or container word first takes the plural, whatever follows it (review, fix round 1)
+    expect(one("1 cup sliced", 2)).toBe("2 cups sliced");
+    expect(one("1 can soda", 2)).toBe("2 cans soda");
+    expect(one("1 slice whole wheat bread", 2)).toBe("2 slices whole wheat bread");
+    expect(one("1 link sausage", 2)).toBe("2 links sausage");
+    expect(one("1 large", 2)).toBe("2 large");
+    expect(one("1 medium egg", 2)).toBe("2 medium eggs");
+    expect(one("1 tbsp", 2)).toBe("2 tbsp");
+    expect(one("1 oz", 2)).toBe("2 oz");
+    expect(formatAmount([{ label: "100 g", grams: 100 }], 0, "serving", 1.5, 1)).toBe("150 g");
+    expect(one("2 cups sliced", 0.5)).toBe("1 cup sliced");
+    expect(one("1 egg white", 2)).toBe("2 egg whites");
+    expect(one("1 chocolate chip cookie", 3)).toBe("3 chocolate chip cookies");
+  });
+
   it("writes units as people say them", () => {
     expect(formatAmount(milk, 0, "cup", 0.333, 1)).toBe("⅓ cup");
     expect(formatAmount(milk, 0, "cup", 1.5, 1)).toBe("1½ cups");

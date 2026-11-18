@@ -29,10 +29,10 @@ describe("AppShell week strip", () => {
     expect(screen.queryByRole("button", { name: "Previous day" })).not.toBeInTheDocument();
   });
 
-  it("leaving to Settings and coming back to Log selects today", async () => {
+  it("leaving to Settings and coming back to the Dashboard selects today", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-11-17T19:00:00Z")); // Tue, Nov 17 in Boise
-    window.location.hash = "#/log";
+    window.location.hash = "#/";
     fakeServer({ "GET /api/settings/me": () => ({ ...settingsMe, weekStart: 0 }) });
     renderWithSession(<AppShell />, { timezone: "America/Boise" });
     const user = userEvent.setup();
@@ -45,7 +45,7 @@ describe("AppShell week strip", () => {
     // Settings has no week strip
     expect(screen.queryByRole("group", { name: "Days" })).not.toBeInTheDocument();
     act(() => {
-      window.location.hash = "#/log";
+      window.location.hash = "#/";
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     });
     await waitFor(() => expect(screen.getByRole("button", { name: "Tue 17" })).toHaveAttribute("aria-pressed", "true"));
@@ -131,17 +131,28 @@ describe("AppShell My Foods", () => {
     window.location.hash = "";
   });
 
-  it("#/log/my-foods shows My Foods (no week strip), and Back returns to the Log", async () => {
-    window.location.hash = "#/log/my-foods?from=/log";
+  it("#/log/my-foods shows My Foods (no week strip), and Back returns to the Dashboard", async () => {
+    window.location.hash = "#/log/my-foods?from=/";
     fakeServer({ "GET /api/my-foods": () => ({ foods: [] }) });
     renderWithSession(<AppShell />, { timezone: "America/Boise" });
     expect(await screen.findByRole("heading", { level: 1, name: "My Foods" })).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: /^Week of/ })).not.toBeInTheDocument();
-    // The Log tab stays the current one
-    expect(within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", { name: "Log" })).toHaveAttribute("aria-current", "page");
+    expect(within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", { name: "My foods" })).toHaveAttribute("aria-current", "page");
     await userEvent.setup().click(screen.getByRole("link", { name: "‹ Back" }));
-    await waitFor(() => expect(window.location.hash).toBe("#/log"));
-    expect(await screen.findByRole("heading", { level: 1, name: "Log" })).toBeInTheDocument();
+    await waitFor(() => expect(window.location.hash).toBe("#/"));
+    expect(await screen.findByRole("heading", { level: 1, name: "Dashboard" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 1, name: "My Foods" })).not.toBeInTheDocument();
+  });
+
+  it("there is no Log page: #/log (and old links to it) open the Dashboard", async () => {
+    for (const old of ["#/log", "#/log/", "#/log?day=2026-11-16"]) {
+      window.location.hash = old;
+      fakeServer({ "GET /api/my-foods": () => ({ foods: [] }) });
+      const { unmount } = renderWithSession(<AppShell />, { timezone: "America/Boise" });
+      expect(await screen.findByRole("heading", { level: 1, name: "Dashboard" })).toBeInTheDocument();
+      await waitFor(() => expect(window.location.hash).toBe("#/"));
+      expect(within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
+      unmount();
+    }
   });
 });

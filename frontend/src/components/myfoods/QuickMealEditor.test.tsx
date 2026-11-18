@@ -32,7 +32,7 @@ describe("Quick meal editor", () => {
     renderWithSession(<QuickMealEditor onDone={done} onBack={() => {}} />);
     const user = userEvent.setup();
     expect(screen.getByRole("heading", { level: 1, name: "New quick meal" })).toBeInTheDocument();
-    expect(total("Calories")).toHaveTextContent("—");
+    expect(total("Calories")).toHaveTextContent("0"); // §31: nothing yet adds up to 0
     await user.type(screen.getByRole("textbox", { name: "Name" }), "Usual breakfast");
     await addItem(user, "yogurt", /^Greek yogurt/);
     await addItem(user, "banana", /^Banana/);

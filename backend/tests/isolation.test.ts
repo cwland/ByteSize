@@ -416,6 +416,29 @@ describe("per-user isolation", () => {
     expect((await a.as("GET", "/api/restaurants/recent-chains")).body).toEqual({ chains: ["Chipotle"] });
   });
 
+  it("a user can't split (undo a combine of) another user's entry", async () => {
+    const { a, b } = await twoUsers(t);
+    const f = (await a.as("POST", "/api/my-foods", { name: "Egg", servings: [{ label: "1 large", grams: 50 }], nutrients: { calories: 70 } })).body.food;
+    const add = () => a.as("POST", "/api/log", { day: "2026-11-17", meal: "breakfast", food: { kind: "user_food", id: f.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
+    await add();
+    const { combined } = (await add()).body;
+    const body = { before: combined.before, added: combined.added, ...combined.splitTo };
+    expect((await b.as("POST", `/api/log/${combined.entry.id}/split`, body)).status).toBe(404);
+    expect((await a.as("GET", "/api/day/2026-11-17")).body.entries.map((e: any) => e.quantity)).toEqual([2]);
+    expect((await b.as("GET", "/api/day/2026-11-17")).body.entries).toEqual([]);
+  });
+
+  it("a person's Dashboard layout is their own", async () => {
+    const { a, b } = await twoUsers(t);
+    const annas = { version: 1, columns: [["streak"], ["food"], []] };
+    expect((await a.as("PUT", "/api/dashboard/layout", annas)).status).toBe(200);
+    expect((await b.as("GET", "/api/dashboard/layout")).body).toEqual({ layout: null });
+    const bens = { version: 1, columns: [["budget"]] };
+    expect((await b.as("PUT", "/api/dashboard/layout", bens)).status).toBe(200);
+    expect((await a.as("GET", "/api/dashboard/layout")).body).toEqual({ layout: annas });
+    expect((await b.as("GET", "/api/dashboard/layout")).body).toEqual({ layout: bens });
+  });
+
   it("a person's data download holds none of anyone else's rows, photos or Culury address", async () => {
     const { a, b } = await twoUsers(t);
     const food = (who: typeof a, name: string) => who.as("POST", "/api/my-foods", { name, servings: [{ label: "1", grams: 10 }], nutrients: { calories: 100 } }).then((r) => r.body.food);

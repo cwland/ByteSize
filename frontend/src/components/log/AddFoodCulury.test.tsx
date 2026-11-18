@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import LogPage from "./LogPage";
+import FoodHost from "../../test/FoodHost";
 import { SelectedDayProvider } from "../../selectedDay";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
@@ -30,7 +30,7 @@ function open(routes: Record<string, (b: any, path: string) => unknown> = {}, re
   });
   renderWithSession(
     <SelectedDayProvider timeZone="America/Boise">
-      <LogPage />
+      <FoodHost />
     </SelectedDayProvider>,
   );
   return server;
@@ -172,14 +172,14 @@ describe("Add food with Culury", () => {
     expect(logged(server).nutrients).toEqual({ calories: 200, protein_g: 10 });
   });
 
-  it("a recipe without nutrition can still be tracked as is (unknown stays unknown)", async () => {
+  it("a recipe without nutrition can still be tracked as is (shown as 0, sent without nutrients)", async () => {
     const server = open();
     const user = userEvent.setup();
     const sheet = await openDinner(user);
     await user.click(await within(sheet).findByRole("button", { name: /Meal plan/ }));
     await user.click(await within(sheet).findByRole("button", { name: /Taco soup/ }));
     await within(sheet).findByText(/Culury has no nutrition for this recipe/);
-    expect(within(within(sheet).getByRole("region", { name: "Summary" }).querySelector("p")!).getByText("?")).toBeInTheDocument();
+    expect(within(within(sheet).getByRole("region", { name: "Summary" }).querySelector("p")!).getByText("0")).toBeInTheDocument(); // §31: shown as 0
     await user.click(within(sheet).getByRole("button", { name: "Track" }));
     expect(logged(server)).not.toHaveProperty("nutrients");
   });

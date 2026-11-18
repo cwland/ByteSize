@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import LogPage from "./LogPage";
+import FoodHost from "../../test/FoodHost";
 import { SelectedDayProvider } from "../../selectedDay";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
@@ -34,7 +34,7 @@ function open(search: () => unknown = () => answer(), user = {}) {
   });
   const r = renderWithSession(
     <SelectedDayProvider timeZone="America/Boise">
-      <LogPage />
+      <FoodHost />
     </SelectedDayProvider>,
     user,
   );

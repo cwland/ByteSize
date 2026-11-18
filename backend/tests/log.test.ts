@@ -119,7 +119,7 @@ describe("food log", () => {
     offKnows(t, { "0099999999999": offProduct("0099999999999", "Banana", 89, { categories_tags: ["en:plant-based-foods-and-beverages"] }) });
     const food = (await t.api("GET", "/api/foods/barcode/0099999999999")).body.food;
     const banana = (await log(food)).body.entry;
-    const odd = (await log({ ...food, id: food.id })).body.entry;
+    const odd = (await log({ ...food, id: food.id }, {}, DAY, "lunch")).body.entry; // another meal: the same food in one meal combines
     // As saved back then: the category's drink cup; and a name no rule knows keeps what was stored
     await t.db.update(logEntries).set({ icon: "🥤" }).where(eq(logEntries.id, banana.id));
     await t.db.update(logEntries).set({ icon: "🫙", name: "Mystery thing" }).where(eq(logEntries.id, odd.id));
@@ -132,7 +132,7 @@ describe("food log", () => {
   it("move and copy entries to another day and meal", async () => {
     const food = await myFood();
     const a = (await log(food)).body.entry;
-    const b = (await log(food, { quantity: 2 })).body.entry;
+    const b = (await log(food, { quantity: 2 }, DAY, "lunch")).body.entry;
 
     const moved = await t.api("POST", "/api/log/move", { ids: [a.id], day: "2026-11-18", meal: "lunch", copy: false });
     expect(moved.status).toBe(200);

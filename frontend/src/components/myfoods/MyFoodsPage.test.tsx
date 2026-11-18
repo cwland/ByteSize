@@ -118,9 +118,9 @@ describe("My Foods", () => {
     await waitFor(() => expect(within(list).queryByRole("button", { name: /^Chili/ })).toBeNull());
   });
 
-  it("Back returns where you came from: the Log by default", async () => {
+  it("Back returns where you came from: the Dashboard by default (there is no Log page)", async () => {
     show();
-    expect(screen.getByRole("link", { name: "‹ Back" })).toHaveAttribute("href", "#/log");
+    expect(screen.getByRole("link", { name: "‹ Back" })).toHaveAttribute("href", "#/");
   });
 
   it("Back returns to the Dashboard when My Foods was opened from there", async () => {

@@ -13,7 +13,7 @@ export function Tag({ text }: { text: string }) {
 
 export const ADDED_MS = 2000; // how long the ✓ shows before the + comes back
 
-// Quick add: every tap logs (two taps = two entries); each success shows ✓ for a moment, a failure says why
+// Quick add: every tap logs (a second tap grows the same entry: the server combines them); each success shows ✓ for a moment, a failure says why
 export function useQuickAdd(add: () => Promise<void>) {
   const [checks, setChecks] = useState(0);
   const [error, setError] = useState<string | null>(null);

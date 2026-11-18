@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import LogPage from "./LogPage";
+import FoodHost from "../../test/FoodHost";
 import { SelectedDayProvider } from "../../selectedDay";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
@@ -37,7 +37,7 @@ function show(routes: Record<string, (b: any) => unknown> = {}) {
   const server = fakeServer({ ...culuryOff, "GET /api/day/:date": () => bothInBreakfast, "GET /api/settings/me": () => settingsMe, ...routes });
   renderWithSession(
     <SelectedDayProvider timeZone="America/Boise">
-      <LogPage />
+      <FoodHost />
     </SelectedDayProvider>,
   );
   return server;
@@ -51,7 +51,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-describe("Log", () => {
+describe("Food widget (everything the Log page did)", () => {
   it("meal cards show entries with icons, portions and totals", async () => {
     show();
     const breakfast = await screen.findByRole("region", { name: "Breakfast" });
@@ -87,7 +87,7 @@ describe("Log", () => {
     const barRow = within(breakfast).getByRole("button", { name: /Peanut butter bar/ });
     expect(within(barRow).getByText("½ bar")).toBeInTheDocument();
     expect(within(barRow).getByText("127 cal")).toBeInTheDocument();
-    expect(within(barRow).getByText("? g fiber")).toBeInTheDocument(); // unknown, not 0
+    expect(within(barRow).getByText("0 g fiber")).toBeInTheDocument(); // §31: missing shows as 0
     expect(within(breakfast).queryByText(/×/)).not.toBeInTheDocument();
   });
 
@@ -95,7 +95,7 @@ describe("Log", () => {
     const server = show({ "POST /api/log/move": () => ({ entries: [] }) });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Toast/ }));
-    await user.click(screen.getByRole("button", { name: "Move" }));
+    await user.click(screen.getByRole("button", { name: "Move to another meal or day" }));
     const sheet = screen.getByRole("dialog", { name: "Move to…" });
     await user.click(within(sheet).getByRole("button", { name: "Later day" }));
     await user.click(within(sheet).getByRole("radio", { name: "Lunch" }));
@@ -103,6 +103,29 @@ describe("Log", () => {
     const moved = server.writes().find((w) => w.path === "/api/log/move")!;
     expect(moved.body).toEqual({ ids: [1], day: "2026-11-17", meal: "lunch", copy: false });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("select several, then Delete selected asks once and deletes each", async () => {
+    let gone = false;
+    const server = show({
+      "GET /api/day/:date": () => (gone ? { ...bothInBreakfast, entries: [] } : bothInBreakfast),
+      "DELETE /api/log/:id": () => {
+        gone = true;
+        return { status: 204 };
+      },
+    });
+    const user = userEvent.setup();
+    await screen.findByRole("button", { name: /Toast/ });
+    await user.click(screen.getByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("checkbox", { name: /Toast/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Peanut butter bar/ }));
+    await user.click(screen.getByRole("button", { name: "Delete selected" }));
+    const confirm = screen.getByRole("alertdialog", { name: "Delete 2 foods?" });
+    expect(server.writes()).toHaveLength(0);
+    await user.click(within(confirm).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(server.writes().map((w) => [w.method, w.path])).toEqual([["DELETE", "/api/log/1"], ["DELETE", "/api/log/2"]]));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Toast/ })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Delete selected" })).not.toBeInTheDocument(); // selecting ended
   });
 
   it("delete asks first and removes the row", async () => {
@@ -131,7 +154,20 @@ describe("Log", () => {
     await user.click(await screen.findByRole("button", { name: /Peanut butter bar/ }));
     const sheet = screen.getByRole("dialog", { name: "Edit portion" });
     expect(within(sheet).getByRole("region", { name: "Nutrition facts" })).toBeInTheDocument();
-    for (const b of ["Move", "Copy", "Delete"]) expect(within(sheet).getByRole("button", { name: b })).toBeInTheDocument();
+    // Move, Copy and Delete are icons in the title row, left of the X, with tooltips; the bottom keeps only Save
+    const close = within(sheet).getByRole("button", { name: "Close" });
+    for (const [name, tip] of [["Move to another meal or day", "Move to another meal or day"], ["Copy", "Copy"], ["Delete", "Delete"]]) {
+      const b = within(sheet).getByRole("button", { name });
+      expect(b).toHaveAttribute("title", tip);
+      expect(b).toHaveClass("size-11");
+      expect(b.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(close.parentElement!.contains(b)).toBe(true); // the title row
+    }
+    expect(within(sheet).getByRole("button", { name: "Delete" })).toHaveClass("text-error");
+    expect(within(sheet).queryByRole("button", { name: "Move" })).not.toBeInTheDocument();
+    // none of them at the bottom any more: Save is the last thing in the window
+    expect(within(sheet).getAllByRole("button", { name: /Move|Copy|Delete/ }).every((b) => close.parentElement!.contains(b))).toBe(true);
+    expect(within(sheet).getByRole("button", { name: "Save" }).nextElementSibling).toBeNull();
     const serving = within(sheet).getByRole("button", { name: /^Serving/ });
     expect(serving).toHaveTextContent("½ bar");
     await user.click(serving);
@@ -152,20 +188,20 @@ describe("Log", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Can't measure this food in ml");
   });
 
-  it("a food with unknown calories shows a question mark, not 0, in the row and the sheet", async () => {
+  it("a food without calories shows 0, not a question mark, in the row and the sheet (§31)", async () => {
     const mystery = entryJson({ id: 3, name: "Mystery soup", icon: "🍲", nutrients: { protein_g: 8 } });
     show({ "GET /api/day/:date": () => ({ ...day, entries: [mystery] }) });
     const row = await screen.findByRole("button", { name: /Mystery soup/ });
-    expect(within(row).getByText("? cal")).toBeInTheDocument();
-    expect(within(row).queryByText("0 cal")).not.toBeInTheDocument();
+    expect(within(row).getByText("0 cal")).toBeInTheDocument();
+    expect(within(row).queryByText(/\?/)).not.toBeInTheDocument();
     await userEvent.setup().click(row);
     const cal = within(screen.getByRole("region", { name: "Summary" })).getByText("Calories").parentElement!;
-    expect(cal).toHaveTextContent("?");
-    expect(cal).not.toHaveTextContent("0");
+    expect(cal).toHaveTextContent("0");
+    expect(cal).not.toHaveTextContent("?");
   });
-  it("My Foods is a link from the Log page", async () => {
+  it("My foods is a link from the Food widget, back to the Dashboard", async () => {
     show();
-    expect(await screen.findByRole("link", { name: "My Foods" })).toHaveAttribute("href", "#/log/my-foods?from=/log");
+    expect(await screen.findByRole("link", { name: "My foods" })).toHaveAttribute("href", "#/log/my-foods?from=/");
   });
 
   it("Save as a meal: posts the meal's entries and lists what was left out", async () => {

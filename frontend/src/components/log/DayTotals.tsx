@@ -13,19 +13,9 @@ const ROWS: Row[] = [
   { name: "Water", key: "water_ml", unit: "", target: "water_ml" },
 ];
 
-// One nutrient of GET /api/day's totals (unknown summed as 0) with unknownCount (foods lacking it; water
-// entries aren't foods): known null when every food lacks it (blank — never 0), partial when some do
-export function dayTotal(totals: Day["totals"], foods: number, key: NutrientKey): { known: number | null; partial: boolean } {
-  const total = totals[key] ?? 0;
-  if (key === "water_ml") return { known: total, partial: false };
-  const missing = totals.unknownCount[key] ?? 0;
-  if (foods > 0 && missing >= foods) return { known: null, partial: false };
-  return { known: total, partial: missing > 0 };
-}
-
-// The wide Log's "Day totals": eaten vs the target range for the day ("—" where there is no target)
+// "Day totals" (a Dashboard widget): eaten vs the target range for the day ("—" where there is no target).
+// The server sums a nutrient a food doesn't say as 0, and that number shows (§31).
 export default function DayTotals({ day, units }: { day: Day; units: Units }) {
-  const foods = day.entries.filter((e) => e.source !== "water").length;
   const targets: Targets | null = day.targets;
   const amount = (row: Row, v: number) => (row.key === "water_ml" ? `${fmt(waterValue(v, units))} ${waterUnit(units)}` : `${fmt(v)}${row.unit ? ` ${row.unit}` : ""}`);
   const range = (row: Row, r: Range) =>
@@ -51,7 +41,6 @@ export default function DayTotals({ day, units }: { day: Day; units: Units }) {
         </thead>
         <tbody className="divide-y divide-line">
           {ROWS.map((row) => {
-            const { known, partial } = dayTotal(day.totals, foods, row.key);
             const target = row.target && targets ? range(row, targets[row.target]) : "—";
             return (
               <tr key={row.key}>
@@ -59,8 +48,7 @@ export default function DayTotals({ day, units }: { day: Day; units: Units }) {
                   {row.name}
                 </th>
                 <td className="py-2.5 text-right font-bold">
-                  {known !== null && amount(row, known)}
-                  {partial && <span className="block text-xs font-normal text-muted">+ some unknown</span>}
+                  {amount(row, day.totals[row.key] ?? 0)}
                 </td>
                 <td className="py-2.5 text-right text-subtle">{target}</td>
               </tr>

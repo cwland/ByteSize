@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "../../api";
+import { announceCombined, type Combined } from "../../combined";
 import { notifyDayChanged } from "../../day";
 import { MEALS, MEAL_NAMES } from "../../meals";
 import { addDays, dayLabel } from "../../selectedDay";
@@ -21,7 +22,7 @@ export default function MoveSheet({ ids, copy, day: fromDay, meal: fromMeal, onC
   const go = async () => {
     setBusy(true);
     try {
-      await api("POST", "/api/log/move", { ids, day, meal, copy });
+      announceCombined(await api<{ combined?: Combined[] }>("POST", "/api/log/move", { ids, day, meal, copy }));
       notifyDayChanged();
       onClose();
     } catch (e) {

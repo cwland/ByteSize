@@ -79,7 +79,7 @@ const FACTS: { key: NutrientKey; label: string; unit: string; sub?: boolean }[] 
 const boxed = "rounded-2xl border border-line";
 
 // "Track food": summary, the amount (whole + fraction + unit), insights, nutrition facts, and Track.
-// The same sheet edits a logged entry (submitLabel "Save", with Move/Copy/Delete as children).
+// The same sheet edits a logged entry (submitLabel "Save"; Move/Copy/Delete are in its title row).
 export default function FoodDetail({
   food,
   initial,
@@ -87,7 +87,6 @@ export default function FoodDetail({
   onSubmit,
   onEditFood,
   note,
-  children,
 }: {
   food: DetailFood;
   initial: Portion;
@@ -95,7 +94,6 @@ export default function FoodDetail({
   onSubmit: (p: Portion) => Promise<void>;
   onEditFood?: () => void;
   note?: ReactNode; // under the name (a kept copy's "Saved copy from …" with Check for changes)
-  children?: ReactNode;
 }) {
   const [portion, setPortion] = useState<Portion>(initial);
   const [picking, setPicking] = useState(false);
@@ -144,7 +142,7 @@ export default function FoodDetail({
         {summary.map(([label, v, unit]) => (
           <p key={label} className="flex items-center justify-between py-3">
             <span>{label}</span>
-            <span className="font-semibold tabular">{v === undefined ? "?" : `${fmt(v)}${unit}`}</span>
+            <span className="font-semibold tabular">{`${fmt(v ?? 0)}${unit}` /* not said: 0 (§31) */}</span>
           </p>
         ))}
       </section>
@@ -191,7 +189,7 @@ export default function FoodDetail({
             return (
               <p key={f.key} className={`flex items-center justify-between py-2 text-sm ${f.sub ? "pl-4 text-subtle" : ""}`}>
                 <span>{f.label}</span>
-                <span className="tabular">{v === undefined ? "—" : f.key === "calories" ? fmt(v) : `${one(v)} ${f.unit}`}</span>
+                <span className="tabular">{f.key === "calories" ? fmt(v ?? 0) : `${one(v ?? 0)} ${f.unit}`}</span>
               </p>
             );
           })}
@@ -204,7 +202,6 @@ export default function FoodDetail({
           {submitLabel}
         </button>
       )}
-      {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
     </div>
   );
 }

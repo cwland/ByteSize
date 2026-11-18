@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import AuthScreen from "../components/AuthScreen";
 import SetupWizard from "../components/SetupWizard";
 import Dashboard from "../components/dashboard/Dashboard";
-import LogPage from "../components/log/LogPage";
+import FoodHost from "./FoodHost";
 import GoalsPage from "../components/goals/GoalsPage";
 import SettingsPage from "../components/settings/SettingsPage";
 import MyFoodsPage from "../components/myfoods/MyFoodsPage";
@@ -62,20 +62,20 @@ const dayRoutes = {
 const inDay = (ui: ReactNode) => <SelectedDayProvider timeZone="America/Boise">{ui}</SelectedDayProvider>;
 
 describe("password managers leave data fields alone", () => {
-  it("Dashboard and Log", async () => {
+  it("Dashboard and its Food widget", async () => {
     fakeServer(dayRoutes);
     const { unmount } = renderWithSession(inDay(<Dashboard />));
     await screen.findByRole("region", { name: "Budget" });
     expectAllIgnored("Dashboard");
     unmount();
-    renderWithSession(inDay(<LogPage />));
+    renderWithSession(inDay(<FoodHost />));
     await screen.findByRole("region", { name: "Snacks" });
-    expectAllIgnored("Log");
+    expectAllIgnored("Food widget");
   });
 
   it("Add food: search, barcode, describe it, create food", async () => {
     fakeServer(dayRoutes);
-    renderWithSession(inDay(<LogPage />));
+    renderWithSession(inDay(<FoodHost />));
     const user = userEvent.setup();
     await user.click(within(await screen.findByRole("region", { name: "Snacks" })).getByRole("button", { name: "Add Food" }));
     const sheet = screen.getByRole("dialog", { name: "Add food to Snacks" });
