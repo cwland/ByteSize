@@ -7,12 +7,16 @@ import { Card } from "../ui/Card";
 import { Field } from "../ui/Field";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { linkButton, primaryButton, secondaryButton } from "../ui/styles";
+import { LinkMyAccount, OAuthSettings } from "./OAuthSettings";
 
 export default function SecuritySettings() {
+  const { user } = useSession();
   return (
     <>
       <ChangePassword />
       <Passkeys />
+      <LinkMyAccount />
+      {user.isAdmin && <OAuthSettings />}
       <Devices />
       <SignInHistory />
     </>

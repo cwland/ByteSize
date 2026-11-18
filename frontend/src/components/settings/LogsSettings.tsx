@@ -11,7 +11,7 @@ interface LogRow {
   id: number;
   at: string;
   userId: number | null;
-  category: "ai" | "api" | "auth" | "schedule" | "food";
+  category: "ai" | "api" | "auth" | "schedule" | "food" | "email";
   level: "info" | "warning" | "error";
   source: string | null;
   event: string;
@@ -26,6 +26,7 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: "auth", label: "Sign-in" },
   { value: "api", label: "API" },
   { value: "schedule", label: "Scheduled" },
+  { value: "email", label: "Email" },
 ];
 const LEVEL: Record<LogRow["level"], { mark: string; cls: string; label: string }> = {
   info: { mark: "✓", cls: "text-success", label: "OK" },

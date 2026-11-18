@@ -201,6 +201,8 @@ describe("backups", () => {
       .map((v) => getTableName(v as PgTable))
       .sort();
     expect([...BACKED_UP_TABLES, ...SKIP_TABLES].sort()).toEqual(inSchema);
+    // sign-ins, and the short-lived codes and OAuth flows that lead to one, are never backed up
+    expect(SKIP_TABLES).toEqual(expect.arrayContaining(["sessions", "password_reset_codes", "oauth_flows", "oauth_tickets"]));
     const inDb = await t.db.execute<{ tablename: string }>(sql`select tablename from pg_tables where schemaname = 'public'`);
     expect(inDb.rows.map((r) => r.tablename).sort()).toEqual(inSchema);
   });
@@ -231,7 +233,7 @@ describe("backups", () => {
     expect(backup.name).toMatch(/^bytesize-\d{4}-\d{2}-\d{2}-\d{6}\.tar\.gz$/);
     expect(backup.size).toBeGreaterThan(0);
     const json = await backupJson(backup.name);
-    expect(json).toMatchObject({ app: "bytesize", format: 1, schema: 11, createdAt: expect.any(String) });
+    expect(json).toMatchObject({ app: "bytesize", format: 1, schema: 12, createdAt: expect.any(String) });
     expect(Object.keys(json.tables).sort()).toEqual([...BACKED_UP_TABLES].sort());
     expect(json.tables.app_settings.map((r: any) => r.key)).not.toContain("restaurant_quota");
     expect(json.tables.food_cache.map((r: any) => r.id).sort()).toEqual(before.food_cache.map((r) => JSON.parse(r).id).sort());
@@ -251,7 +253,7 @@ describe("backups", () => {
 
     const r = await t.api("POST", "/api/admin/backups/restore", { name: backup.name, confirm: "RESTORE" });
     expect(r.status).toBe(200);
-    expect(r.body).toEqual({ restored: { schema: 11, users: 3, photos: 1 }, unreadableKeys: [] });
+    expect(r.body).toEqual({ restored: { schema: 12, users: 3, photos: 1 }, unreadableKeys: [] });
 
     sameData(await snapshot(), before);
     // Nothing points at a cached food that isn't there
@@ -348,7 +350,7 @@ describe("backups", () => {
     const { photo } = await seed();
     const before = await snapshot();
     const jpeg = photoBytes(photo.path);
-    const good = JSON.stringify({ app: "bytesize", format: 1, schema: 11, createdAt: "2026-11-17T00:00:00Z", tables: {} });
+    const good = JSON.stringify({ app: "bytesize", format: 1, schema: 12, createdAt: "2026-11-17T00:00:00Z", tables: {} });
     const cases: [string, Buffer, string][] = [
       ["plain text", Buffer.from("hello, this is not a backup"), NOT_A_BACKUP],
       ["a gzip that isn't a tar", gzipSync(Buffer.from("just some words ".repeat(100))), NOT_A_BACKUP],
@@ -356,7 +358,7 @@ describe("backups", () => {
       ["garbage JSON", tarGz([tarEntry("bytesize.json", { data: "{ not json" })]), NOT_A_BACKUP],
       ["another app's JSON", tarGz([tarEntry("bytesize.json", { data: good.replace('"bytesize"', '"other"') })]), NOT_A_BACKUP],
       ["tables that aren't lists", tarGz([tarEntry("bytesize.json", { data: good.replace('"tables":{}', '"tables":{"users":5}') })]), NOT_A_BACKUP],
-      ["a newer schema", tarGz([tarEntry("bytesize.json", { data: good.replace('"schema":11', '"schema":12') })]), NEWER],
+      ["a newer schema", tarGz([tarEntry("bytesize.json", { data: good.replace('"schema":12', '"schema":13') })]), NEWER],
       ["a newer format", tarGz([tarEntry("bytesize.json", { data: good.replace('"format":1', '"format":2') })]), NEWER],
     ];
     for (const [what, data, message] of cases) {
@@ -390,7 +392,7 @@ describe("backups", () => {
     ]);
     const r = await restoreUpload(archive);
     expect(r.status).toBe(200);
-    expect(r.body.restored).toEqual({ schema: 11, users: 3, photos: 1 });
+    expect(r.body.restored).toEqual({ schema: 12, users: 3, photos: 1 });
     expect(readFileSync(path.join(uploadsDir(), String(admin.id), "ok.jpg"))).toEqual(ok);
     // The backup had a photo but this archive doesn't: the photos are the archive's
     expect(existsSync(path.join(uploadsDir(), photo.path))).toBe(false);
@@ -481,7 +483,7 @@ describe("backups", () => {
     await seed();
     const before = await snapshot();
     backupHooks.maxJsonBytes = 100;
-    const json = JSON.stringify({ app: "bytesize", format: 1, schema: 11, createdAt: "2026-11-17T00:00:00Z", tables: { notes: [{ text: "x".repeat(200) }] } });
+    const json = JSON.stringify({ app: "bytesize", format: 1, schema: 12, createdAt: "2026-11-17T00:00:00Z", tables: { notes: [{ text: "x".repeat(200) }] } });
     const r = await restoreUpload(tarGz([tarEntry("bytesize.json", { data: json })]));
     expect(r).toMatchObject({ status: 400, body: { error: "This backup is too large to restore here." } });
     sameData(await snapshot(), before);

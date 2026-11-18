@@ -9,10 +9,12 @@ import { restaurantWeb, setRestaurantKeys, spoonItem } from "./restaurantFakes.j
 import { strFromU8, unzipSync } from "fflate";
 import { plainPhoto } from "./photoFakes.js";
 import { storePhoto } from "../src/lib/photos.js";
+import { fakeIdp } from "./fakeIdp.js";
 
 // Every route that reads or changes a person's data gets a case here (M2 adds foods, logs, targets...)
 let t: TestApp;
-beforeAll(async () => (t = await setupTestApp()));
+const idp = fakeIdp(); // a pretend OAuth provider, for Link my account
+beforeAll(async () => (t = await setupTestApp({ oauthFetch: idp.fetchImpl })));
 beforeEach(async () => {
   await t.reset();
   await t.login();
@@ -436,5 +438,36 @@ describe("per-user isolation", () => {
     expect(everything).toContain(annasPhoto);
     for (const theirs of ["Ben's Brisket", "ben note", "98.7", bensPhoto, "bens-culury", "bens-key", "ben@", "ben\""]) expect(everything).not.toContain(theirs);
     expect(Object.keys(files).filter((n) => n.startsWith("photos/"))).toEqual([`photos/${annasPhoto}.jpg`]);
+  });
+
+  it("accounts: a member can't see or change the server's email or OAuth settings; Link my account and unlink touch only your own account; a reset code only resets its own account", async () => {
+    const gmail = { enabled: true, host: "smtp.gmail.com", port: 587, security: "starttls", username: "cory@gmail.com", password: "app-password-123", fromName: "ByteSize", fromAddress: "cory@gmail.com", appUrl: "https://bytesize.example.com" };
+    await t.api("POST", "/api/settings/email/test", { settings: gmail });
+    expect((await t.api("PUT", "/api/settings/email", gmail)).status).toBe(200);
+    expect((await t.api("PUT", "/api/settings/oauth", { enabled: true, providerName: "Authentik", issuerUrl: idp.issuer, clientId: "bs-client", clientSecret: "bs-secret", oauthOnly: false })).status).toBe(200);
+    const { a, b } = await twoUsers(t);
+    for (const [m, u] of [["GET", "/api/settings/email"], ["GET", "/api/settings/email/password"], ["GET", "/api/settings/oauth"], ["GET", "/api/settings/oauth/secret"], ["POST", "/api/settings/oauth/test"]] as const) {
+      const r = await a.as(m, u);
+      expect(r.status, `${m} ${u}`).toBe(403);
+      expect(JSON.stringify(r.body)).not.toMatch(/app-password-123|bs-secret/);
+    }
+    // anna links her account; ben's stays unlinked, and his unlink leaves hers alone
+    const origin = "https://bytesize.example.com";
+    const start = await t.app.inject({ method: "POST", url: "/api/auth/oauth/link/start", payload: {}, headers: { origin, authorization: `Bearer ${a.token}` } });
+    const back = idp.approve(start.json().url, { sub: "anna-at-idp", email: "anna@corp.example" });
+    await t.app.inject({ method: "GET", url: back.pathname + back.search });
+    expect((await a.as("GET", "/api/auth/oauth")).body.linked).toMatchObject({ email: "anna@corp.example" });
+    expect((await b.as("GET", "/api/auth/oauth")).body.linked).toBeNull();
+    await b.as("POST", "/api/auth/oauth/unlink");
+    expect((await a.as("GET", "/api/auth/oauth")).body.linked).toMatchObject({ email: "anna@corp.example" });
+    // ben asks for a code; it can't reset anna's password, even with her email
+    await a.as("PATCH", "/api/profile", { email: "anna@example.com" });
+    await b.as("PATCH", "/api/profile", { email: "ben@example.com" });
+    t.mail.sent.length = 0;
+    await t.app.inject({ method: "POST", url: "/api/auth/forgot", payload: { email: "ben@example.com" } });
+    const code = /(\d{6})/.exec(t.mail.sent[0].subject)![1];
+    const r = await t.app.inject({ method: "POST", url: "/api/auth/reset", payload: { email: "anna@example.com", code, newPassword: "taken-over-1" } });
+    expect(r.statusCode).toBe(400);
+    expect((await t.app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "anna", password: "password123" } })).statusCode).toBe(200);
   });
 });

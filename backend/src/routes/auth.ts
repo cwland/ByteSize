@@ -7,6 +7,7 @@ import { loginEvents, sessions, users } from "../db/schema.js";
 import { HttpError } from "../lib/errors.js";
 import { normalizeUsername, publicUser } from "../lib/users.js";
 import { requireUser } from "../lib/guards.js";
+import { getOAuth, oauthReady, passwordsAllowed, requirePasswords } from "../lib/oauth.js";
 
 const password = z.string().min(8, "Password must be at least 8 characters").max(200);
 const credentials = z.object({ username: z.string().trim().min(1).max(100), password });
@@ -40,9 +41,18 @@ export default async function authRoutes(app: FastifyInstance) {
 
   const userCount = async () => (await db.select({ n: count() }).from(users))[0].n;
 
+  // What the sign-in screen offers: the password form (unless OAuth only), Forgot password (when email is
+  // set up), and a "Sign in with {label}" button (when OAuth is on)
   app.get("/api/auth/status", async () => {
     const [anyone] = await db.select({ id: users.id }).from(users).limit(1);
-    return { setupRequired: !anyone, passwords: true };
+    const oauth = await getOAuth(db);
+    const passwords = passwordsAllowed(oauth);
+    return {
+      setupRequired: !anyone,
+      passwords,
+      forgotPassword: passwords && !!(await app.mail.active()),
+      oauth: oauthReady(oauth) ? { label: oauth.providerName } : null,
+    };
   });
 
   // First run only: create the admin's account. There is no other way to sign up:
@@ -61,6 +71,12 @@ export default async function authRoutes(app: FastifyInstance) {
 
   app.post("/api/auth/login", async (req) => {
     const body = z.object({ username: z.string(), password: z.string() }).parse(req.body);
+    try {
+      await requirePasswords(db);
+    } catch (e) {
+      await logSignIn(db, req, { username: body.username, success: false, reason: "Password sign-in is off (OAuth only)" });
+      throw e;
+    }
     try {
       checkLockout(req);
     } catch (e) {

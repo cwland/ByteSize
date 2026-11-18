@@ -29,7 +29,7 @@ WORKDIR /app
 COPY backend/package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force \
  # In the image the server tools run the compiled files: docker compose exec -u node bytesize npm run reset-password -- <username>
- && npm pkg set scripts.reset-password="node dist/cli/reset-password.js"
+ && npm pkg set scripts.reset-password="node dist/cli/reset-password.js" scripts.auth:reset="node dist/cli/auth-reset.js"
 COPY --from=api /src/backend/dist ./dist
 COPY backend/drizzle ./drizzle
 COPY --from=web /src/frontend/dist ./web

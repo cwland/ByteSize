@@ -51,8 +51,8 @@ const NUTRIENT_COLUMNS: [string, string][] = [
 
 // Never exported, whatever table they are in
 const SECRET_COLUMN = /password|hash|secret|token|key_?enc|api_?key/i;
-// Tables that hold sign-in material, not the person's own records
-const LEFT_OUT = new Set(["sessions", "passkeys", "login_events"]);
+// Tables that hold sign-in material (and forgot-password codes, OAuth sign-ins on their way), not the person's own records
+const LEFT_OUT = new Set(["sessions", "passkeys", "login_events", "password_reset_codes", "oauth_flows"]);
 
 function perPersonTables() {
   return (Object.values(schema) as unknown[])

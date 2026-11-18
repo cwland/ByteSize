@@ -1,8 +1,9 @@
-import { ChevronLeft, ChevronRight, LogOut, ScrollText, Shield, User, Users, HardDrive, Link2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, LogOut, ScrollText, Shield, User, Users, HardDrive, Link2, Mail } from "lucide-react";
 import { settingsSectionFromHash, useHash } from "../../routes";
 import { useSession } from "../../session";
 import LogsSettings from "./LogsSettings";
 import DataSettings from "./DataSettings";
+import EmailSettings from "./EmailSettings";
 import IntegrationsSettings from "./IntegrationsSettings";
 import ProfileSettings from "./ProfileSettings";
 import SecuritySettings from "./SecuritySettings";
@@ -15,6 +16,7 @@ const TABS = [
   { id: "profile", label: "Profile", hint: "Name, units, time zone, appearance", admin: false, Icon: User, Panel: ProfileSettings },
   { id: "security", label: "Security", hint: "Password, passkeys, devices", admin: false, Icon: Shield, Panel: SecuritySettings },
   { id: "integrations", label: "Integrations", hint: "Culury meal plan and recipes", adminHint: "AI, food data, restaurants, Culury", admin: false, twoUp: true, Icon: Link2, Panel: IntegrationsSettings },
+  { id: "email", label: "Email", hint: "Sending email, forgot password", admin: true, Icon: Mail, Panel: EmailSettings },
   { id: "data", label: "Data", hint: "Download your data", adminHint: "Your data and backups", admin: false, Icon: HardDrive, Panel: DataSettings },
   { id: "users", label: "Users", hint: "Add and manage people", admin: true, Icon: Users, Panel: UsersSettings },
   { id: "logs", label: "Logs", hint: "What ByteSize has been doing", admin: true, Icon: ScrollText, Panel: LogsSettings },
