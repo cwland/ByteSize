@@ -5,6 +5,7 @@ import type { Backup, BackupList, RestoreResult } from "../../types";
 import { Card } from "../ui/Card";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { field, label as labelClass, linkButton, primaryButton, secondaryButton } from "../ui/styles";
+import WeightImport from "./WeightImport";
 
 // Backup files are named bytesize-YYYY-MM-DD-HHMMSS[-before-restore].tar.gz
 const isSafetyBackup = (name: string) => name.endsWith("-before-restore.tar.gz");
@@ -20,12 +21,13 @@ function sizeText(bytes: number) {
 
 const keysWarning = (keys: string[]) => `These saved keys couldn't be read with this server's secret and need entering again: ${keys.join(", ")}`;
 
-// Settings › Data: everyone can download their own data; the admin also manages backups and restores
+// Settings › Data: everyone can download their own data and import a weight history; the admin also manages backups and restores
 export default function DataSettings() {
   const { user } = useSession();
   return (
     <>
       <MyData />
+      <WeightImport />
       {user.isAdmin && <Backups />}
     </>
   );

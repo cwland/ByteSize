@@ -12,6 +12,9 @@ protein, fiber and water floors front and center. Single server, separate data f
 - **Log:** Lose It!-style meal cards with food icons; add food from recents, search (your foods → saved foods → Open Food
   Facts → USDA), a typed barcode, or an AI estimate; ¼ ⅓ ½ ¾ portions; move or copy entries to another day or meal.
 - **Your foods:** create foods (with a barcode), and fix any database food — your correction sticks to that barcode.
+- **Import weight history:** Settings › Data › Import weight history reads a CSV (up to 5 MB) from Lose It, MyFitnessPal,
+  Happy Scale, Libra, Withings, Fitbit or your own sheet, shows a preview, then adds the weigh-ins. Apple Health only
+  exports XML: use an app that exports Health data as CSV (for example Health Auto Export, metric "Weight & Body Mass").
 - Sign-in with passwords and passkeys, admin-managed accounts, AI services with failover, activity logs.
 
 USDA search needs a free key from https://fdc.nal.usda.gov/api-key-signup — add it in Settings › Integrations › Food databases (admin).
