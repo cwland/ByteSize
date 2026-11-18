@@ -14,7 +14,7 @@ import { aiSettings } from "./foodFakes.js";
 import { setRestaurantKeys } from "./restaurantFakes.js";
 import { multipart, plainPhoto } from "./photoFakes.js";
 import * as schema from "../src/db/schema.js";
-import { dashboardLayouts,
+import { logCombines, dashboardLayouts,
   appLog,
   appSettings,
   badges,
@@ -131,7 +131,10 @@ async function seed() {
       { userId: u.id, day: "2026-11-15", meal: "snacks", name: "Protein bar", icon: "🍫", imageUrl: `/api/photos/${photo.id}`, source: "user_food", sourceRef: String(custom.id), unit: "serving", quantity: 1, fraction: 0.333333333333, perServing: { calories: 210 }, servings: [], nutrients: { calories: 69.99999993 }, aiEstimated: true },
     ]);
   }
-  await t.db.insert(logEntries).values({ userId: a.id, day: "2026-11-14", meal: "lunch", name: "Food logged", icon: "🥣", source: "cache", sourceRef: `cache:${loggedOnly.id}`, unit: "g", quantity: 5, perServing: {}, servings: [], nutrients: {} });
+  const [logged] = await t.db.insert(logEntries).values({ userId: a.id, day: "2026-11-14", meal: "lunch", name: "Food logged", icon: "🥣", source: "cache", sourceRef: `cache:${loggedOnly.id}`, unit: "g", quantity: 5, perServing: {}, servings: [], nutrients: {} }).returning();
+  // What a combine did (Undo's record): backed up, though not in Download my data
+  const g = (quantity: number) => ({ servingIndex: 0, unit: "g", quantity, fraction: 1 });
+  await t.db.insert(logCombines).values({ userId: a.id, entryId: logged.id, before: g(2), after: g(5), added: g(3), addedServings: [], splitDay: "2026-11-14", splitMeal: "lunch" });
   return { admin, a, b, photo, cacheId: cache.id, unusedCacheId: unused.id, apiKey };
 }
 

@@ -114,7 +114,7 @@ describe("GET /api/export", () => {
       .map((tbl) => getTableConfig(tbl))
       .filter((c) => c.columns.some((col) => col.name === "user_id"))
       .map((c) => c.name)
-      .filter((n) => !["sessions", "passkeys", "password_reset_codes", "oauth_flows", "invites"].includes(n)); // sign-in material
+      .filter((n) => !["sessions", "passkeys", "password_reset_codes", "oauth_flows", "invites", "log_combines"].includes(n)); // sign-in material; Undo state
     expect(Object.keys(json.tables).sort()).toEqual([...perUser, "recipe_items"].sort());
     expect(json.tables.log_entries).toHaveLength(4);
     expect(json.tables.weigh_ins).toHaveLength(1);
@@ -177,5 +177,16 @@ describe("GET /api/export", () => {
     for (let i = 0; i < 5; i++) expect((await get()).statusCode).toBe(200);
     expect((await get()).statusCode).toBe(429);
     await app2.close();
+  });
+
+  it("leaves out what combines did (short-lived Undo state), though the entries are there", async () => {
+    await seed();
+    const food = (await t.api("POST", "/api/my-foods", { name: "Egg", servings: [{ label: "1 large", grams: 50 }], nutrients: { calories: 70 } })).body.food;
+    const add = { day: "2026-11-17", meal: "breakfast", food: { kind: "user_food", id: food.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 };
+    await t.api("POST", "/api/log", add);
+    expect((await t.api("POST", "/api/log", add)).body.combined).toBeDefined();
+    const json = JSON.parse((await download()).text("bytesize-export.json"));
+    expect(json.tables.log_combines).toBeUndefined();
+    expect(json.tables.log_entries.some((e: any) => e.name === "Egg" && e.quantity === 2)).toBe(true);
   });
 });
