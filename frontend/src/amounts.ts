@@ -71,7 +71,11 @@ const COUNTED_LAST = new Set(
 // ("2 tortilla chips", "2 cookie dough bites"); otherwise the last word before a comma or a preposition
 // ("6 pitted prunes", "2 pieces of bread", "2 fruits without skin"). A size on its own ("large") stays.
 // In a hyphenated word the last part takes it ("2 roll-ups").
-function nounFor(noun: string, many: boolean): string {
+// labelCount: the serving name's own number ("1 tortilla chip" 1, "10 tortilla chips" 10; null when it has none).
+// A counted last word takes the count only when its number agrees with that: singular in a label of 1 or less,
+// plural (after a singular measure word) in a label of more. Otherwise it is what's in the measure ("1 cup
+// chocolate chips", "1 bag potato chips", "2 cups chocolate chips") and the measure takes the count.
+function nounFor(noun: string, many: boolean, labelCount: number | null = null): string {
   if (/\(s\)/.test(noun)) return noun;
   const comma = noun.indexOf(",");
   const head = comma < 0 ? noun : noun.slice(0, comma);
@@ -79,8 +83,13 @@ function nounFor(noun: string, many: boolean): string {
   const first = words.findIndex((w) => w && !ADJECTIVES.has(w.toLowerCase()));
   const prep = words.findIndex((w, i) => i > 0 && PREPOSITIONS.has(w.toLowerCase()));
   const last = (prep < 0 ? words.length : prep) - 1;
-  const counts = (w: string | undefined) => !!w && COUNTED_LAST.has(singular(w.toLowerCase()));
-  const measure = first >= 0 && MEASURES.has(singular(words[first].toLowerCase())) && !(last > first && counts(words[last]));
+  const isPlural = (w: string) => singular(w.toLowerCase()) !== w.toLowerCase();
+  const counts = (w: string | undefined, m: string) => {
+    if (!w || !COUNTED_LAST.has(singular(w.toLowerCase()))) return false;
+    if (labelCount === null) return !isPlural(m);
+    return labelCount <= 1.02 ? !isPlural(w) : isPlural(w) && !isPlural(m);
+  };
+  const measure = first >= 0 && MEASURES.has(singular(words[first].toLowerCase())) && !(last > first && counts(words[last], words[first]));
   const i = measure ? first : last;
   if (i < 0 || ADJECTIVES.has(words[i].toLowerCase())) return noun;
   const [, lead, word, tail] = words[i].match(/^((?:[A-Za-z]+-)*)([A-Za-z]+)(.*)$/) ?? [];
@@ -109,7 +118,7 @@ function servingText(label: string, q: number): string {
   const first = noun.split(/[\s,]/)[0].toLowerCase();
   if (UNIT_WORDS.has(first)) return `${METRIC_WORDS.has(first) ? measureText(total) : countText(total)} ${noun}${scaledParen}`.trim();
   if (!noun) return `${countText(total)}${scaledParen}`;
-  return `${countText(total)} ${nounFor(noun, total > 1.02)}${scaledParen}`;
+  return `${countText(total)} ${nounFor(noun, total > 1.02, m ? n : null)}${scaledParen}`;
 }
 
 // The amount of an entry or portion, e.g. formatAmount(servings, 1, "serving", 1.5, 1) → "1½ bars"
