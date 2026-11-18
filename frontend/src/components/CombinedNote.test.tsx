@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import CombinedNote, { combinedNote } from "./CombinedNote";
-import { announceCombined } from "../combined";
+import { announceCombined, type Combined } from "../combined";
 import { Confirm } from "./ui/Confirm";
 import FoodHost from "../test/FoodHost";
 import { SelectedDayProvider } from "../selectedDay";
@@ -139,7 +139,7 @@ describe("adding the same food again", () => {
         <Confirm title="Delete entry?" confirmLabel="Delete" onConfirm={() => {}} onCancel={() => {}} />
       </>,
     );
-    act(() => announceCombined({ combined }));
+    act(() => announceCombined({ combined: combined as unknown as Combined }));
     const sure = screen.getByRole("alertdialog", { name: "Delete entry?" });
     const note = await within(sure).findByRole("status", { name: "Combined" });
     expect(within(note).getByRole("button", { name: "Undo" })).toBeInTheDocument();
