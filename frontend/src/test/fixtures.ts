@@ -196,3 +196,26 @@ export const backupList = {
   unreadableKeys: [] as string[],
   problem: null as string | null,
 };
+
+// Import weight history (Settings › Data): a Lose It-style file, as POST /api/weight/import/preview reads it
+export const weightImportPreview = {
+  columns: ["Date", "Weight", "BMI"],
+  dateColumn: 0,
+  weightColumn: 1,
+  units: "lb" as const,
+  dateFormat: "mdy" as const,
+  dateFormatMatters: true,
+  count: 214,
+  from: "2025-01-03",
+  to: "2026-11-16",
+  existingDays: 3,
+  unreadable: 2,
+  problems: [
+    { line: 5, reason: 'Can\'t read the weight "abc"' },
+    { line: 9, reason: "Date is in the future" },
+  ],
+  rows: [
+    { day: "2026-11-16", weightKg: 214.2 * 0.45359237, existing: false },
+    { day: "2026-11-15", weightKg: 214.8 * 0.45359237, existing: true },
+  ],
+};

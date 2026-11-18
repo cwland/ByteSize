@@ -175,3 +175,20 @@ export type Backup = { name: string; size: number; createdAt: string };
 // problem: why the nightly backup needs looking at (the last one failed, or none for over 36 hours); null when fine
 export type BackupList = { backups: Backup[]; keep: number; unreadableKeys: string[]; problem: string | null };
 export type RestoreResult = { restored: { schema: number; users: number; photos: number }; unreadableKeys: string[] };
+
+// Import weight history (Settings › Data, §19): POST /api/weight/import/preview and /api/weight/import (multipart).
+// units: the file's; dateFormat: how 03/04/2025 is read (mdy = Month/Day/Year); dateFormatMatters: the file has such dates
+export type WeightImportOptions = { dateColumn: number; weightColumn: number; units: "lb" | "kg"; dateFormat: "mdy" | "dmy" };
+export type WeightImportPreview = WeightImportOptions & {
+  columns: string[];
+  dateFormatMatters: boolean;
+  count: number;
+  from: string | null;
+  to: string | null;
+  existingDays: number;
+  unreadable: number;
+  problems: { line: number; reason: string }[];
+  // existing: the day already has a weigh-in in ByteSize
+  rows: { day: string; weightKg: number; existing: boolean }[];
+};
+export type WeightImportResult = { imported: number; kept: number; replaced: number; from: string; to: string };

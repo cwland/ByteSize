@@ -25,6 +25,7 @@ import myFoodRoutes from "./routes/my-foods.js";
 import foodLogRoutes from "./routes/log.js";
 import photoRoutes from "./routes/photos.js";
 import weightRoutes from "./routes/weight.js";
+import weightImportRoutes from "./routes/weight-import.js";
 import glp1Routes from "./routes/glp1.js";
 import trendRoutes from "./routes/trends.js";
 import culuryRoutes from "./routes/culury.js";
@@ -140,6 +141,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(foodLogRoutes);
   app.register(photoRoutes); // registers multipart uploads for its own routes only
   app.register(weightRoutes);
+  app.register(weightImportRoutes); // Settings › Data: weight history from a CSV (multipart for its own routes only)
   app.register(glp1Routes);
   app.register(trendRoutes); // weekly trends, badges, vacations
   app.register(culuryRoutes); // the person's Culury link: meal plan and recipes
