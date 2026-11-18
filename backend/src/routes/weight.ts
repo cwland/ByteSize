@@ -28,13 +28,13 @@ const rangeQuery = z
 /** The database or a transaction on it */
 export type DbOrTx = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 
-async function latestWeighIn(db: DbOrTx, userId: number) {
+export async function latestWeighIn(db: DbOrTx, userId: number) {
   const [row] = await db.select().from(weighIns).where(eq(weighIns.userId, userId)).orderBy(desc(weighIns.day)).limit(1);
   return row ?? null;
 }
 
 /** The body weight (the plan's weight) follows the latest weigh-in; no body profile yet: nothing to update. */
-async function syncBodyWeight(db: DbOrTx, userId: number, now: Date) {
+export async function syncBodyWeight(db: DbOrTx, userId: number, now: Date) {
   const latest = await latestWeighIn(db, userId);
   if (!latest) return;
   await db.update(userBody).set({ weightKg: latest.weightKg, updatedAt: now }).where(eq(userBody.userId, userId));

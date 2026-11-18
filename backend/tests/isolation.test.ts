@@ -3,7 +3,7 @@ import { setupTestApp, type TestApp } from "./helpers.js";
 import { twoUsers } from "./isolation.js";
 import { softPasskey } from "./softPasskey.js";
 import { aiSettings, offKnows, offProduct } from "./foodFakes.js";
-import { labelPhoto, photoUpload } from "./photoFakes.js";
+import { labelPhoto, multipart, photoUpload } from "./photoFakes.js";
 import { CULURY, culuryCalls, culuryKnows, culuryRecipe, fakeDns } from "./culuryFakes.js";
 import { restaurantWeb, setRestaurantKeys, spoonItem } from "./restaurantFakes.js";
 import { strFromU8, unzipSync } from "fflate";
@@ -231,6 +231,21 @@ describe("per-user isolation", () => {
     expect(annas.weighIns.map((w: any) => [w.day, w.weightKg, w.note])).toEqual([["2026-11-10", 89, "anna's"], ["2026-11-17", 85, null]]);
     expect(annas.replanHint).toBe(true); // 90 → 85, her own plan weight
     expect((await a.as("GET", "/api/body")).body.body.weightKg).toBe(85);
+  });
+
+  it("a weight import goes into the importer's own history only, and only counts their own days", async () => {
+    const { a, b } = await twoUsers(t);
+    t.clock.date = new Date("2026-11-18T05:30:00Z"); // Nov 17 in Boise
+    expect((await b.as("PUT", "/api/weigh-ins/2026-11-15", { weightKg: 120, note: "ben's" })).status).toBe(200);
+    const upload = (token: string, url: string, fields: Record<string, string> = {}) => {
+      const { payload, headers } = multipart([...Object.entries(fields).map(([name, value]) => ({ name, value })), { name: "file", filename: "w.csv", type: "text/csv", data: Buffer.from("Date,Weight (kg)\n2026-11-15,80\n2026-11-16,79") }]);
+      return t.app.inject({ method: "POST", url, payload, headers: { ...headers, authorization: `Bearer ${token}` } }).then((r) => r.json());
+    };
+    expect(await upload(a.token, "/api/weight/import/preview")).toMatchObject({ count: 2, existingDays: 0 });
+    expect(await upload(a.token, "/api/weight/import", { existing: "replace" })).toMatchObject({ imported: 2, replaced: 0 });
+    expect((await b.as("GET", "/api/weight")).body.weighIns).toEqual([{ day: "2026-11-15", weightKg: 120, trendKg: 120, note: "ben's" }]);
+    expect((await a.as("GET", "/api/weight")).body.weighIns.map((w: any) => [w.day, w.weightKg])).toEqual([["2026-11-15", 80], ["2026-11-16", 79]]);
+    expect(await upload(b.token, "/api/weight/import/preview")).toMatchObject({ existingDays: 1 });
   });
 
   it("a user can't see, change or count another user's GLP-1 settings, shots or side effects", async () => {
