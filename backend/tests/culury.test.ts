@@ -426,7 +426,7 @@ describe("fix round 1", () => {
       await link();
       expect((await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1 })).status).toBe(200);
       t.foodWeb.down = true;
-      const again = await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 2 });
+      const again = await log({ day: "2026-11-18", food: { kind: "culury", id: 7 }, unit: "serving", quantity: 2 }); // another day: not combined
       expect(again.status).toBe(200);
       expect(again.body.entry).toMatchObject({ name: "Turkey chili", sourceRef: "culury:7", source: "culury", nutrients: { calories: 1040 }, servings: [{ label: "1 serving", grams: 340 }] });
       // an estimate isn't taken over a snapshot that has nutrition
@@ -434,7 +434,7 @@ describe("fix round 1", () => {
       // never logged: still Culury's failure
       expect((await log({ food: { kind: "culury", id: 9 }, unit: "serving", quantity: 1 })).status).toBe(502);
       await t.api("DELETE", "/api/settings/culury");
-      expect((await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 0.5 })).body.entry.nutrients.calories).toBe(260);
+      expect((await log({ day: "2026-11-19", food: { kind: "culury", id: 7 }, unit: "serving", quantity: 0.5 })).body.entry.nutrients.calories).toBe(260);
       expect((await log({ food: { kind: "culury", id: 9 }, unit: "serving", quantity: 1 })).status).toBe(400);
     });
 

@@ -76,7 +76,7 @@ describe("recipes", () => {
     expect(logged.status).toBe(200);
     // 300/350 of a serving: 640 × 0.857 = 549, 61 → 52.3, 31 → 26.6, 26 → 22.3, 9 → 7.7
     expect(logged.body.entry.nutrients).toEqual({ calories: 549, protein_g: 52.3, fat_g: 26.6, carbs_g: 22.3, fiber_g: 7.7 });
-    const one = await t.api("POST", "/api/log", { day: DAY, meal: "dinner", food: { kind: "user_food", id: food.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
+    const one = await t.api("POST", "/api/log", { day: DAY, meal: "lunch", food: { kind: "user_food", id: food.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
     expect(one.body.entry.nutrients).toEqual(food.nutrients);
   });
 

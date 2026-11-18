@@ -116,7 +116,7 @@ describe("quick meals", () => {
     const p = await t.api("PATCH", `/api/log/${r.body.entries[1].id}`, { unit: "g", quantity: 25 });
     expect(p.body.entry.nutrients).toEqual({ calories: 35, protein_g: 3, fat_g: 2.5 });
     // Adjusted items may still name the archived food, from the meal's own snapshot
-    const adj = await logMeal({ foodId: meal.id, items: [item(tst, { quantity: 3 })] });
+    const adj = await logMeal({ foodId: meal.id, day: "2026-11-19", items: [item(tst, { quantity: 3 })] });
     expect(adj.body.entries.map((x: any) => x.nutrients.calories)).toEqual([240]);
   });
 
@@ -137,7 +137,7 @@ describe("quick meals", () => {
 
   it("Recently tracked shows the quick meal once, not its items for that use; frequent counts uses", async () => {
     const { meal, tst, e } = await breakfast();
-    await t.api("POST", "/api/log", { day: "2026-11-16", meal: "breakfast", food: { kind: "user_food", id: e.id }, servingIndex: 0, unit: "serving", quantity: 3, fraction: 1 });
+    await t.api("POST", "/api/log", { day: "2026-11-15", meal: "breakfast", food: { kind: "user_food", id: e.id }, servingIndex: 0, unit: "serving", quantity: 3, fraction: 1 });
     await logMeal({ foodId: meal.id, day: "2026-11-16" });
     await logMeal({ foodId: meal.id });
     const recent = (await t.api("GET", "/api/foods/recent")).body.foods;
