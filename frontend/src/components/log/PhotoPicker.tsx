@@ -42,7 +42,9 @@ export function usePhotoInput(onFile: (f: File) => void): { open: () => void; in
 // The photo step of Add Food. With no photo yet: choose one (barcode or label) or "Read a label"; the
 // photo chosen is sent in the step's mode ("auto", or "barcode"/"label" from the wide Dashboard's buttons).
 // With photos: sends them; a found food or a label draft is handed back, anything else is explained
-// here with the next steps (add a second photo, try another, or create the food by hand).
+// here with the next steps (add a second photo, try another, or create the food by hand). In barcode mode
+// (Add food › barcode › Upload a barcode photo) a photo with no barcode offers another photo or typing the
+// number (onTypeNumber).
 export default function PhotoPicker({
   files,
   mode,
@@ -50,6 +52,7 @@ export default function PhotoPicker({
   onFood,
   onDraft,
   onCreate,
+  onTypeNumber,
 }: {
   files: File[];
   mode: PhotoMode;
@@ -57,6 +60,7 @@ export default function PhotoPicker({
   onFood: (food: FoodResult) => void;
   onDraft: (draft: PhotoDraft, files: File[]) => void;
   onCreate: (barcode: string | null) => void;
+  onTypeNumber?: () => void;
 }) {
   const [photosOn, setPhotosOn] = useState<boolean | null>(null);
   const [result, setResult] = useState<PhotoResult | null>(null);
@@ -146,26 +150,39 @@ export default function PhotoPicker({
               {e.message}
             </p>
           ))}
-          <div className="flex flex-wrap gap-2">
-            {files.length < MAX_PHOTOS &&
-              (result.barcode ? (
-                result.labelReading && (
-                  <button type="button" onClick={() => choose((f) => onSend([...files, f], "auto"))} className={primaryButton}>
-                    Add a label photo
-                  </button>
-                )
-              ) : (
-                <button type="button" onClick={() => choose((f) => onSend([...files, f], "auto"))} className={primaryButton}>
-                  Add a barcode photo
+          {mode === "barcode" && !result.barcode ? (
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => again("barcode")} className={primaryButton}>
+                Try another photo
+              </button>
+              {onTypeNumber && (
+                <button type="button" onClick={onTypeNumber} className={secondaryButton}>
+                  Type the number
                 </button>
-              ))}
-            <button type="button" onClick={() => onCreate(result.barcode ?? null)} className={secondaryButton}>
-              Create food
-            </button>
-            <button type="button" onClick={() => again("auto")} className={secondaryButton}>
-              Try another photo
-            </button>
-          </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {files.length < MAX_PHOTOS &&
+                (result.barcode ? (
+                  result.labelReading && (
+                    <button type="button" onClick={() => choose((f) => onSend([...files, f], "auto"))} className={primaryButton}>
+                      Add a label photo
+                    </button>
+                  )
+                ) : (
+                  <button type="button" onClick={() => choose((f) => onSend([...files, f], "auto"))} className={primaryButton}>
+                    Add a barcode photo
+                  </button>
+                ))}
+              <button type="button" onClick={() => onCreate(result.barcode ?? null)} className={secondaryButton}>
+                Create food
+              </button>
+              <button type="button" onClick={() => again(mode === "barcode" ? "barcode" : "auto")} className={secondaryButton}>
+                Try another photo
+              </button>
+            </div>
+          )}
         </>
       )}
       {msg && !busy && (

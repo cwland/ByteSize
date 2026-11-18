@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CalendarDays, Camera, ChevronDown, Plus, ScanBarcode, Sparkles, Utensils } from "lucide-react";
+import { CalendarDays, Camera, ChevronDown, ImageUp, Plus, ScanBarcode, Sparkles, Utensils } from "lucide-react";
 import { ApiError, api } from "../../api";
 import { formatAmount } from "../../amounts";
 import { notifyDayChanged } from "../../day";
@@ -22,7 +22,7 @@ import FoodPic from "./FoodPic";
 import { AiWorking, useEstimate, type Estimate } from "./useEstimate";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
-import { field, primaryButton, secondaryButton } from "../ui/styles";
+import { field, noAutofill, primaryButton, secondaryButton } from "../ui/styles";
 
 type Found = ({ kind: "search" } & SearchResult) | { kind: "barcode"; code: string; food: FoodResult | null; errors?: SourceError[] };
 type View =
@@ -413,6 +413,10 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
           onFood={(food) => pick(food)}
           onDraft={(d, files) => setView({ k: "form", mode: { kind: "create" }, draft: photoDraft(d), photos: files })}
           onCreate={(barcode) => setView({ k: "form", mode: { kind: "create" }, draft: emptyDraft({ barcode }) })}
+          onTypeNumber={() => {
+            setBarcodeOpen(true);
+            setView({ k: "search" });
+          }}
         />
       </Sheet>
     );
@@ -515,16 +519,22 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
         </button>
       </div>
       {barcodeOpen && (
-        <input
-          ref={codeRef}
-          type="text"
-          inputMode="numeric"
-          aria-label="Barcode number"
-          placeholder="Type the barcode number"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          className={`${field} mt-2 tabular`}
-        />
+        <>
+          <input
+            ref={codeRef}
+            type="text"
+            inputMode="numeric"
+            aria-label="Barcode number"
+            placeholder="Type the barcode number"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            {...noAutofill}
+            className={`${field} mt-2 tabular`}
+          />
+          <button type="button" onClick={() => setView({ k: "photo", files: [], mode: "barcode" })} className="mt-2 inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-sm font-semibold text-link hover:bg-pressed">
+            <ImageUp aria-hidden="true" className="size-4" /> Upload a barcode photo
+          </button>
+        </>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" onClick={() => setView({ k: "describe" })} className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}>
