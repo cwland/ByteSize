@@ -76,7 +76,7 @@ const FACTS: { key: NutrientKey; label: string; unit: string; sub?: boolean }[] 
 const boxed = "rounded-2xl border border-line";
 
 // "Track food": summary, the amount (whole + fraction + unit), insights, nutrition facts, and Track.
-// The same sheet edits a logged entry (submitLabel "Save", with Move/Copy/Delete as children).
+// The same sheet edits a logged entry (submitLabel "Save"; Move/Copy/Delete are in its title row).
 export default function FoodDetail({
   food,
   initial,
@@ -84,7 +84,6 @@ export default function FoodDetail({
   onSubmit,
   onEditFood,
   note,
-  children,
 }: {
   food: DetailFood;
   initial: Portion;
@@ -92,7 +91,6 @@ export default function FoodDetail({
   onSubmit: (p: Portion) => Promise<void>;
   onEditFood?: () => void;
   note?: ReactNode; // under the name (a kept copy's "Saved copy from …" with Check for changes)
-  children?: ReactNode;
 }) {
   const [portion, setPortion] = useState<Portion>(initial);
   const [picking, setPicking] = useState(false);
@@ -201,7 +199,6 @@ export default function FoodDetail({
           {submitLabel}
         </button>
       )}
-      {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
     </div>
   );
 }

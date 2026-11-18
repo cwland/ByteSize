@@ -1,3 +1,4 @@
+import { announceCombined, type Combined } from "../../combined";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CalendarDays, Camera, ChevronDown, ImageUp, Plus, ScanBarcode, Sparkles, Utensils } from "lucide-react";
 import { ApiError, api } from "../../api";
@@ -315,17 +316,17 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
 
   // A quick meal logs one entry per food (its items as saved, or as adjusted)
   const logMeal = async (food: FoodResult, items?: Item[]) => {
-    await api("POST", "/api/log/meal", { day, meal, foodId: food.id, ...(items ? { items } : {}) });
+    announceCombined(await api<{ combined?: Combined[] }>("POST", "/api/log/meal", { day, meal, foodId: food.id, ...(items ? { items } : {}) }));
     notifyDayChanged();
   };
   // estimate: per-serving AI nutrients for a Culury recipe that has none
   const log = async (food: FoodResult, p: Portion, estimate?: Nutrients) => {
     if (food.foodKind === "quick_meal") return logMeal(food);
-    await api("POST", "/api/log", { day, meal, food: { kind: food.kind, id: food.id }, servingIndex: p.servingIndex, unit: p.unit, quantity: p.quantity, fraction: p.fraction, ...(estimate ? { nutrients: estimate } : {}) });
+    announceCombined(await api<{ combined?: Combined }>("POST", "/api/log", { day, meal, food: { kind: food.kind, id: food.id }, servingIndex: p.servingIndex, unit: p.unit, quantity: p.quantity, fraction: p.fraction, ...(estimate ? { nutrients: estimate } : {}) }));
     notifyDayChanged();
   };
   const copyYesterday = async (entries: LogEntry[]) => {
-    await api("POST", "/api/log/move", { ids: entries.map((e) => e.id), day, meal, copy: true });
+    announceCombined(await api<{ combined?: Combined[] }>("POST", "/api/log/move", { ids: entries.map((e) => e.id), day, meal, copy: true }));
     notifyDayChanged();
   };
 

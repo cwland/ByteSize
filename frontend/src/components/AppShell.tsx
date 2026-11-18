@@ -1,3 +1,4 @@
+import CombinedNote from "./CombinedNote";
 import Navigation from "./Navigation";
 import Rail from "./Rail";
 import TopBar from "./TopBar";
@@ -75,6 +76,7 @@ export default function AppShell() {
         </main>
         {/* After the page, as on phones (tab and screen-reader order); the rail moves itself first (order-first) */}
         <LogButton page={page} wide={wide} />
+        <CombinedNote />
       </div>
     </SelectedDayProvider>
   );

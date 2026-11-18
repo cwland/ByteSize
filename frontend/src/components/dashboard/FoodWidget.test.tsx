@@ -95,7 +95,7 @@ describe("Food widget (everything the Log page did)", () => {
     const server = show({ "POST /api/log/move": () => ({ entries: [] }) });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Toast/ }));
-    await user.click(screen.getByRole("button", { name: "Move" }));
+    await user.click(screen.getByRole("button", { name: "Move to another meal or day" }));
     const sheet = screen.getByRole("dialog", { name: "Move to…" });
     await user.click(within(sheet).getByRole("button", { name: "Later day" }));
     await user.click(within(sheet).getByRole("radio", { name: "Lunch" }));
@@ -131,7 +131,20 @@ describe("Food widget (everything the Log page did)", () => {
     await user.click(await screen.findByRole("button", { name: /Peanut butter bar/ }));
     const sheet = screen.getByRole("dialog", { name: "Edit portion" });
     expect(within(sheet).getByRole("region", { name: "Nutrition facts" })).toBeInTheDocument();
-    for (const b of ["Move", "Copy", "Delete"]) expect(within(sheet).getByRole("button", { name: b })).toBeInTheDocument();
+    // Move, Copy and Delete are icons in the title row, left of the X, with tooltips; the bottom keeps only Save
+    const close = within(sheet).getByRole("button", { name: "Close" });
+    for (const [name, tip] of [["Move to another meal or day", "Move to another meal or day"], ["Copy", "Copy"], ["Delete", "Delete"]]) {
+      const b = within(sheet).getByRole("button", { name });
+      expect(b).toHaveAttribute("title", tip);
+      expect(b).toHaveClass("size-11");
+      expect(b.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(close.parentElement!.contains(b)).toBe(true); // the title row
+    }
+    expect(within(sheet).getByRole("button", { name: "Delete" })).toHaveClass("text-error");
+    expect(within(sheet).queryByRole("button", { name: "Move" })).not.toBeInTheDocument();
+    // none of them at the bottom any more: Save is the last thing in the window
+    expect(within(sheet).getAllByRole("button", { name: /Move|Copy|Delete/ }).every((b) => close.parentElement!.contains(b))).toBe(true);
+    expect(within(sheet).getByRole("button", { name: "Save" }).nextElementSibling).toBeNull();
     const serving = within(sheet).getByRole("button", { name: /^Serving/ });
     expect(serving).toHaveTextContent("½ bar");
     await user.click(serving);
