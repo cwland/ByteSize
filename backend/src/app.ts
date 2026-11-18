@@ -8,6 +8,7 @@ import { HttpError } from "./lib/errors.js";
 import { hashApiKey, verifyToken } from "./lib/auth.js";
 import { BAD_KEY, DEFAULT_KEY_RATE_LIMIT, KEY_SHAPE, KEY_TOO_FAST, LAST_USED_EVERY_MS, isKeyLike, keyDenial, keyLimiter, sameHash, type KeyRateLimit } from "./lib/apiKeys.js";
 import apiKeyRoutes from "./routes/api-keys.js";
+import inviteRoutes from "./routes/invites.js";
 import { sessionForToken } from "./lib/sessions.js";
 import { DEFAULT_RATE_LIMIT, rateLimits, securityHeaders, type RateLimitOptions } from "./lib/security.js";
 import healthRoutes from "./routes/health.js";
@@ -77,6 +78,8 @@ const PUBLIC_ROUTES = new Set([
   "POST /api/auth/oauth/start",
   "GET /api/auth/oauth/callback",
   "POST /api/auth/oauth/finish",
+  "POST /api/invites/check", // the invite page: the token in the body is the permission
+  "POST /api/invites/accept",
   "GET /api/photos/:id", // the owner's login or the URL's signature (an <img> can't send the token)
 ]);
 
@@ -190,6 +193,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(oauthRoutes); // sign in with OAuth / OpenID Connect, Link my account
   app.register(emailSettingsRoutes); // Settings › Email (admin)
   app.register(adminUserRoutes);
+  app.register(inviteRoutes); // Settings › Users › Invite by email, and the invite page
   app.register(profileRoutes);
   app.register(passkeyRoutes);
   app.register(aiSettingsRoutes);

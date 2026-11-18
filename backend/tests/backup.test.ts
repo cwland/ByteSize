@@ -211,7 +211,7 @@ describe("backups", () => {
       .sort();
     expect([...BACKED_UP_TABLES, ...SKIP_TABLES].sort()).toEqual(inSchema);
     // sign-ins, and the short-lived codes and OAuth flows that lead to one, are never backed up
-    expect(SKIP_TABLES).toEqual(expect.arrayContaining(["sessions", "password_reset_codes", "oauth_flows", "oauth_tickets"]));
+    expect(SKIP_TABLES).toEqual(expect.arrayContaining(["sessions", "password_reset_codes", "oauth_flows", "oauth_tickets", "invites"]));
     const inDb = await t.db.execute<{ tablename: string }>(sql`select tablename from pg_tables where schemaname = 'public'`);
     expect(inDb.rows.map((r) => r.tablename).sort()).toEqual(inSchema);
   });
@@ -292,6 +292,24 @@ describe("backups", () => {
     // The safety backup holds what was there just before (the changed name)
     const safety = await backupJson(list.body.backups.find((x: any) => x.name.endsWith("-before-restore.tar.gz")).name);
     expect(safety.tables.users.find((u: any) => u.id === a.id).display_name).toBe("Changed");
+  });
+
+  it("an invited person is kept, their pending invite link is not; after a restore Resend sends a new one", async () => {
+    await t.login();
+    const gmail = { enabled: true, host: "smtp.gmail.com", port: 587, security: "starttls", username: "c@gmail.com", password: "pw", fromName: null, fromAddress: "c@gmail.com", appUrl: "https://bytesize.example.com" };
+    await t.api("POST", "/api/settings/email/test", { settings: gmail });
+    expect((await t.api("PUT", "/api/settings/email", gmail)).status).toBe(200);
+    const dana = (await t.api("POST", "/api/admin/invites", { name: "Dana", username: "dana", email: "dana@example.com" })).body.user;
+    const backup = await makeBackup();
+    const json = await backupJson(backup.name);
+    expect(json.tables.invites).toBeUndefined();
+    expect(json.tables.users.find((u: any) => u.username === "dana")).toMatchObject({ password_hash: null, email: "dana@example.com" });
+    expect((await t.api("POST", "/api/admin/backups/restore", { name: backup.name, confirm: "RESTORE" })).status).toBe(200);
+    await signIn();
+    expect((await t.api("GET", "/api/admin/users")).body.users.find((u: any) => u.username === "dana")).toMatchObject({ invited: true, inviteSentAt: null });
+    t.mail.sent.length = 0;
+    expect((await t.api("POST", `/api/admin/invites/${dana.id}/resend`)).status).toBe(200);
+    expect(t.mail.sent[0].text).toContain("https://bytesize.example.com/#/invite/");
   });
 
   it("lists backups newest first with the number kept", async () => {

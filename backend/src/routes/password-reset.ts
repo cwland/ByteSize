@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { and, eq, gt, inArray, lt, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { passwordResetCodes, users } from "../db/schema.js";
 import { hashPassword } from "../lib/auth.js";
 import { logEvent } from "../lib/appLog.js";
@@ -52,7 +52,8 @@ export default async function passwordResetRoutes(app: FastifyInstance) {
   const sameHash = (a: string, b: string) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
   async function sendCodes(email: string, now: number, appUrl: string | null) {
-    const matches = await db.select().from(users).where(and(sameEmail(email), eq(users.disabled, false)));
+    // Not an invited person who hasn't accepted yet: the invite link is their way in
+    const matches = await db.select().from(users).where(and(sameEmail(email), eq(users.disabled, false), isNotNull(users.passwordHash)));
     let problem: unknown = null; // one account's email failing doesn't stop the others
     for (const user of matches) {
       const code = crypto.randomInt(0, 1_000_000).toString().padStart(6, "0");

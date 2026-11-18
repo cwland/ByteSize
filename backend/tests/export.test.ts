@@ -114,7 +114,7 @@ describe("GET /api/export", () => {
       .map((tbl) => getTableConfig(tbl))
       .filter((c) => c.columns.some((col) => col.name === "user_id"))
       .map((c) => c.name)
-      .filter((n) => !["sessions", "passkeys", "password_reset_codes", "oauth_flows"].includes(n)); // sign-in material
+      .filter((n) => !["sessions", "passkeys", "password_reset_codes", "oauth_flows", "invites"].includes(n)); // sign-in material
     expect(Object.keys(json.tables).sort()).toEqual([...perUser, "recipe_items"].sort());
     expect(json.tables.log_entries).toHaveLength(4);
     expect(json.tables.weigh_ins).toHaveLength(1);

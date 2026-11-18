@@ -82,6 +82,13 @@ you're signed in; every other device is signed out. A code works once, for 15 mi
 asking again replaces it. At most 5 codes an hour per email and per address, and 10 code tries an hour per email. Accounts without an email, and
 turned-off accounts, never get a code. Each reset is in Settings › Logs (who, never the code).
 
+### Invite by email
+
+With email set up, Settings › Users › **Invite by email** (admin) adds a person by name, username and email and
+emails them a link to choose their own password. They show as **Invited** until they do; **Resend** sends a new
+link (the old one stops working) and **Cancel invite** removes them. A link works once, for 7 days. It points at
+ByteSize's address from Settings › Email (or `APP_URL`), else the address the admin is using.
+
 ### OAuth sign-in
 
 Settings › Security › OAuth sign-in (admin) lets people sign in with Authentik, Keycloak, Google, Microsoft or any

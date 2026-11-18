@@ -9,7 +9,7 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(), // stored trimmed and lowercased
   displayName: text("display_name"),
   email: text("email"),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash"), // null: invited by email and hasn't accepted yet (can't sign in)
   isAdmin: boolean("is_admin").notNull().default(false), // runs the server: users, AI services, all logs
   disabled: boolean("disabled").notNull().default(false), // can't sign in; current sign-ins stop working
   // Bumped to sign out every device: login tokens carry the version they were issued with
@@ -45,6 +45,21 @@ export const passwordResetCodes = pgTable("password_reset_codes", {
   wrongTries: integer("wrong_tries").notNull().default(0),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Invite by email (Settings › Users): one pending link per invited person (the person is a users row with no
+// password until they accept). Only a hash of the link's token is kept. Good for 7 days, once; Resend replaces
+// it, Cancel invite removes the person. Never backed up (the invited person's row is).
+export const invites = pgTable("invites", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .unique() // a new link replaces the old one
+    .references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  invitedBy: integer("invited_by").references(() => users.id, { onDelete: "set null" }),
+  sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
 
 // OAuth sign-ins on their way: from the button to the provider and back (10 minutes). Never backed up.

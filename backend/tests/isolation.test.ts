@@ -514,4 +514,28 @@ describe("per-user isolation", () => {
     // ben's key is ben, never anna
     expect((await withKey(bens.key, "GET", `/api/day/${day}`)).body.entries).toMatchObject([{ id: bensEntry.id }]);
   });
+  it("Invites: a member can't invite, resend or cancel; an invite link signs in only the invited person, who sees only their own data", async () => {
+    const { a, b } = await twoUsers(t);
+    const gmail = { enabled: true, host: "smtp.gmail.com", port: 587, security: "starttls", username: "c@gmail.com", password: "pw", fromName: null, fromAddress: "c@gmail.com", appUrl: "https://bytesize.example.com" };
+    await t.api("POST", "/api/settings/email/test", { settings: gmail });
+    expect((await t.api("PUT", "/api/settings/email", gmail)).status).toBe(200);
+    t.mail.sent.length = 0;
+    expect((await a.as("POST", "/api/admin/invites", { name: "Eve", username: "eve", email: "eve@example.com" })).status).toBe(403);
+    const dana = (await t.api("POST", "/api/admin/invites", { name: "Dana", username: "dana", email: "dana@example.com" })).body.user;
+    expect((await a.as("POST", `/api/admin/invites/${dana.id}/resend`)).status).toBe(403);
+    expect((await a.as("DELETE", `/api/admin/invites/${dana.id}`)).status).toBe(403);
+    expect((await a.as("DELETE", `/api/admin/invites/${b.id}`)).status).toBe(403);
+    expect(t.mail.sent).toHaveLength(1); // only the admin's invite went out
+    const token = /#\/invite\/([A-Za-z0-9_-]+)/.exec(t.mail.sent[0].text)![1];
+    // a signed-in member can't use the link to become dana, or change their own password with it
+    const r = await a.as("POST", "/api/invites/accept", { token, password: "password-of-anna" });
+    expect(r.status).toBe(200);
+    expect(r.body.user.username).toBe("dana"); // the link is dana's, whoever presses it
+    expect((await a.as("GET", "/api/auth/me")).body.user.username).toBe("anna"); // anna's own sign-in is untouched
+    expect((await t.app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "anna", password: "password123" } })).statusCode).toBe(200);
+    const danaAs = (await import("./isolation.js")).asUser(t, r.body.token);
+    await a.as("POST", "/api/log", { day: "2026-11-10", water_ml: 300 });
+    expect((await danaAs("GET", "/api/day/2026-11-10")).body.entries).toEqual([]);
+    expect((await danaAs("GET", "/api/admin/users")).status).toBe(403);
+  });
 });

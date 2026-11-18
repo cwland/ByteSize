@@ -84,8 +84,8 @@ export function emailConfigFromEnv(env: NodeJS.ProcessEnv): EmailConfig | null {
 
 export const fromHeader = (c: EmailConfig) => (c.fromName ? `"${c.fromName.replace(/["\\]/g, "")}" <${c.fromAddress}>` : c.fromAddress);
 
-export type EmailKind = "test" | "reset-code";
-const EMAIL_KIND_LABELS: Record<EmailKind, string> = { test: "Test email", "reset-code": "Password reset code" };
+export type EmailKind = "test" | "reset-code" | "invite";
+const EMAIL_KIND_LABELS: Record<EmailKind, string> = { test: "Test email", "reset-code": "Password reset code", invite: "Invite" };
 
 // What decides whether email gets through: a test email proves these, so only a change to them needs a new test
 const connectionPrint = (c: EmailConfig) => crypto.createHash("sha256").update(JSON.stringify([c.host, c.port, c.security, c.username, c.password, c.fromAddress])).digest("hex");

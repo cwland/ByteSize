@@ -84,9 +84,10 @@ export default async function authRoutes(app: FastifyInstance) {
       throw e;
     }
     const [user] = await db.select().from(users).where(eq(users.username, normalizeUsername(body.username))); // usernames ignore capitalization
-    if (!user || !(await checkPassword(body.password, user.passwordHash))) {
+    // An invited person has no password until they accept the invite: no password signs them in
+    if (!user || !user.passwordHash || !(await checkPassword(body.password, user.passwordHash))) {
       recordFailure(req);
-      await logSignIn(db, req, { username: body.username, success: false, reason: user ? "Wrong password" : "Unknown username" });
+      await logSignIn(db, req, { username: body.username, success: false, reason: !user ? "Unknown username" : user.passwordHash ? "Wrong password" : "Invite not accepted yet" });
       throw new HttpError(401, "Wrong username or password");
     }
     if (user.disabled) {
@@ -110,7 +111,7 @@ export default async function authRoutes(app: FastifyInstance) {
     requireUser(req);
     const body = z.object({ currentPassword: z.string(), newPassword: password }).parse(req.body);
     const [user] = await db.select().from(users).where(eq(users.id, req.auth!.userId));
-    if (!user || !(await checkPassword(body.currentPassword, user.passwordHash))) {
+    if (!user || !user.passwordHash || !(await checkPassword(body.currentPassword, user.passwordHash))) {
       throw new HttpError(400, "Current password is wrong");
     }
     const [updated] = await db
