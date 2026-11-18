@@ -110,9 +110,9 @@ export async function setupTestApp(
     sleeps.push(ms);
     if (clock.date) clock.date = new Date(clock.date.getTime() + ms);
   };
-  // Files (uploads) go to a temp folder, removed on close
+  // Files (uploads, backups) go to a temp folder, removed on close. The daily backup is off unless a test asks for it.
   const dataDir = mkdtempSync(path.join(tmpdir(), "bytesize-test-"));
-  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, foodFetch, now: () => clock.date ?? new Date(), sleep, dataDir, ...opts });
+  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, foodFetch, now: () => clock.date ?? new Date(), sleep, dataDir, backupSchedule: false, ...opts });
   if (beforeReady) await beforeReady(app);
   await app.ready();
   let token = "";

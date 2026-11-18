@@ -29,6 +29,8 @@ import glp1Routes from "./routes/glp1.js";
 import trendRoutes from "./routes/trends.js";
 import culuryRoutes from "./routes/culury.js";
 import restaurantRoutes from "./routes/restaurants.js";
+import backupRoutes from "./routes/backups.js";
+import { scheduleBackups } from "./lib/backup.js";
 import { scheduleRestaurantCleanup } from "./lib/restaurants/index.js";
 import { scheduleUploadCleanup, setPhotoSecret } from "./lib/photos.js";
 
@@ -70,6 +72,7 @@ export interface AppOptions {
   foodFetch?: typeof fetch; // tests swap in a fake food web
   dataDir?: string; // default: DATA_DIR, else ./data/app (tests use a temp folder)
   sleep?: (ms: number) => Promise<void>;
+  backupSchedule?: boolean; // the daily backup (default on; tests turn it off)
 }
 
 export function buildApp(opts: AppOptions): FastifyInstance {
@@ -140,7 +143,9 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(trendRoutes); // weekly trends, badges, vacations
   app.register(culuryRoutes); // the person's Culury link: meal plan and recipes
   app.register(restaurantRoutes); // restaurant menus (Spoonacular, FatSecret)
+  app.register(backupRoutes); // admin: whole-server backups and restore
   scheduleUploadCleanup(app);
   scheduleRestaurantCleanup(app); // FatSecret foods nobody kept, restaurant searches past 24 h
+  if (opts.backupSchedule ?? true) scheduleBackups(app); // daily backup after BACKUP_HOUR
   return app;
 }

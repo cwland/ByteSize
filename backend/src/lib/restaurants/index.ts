@@ -19,7 +19,7 @@ export const NO_KEY_MESSAGE = "Add a restaurant data key in Settings › Food so
 export const MIN_QUERY_MESSAGE = "Type at least 3 letters";
 const SEARCH_FRESH_MS = 24 * 60 * 60 * 1000;
 const SPACING_MS = 1000; // Spoonacular free plan: 1 request a second
-const QUOTA_KEY = "restaurant_quota"; // app_settings: { left, day } — Spoonacular points left on that UTC day
+export const QUOTA_KEY = "restaurant_quota"; // app_settings: { left, day } — Spoonacular points left on that UTC day
 
 export type RestaurantItem = MenuHit & { cacheId: number | null };
 export type RestaurantSearch = { items: RestaurantItem[]; lookupsLeft: number | null; errors: { source: RestaurantSource; message: string }[] };
