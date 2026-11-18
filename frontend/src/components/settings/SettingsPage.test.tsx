@@ -15,7 +15,7 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("tab", { name: "Data" })).toBeInTheDocument(); // everyone can download their own data
     expect(screen.getByText("Download your data")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "App info" })).toBeInTheDocument(); // everyone's own numbers
-    for (const name of ["Users", "AI services", "Food sources", "Logs", "Email"]) {
+    for (const name of ["Users", "AI services", "Food sources", "Logs", "Email", "Cached data"]) {
       expect(screen.queryByRole("tab", { name })).not.toBeInTheDocument();
     }
   });
@@ -23,7 +23,7 @@ describe("SettingsPage", () => {
   it("admins see Users, Integrations and Logs; AI and food sources are inside Integrations", async () => {
     fakeServer({});
     renderWithSession(<SettingsPage />, { isAdmin: true });
-    expect((await screen.findAllByRole("tab")).map((t) => t.getAttribute("aria-label"))).toEqual(["Profile", "Security", "Integrations", "Email", "Data", "App info", "Users", "Logs"]);
+    expect((await screen.findAllByRole("tab")).map((t) => t.getAttribute("aria-label"))).toEqual(["Profile", "Security", "Integrations", "Cached data", "Email", "Data", "App info", "Users", "Logs"]);
     expect(screen.getByText("Your data and backups")).toBeInTheDocument();
     expect(screen.getByText("Sending email, forgot password")).toBeInTheDocument();
     expect(screen.getByText("AI, food data, restaurants, Culury")).toBeInTheDocument();
@@ -78,6 +78,14 @@ describe("SettingsPage", () => {
     expect(await screen.findByRole("tabpanel", { name: "Integrations" })).toBeInTheDocument();
     expect(await screen.findByRole("switch", { name: "Culury on" })).toBeInTheDocument();
     expect(server.sent.map((r) => r.path)).toEqual(["/api/settings/culury"]);
+  });
+
+  it("Cached data is an admin-only row after Integrations, and opens the saved barcodes list", async () => {
+    window.location.hash = "#/settings/cached-data";
+    fakeServer({ "GET /api/admin/saved-barcodes": () => ({ total: 0, page: 1, pageSize: 10, sources: {}, items: [] }) });
+    renderWithSession(<SettingsPage />, { isAdmin: true });
+    expect(screen.getByRole("heading", { level: 1, name: "Cached data" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Saved barcodes" })).toBeInTheDocument();
   });
 
   it("App info is a row in the phone list, between Data and the admin sections, and opens its numbers", async () => {

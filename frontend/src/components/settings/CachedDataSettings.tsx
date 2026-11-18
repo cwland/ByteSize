@@ -4,20 +4,39 @@ import { savedDate } from "../log/SavedCopy";
 import { Confirm } from "../ui/Confirm";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { field, linkButton, noAutofill, secondaryButton } from "../ui/styles";
+import { Pager } from "../ui/Pager";
+import { pillClass } from "../log/SourcePills";
 import { SOURCE_TITLES, type AnySource } from "./FoodSourcesSettings";
 
-// As GET /api/admin/saved-barcodes sends it: one page (50) of kept foods that have a barcode, newest first
+// As GET /api/admin/saved-barcodes sends it: one page of kept foods that have a barcode, newest first; sources: how many
+// each source has (following the search, not the source filter)
 type SavedBarcode = { cacheId: number; barcode: string; name: string; brand: string | null; source: string; savedAt: string; deletesAt: string | null; inUse: boolean };
-type Page = { total: number; page: number; pageSize: number; items: SavedBarcode[] };
+type Page = { total: number; page: number; pageSize: number; sources: Record<string, number>; items: SavedBarcode[] };
+
+const SOURCE_ORDER: AnySource[] = ["off", "usda", "fatsecret", "spoonacular"];
+const PER_PAGE = [10, 20, 30, 40, 50];
+const PER_PAGE_KEY = "bytesize.cachedPerPage"; // remembered on this device
+function savedPerPage(): number {
+  try {
+    const n = Number(localStorage.getItem(PER_PAGE_KEY));
+    if (PER_PAGE.includes(n)) return n;
+  } catch {
+    // storage blocked
+  }
+  return 10;
+}
 
 const plural = (n: number) => `${n} saved barcode${n === 1 ? "" : "s"}`;
 
-// Settings › Integrations › Saved barcodes (admin): every kept barcode — refresh it from its source or delete it,
-// search by name or barcode, 50 at a time, or delete all that nothing uses
-export function SavedBarcodes() {
+// Settings › Cached data (admin, §32): every kept barcode — refresh it from its source or delete it, search by name or
+// barcode, filter by source, 10 to 50 at a time with pages, or delete all that nothing uses
+export default function CachedDataSettings() {
   const [typed, setTyped] = useState("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(savedPerPage);
+  const [off, setOff] = useState<Set<string>>(new Set()); // sources whose pill is turned off
+  const [known, setKnown] = useState<Set<string>>(new Set()); // sources seen so far: their pills stay even at 0
   const [data, setData] = useState<Page | null>(null);
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState<number | "all" | null>(null);
@@ -37,18 +56,38 @@ export function SavedBarcodes() {
 
   useEffect(() => {
     let live = true;
-    api<Page>("GET", `/api/admin/saved-barcodes?page=${page}${q ? `&q=${encodeURIComponent(q)}` : ""}`).then(
+    const sources = off.size ? `&sources=${SOURCE_ORDER.filter((s) => !off.has(s)).join(",")}` : "";
+    api<Page>("GET", `/api/admin/saved-barcodes?page=${page}&pageSize=${perPage}${q ? `&q=${encodeURIComponent(q)}` : ""}${sources}`).then(
       (p) => {
         if (!live) return;
+        setKnown((k) => (Object.keys(p.sources).every((s) => k.has(s)) ? k : new Set([...k, ...Object.keys(p.sources)])));
         // Past the last page (its last rows were deleted): back to the last page there is
-        const last = Math.max(1, Math.ceil(p.total / p.pageSize));
+        const last = Math.max(1, Math.ceil(p.total / perPage));
         if (page > last) setPage(last);
         else setData(p);
       },
       (e) => live && setMsg(errorMsg(e)),
     );
     return () => void (live = false);
-  }, [q, page, reload]);
+  }, [q, page, perPage, off, reload]);
+
+  const toggle = (source: string) => {
+    setOff((o) => {
+      const next = new Set(o);
+      if (!next.delete(source)) next.add(source);
+      return next;
+    });
+    setPage(1);
+  };
+  const choosePerPage = (n: number) => {
+    setPerPage(n);
+    setPage(1);
+    try {
+      localStorage.setItem(PER_PAGE_KEY, String(n));
+    } catch {
+      // storage blocked: it lasts until this page closes
+    }
+  };
 
   const act = async (which: number | "all", run: () => Promise<string | null>) => {
     setBusy(which);
@@ -75,13 +114,33 @@ export function SavedBarcodes() {
       return `Deleted ${plural(out.deleted)}`;
     });
 
-  const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+  const pages = data ? Math.max(1, Math.ceil(data.total / perPage)) : 1;
+  const pills = SOURCE_ORDER.filter((s) => known.has(s));
   return (
     <section aria-label="Saved barcodes" className="rounded-2xl bg-container p-5 [column-span:all]">
       <h2 className="text-lg font-bold">Saved barcodes</h2>
       <p className="mt-1 text-sm text-subtle">Every barcode ByteSize keeps a copy of. Each is deleted when its source's hours run out, unless something uses it.</p>
+      {pills.length > 0 && (
+        <div role="group" aria-label="Sources" className="mt-3 flex flex-wrap gap-1.5">
+          {pills.map((s) => (
+            <button key={s} type="button" aria-pressed={!off.has(s)} onClick={() => toggle(s)} className={pillClass(!off.has(s))}>
+              {`${SOURCE_TITLES[s]} (${data?.sources[s] ?? 0})`}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <input {...noAutofill} type="search" aria-label="Search saved barcodes" placeholder="Search by name or barcode" value={typed} onChange={(e) => setTyped(e.target.value)} className={`${field} mt-0 basis-full rounded-full sm:max-w-xs sm:flex-1 sm:basis-auto`} />
+        <label className="flex items-center gap-2 text-sm font-medium text-subtle">
+          Show
+          <select aria-label="Show" value={perPage} onChange={(e) => choosePerPage(Number(e.target.value))} className={`${field} mt-0 w-auto rounded-full py-1.5`}>
+            {PER_PAGE.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
         <button type="button" className={secondaryButton} disabled={busy !== null || !data?.total} onClick={() => setAsking(true)}>
           Delete all not in use
         </button>
@@ -115,17 +174,10 @@ export function SavedBarcodes() {
           ))}
         </ul>
       )}
-      {data && pages > 1 && (
-        <div className="mt-3 flex items-center gap-3 text-sm">
-          <button type="button" className={linkButton} disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-            Previous page
-          </button>
-          <span>
-            Page {page} of {pages}
-          </span>
-          <button type="button" className={linkButton} disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
-            Next page
-          </button>
+      {data && data.total > 0 && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+          <span className="text-subtle">{`${(page - 1) * perPage + 1}–${Math.min(page * perPage, data.total)} of ${data.total}`}</span>
+          {pages > 1 && <Pager page={page} pages={pages} onPage={setPage} />}
         </div>
       )}
       {!data && !msg && <p className="mt-3 text-muted">Loading…</p>}

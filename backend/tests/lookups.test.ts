@@ -492,11 +492,42 @@ describe("Saved barcodes (admin)", () => {
     }
   }
 
-  it("lists every kept barcode with its source, saved time and when it goes (or kept — in use), 50 a page", async () => {
+  it("pageSize is 10 to 50 and defaults to 10; anything else is a 400", async () => {
+    await many(25);
+    const def = await list();
+    expect(def.body).toMatchObject({ total: 25, page: 1, pageSize: 10 });
+    expect(def.body.items).toHaveLength(10);
+    const twenty = await list("?pageSize=20&page=2");
+    expect(twenty.body).toMatchObject({ pageSize: 20 });
+    expect(twenty.body.items.map((i: any) => i.name)).toEqual(["Snack 20", "Snack 21", "Snack 22", "Snack 23", "Snack 24"]);
+    for (const bad of ["0", "9", "51", "1000", "-10", "abc", "12.5"]) expect((await list(`?pageSize=${bad}`)).status, bad).toBe(400);
+  });
+
+  it("sources filters the list and total (comma list; unknown ids are a 400) and counts per source follow the search, not the filter", async () => {
+    await many(3);
+    await t.db.execute(sql`insert into food_cache (source, source_id, barcode, name, servings, nutrients) values ('usda', 'u1', '1111111111116', 'Granola bar', '[]', '{}'), ('usda', 'u2', '1111111111117', 'Snack usda', '[]', '{}'), ('fatsecret', 'f1', '1111111111118', 'Granola fs', '[]', '{}')`);
+    const all = await list();
+    expect(all.body.total).toBe(6);
+    expect(all.body.sources).toEqual({ off: 3, usda: 2, fatsecret: 1 });
+    const usda = await list("?sources=usda");
+    expect(usda.body.total).toBe(2);
+    expect(usda.body.items.every((i: any) => i.source === "usda")).toBe(true);
+    expect(usda.body.sources).toEqual({ off: 3, usda: 2, fatsecret: 1 }); // the pills still show every source
+    expect((await list("?sources=usda,fatsecret")).body.total).toBe(3);
+    expect((await list("?sources=")).body).toMatchObject({ total: 0, items: [] });
+    // Search narrows the counts, the filter doesn't
+    const granola = await list("?q=granola&sources=off");
+    expect(granola.body.total).toBe(0);
+    expect(granola.body.sources).toEqual({ usda: 1, fatsecret: 1 });
+    expect((await list("?q=snack&sources=usda")).body).toMatchObject({ total: 1, sources: { off: 3, usda: 1 } });
+    for (const bad of ["nope", "usda,nope", "culury", "OFF"]) expect((await list(`?sources=${bad}`)).status, bad).toBe(400);
+  });
+
+  it("lists every kept barcode with its source, saved time and when it goes (or kept — in use), a page at a time", async () => {
     t.clock.date = START;
     await many(55);
     await t.db.execute(sql`insert into food_cache (source, source_id, name, servings, nutrients) values ('spoonacular', '9', 'No barcode', '[]', '{}')`);
-    const first = await list();
+    const first = await list("?pageSize=50");
     expect(first.status).toBe(200);
     expect(first.body).toMatchObject({ total: 55, page: 1, pageSize: 50 });
     expect(first.body.items).toHaveLength(50);
@@ -510,7 +541,7 @@ describe("Saved barcodes (admin)", () => {
       deletesAt: new Date(START.getTime() + 9999 * H).toISOString(),
       inUse: false,
     });
-    expect((await list("?page=2")).body.items.map((i: any) => i.name)).toEqual(["Snack 50", "Snack 51", "Snack 52", "Snack 53", "Snack 54"]);
+    expect((await list("?page=2&pageSize=50")).body.items.map((i: any) => i.name)).toEqual(["Snack 50", "Snack 51", "Snack 52", "Snack 53", "Snack 54"]);
     expect((await list("?q=snack%2053")).body).toMatchObject({ total: 1, items: [{ name: "Snack 53" }] });
     expect((await list("?q=4000000000530")).body).toMatchObject({ total: 1, items: [{ name: "Snack 53" }] });
     // In use: an override based on it
