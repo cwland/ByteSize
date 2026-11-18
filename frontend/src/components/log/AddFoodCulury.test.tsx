@@ -137,6 +137,22 @@ describe("Add food with Culury", () => {
     });
   });
 
+  it("Estimate with AI shows it's working (wheel, 'Estimating… asking AI', Cancel); Cancel stops it", async () => {
+    const server = open({ "POST /api/ai/estimate": () => new Promise(() => {}) });
+    const user = userEvent.setup();
+    const sheet = await openDinner(user);
+    await user.click(await within(sheet).findByRole("button", { name: /Meal plan/ }));
+    await user.click(await within(sheet).findByRole("button", { name: /Taco soup/ }));
+    await user.click(await within(sheet).findByRole("button", { name: "Estimate with AI" }));
+    expect(within(sheet).getByRole("status")).toHaveTextContent("Estimating… asking AI");
+    expect(within(sheet).getByRole("button", { name: "Estimate with AI" })).toBeDisabled();
+    await user.click(within(sheet).getByRole("button", { name: "Cancel" }));
+    expect(server.sent.find((s) => s.path === "/api/ai/estimate")!.signal?.aborted).toBe(true);
+    expect(within(sheet).getByRole("status")).toBeEmptyDOMElement();
+    expect(within(sheet).queryByRole("alert")).toBeNull();
+    expect(within(sheet).getByRole("button", { name: "Estimate with AI" })).toBeEnabled();
+  });
+
   it("an estimate for a weighed serving is scaled to that weight", async () => {
     const recipes = { ...makeRecipes(), "91": { food: { ...taco, id: 91, name: "Lentil curry", servings: [{ label: "1 serving", grams: 200 }] }, hasNutrition: false, outdated: false } };
     const server = open({

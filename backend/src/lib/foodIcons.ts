@@ -66,6 +66,15 @@ function match(text: string | null | undefined): string | null {
   return null;
 }
 
+/**
+ * A logged entry's icon: by its name keyword when one fits, else the icon stored when it was logged.
+ * Entries keep a snapshot of the food's icon; older ones were picked by category first (a banana under
+ * "plant-based foods and beverages" was saved as 🥤), so the name decides again when they're shown.
+ */
+export function entryIcon(name: string, stored: string): string {
+  return match(name) ?? stored;
+}
+
 /** Emoji by name keyword (most specific), then by category keyword, then "🍽️". */
 export function iconFor(category: string | null | undefined, name?: string): string {
   return match(name) ?? match(category) ?? DEFAULT_ICON;

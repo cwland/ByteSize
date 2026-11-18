@@ -4,7 +4,7 @@ import { api } from "../../api";
 import { NUTRIENT_KEYS, type FoodResult, type NutrientKey, type Nutrients, type Serving } from "../../types";
 import { Field } from "../ui/Field";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { field, label as labelClass, primaryButton, secondaryButton } from "../ui/styles";
+import { field, label as labelClass, noAutofill, primaryButton, secondaryButton } from "../ui/styles";
 
 export type FoodDraft = {
   name: string;
@@ -138,9 +138,9 @@ export default function FoodForm({
         <legend className="mb-1 text-sm font-semibold">Servings (nutrients are for the first)</legend>
         {servings.map((r, i) => (
           <div key={i} className="grid grid-cols-[1fr_5rem_5rem_auto] items-end gap-2">
-            <input aria-label={i === 0 ? "Serving size" : `Serving ${i + 1}`} placeholder="1 cup" value={r.label} onChange={(e) => setServing(i, { label: e.target.value })} className={field} />
-            <input aria-label={i === 0 ? "Grams" : `Serving ${i + 1} grams`} placeholder="g" type="number" step="any" value={r.grams} onChange={(e) => setServing(i, { grams: e.target.value })} className={field} />
-            <input aria-label={i === 0 ? "Milliliters" : `Serving ${i + 1} ml`} placeholder="ml" type="number" step="any" value={r.ml} onChange={(e) => setServing(i, { ml: e.target.value })} className={field} />
+            <input {...noAutofill} aria-label={i === 0 ? "Serving size" : `Serving ${i + 1}`} placeholder="1 cup" value={r.label} onChange={(e) => setServing(i, { label: e.target.value })} className={field} />
+            <input {...noAutofill} aria-label={i === 0 ? "Grams" : `Serving ${i + 1} grams`} placeholder="g" type="number" step="any" value={r.grams} onChange={(e) => setServing(i, { grams: e.target.value })} className={field} />
+            <input {...noAutofill} aria-label={i === 0 ? "Milliliters" : `Serving ${i + 1} ml`} placeholder="ml" type="number" step="any" value={r.ml} onChange={(e) => setServing(i, { ml: e.target.value })} className={field} />
             {i > 0 ? (
               <button type="button" aria-label={`Remove serving ${i + 1}`} onClick={() => setServings((rows) => rows.filter((_, j) => j !== i))} className="mb-2 text-subtle hover:text-error">
                 <Trash2 className="size-5" />
@@ -163,7 +163,7 @@ export default function FoodForm({
               {NUTRIENT_LABELS[k]}
               {ai.has(k) && <span className="rounded-full bg-active px-1.5 text-[10px] font-bold text-action">AI estimate</span>}
             </span>
-            <input aria-label={NUTRIENT_LABELS[k]} type="number" step="any" min="0" value={values[k]} onChange={(e) => setNutrient(k, e.target.value)} className={field} />
+            <input {...noAutofill} aria-label={NUTRIENT_LABELS[k]} type="number" step="any" min="0" value={values[k]} onChange={(e) => setNutrient(k, e.target.value)} className={field} />
           </label>
         ))}
       </fieldset>

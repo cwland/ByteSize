@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { AiStopped } from "../src/lib/ai.js";
 import { setupTestApp, type TestApp } from "./helpers.js";
 
 let t: TestApp;
@@ -137,11 +138,86 @@ describe("an answer that can't be read", () => {
       serverOf(url) === "home"
         ? { status: 200, json: { choices: [{ finish_reason: "length", message: { content: '```json\n{"items": [{"name": "oatmeal", "grams": 40, "carbs":' } }] } }
         : { status: 200, json: { choices: [{ finish_reason: "stop", message: { content: '{"ok": true}' } }] } }) as any;
-    const r = await t.app.ai.ask("quick", "system", "hello");
+    const r = await t.app.ai.ask("quick", "system", "hello", { maxTokens: 500 });
     expect(r).toMatchObject({ json: { ok: true }, service: { name: "Cloud backup" } });
+    // Cut off: Home AI is asked once more with double the room before Cloud backup is
+    expect(t.ai.calls.map((c) => [serverOf(c.url), c.body.max_tokens])).toEqual([
+      ["home", 500],
+      ["home", 1000],
+      ["cloud", 500],
+    ]);
     const [log] = (await t.app.db.execute(sql`select event, detail from app_log where category = 'ai' order by id`)).rows as { event: string; detail: string }[];
     expect(log.event).toBe("Home AI's answer couldn't be read");
     expect(log.detail).toMatch(/Stopped: length/);
+  });
+
+  it("cut off for length, then answers with double the room: the same service's answer is used", async () => {
+    await t.api("PUT", "/api/settings/ai", settings());
+    let n = 0;
+    t.ai.respond = ((url: string) =>
+      serverOf(url) === "home" && n++ === 0
+        ? { status: 200, json: { choices: [{ finish_reason: "length", message: { content: "" } }] } }
+        : { status: 200, json: { choices: [{ finish_reason: "stop", message: { content: '{"ok": true}' } }] } }) as any;
+    const r = await t.app.ai.ask("food", "system", "hello", { maxTokens: 4000 });
+    expect(r).toMatchObject({ json: { ok: true }, service: { name: "Home AI" } });
+    expect(t.ai.calls.map((c) => [serverOf(c.url), c.body.max_tokens])).toEqual([
+      ["home", 4000],
+      ["home", 8000],
+    ]);
+  });
+
+  it("a streamed ask keeps showing progress while the cut-off answer is asked again", async () => {
+    await t.api("PUT", "/api/settings/ai", settings());
+    let n = 0;
+    const piece = (content: string, finish: string | null = null) => `data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: finish }] })}`;
+    t.ai.respond = (() =>
+      n++ === 0 ? { status: 200, sse: [piece('{"items": ['), piece("", "length")] } : { status: 200, sse: [piece('{"ok": '), piece("true}"), piece("", "stop")] }) as any;
+    const seen: string[] = [];
+    const r = await t.app.ai.ask("food", "system", "hello", { stream: true, maxTokens: 100, onProgress: (p) => seen.push(p.kind) });
+    expect(r.json).toEqual({ ok: true });
+    expect(t.ai.calls.map((c) => c.body.max_tokens)).toEqual([100, 200]);
+    // the second try is announced and its writing shown too
+    expect(seen.filter((k) => k === "asking")).toHaveLength(2);
+    expect(seen.lastIndexOf("writing")).toBeGreaterThan(seen.lastIndexOf("asking"));
+  });
+
+  it("a second try that fails is logged as a warning when another service is still to be asked", async () => {
+    await t.api("PUT", "/api/settings/ai", settings());
+    let n = 0;
+    t.ai.respond = ((url: string) =>
+      serverOf(url) === "home"
+        ? n++ === 0
+          ? { status: 200, json: { choices: [{ finish_reason: "length", message: { content: "" } }] } }
+          : { status: 503, json: { error: { message: "loading model" } } }
+        : { status: 200, json: { choices: [{ finish_reason: "stop", message: { content: '{"ok": true}' } }] } }) as any;
+    const r = await t.app.ai.ask("food", "system", "hello");
+    expect(r.service.name).toBe("Cloud backup");
+    const logs = (await t.app.db.execute(sql`select level, source, event from app_log where category = 'ai' order by id`)).rows as { level: string; source: string; event: string }[];
+    expect(logs.filter((l) => l.source === "Home AI").map((l) => l.level)).toEqual(["warning", "warning"]);
+  });
+
+  it("not JSON but not cut off: the same service isn't asked again", async () => {
+    await t.api("PUT", "/api/settings/ai", settings());
+    t.ai.respond = ((url: string) =>
+      serverOf(url) === "home"
+        ? { status: 200, json: { choices: [{ finish_reason: "stop", message: { content: "Sorry, I can't help with that." } }] } }
+        : { status: 200, json: { choices: [{ finish_reason: "stop", message: { content: '{"ok": true}' } }] } }) as any;
+    await t.app.ai.ask("quick", "system", "hello");
+    expect(t.ai.calls.map((c) => serverOf(c.url))).toEqual(["home", "cloud"]);
+  });
+
+  it("stopped on purpose while waiting for an answer: gives up at once, without asking the next service", async () => {
+    await t.api("PUT", "/api/settings/ai", settings());
+    hang.add("home");
+    const stop = new AbortController();
+    const started = Date.now();
+    const asking = t.app.ai.ask("food", "system", "hello", { signal: stop.signal });
+    await new Promise((r) => setTimeout(r, 50));
+    stop.abort();
+    await expect(asking).rejects.toBeInstanceOf(AiStopped);
+    expect(Date.now() - started).toBeLessThan(1500); // not the 3 s timeout
+    expect(t.ai.calls.map((c) => serverOf(c.url))).toEqual(["home"]);
+    expect(t.ai.calls[0].signal?.aborted).toBe(true); // the request to the AI service itself is dropped
   });
 
   it("every service's answer unreadable: says so", async () => {

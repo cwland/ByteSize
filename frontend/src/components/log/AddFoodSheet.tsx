@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { CalendarDays, Camera, ChevronDown, Plus, ScanBarcode, Sparkles, Utensils } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { CalendarDays, Camera, ChevronDown, ImageUp, Plus, ScanBarcode, Sparkles, Utensils } from "lucide-react";
 import { ApiError, api } from "../../api";
 import { formatAmount } from "../../amounts";
 import { notifyDayChanged } from "../../day";
@@ -18,14 +18,17 @@ import MealPlanView from "./MealPlanView";
 import CuluryTrack from "./CuluryTrack";
 import RestaurantsView, { newRestaurantsMemo } from "./RestaurantsView";
 import PhotoPicker, { MAX_PHOTOS, analyzePhotos, usePhotoInput } from "./PhotoPicker";
+import FoodPic from "./FoodPic";
+import { AiWorking, useEstimate, worthAsking, type Estimate } from "./useEstimate";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
-import { field, primaryButton, secondaryButton } from "../ui/styles";
+import { field, noAutofill, primaryButton, secondaryButton } from "../ui/styles";
 
 type Found = ({ kind: "search" } & SearchResult) | { kind: "barcode"; code: string; food: FoodResult | null; errors?: SourceError[] };
 type View =
   | { k: "search" }
-  | { k: "describe"; from?: "restaurants" }
+  // guess: the AI's estimate when it assumed what was meant ("Did you mean Cheerios?"), waiting for Yes or No
+  | { k: "describe"; from?: "restaurants"; guess?: Estimate }
   | { k: "photo"; files: File[]; mode: PhotoMode }
   // photos: the photo(s) a label draft was read from, so a barcode photo can still be added
   // barcodeFill: the barcode a barcode photo added to that draft found, merged into the form as it stands
@@ -125,6 +128,17 @@ function MealTitle({ meal, day, onPick }: { meal: Meal; day: string; onPick: (m:
   );
 }
 
+// A heading that takes focus when it appears ("Did you mean …?"), so screen readers read the question
+function FocusedHeading({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLHeadingElement>(null);
+  useEffect(() => ref.current?.focus(), []);
+  return (
+    <h3 ref={ref} tabIndex={-1} className="text-lg font-bold outline-none">
+      {children}
+    </h3>
+  );
+}
+
 // A label draft from a photo as the New food form's draft: AI-estimated values, the photo to link on Save
 const photoDraft = (d: PhotoDraft): FoodDraft => ({ ...draftOf(d), photoId: d.photoId });
 
@@ -163,18 +177,12 @@ function AddBarcodePhoto({ onBarcode }: { onBarcode: (code: string) => void }) {
 // One sheet for finding a food (same as yesterday, recently tracked for this meal, search, barcode,
 // photo, describe it, create) and tracking it. Quick add (+) logs as shown and keeps the sheet open.
 // photo: a photo already chosen (Dashboard's Photo button) opens straight on the photo step with it.
-// start: the view to open on (the wide Dashboard's quick buttons): a barcode or label photo, or Restaurants.
-export type AddFoodStart = "search" | "barcode" | "label" | "restaurants";
-export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "search", onClose }: { day: string; meal: Meal; photo?: File; start?: AddFoodStart; onClose: () => void }) {
+export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }: { day: string; meal: Meal; photo?: File; onClose: () => void }) {
   const { user } = useSession();
   const units = user?.units ?? "imperial";
   const sources = useSourceChoice(user.id);
   const [meal, setMeal] = useState<Meal>(initialMeal);
-  const [view, setView] = useState<View>(() => {
-    if (photo) return { k: "photo", files: [photo], mode: "auto" };
-    if (start === "barcode" || start === "label") return { k: "photo", files: [], mode: start };
-    return start === "restaurants" ? { k: "restaurants" } : { k: "search" };
-  });
+  const [view, setView] = useState<View>(() => (photo ? { k: "photo", files: [photo], mode: "auto" } : { k: "search" }));
   const [query, setQuery] = useState("");
   const [barcodeOpen, setBarcodeOpen] = useState(false);
   const [code, setCode] = useState("");
@@ -293,11 +301,13 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
       fillRef: { kind: food.kind as "cache" | "user_food", id: food.id }, // never a Culury recipe (its own view)
     });
 
-  const estimate = async () => {
+  const estimating = useEstimate();
+  const estimate = async (from?: "restaurants") => {
+    setMsg(null);
     try {
-      const out = await api<{ food: Omit<FoodResult, "id" | "kind"> & { category: string } }>("POST", "/api/ai/estimate", { text: describe });
-      setView({ k: "form", mode: { kind: "create" }, draft: draftOf(out.food) });
-      setMsg(null);
+      const out = await estimating.run(describe);
+      if (!out) return; // cancelled
+      setView(worthAsking(describe, out) ? { k: "describe", from, guess: out } : { k: "form", mode: { kind: "create" }, draft: draftOf(out.food) });
     } catch (e) {
       setMsg(errorMsg(e));
     }
@@ -370,7 +380,6 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
       </Sheet>
     );
   }
-  // No restaurant source set up (the wide Dashboard's Restaurants button): the search, which says how to add one
   if (view.k === "restaurants" && restaurants?.sources.length) {
     return (
       <RestaurantsView label={label} onClose={onClose} onBack={back} status={restaurants} memo={restaurantsMemo.current} onDescribe={() => setView({ k: "describe", from: "restaurants" })} onPick={(food) => pick(food, undefined, "restaurants")} />
@@ -408,19 +417,55 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
           onFood={(food) => pick(food)}
           onDraft={(d, files) => setView({ k: "form", mode: { kind: "create" }, draft: photoDraft(d), photos: files })}
           onCreate={(barcode) => setView({ k: "form", mode: { kind: "create" }, draft: emptyDraft({ barcode }) })}
+          onTypeNumber={() => {
+            setBarcodeOpen(true);
+            setView({ k: "search" });
+          }}
         />
       </Sheet>
     );
   }
-  if (view.k === "describe") {
+  if (view.k === "describe" && view.guess) {
+    const { food, interpretedAs } = view.guess;
     return (
       <Sheet tall label={label} heading="Describe it" onClose={onClose} onBack={back}>
         <div className="flex flex-col gap-3">
-          <textarea aria-label="Describe the food" autoFocus rows={3} placeholder="A large banana" value={describe} onChange={(e) => setDescribe(e.target.value)} className={field} />
+          <FocusedHeading>Did you mean {interpretedAs ?? food.name}?</FocusedHeading>
+          <div className="flex items-center gap-3 rounded-2xl bg-pressed p-3">
+            <FoodPic icon={food.icon} imageUrl={food.imageUrl} />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">{food.name}</p>
+              <p className="text-sm text-subtle">{[food.brand, food.servings[0]?.label].filter(Boolean).join(" · ")}</p>
+              <div className="mt-1.5">
+                <Pills n={food.nutrients} />
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setView({ k: "form", mode: { kind: "create" }, draft: draftOf(food) })} className={primaryButton}>
+              Yes
+            </button>
+            <button type="button" onClick={() => setView({ k: "describe", from: view.from })} className={secondaryButton}>
+              No, change it
+            </button>
+          </div>
+        </div>
+      </Sheet>
+    );
+  }
+  if (view.k === "describe") {
+    const from = view.from;
+    return (
+      <Sheet tall label={label} heading="Describe it" onClose={onClose} onBack={back}>
+        <div className="flex flex-col gap-3">
+          <textarea {...noAutofill} aria-label="Describe the food" autoFocus rows={3} placeholder="A large banana" value={describe} onChange={(e) => setDescribe(e.target.value)} className={field} />
           <Notice msg={msg} />
-          <button type="button" disabled={!describe.trim()} onClick={estimate} className={`${primaryButton} self-start`}>
-            Estimate
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" disabled={!describe.trim() || !!estimating.step} onClick={() => void estimate(from)} className={primaryButton}>
+              Estimate
+            </button>
+            <AiWorking step={estimating.step} onCancel={estimating.cancel} />
+          </div>
         </div>
       </Sheet>
     );
@@ -457,7 +502,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
       top={
         <>
       <div className="flex items-center gap-2">
-        <input type="search" aria-label="Search foods" autoFocus placeholder="Search and track food" value={query} onChange={(e) => setQuery(e.target.value)} className={`${field} mt-0 flex-1 rounded-full`} />
+        <input {...noAutofill} type="search" aria-label="Search foods" autoFocus placeholder="Search and track food" value={query} onChange={(e) => setQuery(e.target.value)} className={`${field} mt-0 flex-1 rounded-full`} />
         <button
           type="button"
           aria-label="Barcode"
@@ -478,16 +523,22 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, start = "s
         </button>
       </div>
       {barcodeOpen && (
-        <input
-          ref={codeRef}
-          type="text"
-          inputMode="numeric"
-          aria-label="Barcode number"
-          placeholder="Type the barcode number"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          className={`${field} mt-2 tabular`}
-        />
+        <>
+          <input
+            ref={codeRef}
+            type="text"
+            inputMode="numeric"
+            aria-label="Barcode number"
+            placeholder="Type the barcode number"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            {...noAutofill}
+            className={`${field} mt-2 tabular`}
+          />
+          <button type="button" onClick={() => setView({ k: "photo", files: [], mode: "barcode" })} className="mt-2 inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-sm font-semibold text-link hover:bg-pressed">
+            <ImageUp aria-hidden="true" className="size-4" /> Upload a barcode photo
+          </button>
+        </>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" onClick={() => setView({ k: "describe" })} className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}>

@@ -4,7 +4,7 @@ import { useSession } from "../../session";
 import type { Body, Range, TargetRanges, Targets } from "../../types";
 import { flOzToMl, kgToLb, waterUnit, waterValue } from "../../units";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { field, primaryButton, secondaryButton } from "../ui/styles";
+import { field, noAutofill, primaryButton, secondaryButton } from "../ui/styles";
 
 type Draft = Partial<TargetRanges>;
 
@@ -71,6 +71,7 @@ export default function TargetsEditor({ initial, onSaved, onCancel }: { initial:
                 <label key={end} className="text-xs text-muted">
                   {end}
                   <input
+                    {...noAutofill}
                     aria-label={label}
                     type="number"
                     inputMode="numeric"

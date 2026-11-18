@@ -7,3 +7,8 @@ export const secondaryButton = "rounded-full bg-pressed px-5 py-2.5 font-semibol
 export const linkButton = "font-semibold text-link hover:underline disabled:opacity-60";
 // A card: charcoal (white in light mode), rounded, no border
 export const card = "rounded-2xl bg-container";
+
+// Password managers (1Password, LastPass, Bitwarden) leave a field alone: every field but the sign-in ones
+// (username, passwords, the reset email and code). Spread onto an <input>/<textarea>; autoComplete can be
+// set after it for a field that has a better value.
+export const noAutofill = { autoComplete: "off", "data-1p-ignore": "", "data-lpignore": "true", "data-bwignore": "" } as const;

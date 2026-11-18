@@ -10,7 +10,7 @@ import Pills from "../log/Pills";
 import { Choice } from "../ui/Choice";
 import { Confirm } from "../ui/Confirm";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { field } from "../ui/styles";
+import { field, noAutofill } from "../ui/styles";
 import { EditorHeader, addButton } from "./items";
 import QuickMealEditor from "./QuickMealEditor";
 import RecipeEditor from "./RecipeEditor";
@@ -121,7 +121,7 @@ export default function MyFoodsPage() {
       </div>
 
       <div className="mt-3 flex flex-col gap-2">
-        <input type="search" aria-label="Search my foods" placeholder="Search my foods" value={query} onChange={(e) => setQuery(e.target.value)} className={`${field} mt-0 rounded-full`} />
+        <input {...noAutofill} type="search" aria-label="Search my foods" placeholder="Search my foods" value={query} onChange={(e) => setQuery(e.target.value)} className={`${field} mt-0 rounded-full`} />
         <Choice label="Show" value={kind} options={KINDS} onChange={setKind} />
         <Choice label="Sort" value={sort ?? (query.trim() ? null : "recent")} options={SORTS} onChange={setSort} />
       </div>

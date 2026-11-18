@@ -4,7 +4,7 @@ import { useSession } from "../../session";
 import type { Backup, BackupList, RestoreResult } from "../../types";
 import { Card } from "../ui/Card";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { field, label as labelClass, linkButton, primaryButton, secondaryButton } from "../ui/styles";
+import { field, label as labelClass, linkButton, noAutofill, primaryButton, secondaryButton } from "../ui/styles";
 import WeightImport from "./WeightImport";
 
 // Backup files are named bytesize-YYYY-MM-DD-HHMMSS[-before-restore].tar.gz
@@ -240,7 +240,7 @@ function RestorePanel({ busy, error, onRestore, onCancel }: { busy: boolean; err
       <p className="text-sm">Restoring replaces everything on this server — every person's data — with this backup. A safety backup is saved first. Everyone will need to sign in again.</p>
       <label className={`${labelClass} mt-3`}>
         Type RESTORE to confirm
-        <input aria-label="Type RESTORE to confirm" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" autoCapitalize="characters" disabled={busy} className={field} />
+        <input {...noAutofill} aria-label="Type RESTORE to confirm" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" autoCapitalize="characters" disabled={busy} className={field} />
       </label>
       <Notice msg={error} />
       <div className="mt-3 flex flex-wrap gap-3">

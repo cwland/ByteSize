@@ -22,13 +22,14 @@ export function monthsOf(weekStartDay: string) {
   return `${fmt(a, { month: "short", year: "numeric" })} – ${fmt(b, { month: "short", year: "numeric" })}`;
 }
 
-export default function WeekStrip({ onVisibleWeek }: { onVisibleWeek?: (weekStartDay: string) => void }) {
+// compact: the wide Dashboard and Log header's smaller strip (day buttons about 40 × 52 px)
+export default function WeekStrip({ onVisibleWeek, compact = false }: { onVisibleWeek?: (weekStartDay: string) => void; compact?: boolean }) {
   const { weekStart } = useSettingsMe();
   // A new week start lays the weeks out afresh
-  return <Weeks key={weekStart} weekStart={weekStart} onVisibleWeek={onVisibleWeek} />;
+  return <Weeks key={weekStart} weekStart={weekStart} onVisibleWeek={onVisibleWeek} compact={compact} />;
 }
 
-function Weeks({ weekStart, onVisibleWeek }: { weekStart: number; onVisibleWeek?: (weekStartDay: string) => void }) {
+function Weeks({ weekStart, onVisibleWeek, compact }: { weekStart: number; onVisibleWeek?: (weekStartDay: string) => void; compact: boolean }) {
   const { day, todayDay, select } = useSelectedDay();
   const scroller = useRef<HTMLDivElement>(null);
   // Weeks laid out (first day of each), and the one on screen
@@ -200,7 +201,7 @@ function Weeks({ weekStart, onVisibleWeek }: { weekStart: number; onVisibleWeek?
                   aria-pressed={selected}
                   aria-current={isToday ? "date" : undefined}
                   onClick={() => select(d)}
-                  className={`mx-auto flex h-14 w-10 flex-col items-center justify-center rounded-full ${
+                  className={`mx-auto flex ${compact ? "h-13" : "h-14"} w-10 flex-col items-center justify-center rounded-full ${
                     selected ? "bg-action text-on-primary" : `hover:bg-pressed ${isToday ? "text-action ring-2 ring-action ring-inset" : "text-ink"}`
                   }`}
                 >

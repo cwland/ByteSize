@@ -52,7 +52,7 @@ export default function ForgotPassword({ onDone, onBack }: { onDone: (token: str
         <form onSubmit={askForCode} className="mt-4">
           <p className="text-sm text-subtle">Enter the email on your ByteSize account. We'll email you a 6-digit code.</p>
           <div className="mt-3">
-            <Field label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" autoCapitalize="none" autoFocus required />
+            <Field signIn label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" autoCapitalize="none" autoFocus required />
           </div>
           <Notice msg={msg} />
           <button type="submit" disabled={busy} className={`${primaryButton} mt-5 w-full`}>
@@ -66,7 +66,7 @@ export default function ForgotPassword({ onDone, onBack }: { onDone: (token: str
           </p>
           <p className="mt-3 text-sm text-subtle">The code works once, for 15 minutes.</p>
           <div className="mt-3">
-            <Field label="6-digit code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} autoComplete="one-time-code" autoFocus required />
+            <Field signIn label="6-digit code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} autoComplete="one-time-code" autoFocus required />
             <Field label="New password" type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" minLength={8} required />
             <Field label="Confirm new password" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" required />
           </div>

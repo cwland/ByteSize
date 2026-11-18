@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { twoUsers } from "./isolation.js";
 import { offKnows, offProduct } from "./foodFakes.js";
-import { userFoods } from "../src/db/schema.js";
+import { logEntries, userFoods } from "../src/db/schema.js";
 
 let t: TestApp;
 beforeAll(async () => (t = await setupTestApp()));
@@ -113,6 +113,20 @@ describe("food log", () => {
     const copied = await t.api("POST", "/api/log/move", { ids: [entry.id], day: "2026-11-18", meal: "lunch", copy: true });
     expect(copied.body.entries[0].imageUrl).toBe("https://images.example/banana.jpg");
     expect((await getDay()).entries[0].imageUrl).toBe("https://images.example/banana.jpg");
+  });
+
+  it("an entry logged before the name picked the icon (stored 🥤 for a banana) shows the name's icon now", async () => {
+    offKnows(t, { "0099999999999": offProduct("0099999999999", "Banana", 89, { categories_tags: ["en:plant-based-foods-and-beverages"] }) });
+    const food = (await t.api("GET", "/api/foods/barcode/0099999999999")).body.food;
+    const banana = (await log(food)).body.entry;
+    const odd = (await log({ ...food, id: food.id })).body.entry;
+    // As saved back then: the category's drink cup; and a name no rule knows keeps what was stored
+    await t.db.update(logEntries).set({ icon: "🥤" }).where(eq(logEntries.id, banana.id));
+    await t.db.update(logEntries).set({ icon: "🫙", name: "Mystery thing" }).where(eq(logEntries.id, odd.id));
+    const entries = (await getDay()).entries;
+    expect(entries.find((e: any) => e.id === banana.id).icon).toBe("🍌");
+    expect(entries.find((e: any) => e.id === odd.id).icon).toBe("🫙");
+    expect((await t.api("GET", "/api/foods/recent")).body.foods.map((f: any) => f.icon)).not.toContain("🥤");
   });
 
   it("move and copy entries to another day and meal", async () => {

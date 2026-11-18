@@ -139,7 +139,7 @@ async function explain(app: FastifyInstance, userId: number, result: PlanResult,
       "quick",
       'You explain weight-loss plans in a nutrition app. Using only the numbers given, write exactly 2 short, plain sentences: which plan suits this person and why, and one tip. Never suggest eating below the safe floor. Reply as JSON: {"explanation": "..."}',
       facts,
-      { userId, maxTokens: 300, signal: controller.signal }
+      { userId, maxTokens: 1000, reasoning: "low", signal: controller.signal } // room for models that think first
     );
     ask.catch(() => {}); // a late failure after the timeout is not an unhandled rejection
     const { json } = await Promise.race([ask, timeout]);

@@ -41,7 +41,7 @@ export async function setupTestApp(
   type Streamed = { status: number; sse: string[]; gapMs?: number; hang?: boolean };
   const okReply = () => ({ status: 200, json: { choices: [{ message: { content: '{"ok": true}' } }] } });
   const ai = {
-    calls: [] as { url: string; method: string; headers: Record<string, string>; body: any }[],
+    calls: [] as { url: string; method: string; headers: Record<string, string>; body: any; signal?: AbortSignal }[],
     // (may return a promise, e.g. one that never settles to act like a server that hangs)
     respond: okReply as (url: string, body: any, headers: Record<string, string>) => { status: number; json: unknown } | Streamed | Promise<{ status: number; json: unknown } | Streamed>,
     down: false,
@@ -49,7 +49,7 @@ export async function setupTestApp(
   const aiFetch: AiFetch = async (url, init) => {
     if (ai.down) throw new Error("ECONNREFUSED");
     const body = init.body ? JSON.parse(init.body) : undefined;
-    ai.calls.push({ url, method: init.method, headers: init.headers, body });
+    ai.calls.push({ url, method: init.method, headers: init.headers, body, signal: init.signal });
     const r = await ai.respond(url, body, init.headers);
     if ("sse" in r) {
       const enc = new TextEncoder();
@@ -176,7 +176,18 @@ export async function setupTestApp(
     resetRestaurantState(app);
     const rows = await db.execute<{ tablename: string }>(sql`select tablename from pg_tables where schemaname = 'public'`);
     const names = rows.rows.map((r) => `"${r.tablename}"`);
-    if (names.length) await db.execute(sql.raw(`truncate ${names.join(", ")} restart identity cascade`));
+    // A fire-and-forget write from the test before (a session touch, a log line) can still be running and
+    // deadlock with the truncate (Postgres 40P01): Postgres cancels one side, so try again
+    for (let attempt = 1; names.length; attempt++) {
+      try {
+        await db.execute(sql.raw(`truncate ${names.join(", ")} restart identity cascade`));
+        break;
+      } catch (e) {
+        const code = (e as { code?: string; cause?: { code?: string } }).cause?.code ?? (e as { code?: string }).code;
+        if (code !== "40P01" || attempt >= 5) throw e;
+        await new Promise((r) => setTimeout(r, 50 * attempt));
+      }
+    }
     resetLoginLockouts();
     resetSessionTouches();
     resetPasskeyChallenges();

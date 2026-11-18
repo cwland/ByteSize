@@ -5,7 +5,7 @@ import { dayLabel } from "../../selectedDay";
 import { Choice } from "../ui/Choice";
 import { Sheet } from "../ui/Sheet";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { field, label, primaryButton } from "../ui/styles";
+import { field, label, noAutofill, primaryButton } from "../ui/styles";
 import { EFFECT_LABELS, LEVEL_LABELS } from "./glp1";
 
 type Level = "0" | "1" | "2" | "3";
@@ -45,7 +45,7 @@ export default function SideEffectsSheet({ day, initial, onClose, onSaved }: { d
         ))}
         <label className={label}>
           Note
-          <input aria-label="Note" value={note} maxLength={500} onChange={(ev) => setNote(ev.target.value)} placeholder="Optional" className={field} />
+          <input {...noAutofill} aria-label="Note" value={note} maxLength={500} onChange={(ev) => setNote(ev.target.value)} placeholder="Optional" className={field} />
         </label>
         <Notice msg={msg} />
         <button type="button" onClick={save} disabled={busy} className={primaryButton}>

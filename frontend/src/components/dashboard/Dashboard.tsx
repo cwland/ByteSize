@@ -1,4 +1,4 @@
-import { Camera, Flame, GlassWater, ScanBarcode, Search, Utensils } from "lucide-react";
+import { Camera, Flame, GlassWater } from "lucide-react";
 import { api } from "../../api";
 import { notifyDayChanged, useDay, useSettingsMe } from "../../day";
 import { useSelectedDay } from "../../selectedDay";
@@ -10,13 +10,14 @@ import NewBadge from "./NewBadge";
 import { useState } from "react";
 import { mealFor } from "../../meals";
 import type { Meal } from "../../types";
-import AddFoodSheet, { type AddFoodStart } from "../log/AddFoodSheet";
+import AddFoodSheet from "../log/AddFoodSheet";
+import DayTotals from "../log/DayTotals";
 import { usePhotoInput } from "../log/PhotoPicker";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { primaryButton, secondaryButton } from "../ui/styles";
 import WeightCard from "../weight/WeightCard";
 import Glp1Card from "../glp1/Glp1Card";
-import PageHeader, { longDate } from "../PageHeader";
+import { DayHeader } from "../PageHeader";
 import TodaysFood from "./TodaysFood";
 import { useWide } from "../../wide";
 
@@ -31,23 +32,19 @@ function greeting(timeZone: string) {
   return hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 }
 
-// The wide Dashboard's quick buttons: each opens Add food at that view for the meal of the moment
-const QUICK: { start: AddFoodStart; label: string; Icon: typeof Search }[] = [
-  { start: "search", label: "Search food", Icon: Search },
-  { start: "barcode", label: "Barcode photo", Icon: ScanBarcode },
-  { start: "label", label: "Label photo", Icon: Camera },
-  { start: "restaurants", label: "Restaurants", Icon: Utensils },
-];
+// "Cory Landers" -> "Cory"
+const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 
 // The selected day at a glance: calorie budget gauge, protein/fiber/water rings, water quick-add, streak.
-// Wide screens: a header (the day, a greeting, the week strip) and three columns — budget and quick
-// buttons; the day's food; water, weight (with a trend line), GLP-1 and streak.
+// Wide screens: a header (the day, the week strip, a greeting) and three columns — the day's food; the
+// budget with water under it; Day totals, weight (with a trend line), GLP-1 and streak. They wrap to two
+// or one columns in that order as the window narrows.
 export default function Dashboard() {
   const { user } = useSession();
   const { day, isToday } = useSelectedDay();
   const wide = useWide();
-  // Add food opened from the wide Dashboard (quick buttons, an empty meal's + Add food)
-  const [adding, setAdding] = useState<{ meal: Meal; start: AddFoodStart } | null>(null);
+  // Add food opened from the wide Dashboard (a meal's + Add food in Today's food)
+  const [adding, setAdding] = useState<Meal | null>(null);
   const { data, error } = useDay(day);
   const settings = useSettingsMe();
   const mealNow = () => mealFor(user.timezone, new Date(), settings.mealWindows);
@@ -149,7 +146,7 @@ export default function Dashboard() {
   // Add food sheets sit after the layout, in the same place for both, so crossing 1024 px keeps them open
   const sheets = (
     <>
-      {adding && <AddFoodSheet day={day} meal={adding.meal} start={adding.start} onClose={() => setAdding(null)} />}
+      {adding && <AddFoodSheet day={day} meal={adding} onClose={() => setAdding(null)} />}
       {photo && <AddFoodSheet day={day} meal={photo.meal} photo={photo.file} onClose={() => setPhoto(null)} />}
     </>
   );
@@ -157,31 +154,20 @@ export default function Dashboard() {
   const column = "flex min-w-0 flex-col gap-4";
   const layout = wide ? (
     <div className="flex flex-col gap-5">
-      <PageHeader title={longDate(day)} sub={`${greeting(user.timezone)}, ${user.displayName ?? user.username}${streakNote}`} days />
+      <DayHeader sub={`${greeting(user.timezone)}, ${firstName(user.displayName ?? user.username)}${streakNote}`} />
       {error && <Notice msg={{ ok: false, text: error }} />}
       <NewBadge />
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,19rem),1fr))] items-start gap-5">
         <div data-testid="dashboard-column" className={column}>
+          <TodaysFood data={data} isToday={isToday} units={user.units} onAdd={setAdding} />
+        </div>
+        <div data-testid="dashboard-column" className={column}>
           {budget}
-          <div className="grid grid-cols-2 gap-3">
-            {QUICK.map(({ start, label, Icon }) => (
-              <button
-                key={start}
-                type="button"
-                onClick={() => setAdding({ meal: mealNow(), start })}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-container px-3 py-3.5 font-bold hover:bg-pressed"
-              >
-                <Icon aria-hidden="true" className="size-5 shrink-0 text-action" /> {label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div data-testid="dashboard-column" className={column}>
-          <TodaysFood data={data} isToday={isToday} units={user.units} onAdd={(meal) => setAdding({ meal, start: "search" })} />
-        </div>
-        <div data-testid="dashboard-column" className={column}>
           {waterCard}
           <Notice msg={msg} />
+        </div>
+        <div data-testid="dashboard-column" className={column}>
+          {data && <DayTotals day={data} units={user.units} />}
           <WeightCard trend />
           <Glp1Card />
           {streakCard}

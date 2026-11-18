@@ -81,6 +81,7 @@ describe("photo analyze", () => {
     });
     expect(aiImages()).toBe(1);
     expect(JSON.stringify(t.ai.calls[0].body)).toMatch(/nutrition facts label/i);
+    expect(t.ai.calls[0].body.max_tokens).toBe(4000); // room for models that think first
   });
 
   it("a barcode found nowhere: the draft carries the barcode and the AI reads the other photo", async () => {

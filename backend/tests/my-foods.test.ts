@@ -1,7 +1,7 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { asUser } from "./isolation.js";
-import { aiAnswers, aiSettings, lastAiPrompt, offKnows, offProduct } from "./foodFakes.js";
+import { HOME_AI, aiAnswers, aiSettings, lastAiPrompt, offKnows, offProduct } from "./foodFakes.js";
 
 let t: TestApp;
 beforeAll(async () => (t = await setupTestApp()));
@@ -138,6 +138,95 @@ describe("AI estimate", () => {
     const r = await t.api("POST", "/api/ai/estimate", { text: "a chicken burrito" });
     expect(r.status).toBe(502);
     expect(r.body.error).toMatch(/AI/);
+  });
+
+  it("room to answer: 4,000 tokens, and OpenRouter is asked to think only a little", async () => {
+    await t.api("PUT", "/api/settings/ai", { ...aiSettings, services: [{ name: "Cloud", provider: "openrouter", apiKey: "or-key", model: "thinker" }] });
+    aiAnswers(t, burrito);
+    expect((await t.api("POST", "/api/ai/estimate", { text: "a chicken burrito" })).status).toBe(200);
+    expect(t.ai.calls[0].body).toMatchObject({ max_tokens: 4000, reasoning: { effort: "low" } });
+  });
+
+  it("the AI assumes the most likely food; a guess worth confirming comes back as Did you mean", async () => {
+    await t.api("PUT", "/api/settings/ai", aiSettings);
+    aiAnswers(t, { ...burrito, name: "Cheerios", brand: "General Mills", category: "cereal", assumed: true, interpretedAs: "Cheerios" });
+    const r = await t.api("POST", "/api/ai/estimate", { text: "cherios" });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ assumed: true, interpretedAs: "Cheerios", food: { name: "Cheerios", source: "ai" } });
+    expect(lastAiPrompt(t)).toMatch(/most likely food/i);
+    expect(lastAiPrompt(t)).toMatch(/misspell/i);
+    expect(lastAiPrompt(t)).toContain("interpretedAs");
+
+    // What it was typed as: nothing to confirm
+    aiAnswers(t, burrito);
+    const plain = await t.api("POST", "/api/ai/estimate", { text: "a chicken burrito" });
+    expect(plain.body.assumed).toBe(false);
+    expect(plain.body).not.toHaveProperty("interpretedAs");
+
+    // assumed without saying what it took it to mean: its name is what it understood
+    aiAnswers(t, { ...burrito, name: "Cheerios", assumed: true });
+    expect((await t.api("POST", "/api/ai/estimate", { text: "cherios" })).body).toMatchObject({ assumed: true, interpretedAs: "Cheerios" });
+    // a wrong-shaped assumed / interpretedAs is ignored, the estimate still stands
+    aiAnswers(t, { ...burrito, assumed: "yes", interpretedAs: 42 });
+    expect((await t.api("POST", "/api/ai/estimate", { text: "a chicken burrito" })).body).toMatchObject({ assumed: false, food: { name: "Chicken burrito" } });
+  });
+
+  it("when the AI truly can't guess: says so plainly", async () => {
+    await t.api("PUT", "/api/settings/ai", aiSettings);
+    aiAnswers(t, { unknown: true });
+    const r = await t.api("POST", "/api/ai/estimate", { text: "zxqv blorp" });
+    expect(r).toMatchObject({ status: 422, body: { error: "Couldn't work out what that is. Try describing it differently." } });
+  });
+
+  it("errors don't name the AI service", async () => {
+    await t.api("PUT", "/api/settings/ai", aiSettings);
+    t.ai.respond = () => ({ status: 200, json: { choices: [{ finish_reason: "length", message: { content: '{"name": "Chee' } }] } });
+    const r = await t.api("POST", "/api/ai/estimate", { text: "cherios" });
+    expect(r).toMatchObject({ status: 502, body: { error: "The AI couldn't estimate that. Try again, or describe it differently." } });
+    t.ai.down = true;
+    expect((await t.api("POST", "/api/ai/estimate", { text: "cherios" })).body.error).toBe("The AI couldn't estimate that. Try again, or describe it differently.");
+  });
+
+  it("progress as it works (asked for as lines): says when another AI is tried, then the estimate", async () => {
+    await t.api("PUT", "/api/settings/ai", { ...aiSettings, services: [...aiSettings.services, { name: "Cloud", provider: "openrouter", apiKey: "or-key", model: "small" }] });
+    t.ai.respond = (url: string) =>
+      url.startsWith(HOME_AI) ? { status: 503, json: { error: { message: "loading model" } } } : { status: 200, json: { choices: [{ message: { content: JSON.stringify(burrito) } }] } };
+    const r = await t.api("POST", "/api/ai/estimate", { text: "a chicken burrito" }, { accept: "application/x-ndjson" });
+    expect(r.status).toBe(200);
+    expect(r.headers["content-type"]).toMatch(/application\/x-ndjson/);
+    // not held back by a reverse proxy (nginx buffers answers unless told not to), never cached
+    expect(r.headers["x-accel-buffering"]).toBe("no");
+    expect(r.headers["cache-control"]).toBe("no-store");
+    const lines = String(r.body).trim().split("\n").map((l) => JSON.parse(l));
+    expect(lines).toEqual([{ progress: "another" }, { food: expect.objectContaining({ name: "Chicken burrito" }), assumed: false }]);
+    expect(String(r.body)).not.toMatch(/Home AI|Cloud/); // no service names
+
+    // A failure comes as the last line (the status line was already sent)
+    t.ai.down = true;
+    const bad = await t.api("POST", "/api/ai/estimate", { text: "a chicken burrito" }, { accept: "application/x-ndjson" });
+    const last = String(bad.body).trim().split("\n").map((l) => JSON.parse(l)).at(-1);
+    expect(last).toEqual({ error: "The AI couldn't estimate that. Try again, or describe it differently.", status: 502 });
+    // ...but problems found before it starts are plain errors as before
+    expect((await t.api("POST", "/api/ai/estimate", { text: "" }, { accept: "application/x-ndjson" })).status).toBe(400);
+  });
+
+  it("Cancel: the person going away stops the AI request too", async () => {
+    await t.api("PUT", "/api/settings/ai", aiSettings);
+    t.ai.respond = () => new Promise<never>(() => {}); // thinking for a long time
+    const address = await t.app.listen({ port: 0, host: "127.0.0.1" }); // closed with the app after these tests
+    {
+      const stop = new AbortController();
+      const asking = fetch(`${address}/api/ai/estimate`, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/x-ndjson", authorization: `Bearer ${t.getToken()}` },
+        body: JSON.stringify({ text: "a chicken burrito" }),
+        signal: stop.signal,
+      }).then((res) => res.text());
+      asking.catch(() => {});
+      await vi.waitFor(() => expect(t.ai.calls).toHaveLength(1));
+      stop.abort();
+      await vi.waitFor(() => expect(t.ai.calls[0].signal?.aborted).toBe(true));
+    }
   });
 
   it("AI off → 503 'Set up an AI service first'", async () => {

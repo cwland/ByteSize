@@ -5,7 +5,7 @@ import { notifyDayChanged } from "../../day";
 import { dayRange } from "../../format";
 import type { Vacation } from "../../types";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { field, label, secondaryButton } from "../ui/styles";
+import { field, label, noAutofill, secondaryButton } from "../ui/styles";
 
 const newestFirst = (a: Vacation, b: Vacation) => (a.from === b.from ? b.id - a.id : a.from < b.from ? 1 : -1);
 
@@ -73,11 +73,11 @@ export default function VacationMode() {
       <div className="mt-4 grid grid-cols-2 gap-3">
         <label className={label}>
           From
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={field} />
+          <input {...noAutofill} type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={field} />
         </label>
         <label className={label}>
           To
-          <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className={field} />
+          <input {...noAutofill} type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className={field} />
         </label>
       </div>
       <button type="button" onClick={add} disabled={!from || !to || busy} className={`${secondaryButton} mt-3`}>

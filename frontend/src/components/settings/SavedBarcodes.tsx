@@ -3,7 +3,7 @@ import { api } from "../../api";
 import { savedDate } from "../log/SavedCopy";
 import { Confirm } from "../ui/Confirm";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { field, linkButton, secondaryButton } from "../ui/styles";
+import { field, linkButton, noAutofill, secondaryButton } from "../ui/styles";
 import { SOURCE_TITLES, type AnySource } from "./FoodSourcesSettings";
 
 // As GET /api/admin/saved-barcodes sends it: one page (50) of kept foods that have a barcode, newest first
@@ -81,7 +81,7 @@ export function SavedBarcodes() {
       <h2 className="text-lg font-bold">Saved barcodes</h2>
       <p className="mt-1 text-sm text-subtle">Every barcode ByteSize keeps a copy of. Each is deleted when its source's hours run out, unless something uses it.</p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <input type="search" aria-label="Search saved barcodes" placeholder="Search by name or barcode" value={typed} onChange={(e) => setTyped(e.target.value)} className={`${field} mt-0 basis-full rounded-full sm:max-w-xs sm:flex-1 sm:basis-auto`} />
+        <input {...noAutofill} type="search" aria-label="Search saved barcodes" placeholder="Search by name or barcode" value={typed} onChange={(e) => setTyped(e.target.value)} className={`${field} mt-0 basis-full rounded-full sm:max-w-xs sm:flex-1 sm:basis-auto`} />
         <button type="button" className={secondaryButton} disabled={busy !== null || !data?.total} onClick={() => setAsking(true)}>
           Delete all not in use
         </button>

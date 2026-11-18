@@ -93,8 +93,8 @@ function TodayOnEnter({ page }: { page: Page }) {
   return null;
 }
 
-// The bottom tab bar's floating + (the rail's + on wide screens): Add food for the meal of the moment
-// (meal windows) on the day shown
+// The bottom tab bar's floating +: Add food for the meal of the moment (meal windows) on the day shown.
+// Wide screens draw the rail (no +) in the same place, so a sheet the + opened stays open across 1024 px.
 function LogButton({ page, myFoods, wide = false }: { page: Page; myFoods: boolean; wide?: boolean }) {
   const { user } = useSession();
   const { day } = useSelectedDay();
@@ -103,7 +103,7 @@ function LogButton({ page, myFoods, wide = false }: { page: Page; myFoods: boole
   const add = () => setMeal(mealFor(user.timezone, new Date(), settings.mealWindows));
   return (
     <>
-      {wide ? <Rail page={page} myFoods={myFoods} onAdd={add} /> : <Navigation page={page} onAdd={add} />}
+      {wide ? <Rail page={page} myFoods={myFoods} /> : <Navigation page={page} onAdd={add} />}
       {meal && <AddFoodSheet day={day} meal={meal} onClose={() => setMeal(null)} />}
     </>
   );

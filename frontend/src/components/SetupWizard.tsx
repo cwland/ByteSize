@@ -52,7 +52,7 @@ function AccountStep({ onAccount }: { onAccount: Props["onAccount"] }) {
   return (
     <form onSubmit={submit} className="mt-2">
       <p className="mb-4 text-subtle">Step 1 of 2: your admin account. You add everyone else later in Settings › Users.</p>
-      <Field label="Username" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoCapitalize="none" autoFocus required />
+      <Field signIn label="Username" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoCapitalize="none" autoFocus required />
       <Field label="Email (optional)" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
       <Field label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" minLength={8} required />
       <Field label="Confirm password" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" required />

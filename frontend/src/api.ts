@@ -74,6 +74,61 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
   return data as T;
 }
 
+// A request whose answer may come as lines (application/x-ndjson): progress lines ({ progress }) are handed
+// to onLine as they arrive; the other line is the answer (or { error, status }). A server that answers with
+// plain JSON works too. signal: stop waiting (fetch rejects with an AbortError, which is passed on as is).
+export async function apiLines<T = unknown>(method: string, path: string, body: unknown, opts: { signal?: AbortSignal; onLine?: (line: Record<string, unknown>) => void } = {}): Promise<T> {
+  const headers: Record<string, string> = { "x-device-id": deviceId(), "content-type": "application/json", accept: "application/x-ndjson, application/json" };
+  const token = getToken();
+  if (token) headers.authorization = `Bearer ${token}`;
+  const unreachable = () => new ApiError(0, "Couldn't reach ByteSize. Check your connection and try again.");
+  const passOn = (e: unknown) => {
+    throw opts.signal?.aborted ? e : unreachable();
+  };
+  const res = await fetch(path, { method, headers, body: JSON.stringify(body), signal: opts.signal }).catch(passOn);
+  if (res.status === 401) {
+    setToken(null);
+    window.dispatchEvent(new Event("bytesize:logout"));
+  }
+  if (!res.ok || !res.body || !(res.headers.get("content-type") ?? "").includes("application/x-ndjson")) {
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(res.status, errorText(data, res.status), data.details, data);
+    return data as T;
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  let answer: Record<string, unknown> | null = null;
+  const take = (text: string) => {
+    if (!text.trim()) return;
+    let line: Record<string, unknown>;
+    try {
+      line = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      throw unreachable(); // not ByteSize's answer (e.g. a proxy's error page)
+    }
+    if ("progress" in line) opts.onLine?.(line);
+    else answer = line;
+  };
+  for (;;) {
+    const { value, done } = await reader.read().catch(passOn);
+    if (value) {
+      buf += dec.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        take(buf.slice(0, nl));
+        buf = buf.slice(nl + 1);
+      }
+    }
+    if (done) break;
+  }
+  take(buf);
+  const got = answer as Record<string, unknown> | null;
+  if (!got) throw unreachable(); // cut off before the answer came
+  if (typeof got.error === "string") throw new ApiError(typeof got.status === "number" ? got.status : 500, got.error);
+  return got as T;
+}
+
 // The name in a Content-Disposition header: filename*=UTF-8''… is percent-encoded, a plain filename="…" is not
 function fileNameFrom(header: string): string | null {
   const encoded = /filename\*=(?:UTF-8'')?"?([^";]+)"?/i.exec(header);

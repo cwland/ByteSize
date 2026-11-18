@@ -18,7 +18,7 @@ describe("Sheet on a wide screen", () => {
     expect(panel.parentElement).toHaveClass("lg:items-center", "bg-black/60");
   });
 
-  it("Escape and the backdrop close it; a click inside doesn't", async () => {
+  it("only the X and Escape close it: a click on the backdrop or inside doesn't", async () => {
     wideScreen();
     const onClose = vi.fn();
     render(
@@ -28,10 +28,11 @@ describe("Sheet on a wide screen", () => {
     );
     const user = userEvent.setup();
     await user.click(screen.getByText("Nutrition facts"));
+    await user.click(screen.getByRole("dialog").parentElement!);
     expect(onClose).not.toHaveBeenCalled();
     await user.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(1);
-    await user.click(screen.getByRole("dialog").parentElement!);
+    await user.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
