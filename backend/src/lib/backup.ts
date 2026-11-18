@@ -48,6 +48,7 @@ export const backupHooks = {
   lockTimeoutMs: 30_000, // a restore waits this long for a table someone is using, then says to try again
   rename: (from: string, to: string) => fs.rename(from, to),
   remove: (file: string) => fs.rm(file, { force: true }), // pruning old backups
+  started: async (): Promise<void> => {}, // called once a backup or restore holds the lock (tests hold it there)
 };
 
 // ---------- the tables, from the Drizzle schema (a new table is backed up without touching this file) ----------
@@ -107,6 +108,7 @@ async function exclusive<T>(fn: () => Promise<T>): Promise<T> {
   if (busy) throw new HttpError(409, BACKUP_BUSY);
   busy = true;
   try {
+    await backupHooks.started();
     return await fn();
   } finally {
     busy = false;

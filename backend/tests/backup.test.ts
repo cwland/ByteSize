@@ -580,9 +580,21 @@ describe("backups", () => {
 
   it("lock: two backups at once, the second is told one is running", async () => {
     await seed();
-    const [x, y] = await Promise.all([t.api("POST", "/api/admin/backups"), t.api("POST", "/api/admin/backups")]);
-    expect([x.status, y.status].sort()).toEqual([200, 409]);
-    expect([x, y].find((r) => r.status === 409)!.body).toEqual({ error: "A backup is already running." });
+    // The first is held inside the lock until the second has been answered, however busy the machine is
+    let entered!: () => void;
+    const inside = new Promise<void>((r) => (entered = r));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    backupHooks.started = async () => {
+      entered();
+      await gate;
+    };
+    const first = t.api("POST", "/api/admin/backups");
+    await inside;
+    const second = await t.api("POST", "/api/admin/backups");
+    expect(second).toMatchObject({ status: 409, body: { error: "A backup is already running." } });
+    release();
+    expect((await first).status).toBe(200);
     expect(backupFiles()).toHaveLength(1);
   });
 

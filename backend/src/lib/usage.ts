@@ -27,6 +27,9 @@ export function countUsage(app: FastifyInstance, userId: number, key: UsageKey, 
   pending.add(write);
 }
 
+/** Counts started and not yet written. */
+export const usagePending = () => pending.size;
+
 /** Resolves when every count started so far has been written (or has failed): for shutdown and tests. */
 export async function usageSettled(): Promise<void> {
   while (pending.size) await Promise.allSettled([...pending]);
