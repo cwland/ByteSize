@@ -6,6 +6,9 @@ import { aiSettings, offKnows, offProduct } from "./foodFakes.js";
 import { labelPhoto, photoUpload } from "./photoFakes.js";
 import { CULURY, culuryCalls, culuryKnows, culuryRecipe, fakeDns } from "./culuryFakes.js";
 import { restaurantWeb, setRestaurantKeys, spoonItem } from "./restaurantFakes.js";
+import { strFromU8, unzipSync } from "fflate";
+import { plainPhoto } from "./photoFakes.js";
+import { storePhoto } from "../src/lib/photos.js";
 
 // Every route that reads or changes a person's data gets a case here (M2 adds foods, logs, targets...)
 let t: TestApp;
@@ -352,5 +355,30 @@ describe("per-user isolation", () => {
     expect((await b.as("DELETE", "/api/restaurants/favourites", { cacheId: food.id })).status).toBe(404);
     expect((await a.as("GET", "/api/restaurants/favourites")).body.chains.map((c: any) => c.chain)).toEqual(["Chipotle"]);
     expect((await a.as("GET", "/api/restaurants/recent-chains")).body).toEqual({ chains: ["Chipotle"] });
+  });
+
+  it("a person's data download holds none of anyone else's rows, photos or Culury address", async () => {
+    const { a, b } = await twoUsers(t);
+    const food = (who: typeof a, name: string) => who.as("POST", "/api/my-foods", { name, servings: [{ label: "1", grams: 10 }], nutrients: { calories: 100 } }).then((r) => r.body.food);
+    const annas = await food(a, "Anna's Oatmeal");
+    const bens = await food(b, "Ben's Brisket");
+    for (const [who, f] of [[a, annas], [b, bens]] as const) {
+      expect((await who.as("POST", "/api/log", { day: "2026-11-17", meal: "lunch", food: { kind: "user_food", id: f.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 })).status).toBe(200);
+    }
+    expect((await a.as("PUT", "/api/weigh-ins/2026-11-17", { weightKg: 71.1, note: "anna note" })).status).toBe(200);
+    expect((await b.as("PUT", "/api/weigh-ins/2026-11-17", { weightKg: 98.7, note: "ben note" })).status).toBe(200);
+    expect((await b.as("PUT", "/api/settings/culury", { url: "http://bens-culury.lan:4000", apiKey: "bens-key" })).status).toBe(200);
+    const photo = (who: typeof a) => storePhoto(t.app, who.id, Buffer.from("jpeg")).then((p) => p.id);
+    const annasPhoto = await photo(a);
+    const bensPhoto = await photo(b);
+
+    const res = await t.app.inject({ method: "GET", url: "/api/export", headers: { authorization: `Bearer ${a.token}` } });
+    expect(res.statusCode).toBe(200);
+    const files = unzipSync(new Uint8Array(res.rawPayload));
+    const everything = Object.entries(files).map(([name, bytes]) => name + "\n" + strFromU8(bytes)).join("\n");
+    expect(everything).toContain("Anna's Oatmeal");
+    expect(everything).toContain(annasPhoto);
+    for (const theirs of ["Ben's Brisket", "ben note", "98.7", bensPhoto, "bens-culury", "bens-key", "ben@", "ben\""]) expect(everything).not.toContain(theirs);
+    expect(Object.keys(files).filter((n) => n.startsWith("photos/"))).toEqual([`photos/${annasPhoto}.jpg`]);
   });
 });

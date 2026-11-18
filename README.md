@@ -29,10 +29,27 @@ docker compose up -d
 Open `http://<server>:4100`. The first visit asks you to set up the admin account. There is no sign-up page:
 the admin adds everyone else in Settings › Users.
 
-- Data lives in `./data` (`./data/postgres` for the database, `./data/app` for uploads).
+- Data lives in `./data` (`./data/postgres` for the database, `./data/app` for photos and backups).
 - Health check: `GET /health` → `{"ok":true,"db":true,"version":"…"}`.
 - Behind Nginx Proxy Manager / Traefik: proxy to port 4100. Passkeys need `https://` (or `localhost`);
   set `PASSKEY_ORIGINS=https://bytesize.example.com` to allow only your address.
+
+### Backups
+
+ByteSize backs up the whole server (everyone's data and photos) once a day, soon after 03:00 server time (`TZ` in `.env`),
+into `./data/app/backups` as `bytesize-<date>-<time>.tar.gz`. The newest 14 are kept. `BACKUP_HOUR` and
+`BACKUP_KEEP` in `.env` change that (`BACKUP_KEEP=0` turns the daily backup off). The server checks every hour,
+so if it was off at 03:00 it backs up when it's next running. The admin can also back up, download, delete
+and restore in Settings › Data. Copy the backups folder somewhere else with your usual backup tools.
+Foods that turned up in a search but that nobody logged, starred, corrected or put in a recipe aren't kept in backups.
+
+A restore replaces everything on the server with the backup. A `…-before-restore` backup is saved first, and
+everyone has to sign in again afterwards.
+
+Restore onto a fresh server: start ByteSize, create the first admin account, then Settings › Data › Restore from
+a file. Keep the same `JWT_SECRET` as the old server: saved keys (AI, USDA, Spoonacular, FatSecret, Culury) only
+open with it. With a different one, Settings › Data lists the keys to enter again.
+Behind a reverse proxy, restoring a large backup file needs the proxy's upload size limit and timeout raised.
 
 ### Locked out?
 

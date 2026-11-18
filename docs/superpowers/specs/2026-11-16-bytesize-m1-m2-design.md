@@ -592,3 +592,65 @@ FatSecret"). FatSecret results are not kept beyond the request except items the 
 plan lists no storage permission); Spoonacular search results may be kept 24 h. Settings › Food sources gets
 FatSecret credentials (client ID + secret, encrypted) with Test. The Restaurants tab appears when either source is
 configured. Builder's call: one person's favourites and recent chains work across both sources.
+
+## 15. M4a — Backups, restore and "Download my data" (Cory, 2026-11-17)
+
+M4 is three independent pieces, built one at a time: **(a) backups/restore**, (b) personal API keys, (c) email.
+This section is (a).
+
+**Intent.** Cory is about to put real data in; losing the server must not lose it. Only the admin can back up or
+restore the server. Every person can take their own data out, but can't back up or restore anything.
+
+**Goals**
+- A daily backup of the whole server (every person's data + uploaded photos) in `<data dir>/backups`, newest 14
+  kept (`BACKUP_KEEP`), written around 03:00 server time (`BACKUP_HOUR`); checked hourly so a server that was off
+  at 03:00 still gets its backup.
+- Settings › Data (admin): the list of backups (name, date, size), **Back up now**, **Download**, **Delete**,
+  **Restore** (from the list or an uploaded file).
+- Restore replaces everything on the server. Before it: a safety backup (`…-before-restore`) is written and the
+  admin types `RESTORE`. After it: every session is ended (everyone signs in again).
+- Settings › Data (everyone): **Download my data** — a zip with spreadsheets (`food-log.csv`, `weigh-ins.csv`,
+  `shots.csv`, `side-effects.csv`, `my-foods.csv`) plus `bytesize-export.json` (everything of theirs: profile,
+  body and plans, targets, foods, recipes and quick meals with items, log entries, weigh-ins, GLP-1, badges,
+  vacations, favourites) and their photos.
+
+**Non-goals.** Per-person restore; importing an export; off-site copies (the folder is plain files for the
+homelab's own backup tooling); backing up from an API key (comes with (b)).
+**Anti-goals.** A restore that leaves the server half old, half new. A backup or export that leaks another
+person's data or any readable secret. A restore file that can write outside the data folder.
+
+**Approaches**
+1. **App-level backup (chosen):** a `.tar.gz` holding `bytesize.json` (every table's rows, written by the app) and
+   `uploads/`. Restore runs in one database transaction: empty every table, insert the backup's rows, fix the id
+   counters; photos are swapped in after the transaction commits. Same shape as Culury's; no extra programs in
+   the image; fully testable with the test database.
+2. `pg_dump`/`pg_restore`: an exact database copy, but needs PostgreSQL's tools inside the app image (matching
+   the database's version) and a restore has to drop the database the app is connected to.
+3. Copying `./data/postgres` files: only safe with the database stopped.
+
+**Design**
+- `bytesize.json`: `{ app: "bytesize", format: 1, schema: <number of migrations applied>, createdAt, tables: {
+  <table>: rows[] } }`. Tables come from the Drizzle schema, so a new table is included without touching the
+  backup code (a test fails if a table is neither backed up nor on the short skip list).
+- Not backed up (rebuilt or pointless to keep): `sessions`, `restaurant_searches`, the points counter. Kept:
+  everything else, including `food_cache` (log entries point at it) and the activity log.
+- Older backups: a backup whose `schema` is lower than the server's is restored column-by-name (columns the
+  backup lacks take their defaults; ones the server no longer has are dropped). A backup from a **newer** version
+  is refused with "This backup is from a newer ByteSize. Update first."
+- Saved secrets (AI, USDA, Spoonacular, FatSecret, Culury keys; passkeys) stay encrypted as stored. They only
+  open with the same `JWT_SECRET`; after restoring onto a server with a different one, Settings › Data says
+  which keys need entering again instead of failing silently. Password hashes restore as they are.
+- Reading a backup file: only `bytesize.json` and `uploads/<user id>/<id>.<ext>` regular files are taken out;
+  anything else (links, absolute or `..` paths) is ignored. Upload size limit 1 GB; the JSON is validated before
+  anything is emptied.
+- Backups are written to a temporary name and renamed, so a half-written file is never listed. One backup or
+  restore at a time; a second request gets "A backup is already running."
+- Routes (admin): `GET /api/admin/backups`, `POST /api/admin/backups`, `GET /api/admin/backups/:name`,
+  `DELETE /api/admin/backups/:name`, `POST /api/admin/backups/restore` (`{ name, confirm }` or a file upload with
+  `confirm`). Everyone: `GET /api/export` (their zip). Backup names are matched against a strict pattern.
+- Each backup, restore, delete and export is written to the activity log (who, what, size).
+- README gets a "Backups" section: where the files are, how to restore on a fresh server, the `JWT_SECRET` note.
+
+**Builder's calls.** CSV dates are the person's local days; nutrient columns are blank (never 0) when unknown.
+The export leaves out other people's data, password hash, passkeys and sessions. New dependencies allowed: `tar`
+and one small zip writer.

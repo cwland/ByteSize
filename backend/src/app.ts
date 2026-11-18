@@ -29,6 +29,9 @@ import glp1Routes from "./routes/glp1.js";
 import trendRoutes from "./routes/trends.js";
 import culuryRoutes from "./routes/culury.js";
 import restaurantRoutes from "./routes/restaurants.js";
+import backupRoutes from "./routes/backups.js";
+import { scheduleBackups } from "./lib/backup.js";
+import exportRoutes from "./routes/export.js";
 import { scheduleRestaurantCleanup } from "./lib/restaurants/index.js";
 import { scheduleUploadCleanup, setPhotoSecret } from "./lib/photos.js";
 
@@ -70,6 +73,7 @@ export interface AppOptions {
   foodFetch?: typeof fetch; // tests swap in a fake food web
   dataDir?: string; // default: DATA_DIR, else ./data/app (tests use a temp folder)
   sleep?: (ms: number) => Promise<void>;
+  backupSchedule?: boolean; // the daily backup (default on; tests turn it off)
 }
 
 export function buildApp(opts: AppOptions): FastifyInstance {
@@ -87,7 +91,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     if (err instanceof ZodError) {
       return reply.status(400).send({ error: "Invalid request", details: err.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
     }
-    if (err instanceof HttpError) return reply.status(err.statusCode).send({ error: err.message });
+    if (err instanceof HttpError) return reply.status(err.statusCode).send({ ...err.extra, error: err.message });
     const status = (err as { statusCode?: number }).statusCode;
     if (status && status < 500) return reply.status(status).send({ error: (err as Error).message });
     req.log.error(err);
@@ -140,7 +144,10 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(trendRoutes); // weekly trends, badges, vacations
   app.register(culuryRoutes); // the person's Culury link: meal plan and recipes
   app.register(restaurantRoutes); // restaurant menus (Spoonacular, FatSecret)
+  app.register(backupRoutes); // admin: whole-server backups and restore
+  app.register(exportRoutes); // Download my data
   scheduleUploadCleanup(app);
   scheduleRestaurantCleanup(app); // FatSecret foods nobody kept, restaurant searches past 24 h
+  if (opts.backupSchedule ?? true) scheduleBackups(app); // daily backup after BACKUP_HOUR
   return app;
 }
