@@ -29,6 +29,7 @@ import glp1Routes from "./routes/glp1.js";
 import trendRoutes from "./routes/trends.js";
 import culuryRoutes from "./routes/culury.js";
 import restaurantRoutes from "./routes/restaurants.js";
+import exportRoutes from "./routes/export.js";
 import { scheduleRestaurantCleanup } from "./lib/restaurants/index.js";
 import { scheduleUploadCleanup, setPhotoSecret } from "./lib/photos.js";
 
@@ -140,6 +141,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(trendRoutes); // weekly trends, badges, vacations
   app.register(culuryRoutes); // the person's Culury link: meal plan and recipes
   app.register(restaurantRoutes); // restaurant menus (Spoonacular, FatSecret)
+  app.register(exportRoutes); // Download my data
   scheduleUploadCleanup(app);
   scheduleRestaurantCleanup(app); // FatSecret foods nobody kept, restaurant searches past 24 h
   return app;
