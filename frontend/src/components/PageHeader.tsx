@@ -19,26 +19,16 @@ export default function PageHeader({ title, note, sub, children }: { title: Reac
   );
 }
 
-// Wide Dashboard and Log: one compact, centred block — the selected day ("Wednesday, Nov 18") above a
-// small week strip, and a subtle line under it (the Dashboard's greeting). title: the page's own name,
-// for screen readers, when the day isn't the page's heading (Log). children: links at the top right.
-export function DayHeader({ title, sub, children }: { title?: string; sub?: ReactNode; children?: ReactNode }) {
+// Wide Dashboard: one compact, centred block — the selected day ("Wednesday, Nov 18") above a small week
+// strip (no greeting line, §34). children: buttons at the top right (Edit dashboard).
+export function DayHeader({ children }: { children?: ReactNode }) {
   const { day } = useSelectedDay();
-  const dateClass = "text-lg leading-6 font-bold";
   return (
     <header aria-label="Day" className="relative flex flex-col items-center gap-1 text-center">
-      {title ? (
-        <>
-          <h1 className="sr-only">{title}</h1>
-          <p className={dateClass}>{shortDate(day)}</p>
-        </>
-      ) : (
-        <h1 className={dateClass}>{shortDate(day)}</h1>
-      )}
+      <h1 className="text-lg leading-6 font-bold">{shortDate(day)}</h1>
       <div className="w-[23rem] max-w-full">
         <WeekStrip compact />
       </div>
-      {sub && <p className="text-sm text-subtle">{sub}</p>}
       {children && <div className="absolute top-0 right-0 flex items-center gap-2">{children}</div>}
     </header>
   );
