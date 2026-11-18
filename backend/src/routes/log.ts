@@ -41,6 +41,7 @@ export type LogEntry = {
 type Portion = { servingIndex: number; unit: Unit; quantity: number; fraction: number };
 
 const NOT_FOUND = "Entry not found";
+const CHANGED_SINCE = "This entry changed since — undo isn't possible";
 const QUICK_MEAL_HERE = "Log a quick meal with its own items";
 const RECENT_LIMIT = 30;
 const FREQUENT_LIMIT = 20;
@@ -432,13 +433,18 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     const meal = b.meal ?? (await mealNow(db, userId, timezone, now));
     const { rows, combined } = await db.transaction(async (tx) => {
       // Item by item: one already in this meal grows that entry; the rest are new entries
+      // (never into an entry this meal just added: the same food twice in a meal stays as the meal has it)
       const rows: Row[] = [];
       const combined: Combined[] = [];
+      const added: number[] = [];
       for (const { food, portion, nutrients } of parts) {
         const sourceRef = `${food.kind}:${food.id}`;
-        const grown = await combineInto(tx, userId, { day, meal }, { source: food.kind, sourceRef, name: food.name, perServing: food.nutrients, servings: food.servings }, portion, { day, meal }, now);
+        const grown = await combineInto(tx, userId, { day, meal }, { source: food.kind, sourceRef, name: food.name, perServing: food.nutrients, servings: food.servings }, portion, { day, meal }, now, added);
         if (grown) {
-          rows.push(grown.row);
+          // An entry grown twice is listed once, at its final amount, where it first appeared
+          const at = rows.findIndex((r) => r.id === grown.row.id);
+          if (at < 0) rows.push(grown.row);
+          else rows[at] = grown.row;
           combined.push(grown.combined);
           continue;
         }
@@ -464,6 +470,7 @@ export default async function foodLogRoutes(app: FastifyInstance) {
             updatedAt: now,
           })
           .returning();
+        added.push(inserted.id);
         rows.push(inserted);
       }
       // Using the meal counts as using it, and each of the person's own foods in it
@@ -579,6 +586,11 @@ export default async function foodLogRoutes(app: FastifyInstance) {
       if (!row) throw new HttpError(404, NOT_FOUND);
       const per = row.perServing as Nutrients;
       const servings = row.servings as Serving[];
+      // Only while the entry is still what that combine made (checked under the row lock): a second Undo, or
+      // one after the entry was edited or grew again, would double the amount or undo that change
+      const made = combineAmounts(servings, b.before, servings, b.added);
+      const same = made && made.unit === row.unit && made.servingIndex === row.servingIndex && Math.abs(made.quantity * made.fraction - row.quantity * row.fraction) < 1e-6;
+      if (!same) throw new HttpError(409, CHANGED_SINCE);
       const [back] = await tx
         .update(logEntries)
         .set({ ...b.before, nutrients: portionNutrients(per, servings, b.before), updatedAt: now })

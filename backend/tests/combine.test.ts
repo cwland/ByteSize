@@ -152,6 +152,49 @@ describe("adding the same food again combines it", () => {
     expect((await t.api("POST", "/api/log/move", { ids: [lunchNow.id], day: DAY, meal: "lunch" })).body.combined).toEqual([]);
   });
 
+  it("Undo only splits while the entry is still what the combine made: twice, or after an edit, is a 409 and changes nothing", async () => {
+    const food = await mine(egg);
+    await log(food);
+    const { combined } = (await log(food)).body;
+    const undo = () => t.api("POST", `/api/log/${combined.entry.id}/split`, { before: combined.before, added: combined.added, ...combined.splitTo });
+    expect((await undo()).status).toBe(200);
+    const again = await undo(); // a double tap, or a retry
+    expect(again.status).toBe(409);
+    expect(again.body.error).toBe("This entry changed since — undo isn't possible");
+    expect((await getDay()).entries.map((e: any) => e.quantity)).toEqual([1, 1]);
+
+    // combined again, then edited before Undo: the edit stands
+    const [first, second] = (await getDay()).entries;
+    expect((await t.api("DELETE", `/api/log/${second.id}`)).status).toBe(204);
+    const next = (await log(food)).body.combined;
+    expect(next.entry.id).toBe(first.id);
+    expect((await t.api("PATCH", `/api/log/${first.id}`, { quantity: 5 })).status).toBe(200);
+    const late = await t.api("POST", `/api/log/${first.id}/split`, { before: next.before, added: next.added, ...next.splitTo });
+    expect(late.status).toBe(409);
+    expect((await getDay()).entries.map((e: any) => e.quantity)).toEqual([5]);
+  });
+
+  it("a quick meal holding the same food twice: each item adds once, and an entry is listed once", async () => {
+    const e = await mine(egg);
+    const quick = (await t.api("POST", "/api/my-foods/meals", { name: "Two eggs", items: [{ food: { kind: "user_food", id: e.id }, ...portion() }, { food: { kind: "user_food", id: e.id }, ...portion({ quantity: 2 }) }] })).body.food;
+    // Nothing there yet: two new entries, as the meal has them (not combined with each other)
+    const fresh = (await t.api("POST", "/api/log/meal", { day: DAY, meal: "lunch", foodId: quick.id })).body;
+    expect(fresh.combined).toEqual([]);
+    expect(fresh.entries.map((x: any) => x.quantity)).toEqual([1, 2]);
+    expect(new Set(fresh.entries.map((x: any) => x.id)).size).toBe(2);
+    // An egg already there: both items grow it, and it is listed once, at its final amount
+    const already = (await log(e)).body.entry;
+    const r = (await t.api("POST", "/api/log/meal", { day: DAY, meal: "breakfast", foodId: quick.id })).body;
+    expect(r.entries).toEqual([expect.objectContaining({ id: already.id, quantity: 4 })]);
+    expect(r.combined.map((c: any) => [c.entry.id, c.before.quantity, c.added.quantity])).toEqual([
+      [already.id, 1, 1],
+      [already.id, 2, 2],
+    ]);
+    // Undo, last first, puts it back exactly
+    for (const c of [...r.combined].reverse()) expect((await t.api("POST", `/api/log/${c.entry.id}/split`, { before: c.before, added: c.added, ...c.splitTo })).status).toBe(200);
+    expect((await getDay()).entries.filter((x: any) => x.meal === "breakfast").map((x: any) => x.quantity)).toEqual([1, 2, 1]); // the egg, then the two split back off (last first)
+  });
+
   it("Undo after logging splits the addition back off as its own entry", async () => {
     const food = await mine(eggWhite);
     await log(food, { unit: "g", quantity: 100 });
