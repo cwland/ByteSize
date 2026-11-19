@@ -108,6 +108,7 @@ async function seed() {
     await t.db.insert(usageCounts).values([{ userId: u.id, key: "barcodes_scanned", count: 3 + i }, { userId: u.id, key: "outside_off", count: 1 }]); // App info's numbers are the person's own data
     await t.db.insert(restaurantFavourites).values({ userId: u.id, cacheId: cache.id, chain: "Acme Diner" });
     await t.db.insert(dashboardLayouts).values({ userId: u.id, columns: i ? [["food"], [], ["budget"]] : [["budget", "water"], ["food"]] }); // the person's Dashboard
+    await t.db.insert(dashboardLayouts).values({ userId: u.id, page: "goals", columns: [["badges"], i ? [] : ["goal-date"]] }); // and their Goals page
     await t.db.insert(passkeys).values({ userId: u.id, credentialId: `cred-${u.id}`, publicKey: "pk", transports: ["internal"], rpId: "localhost", name: "Phone" });
   }
   const apiKey = (await a.as("POST", "/api/keys", { name: "Anna's HA", access: "log" })).body.key as string; // backed up (encrypted)
@@ -570,6 +571,20 @@ describe("backups", () => {
     expect(s.dateFormat).toBe("weekday-long-month-short"); // an old backup: everyone keeps today's look
     expect(s.waterButtonsMl).toEqual([250, 500]);
     expect(readdirSync(uploadsDir())).toEqual([]);
+  });
+
+  it("older schema: layout rows from before pages (no page column) restore as each person's Dashboard layout", async () => {
+    await seed();
+    const b = await makeBackup();
+    const json = await backupJson(b.name);
+    json.schema = 18; // before 0018_layouts_per_page
+    json.tables.dashboard_layouts = json.tables.dashboard_layouts.filter((r: any) => r.page === "dashboard").map(({ page: _page, ...r }: any) => r);
+    expect(json.tables.dashboard_layouts.length).toBe(2);
+    const r = await restoreUpload(tarGz([tarEntry("bytesize.json", { data: JSON.stringify(json) })]));
+    expect(r.status).toBe(200);
+    const rows = await t.db.select().from(dashboardLayouts);
+    expect(rows.map((x) => x.page)).toEqual(["dashboard", "dashboard"]);
+    expect(rows.map((x) => x.columns)).toEqual(expect.arrayContaining([[["food"], [], ["budget"]], [["budget", "water"], ["food"]]]));
   });
 
   it("names: a name that isn't a backup's can't reach any file", async () => {

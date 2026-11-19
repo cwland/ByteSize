@@ -71,12 +71,15 @@ export default function MealCard(props: {
   onToggle: (e: LogEntry) => void;
   onLongPress: (e: LogEntry) => void;
   onSaveAsMeal?: () => void;
+  /** Inside another card (the Food widget, §41): a section divided by a line (no card of its own; hover colours still show), with a heading under the card's own */
+  inset?: boolean;
 }) {
-  const { meal, entries, totals, units, selecting, selected } = props;
+  const { meal, entries, totals, units, selecting, selected, inset } = props;
   const name = MEAL_NAMES[meal];
+  const Heading = inset ? "h3" : "h2";
   return (
-    <section aria-label={name} className="rounded-2xl bg-container p-4">
-      <h2 className="text-lg font-bold">{meal === "supplements" ? name : `${name}: ${fmt(totals.calories)} cals`}</h2>
+    <section aria-label={name} className={inset ? "border-t border-line pt-4" : "rounded-2xl bg-container p-4"}>
+      <Heading className="text-lg font-bold">{meal === "supplements" ? name : `${name}: ${fmt(totals.calories)} cals`}</Heading>
       {meal !== "supplements" && entries.length > 0 && (
         <p className="text-sm text-subtle tabular">{`${g(totals.protein_g)} protein · ${g(totals.carbs_g)} carbs · ${g(totals.fat_g)} fat · ${g(totals.fiber_g)} fiber`}</p>
       )}

@@ -438,6 +438,18 @@ describe("per-user isolation", () => {
     expect((await b.as("GET", "/api/dashboard/layout")).body).toEqual({ layout: bens });
   });
 
+  it("a person's Goals layout is their own, and apart from their Dashboard's", async () => {
+    const { a, b } = await twoUsers(t);
+    const annas = { version: 1, columns: [["badges"], ["your-plan"], []] };
+    expect((await a.as("PUT", "/api/layouts/goals", annas)).status).toBe(200);
+    expect((await b.as("GET", "/api/layouts/goals")).body).toEqual({ layout: null });
+    expect((await a.as("GET", "/api/layouts/dashboard")).body).toEqual({ layout: null });
+    const bens = { version: 1, columns: [["goal-date"]] };
+    expect((await b.as("PUT", "/api/layouts/goals", bens)).status).toBe(200);
+    expect((await a.as("GET", "/api/layouts/goals")).body).toEqual({ layout: annas });
+    expect((await b.as("GET", "/api/layouts/goals")).body).toEqual({ layout: bens });
+  });
+
   it("a person's data download holds none of anyone else's rows, photos or Culury address", async () => {
     const { a, b } = await twoUsers(t);
     const food = (who: typeof a, name: string) => who.as("POST", "/api/my-foods", { name, servings: [{ label: "1", grams: 10 }], nutrients: { calories: 100 } }).then((r) => r.body.food);

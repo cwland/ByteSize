@@ -20,25 +20,39 @@ const weeks = [
   { start: "2026-11-08", end: "2026-11-14", daysLogged: 0, avg: empty, status: empty, weightChangeKg: null },
 ];
 
-function show() {
+function show(over: Record<string, () => unknown> = {}) {
   wideScreen();
   fakeServer({
     ...m3Routes,
     "GET /api/targets": () => ({ targets: steadyTargets }),
     "GET /api/weight": () => weightJson(),
     "GET /api/trends/weekly": () => ({ weeks }),
+    ...over,
   });
   renderWithSession(<GoalsPage />);
 }
 
 describe("Goals on a wide screen", () => {
-  it("has a page title, and the plan and weight cards side by side", async () => {
+  it("has a page title with Edit page, and two balanced columns: plan, goal date and badges; weight and trends", async () => {
     show();
     expect(screen.getByRole("heading", { level: 1, name: "Goals" })).toBeInTheDocument();
-    const pair = await screen.findByTestId("goals-top");
-    expect(pair).toHaveClass("lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]");
-    expect(within(pair).getByRole("region", { name: "Plan" })).toBeInTheDocument();
-    expect(within(pair).getByRole("region", { name: "Weight" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit page" })).toBeInTheDocument();
+    const grid = await screen.findByTestId("goals-columns");
+    expect(grid).toHaveClass("lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]");
+    const [left, right] = within(grid).getAllByTestId("widget-column");
+    expect(within(left).getByRole("region", { name: "Plan" })).toBeInTheDocument();
+    expect(within(left).getByRole("region", { name: "Goal date" })).toBeInTheDocument();
+    expect(within(right).getByRole("region", { name: "Weight" })).toBeInTheDocument();
+    expect(within(right).getByRole("region", { name: "Weekly trends" })).toBeInTheDocument();
+    expect(await within(left).findByRole("region", { name: "Badges" })).toBeInTheDocument();
+  });
+
+  it("three columns in use: equal columns, as on the Dashboard", async () => {
+    show({ "GET /api/layouts/goals": () => ({ layout: { version: 1, columns: [["your-plan"], ["goal-date"], ["badges"]] } }) });
+    await screen.findByRole("region", { name: "Goal date" });
+    const grid = screen.getByTestId("goals-columns");
+    expect(within(grid).getAllByTestId("widget-column")).toHaveLength(3);
+    expect(grid).not.toHaveClass("lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]");
   });
 
   it("weekly trends are a table: a row a week, columns for each average, weight and days logged", async () => {
@@ -54,13 +68,5 @@ describe("Goals on a wide screen", () => {
     expect(within(second).getAllByRole("cell").map((c) => c.textContent)).toEqual(["—", "—", "—", "—", "—", "Nothing logged"]);
     // The phone list is gone
     expect(within(screen.getByRole("region", { name: "Weekly trends" })).queryByRole("listitem")).not.toBeInTheDocument();
-  });
-
-  it("badges sit in a grid beside vacation mode and the GLP-1 link", async () => {
-    show();
-    const side = await screen.findByTestId("goals-bottom");
-    expect(within(side).getByRole("region", { name: "Badges" })).toBeInTheDocument();
-    expect(within(side).getByRole("region", { name: "Vacation mode" })).toBeInTheDocument();
-    expect(within(side).getByRole("link", { name: "GLP-1 shots" })).toBeInTheDocument();
   });
 });

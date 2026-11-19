@@ -1,11 +1,15 @@
-// The Dashboard's layout (§28): three columns of widget ids, top to bottom. Pure helpers that the Dashboard,
-// its edit mode and the Add widget list share. Every change returns a new layout.
+// A widget page's layout (§28, §40a): three columns of widget ids, top to bottom. Pure helpers that every widget
+// page (the Dashboard, Goals), its edit mode and the Add widget list share. Every change returns a new layout.
 
 export type Columns = string[][];
 export const COLUMNS = 3;
-// What the layout needs of a registry entry: its id, its default column, and (rarely) the layout version in
-// which it joined everyone's dashboard ("new default"); without that, a later widget waits in Add widget.
-export type LayoutWidget = { id: string; column: number; newDefault?: number };
+// The pages with widgets (backend/src/lib/widgets.ts has the same list); each has its own saved layout
+export const LAYOUT_PAGES = ["dashboard", "goals"] as const;
+export type LayoutPage = (typeof LAYOUT_PAGES)[number];
+// What the layout needs of a registry entry on one page: its id, its default column there (null: only offered
+// in Add widget, not in the default), and (rarely) the layout version in which it joined everyone's page
+// ("new default"); without that, a later widget waits in Add widget.
+export type LayoutWidget = { id: string; column: number | null; newDefault?: number };
 export type SavedLayout = { version: number; columns: string[][] };
 export const LAYOUT_VERSION = 1;
 
@@ -32,7 +36,7 @@ export function fromSaved(saved: SavedLayout | null, registry: LayoutWidget[]): 
       return true;
     }),
   );
-  for (const w of registry) if (w.newDefault && w.newDefault > saved.version && !seen.has(w.id)) cols[w.column].push(w.id);
+  for (const w of registry) if (w.column !== null && w.newDefault && w.newDefault > saved.version && !seen.has(w.id)) cols[w.column].push(w.id);
   return cols;
 }
 

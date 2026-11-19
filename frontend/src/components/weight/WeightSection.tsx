@@ -3,7 +3,9 @@ import { useSession } from "../../session";
 import { addDays, dayLabel, todayIn } from "../../selectedDay";
 import type { Units, Weight, WeighIn } from "../../types";
 import { formatWeight, weightValue } from "../../units";
-import { longDay, useWeight } from "../../weight";
+import { useAllWeight } from "../../weight";
+import { useSettingsMe } from "../../day";
+import { formatDay } from "../../dateFormat";
 import { Notice } from "../ui/Notice";
 import { linkButton, primaryButton } from "../ui/styles";
 import WeighInSheet from "./WeighInSheet";
@@ -18,16 +20,25 @@ const RANGES: { id: Range; label: string; days?: number }[] = [
 
 const LIST_LIMIT = 7;
 
-// The projection in words
-export function projectionText(w: Weight, units: Units) {
-  const p = w.projection;
-  if (p.status === "not_enough") return "Not enough weigh-ins yet";
-  // The server's not_losing for a goal at or above the start that the trend is already at or under: nothing to lose
-  if (p.status === "not_losing") return w.goalKg !== null && w.trendKg !== null && w.trendKg <= w.goalKg ? "At or below your goal weight" : "Not losing right now";
-  if (p.status === "reached") return "You've reached your goal";
+// Where the weight is heading, in words: the Goal date widget's estimate (§40a; its pace and middle date, so the page
+// never shows two different numbers). Without a goal weight: the pace alone (the 28-day projection).
+export function projectionText(w: Weight, units: Units, dateFormat: string | undefined, today: string) {
   // A rate that rounds to 0 in the person's units would read "Losing 0 lb a week"
-  const rate = p.kgPerWeek !== undefined && weightValue(p.kgPerWeek, units) > 0 ? `Losing ${formatWeight(p.kgPerWeek, units)} a week` : "Losing slowly";
-  return p.date ? `${rate} — goal around ${longDay(p.date)}` : rate;
+  const rate = (kgPerWeek: number | undefined) => (kgPerWeek !== undefined && weightValue(kgPerWeek, units) > 0 ? `Losing ${formatWeight(kgPerWeek, units)} a week` : "Losing slowly");
+  const g = w.goalDate;
+  switch (g.status) {
+    case "ok":
+      return `${rate(g.kgPerWeek)} — goal around ${formatDay(g.date, dateFormat, today)}`;
+    case "reached":
+      return "You've reached your goal";
+    case "not_heading":
+      return g.kgPerWeek > 0 && weightValue(g.kgPerWeek, units) > 0 ? rate(g.kgPerWeek) : "Not losing right now";
+    case "not_enough":
+      return "Not enough weigh-ins yet";
+  }
+  const p = w.projection;
+  if (p.status === "ok") return rate(p.kgPerWeek);
+  return p.status === "not_losing" ? "Not losing right now" : "Not enough weigh-ins yet";
 }
 
 // Goals › Weight: start / now / goal, lost so far, the projection, the chart (1 month · 3 months · All)
@@ -38,7 +49,10 @@ export default function WeightSection({ onReplan, markers }: { onReplan: () => v
   const [range, setRange] = useState<Range>("1m");
   const days = RANGES.find((r) => r.id === range)!.days;
   const rangeFrom = days ? addDays(today, -days) : undefined;
-  const { data, error } = useWeight(rangeFrom, days ? today : undefined);
+  const { dateFormat } = useSettingsMe();
+  const { data: all, error } = useAllWeight();
+  // Every weigh-in is loaded once; the range only cuts the chart and the list
+  const data = all && rangeFrom ? { ...all, weighIns: all.weighIns.filter((p) => p.day >= rangeFrom && p.day <= today) } : all;
   const [sheet, setSheet] = useState<{ edit?: WeighIn } | null>(null);
   const [showAll, setShowAll] = useState(false);
   const w = (kg: number) => formatWeight(kg, user.units);
@@ -85,7 +99,7 @@ export default function WeightSection({ onReplan, markers }: { onReplan: () => v
               </span>
             </p>
           )}
-          <p className="mt-3 font-semibold">{projectionText(data, user.units)}</p>
+          <p className="mt-3 font-semibold">{projectionText(data, user.units, dateFormat, today)}</p>
           {data.trendKg !== null && <p className="text-sm text-subtle tabular">{`Trend ${w(data.trendKg)}`}</p>}
           {data.replanHint && (
             <div role="status" className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-active px-3 py-2 text-sm">

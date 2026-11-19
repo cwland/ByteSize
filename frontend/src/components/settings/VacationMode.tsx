@@ -9,7 +9,7 @@ import { field, label, noAutofill, secondaryButton } from "../ui/styles";
 
 const newestFirst = (a: Vacation, b: Vacation) => (a.from === b.from ? b.id - a.id : a.from < b.from ? 1 : -1);
 
-// Goals › Vacation mode: date ranges in which a day without food doesn't break the streak
+// Settings › Profile › Vacation mode (on Goals until §40a): date ranges in which a day without food doesn't break the streak
 export default function VacationMode() {
   const [list, setList] = useState<Vacation[] | null>(null);
   const [from, setFrom] = useState("");

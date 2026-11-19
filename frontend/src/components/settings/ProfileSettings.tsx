@@ -12,13 +12,36 @@ import { Field } from "../ui/Field";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { field, label, primaryButton } from "../ui/styles";
 import { TimezoneSelect } from "../ui/TimezoneSelect";
+import VacationMode from "./VacationMode";
+import { ChevronRight, Syringe } from "lucide-react";
+import { useGlp1On } from "../glp1/useGlp1On";
 
 export default function ProfileSettings() {
   return (
     <>
       <AboutYou />
+      <Glp1Shots />
+      <VacationMode />
       <Appearance />
     </>
+  );
+}
+
+// With GLP-1 tracking on: a row to the GLP-1 page (shots, doses, how you feel), which comes back here (§40a: the
+// phones' way in, now the Goals button has gone; turned on or off in Goals › Edit my details or by setting GLP-1 up)
+function Glp1Shots() {
+  if (!useGlp1On()) return null;
+  return (
+    <Card title="GLP-1">
+      <a href="#/glp1?from=/settings/profile" className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-pressed">
+        <Syringe aria-hidden="true" className="size-5 text-action" />
+        <span className="flex-1">
+          <span className="block font-semibold">GLP-1 shots</span>
+          <span className="block text-sm text-subtle">Your shots, doses and how you're feeling</span>
+        </span>
+        <ChevronRight aria-hidden="true" className="size-5 text-subtle" />
+      </a>
+    </Card>
   );
 }
 

@@ -48,3 +48,38 @@ export function formatDate(day: string, key: string | undefined): string {
       return `${weekday}, ${short(month)} ${d}`;
   }
 }
+
+const WORDED: Record<string, { month: "short" | "long"; dayFirst: boolean }> = {
+  "weekday-long-month-short": { month: "short", dayFirst: false },
+  "weekday-short-month-short": { month: "short", dayFirst: false },
+  "weekday-long-month-long": { month: "long", dayFirst: false },
+  "weekday-long-day-month-short": { month: "short", dayFirst: true },
+  "weekday-short-day-month-short": { month: "short", dayFirst: true },
+  "weekday-long-day-month-long": { month: "long", dayFirst: true },
+};
+const NUMERIC = new Set(["mdy-slash", "dmy-slash", "dmy-dot", "iso"]);
+
+// "Apr 5" / "5 April", with ", 2027" / " 2027" when withYear
+function worded(day: string, key: string | undefined, withYear: boolean) {
+  const [y, m, d] = day.split("-").map(Number);
+  const look = WORDED[key ?? ""] ?? WORDED[DEFAULT_DATE_FORMAT];
+  const month = look.month === "long" ? MONTHS[m - 1] : MONTHS[m - 1].slice(0, 3);
+  if (look.dayFirst) return withYear ? `${d} ${month} ${y}` : `${d} ${month}`;
+  return withYear ? `${month} ${d}, ${y}` : `${month} ${d}`;
+}
+const yearOf = (day: string) => day.slice(0, 4);
+
+/**
+ * A day without its weekday, the way `key` writes dates (§40a: the goal date): "Apr 5", "5 April", "05/04/2027".
+ * The worded forms add the year when it isn't `today`'s year; the numeric ones always have it.
+ */
+export function formatDay(day: string, key: string | undefined, today: string): string {
+  if (key && NUMERIC.has(key)) return formatDate(day, key);
+  return worded(day, key, yearOf(day) !== yearOf(today));
+}
+
+/** "Jun 2 – Aug 23, 2027": two days as formatDay writes them, a shared year (not this one) said once, at the end. */
+export function formatDayRange(from: string, to: string, key: string | undefined, today: string): string {
+  if (!(key && NUMERIC.has(key)) && yearOf(from) === yearOf(to)) return `${worded(from, key, false)} – ${formatDay(to, key, today)}`;
+  return `${formatDay(from, key, today)} – ${formatDay(to, key, today)}`;
+}

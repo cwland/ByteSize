@@ -199,9 +199,18 @@ describe("Food widget (everything the Log page did)", () => {
     expect(cal).toHaveTextContent("0");
     expect(cal).not.toHaveTextContent("?");
   });
-  it("My foods is a link from the Food widget, back to the Dashboard", async () => {
+  it("one card like the other widgets: the title row (with Select) at its top, each meal a divided section inside it; no My foods button (§41)", async () => {
     show();
-    expect(await screen.findByRole("link", { name: "My foods" })).toHaveAttribute("href", "#/log/my-foods?from=/");
+    const widget = await screen.findByRole("region", { name: "Today's food" });
+    expect(widget).toHaveClass("rounded-2xl", "bg-container");
+    const heading = within(widget).getByRole("heading", { name: "Today's food" });
+    const titleRow = heading.parentElement!;
+    expect(widget.firstElementChild).toBe(titleRow);
+    expect(within(titleRow).getByRole("button", { name: "Select" })).toBeInTheDocument();
+    const breakfast = within(widget).getByRole("region", { name: "Breakfast" });
+    expect(breakfast).not.toHaveClass("bg-container");
+    expect(breakfast).toHaveClass("border-t");
+    expect(screen.queryByRole("link", { name: "My foods" })).not.toBeInTheDocument();
   });
 
   it("Save as a meal: posts the meal's entries and lists what was left out", async () => {

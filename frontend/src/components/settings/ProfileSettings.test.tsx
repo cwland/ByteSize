@@ -5,6 +5,7 @@ import ProfileSettings from "./ProfileSettings";
 import { fakeServer, userJson } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
 import { settingsMe } from "../../test/fixtures";
+import { glp1View, noGlp1 } from "../../test/glp1Fixtures";
 
 describe("ProfileSettings week start", () => {
   it("shows the saved week start and saves a new one with the profile", async () => {
@@ -77,5 +78,39 @@ describe("ProfileSettings date format (§33)", () => {
     fakeServer({ "GET /api/settings/me": () => ({ ...settingsMe, dateFormat: "iso" }) });
     renderWithSession(<ProfileSettings />, { timezone: "America/Boise" });
     await waitFor(() => expect(screen.getByRole("combobox", { name: "Date format" })).toHaveValue("iso"));
+  });
+});
+
+describe("ProfileSettings vacation mode (§40a)", () => {
+  it("Vacation mode lives here, after the profile and before the look of the app, and works as it did on Goals", async () => {
+    fakeServer({
+      "GET /api/settings/me": () => settingsMe,
+      "GET /api/vacations": () => ({ vacations: [{ id: 7, from: "2026-12-20", to: "2027-01-02" }] }),
+    });
+    renderWithSession(<ProfileSettings />);
+    const box = await screen.findByRole("region", { name: "Vacation mode" });
+    expect(within(box).getByText("Days off don't break your streak")).toBeInTheDocument();
+    expect(await within(box).findByText("Dec 20–Jan 2, 2027")).toBeInTheDocument();
+    const profile = screen.getByRole("form", { name: "Profile" });
+    const theme = screen.getByRole("radiogroup", { name: "Theme" });
+    expect(profile.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(box.compareDocumentPosition(theme) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe("ProfileSettings GLP-1 shots (§40a)", () => {
+  it("with GLP-1 tracking on: a GLP-1 shots row opens the GLP-1 page, coming back to Settings", async () => {
+    fakeServer({ "GET /api/settings/me": () => settingsMe, "GET /api/vacations": () => ({ vacations: [] }), "GET /api/glp1": () => glp1View(), "GET /api/body": () => ({ body: null }) });
+    renderWithSession(<ProfileSettings />);
+    const box = await screen.findByRole("region", { name: "GLP-1" });
+    expect(within(box).getByRole("link", { name: /GLP-1 shots/ })).toHaveAttribute("href", "#/glp1?from=/settings/profile");
+  });
+
+  it("with GLP-1 tracking off: no row", async () => {
+    const server = fakeServer({ "GET /api/settings/me": () => settingsMe, "GET /api/vacations": () => ({ vacations: [] }), "GET /api/glp1": () => noGlp1, "GET /api/body": () => ({ body: { glp1: false } }) });
+    renderWithSession(<ProfileSettings />);
+    await waitFor(() => expect(server.sent.some((x) => x.path === "/api/body")).toBe(true));
+    await screen.findByRole("region", { name: "Vacation mode" });
+    expect(screen.queryByRole("region", { name: "GLP-1" })).not.toBeInTheDocument();
   });
 });

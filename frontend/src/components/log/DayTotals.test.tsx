@@ -44,3 +44,31 @@ describe("Day totals", () => {
     expect(row("Water")).toEqual(["16 fl oz", "—"]);
   });
 });
+
+// §41: the plan in force that day, with a way to change it (the same plan picker as Goals › Change plan)
+describe("Day totals: the plan", () => {
+  it("names the plan, with a small Change plan button that opens the plan picker", async () => {
+    window.location.hash = "#/";
+    show();
+    expect(screen.getByText("Plan: Steady")).toBeInTheDocument();
+    const change = screen.getByRole("button", { name: "Change plan" });
+    expect(change).toHaveAttribute("title", "Change plan");
+    change.click();
+    // The plan picker comes back to the Dashboard when done or cancelled
+    expect(window.location.hash).toBe("#/goals/plan?from=/");
+    window.location.hash = "";
+  });
+
+  it("targets set by hand are 'Your own targets'", () => {
+    show({ ...day, targets: { ...day.targets!, plan: null } });
+    expect(screen.getByText("Plan: Your own targets")).toBeInTheDocument();
+  });
+
+  it("no plan: Pick a plan opens the plan picker", () => {
+    show({ ...day, targets: null });
+    expect(screen.queryByText(/^Plan:/)).not.toBeInTheDocument();
+    screen.getByRole("button", { name: "Pick a plan" }).click();
+    expect(window.location.hash).toBe("#/goals/plan?from=/");
+    window.location.hash = "";
+  });
+});

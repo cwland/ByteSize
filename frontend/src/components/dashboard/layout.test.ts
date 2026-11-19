@@ -21,6 +21,12 @@ describe("dashboard layout", () => {
     expect(fromSaved({ version: 1, columns: [[], [], [], ["food"]] }, reg)).toEqual([[], [], []]);
   });
 
+  it("a widget only offered on a page (no default column) isn't in its default, nor forced into a saved layout", () => {
+    const offered: LayoutWidget[] = [...reg, { id: "goal-date", column: null }, { id: "later", column: null, newDefault: 2 }];
+    expect(defaultLayout(offered)).toEqual(defaultLayout(reg));
+    expect(fromSaved({ version: 1, columns: [["goal-date"], [], []] }, offered)).toEqual([["goal-date"], [], []]);
+  });
+
   it("widgets added later wait in the Add widget list, unless marked new default for a newer layout version", () => {
     const later = [...reg, { id: "fasting", column: 1 }, { id: "steps", column: 2, newDefault: 2 }];
     expect(fromSaved({ version: 1, columns: [["food"], [], []] }, later)).toEqual([["food"], [], ["steps"]]);
