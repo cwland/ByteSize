@@ -97,4 +97,72 @@ final class SmokeUITests: XCTestCase {
             try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).png"))
         }
     }
+
+    // MARK: - Round 2: Dashboard and Food Log (stub day: 1138 cal of 1500–2000, 500 ml water)
+
+    private func signedIn() {
+        signIn(password: "pw")
+        XCTAssertTrue(app.buttons["Dashboard"].waitForExistence(timeout: 5))
+        dismissSavePassword(timeout: 6)
+    }
+
+    func testDashboardShowsToday() {
+        signedIn()
+        XCTAssertTrue(app.staticTexts["362 to go"].waitForExistence(timeout: 5))
+        let water = app.staticTexts["waterTotal"]
+        XCTAssertTrue(water.waitForExistence(timeout: 3))
+        XCTAssertEqual(water.label, "17 fl oz")
+        shot("5-dashboard")
+        app.buttons["Add 8 fl oz of water"].tap()
+        let more = NSPredicate(format: "label == %@", "25 fl oz")
+        expectation(for: more, evaluatedWith: water)
+        waitForExpectations(timeout: 5)
+        app.swipeUp()
+        shot("6-dashboard-lower")
+    }
+
+    func testFoodLogSwipeDeleteAndUndo() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        let yogurt = app.staticTexts["Greek yogurt"]
+        XCTAssertTrue(yogurt.waitForExistence(timeout: 5))
+        shot("7-food-log")
+        app.cells.containing(.staticText, identifier: "Greek yogurt").firstMatch.swipeLeft()
+        XCTAssertTrue(app.buttons["Move"].waitForExistence(timeout: 3))
+        shot("8-swipe-actions")
+        app.buttons["Delete"].tap()
+        let undo = app.buttons["Undo"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["Greek yogurt"].exists)
+        shot("9-undo")
+        undo.tap()
+        XCTAssertTrue(app.staticTexts["Greek yogurt"].waitForExistence(timeout: 5))
+    }
+
+    func testEditEntryAmount() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        XCTAssertTrue(app.staticTexts["Greek yogurt"].waitForExistence(timeout: 5))
+        app.staticTexts["Greek yogurt"].tap()
+        XCTAssertTrue(app.navigationBars["Edit"].waitForExistence(timeout: 3))
+        app.buttons["½"].tap()
+        shot("10-edit-entry")
+        app.buttons["Save"].tap()
+        XCTAssertTrue(app.staticTexts["Fage · ½ × 2 × 1 cup"].waitForExistence(timeout: 5))
+    }
+
+    func testEditDashboardLayout() {
+        signedIn()
+        XCTAssertTrue(app.staticTexts["Badges"].waitForExistence(timeout: 5) || { app.swipeUp(); return app.staticTexts["Badges"].waitForExistence(timeout: 3) }())
+        app.buttons["Edit"].tap()
+        let badgesRow = app.cells.containing(.staticText, identifier: "Badges").firstMatch
+        XCTAssertTrue(badgesRow.waitForExistence(timeout: 3))
+        shot("11-dashboard-edit")
+        badgesRow.swipeLeft()
+        app.buttons["Delete"].firstMatch.tap()
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.staticTexts["362 to go"].waitForExistence(timeout: 5))
+        app.swipeUp()
+        XCTAssertFalse(app.staticTexts["Badges"].exists)
+    }
 }
