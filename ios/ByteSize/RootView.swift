@@ -5,6 +5,7 @@ import SwiftUI
 struct RootView: View {
     let session: SessionStore
     @State private var signIn: SignInModel
+    @State private var shell = ShellModel()
     @Environment(\.palette) private var palette
 
     init(session: SessionStore) {
@@ -25,17 +26,17 @@ struct RootView: View {
                 .background(palette.color("page").ignoresSafeArea())
             case .signedOut:
                 SignInView(model: signIn)
-            case .signedIn(let user):
-                // Replaced by the tab shell in the next task
-                Text("Signed in as \(user.displayName ?? user.username)")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(palette.color("page").ignoresSafeArea())
-                    .foregroundStyle(palette.color("ink"))
+            case .signedIn:
+                MainTabView(shell: shell)
             }
         }
         .onChange(of: session.state) { _, state in
             // A fresh form each time someone lands on sign-in (password cleared, remembered server kept)
-            if case .signedOut = state { signIn = SignInModel(session: session) }
+            switch state {
+            case .signedOut: signIn = SignInModel(session: session)
+            case .signedIn: shell = ShellModel() // each sign-in starts on the Dashboard
+            case .restoring: break
+            }
         }
     }
 }
