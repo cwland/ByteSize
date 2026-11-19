@@ -439,8 +439,14 @@ export async function seedDemo(db: Db, opts: SeedOptions): Promise<SeedResult> {
     } else if (!body.glp1) {
       await dbx.update(userBody).set({ glp1: true }).where(eq(userBody.userId, userId));
     }
-    const [haveTargets] = await dbx.select({ id: targets.id }).from(targets).where(eq(targets.userId, userId)).limit(1);
-    if (!haveTargets) await dbx.insert(targets).values({ userId, effectiveFrom: plan.from, plan: null, ...DEMO_TARGETS });
+    // The person's earliest plan; if it starts after the seeded history (set up today, say), copy it back to the first
+    // seeded day so every seeded day has a plan, with the same plan and numbers. No plan at all: the demo goals.
+    const [first] = await dbx.select().from(targets).where(eq(targets.userId, userId)).orderBy(asc(targets.effectiveFrom), asc(targets.id)).limit(1);
+    if (!first) await dbx.insert(targets).values({ userId, effectiveFrom: plan.from, plan: null, ...DEMO_TARGETS });
+    else if (first.effectiveFrom > plan.from) {
+      const { id: _id, createdAt: _at, effectiveFrom: _from, ...same } = first;
+      await dbx.insert(targets).values({ ...same, effectiveFrom: plan.from });
+    }
 
     const shots = plan.days.filter((d) => d.shot);
     for (const d of shots) await dbx.insert(glp1Shots).values({ userId, day: d.day, medication: MEDICATION, doseMg: d.shot!.doseMg, site: d.shot!.site, note: null });
