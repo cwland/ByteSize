@@ -231,13 +231,17 @@ export async function dropGoalWidgets(db: Db, userId: number, ids: number[]) {
   }
 }
 
-/** A new goal joins the bottom of the shortest column of the saved Goals layout (none saved: the app's default places it). */
+/**
+ * A new goal joins the bottom of the shortest column in use of the saved Goals layout (the leftmost of equals; an empty
+ * column stays empty; none saved: the app's default places it, the same way).
+ */
 export async function addToGoalsPage(db: Db, userId: number, id: number) {
   const [row] = await db.select().from(dashboardLayouts).where(and(eq(dashboardLayouts.userId, userId), eq(dashboardLayouts.page, "goals")));
   if (!row) return;
   const columns = row.columns.map((c) => [...c]);
   while (columns.length < 3) columns.push([]);
-  const shortest = columns.reduce((best, c, i) => (c.length < columns[best].length ? i : best), 0);
+  const used = columns.map((_, i) => i).filter((i) => columns[i].length > 0);
+  const shortest = used.length ? used.reduce((best, i) => (columns[i].length < columns[best].length ? i : best), used[0]) : 0;
   columns[shortest].push(goalWidgetId(id));
   await db.update(dashboardLayouts).set({ columns }).where(and(eq(dashboardLayouts.userId, userId), eq(dashboardLayouts.page, "goals")));
 }

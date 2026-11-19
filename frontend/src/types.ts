@@ -235,3 +235,34 @@ export type AppInfo = {
   countingSince: string;
   version: string;
 };
+
+// Goals with a start and end (§40c): GET /api/goals. Progress is worked out by the server (live, or kept once the end
+// has passed: frozen). Weight targets and values are kg.
+export type GoalType = "logging_days" | "protein_days" | "calorie_days" | "water_days" | "weigh_ins" | "fiber_days" | "streak" | "steps" | "workouts" | "active_minutes" | "weight_by_date";
+export type GoalPeriod = "week" | "month" | "stretch";
+export type GoalPeriodProgress = { start: string; end: string; value: number | null; target: number; status: "hit" | "missed" | "open" };
+export type GoalProgress = {
+  state: "upcoming" | "active" | "completed" | "missed";
+  periods: GoalPeriodProgress[];
+  current: GoalPeriodProgress | null;
+  hit: number;
+  done: number;
+  of: number | null;
+  startKg: number | null;
+  asOf: string;
+};
+export type Goal = {
+  id: number;
+  type: GoalType;
+  name: string;
+  target: number;
+  period: GoalPeriod;
+  measure: "total" | "average" | null;
+  start: string;
+  end: string | null;
+  createdAt: string;
+  endedEarly: boolean;
+  frozen: boolean;
+  progress: GoalProgress;
+};
+export type GoalsList = { active: Goal[]; past: Goal[] };

@@ -19,7 +19,10 @@ import WeeklyTrends from "../goals/WeeklyTrends";
 import Badges from "../goals/Badges";
 import { YourPlan } from "../goals/goalsContext";
 import GoalsWeight from "../goals/GoalsWeight";
-import type { LayoutPage, LayoutWidget } from "./layout";
+import { goalIdOf, goalWidgetId, type LayoutPage, type LayoutWidget } from "./layout";
+import { GoalsListWidget, PastGoalsWidget } from "../goals/GoalWidgets";
+import { kindName } from "../goals/goalCopy";
+import type { Goal } from "../../types";
 import { planPickerHref } from "../../plans";
 
 // The widget registry (§28, §40a): the one list every widget page (Dashboard, Goals), the Add widget list and the
@@ -41,6 +44,8 @@ export type WidgetDef = {
   fits: "narrow" | "wide";
   onlyWhen?: string; // e.g. "Shows when GLP-1 is on" (the widget hides itself otherwise)
   Component: (p: WidgetProps) => JSX.Element | null;
+  /** §40c: a goal's own widget ("goal:<id>"); the page draws it from its loaded goals */
+  goalId?: number;
 };
 
 function Budget({ data, isToday }: WidgetProps) {
@@ -199,10 +204,13 @@ export const WIDGETS: WidgetDef[] = [
   // Goals (§40a)
   { id: "your-plan", pages: { goals: 0 }, fits: "narrow", title: "Your plan", description: "Today's plan and targets: change plan, edit targets, edit my details", Component: () => <YourPlan /> },
   { id: "goal-date", pages: { goals: 0, dashboard: null }, fits: "narrow", title: "Goal date", description: "When you'll reach your goal weight at your current pace", Component: () => <GoalDateWidget /> },
+  // §40c: the active goals with + New goal (each goal is also a widget of its own, below), and finished goals
+  { id: "goals", pages: { goals: 0, dashboard: null }, fits: "narrow", title: "Goals", description: "Your active goals, and + New goal", Component: () => <GoalsListWidget /> },
   { id: "weight-chart", pages: { goals: 1 }, fits: "wide", title: "Weight", description: "Your weight chart with start, now and goal, and your weigh-ins", Component: () => <GoalsWeight /> },
   // §40b: under Water on the Dashboard, under Weight on Goals (placed here so it sits between Weight and Weekly trends)
   { id: "activity", pages: { dashboard: 1, goals: 1 }, fits: "narrow", title: "Activity", description: "Steps and workouts for the day: add, edit and delete them", Component: ({ day, data, loadsDay }) => <ActivityWidget day={day} data={data} loadsDay={loadsDay} /> },
   { id: "weekly-trends", pages: { goals: 1 }, fits: "wide", title: "Weekly trends", description: "Each week's averages against your targets", Component: () => <WeeklyTrends /> },
+  { id: "past-goals", pages: { goals: 1 }, fits: "narrow", title: "Past goals", description: "Goals you finished or ended, met or missed", Component: () => <PastGoalsWidget /> },
   { id: "badges", pages: { goals: 0 }, fits: "narrow", title: "Badges", description: "Badges you've earned and the ones still to get", Component: () => <Badges /> },
 ];
 
@@ -211,8 +219,27 @@ function DayTotalsWidget({ data, isToday }: { data: Day | null; isToday: boolean
   return data ? <DayTotals day={data} units={user.units} earned={earnedText(data, isToday)} /> : null;
 }
 
-export const widgetById = (id: string) => WIDGETS.find((w) => w.id === id);
+// §40c: an active goal's widget, offered on every page (only in Add widget: the Goals page places new goals itself)
+const PERIOD_WORD = { week: "each week", month: "each month", stretch: "over its dates" } as const;
+export const goalWidgetDef = (g: Goal): WidgetDef => ({
+  id: goalWidgetId(g.id),
+  pages: { dashboard: null, goals: null },
+  fits: "narrow",
+  title: g.name,
+  description: `${kindName(g.type)} goal: progress ${PERIOD_WORD[g.period]}`,
+  Component: () => null, // drawn by the page with its goal (WidgetColumns)
+  goalId: g.id,
+});
 
-// A page's registry: the widgets offered there, each with its default column on that page
-export const registryFor = (page: LayoutPage): (WidgetDef & LayoutWidget)[] =>
-  WIDGETS.filter((w) => page in w.pages).map((w) => ({ ...w, column: w.pages[page] ?? null }));
+export const widgetById = (id: string, goals: Goal[] = []): WidgetDef | undefined => {
+  const gid = goalIdOf(id);
+  if (gid === null) return WIDGETS.find((w) => w.id === id);
+  const g = goals.find((x) => x.id === gid);
+  return g ? goalWidgetDef(g) : undefined;
+};
+
+// A page's registry: the widgets offered there, each with its default column on that page, and the active goals' widgets
+export const registryFor = (page: LayoutPage, goals: Goal[] = []): (WidgetDef & LayoutWidget)[] => [
+  ...WIDGETS.filter((w) => page in w.pages).map((w) => ({ ...w, column: w.pages[page] ?? null })),
+  ...goals.map((g) => ({ ...goalWidgetDef(g), column: null })),
+];

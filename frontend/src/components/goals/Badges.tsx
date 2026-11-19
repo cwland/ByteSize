@@ -27,6 +27,8 @@ export function badgeInfo(id: string, units: Units): { name: string; earns: stri
       return { name: "Goal reached", earns: "Reach your goal weight", icon: "🎯" };
     case "shots_on_time_4":
       return { name: "4 shots on time", earns: "Take 4 weekly shots on time in a row", icon: "💉" };
+    case "goal_met":
+      return { name: "Goal met", earns: "Complete a goal you set", icon: "🏆" };
     default:
       return { name: id, earns: "", icon: "🏅" };
   }

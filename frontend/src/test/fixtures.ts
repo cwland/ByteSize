@@ -151,6 +151,7 @@ export const m3Routes = {
   "GET /api/layouts/dashboard": () => ({ layout: null }), // each widget page's default layout (a test may replace one)
   "GET /api/layouts/goals": () => ({ layout: null }),
   "GET /api/workout-calories": () => ({ settings: { mode: "show", countPct: 50, weeklyCap: 1000 }, effectiveFrom: null }), // Goals › Your plan
+  "GET /api/goals": () => ({ active: [], past: [] }), // §40c: no goals yet
 };
 
 // Culury (§14 A). Not linked is the default for any screen that opens Add food:
@@ -246,4 +247,35 @@ export function foodSourcesJson(over: Record<string, Record<string, unknown>> = 
     fatsecret: { hasKey: true, enabled: true, hours: 24, plan: "basic", barcodeScopeMissing: false },
   };
   return Object.fromEntries(Object.entries(base).map(([k, v]) => [k, { ...v, ...over[k] }]));
+}
+
+// A goal as GET /api/goals sends it (§40c): by default "Log 6 days a week", started Sunday Nov 1, three weeks decided
+// (2 hit), this week (Nov 15–21) 4 of 6 so far
+export function goalJson(over: Record<string, unknown> = {}) {
+  const week = (start: string, end: string, value: number, status: string) => ({ start, end, value, target: 6, status });
+  const current = week("2026-11-15", "2026-11-21", 4, "open");
+  return {
+    id: 7,
+    type: "logging_days",
+    name: "Log most days",
+    target: 6,
+    period: "week",
+    measure: null,
+    start: "2026-11-01",
+    end: "2026-11-28",
+    createdAt: "2026-11-01T15:00:00Z",
+    endedEarly: false,
+    frozen: false,
+    progress: {
+      state: "active",
+      periods: [week("2026-11-01", "2026-11-07", 6, "hit"), week("2026-11-08", "2026-11-14", 3, "missed"), current],
+      current,
+      hit: 1,
+      done: 2,
+      of: 4,
+      startKg: null,
+      asOf: "2026-11-18",
+    },
+    ...over,
+  };
 }

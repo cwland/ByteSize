@@ -293,6 +293,13 @@ describe("goal widgets in layouts", () => {
     expect((await t.api("GET", "/api/layouts/dashboard")).body.layout).toEqual(dash);
   });
 
+  it("only columns in use count: an empty column stays empty", async () => {
+    expect((await t.api("PUT", "/api/layouts/goals", { version: 1, columns: [["your-plan", "goal-date"], ["weight-chart", "badges"], []] })).status).toBe(200);
+    const g = (await create({ type: "logging_days", target: 5, period: "week" })).body.goal;
+    const h = (await create({ type: "workouts", target: 2, period: "week" })).body.goal;
+    expect((await t.api("GET", "/api/layouts/goals")).body.layout.columns).toEqual([["your-plan", "goal-date", `goal:${g.id}`], ["weight-chart", "badges", `goal:${h.id}`], []]);
+  });
+
   it("with no saved Goals layout nothing is saved (the app's default places active goals)", async () => {
     await create({ type: "logging_days", target: 5, period: "week" });
     expect((await t.api("GET", "/api/layouts/goals")).body).toEqual({ layout: null });

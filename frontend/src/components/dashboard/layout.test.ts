@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addWidget, defaultLayout, dropIndex, fromSaved, moveSideways, moveTo, moveVertical, readingOrder, removeWidget, type LayoutWidget } from "./layout";
+import { GOAL_WIDGET_PREFIX, addWidget, defaultLayout, dropIndex, goalIdOf, goalWidgetId, placeGoals, fromSaved, moveSideways, moveTo, moveVertical, readingOrder, removeWidget, type LayoutWidget } from "./layout";
 
 // A small registry, as the real one is shaped: id and default column (newDefault: the layout version it joined everyone's dashboard in)
 const reg: LayoutWidget[] = [
@@ -32,6 +32,18 @@ describe("dashboard layout", () => {
     expect(fromSaved({ version: 1, columns: [["food"], [], []] }, later)).toEqual([["food"], [], ["steps"]]);
     // already saved with version 2: the person chose; it isn't forced back
     expect(fromSaved({ version: 2, columns: [["food"], [], []] }, later)).toEqual([["food"], [], []]);
+  });
+
+  it("goal widgets (§40c): goal:<id>; active goals not on the page join the shortest column, in order", () => {
+    expect(GOAL_WIDGET_PREFIX).toBe("goal:");
+    expect(goalWidgetId(12)).toBe("goal:12");
+    expect([goalIdOf("goal:12"), goalIdOf("goals"), goalIdOf("goal:x"), goalIdOf("food")]).toEqual([12, null, null, null]);
+    expect(placeGoals([["a", "b"], ["c"], ["d", "e"]], [3, 4])).toEqual([["a", "b", "goal:4"], ["c", "goal:3"], ["d", "e"]]);
+    // already there: left where it is
+    expect(placeGoals([["goal:3"], [], []], [3])).toEqual([["goal:3"], [], []]);
+    // only columns in use: an empty one stays empty (the Goals default uses two of three)
+    expect(placeGoals([["a", "b"], ["c", "d"], []], [5, 6])).toEqual([["a", "b", "goal:5"], ["c", "d", "goal:6"], []]);
+    expect(placeGoals([[], [], []], [5])).toEqual([["goal:5"], [], []]);
   });
 
   it("reading order: left column top to bottom, then middle, then right", () => {
