@@ -48,10 +48,11 @@ export function useEstimate() {
 
 // The line beside the estimate button while it works: a turning wheel (a pulse with reduced motion), what
 // it's doing (never which AI service), and Cancel. The status region is always there (empty when idle), so
-// screen readers announce the text when it appears.
+// screen readers announce the text when it appears; while idle it is taken out of the layout (no size, out of
+// the flow), so it leaves no gap beside or under the button.
 export function AiWorking({ step, onCancel }: { step: EstimateStep | null; onCancel: () => void }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className={step ? "flex flex-wrap items-center gap-2" : "absolute size-0 overflow-hidden"}>
       <p role="status" className="flex items-center gap-2 text-sm font-semibold text-subtle">
         {step && (
           <>

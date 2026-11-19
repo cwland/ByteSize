@@ -15,7 +15,8 @@ import { resetRestaurantState } from "../src/lib/restaurants/index.js";
 import type { EmailConfig, MailMessage, TransportFactory } from "../src/lib/mail.js";
 import { resetForgotLimits } from "../src/routes/password-reset.js";
 import { resetOAuthCache } from "../src/lib/oauth.js";
-import { usageSettled } from "../src/lib/usage.js";
+import { usagePending, usageSettled } from "../src/lib/usage.js";
+import { logsPending, logsSettled } from "../src/lib/appLog.js";
 
 // Tests use their own database so they never touch real data.
 // Create it once with: createdb bytesize_test (docker-compose.dev.yml does this for you)
@@ -156,6 +157,34 @@ export async function setupTestApp(
     return { status: res.statusCode, body: parsed, headers: res.headers };
   }
 
+  // Every table, each listed before the tables it references (a cycle, if one is ever added, keeps catalog order)
+  async function tablesChildrenFirst() {
+    const tables = (await db.execute<{ tablename: string }>(sql`select tablename from pg_tables where schemaname = 'public' order by tablename`)).rows.map((r) => r.tablename);
+    const fks = (
+      await db.execute<{ child: string; parent: string }>(
+        sql`select cl.relname as child, pa.relname as parent from pg_constraint k join pg_class cl on cl.oid = k.conrelid join pg_class pa on pa.oid = k.confrelid join pg_namespace n on n.oid = cl.relnamespace where k.contype = 'f' and n.nspname = 'public' and cl.relname <> pa.relname`
+      )
+    ).rows;
+    const order: string[] = [];
+    const left = new Set(tables);
+    while (left.size) {
+      // A table no table still left points at goes next
+      const next = [...left].find((tbl) => !fks.some((f) => f.parent === tbl && f.child !== tbl && left.has(f.child)));
+      const pick = next ?? [...left][0];
+      order.push(pick);
+      left.delete(pick);
+    }
+    return order;
+  }
+
+  // Waits until no count or log line from the test before is still being written
+  async function backgroundSettled() {
+    while (usagePending() || logsPending()) {
+      await usageSettled();
+      await logsSettled();
+    }
+  }
+
   // Empty every table (keeps the schema and the migration record)
   async function reset() {
     token = "";
@@ -171,25 +200,16 @@ export async function setupTestApp(
     mail.failNext = null;
     mail.gate = null;
     await app.mail.idle();
-    await usageSettled(); // counts still being written would land after the truncate
+    await backgroundSettled(); // counts and log lines still being written would land after the truncate
     app.mail.forgetTests();
     resetForgotLimits();
     resetOAuthCache();
     resetRestaurantState(app);
-    const rows = await db.execute<{ tablename: string }>(sql`select tablename from pg_tables where schemaname = 'public'`);
-    const names = rows.rows.map((r) => `"${r.tablename}"`);
-    // A fire-and-forget write from the test before (a session touch, a log line) can still be running and
-    // deadlock with the truncate (Postgres 40P01): Postgres cancels one side, so try again
-    for (let attempt = 1; names.length; attempt++) {
-      try {
-        await db.execute(sql.raw(`truncate ${names.join(", ")} restart identity cascade`));
-        break;
-      } catch (e) {
-        const code = (e as { code?: string; cause?: { code?: string } }).cause?.code ?? (e as { code?: string }).code;
-        if (code !== "40P01" || attempt >= 5) throw e;
-        await new Promise((r) => setTimeout(r, 50 * attempt));
-      }
-    }
+    // Children before the tables they point at: a write still running from the test before (a log line, a
+    // count) holds its own table and then checks the row it points at; locked in this order, the truncate
+    // waits for that write to finish instead of holding the parent it needs (a deadlock, Postgres 40P01)
+    const names = await tablesChildrenFirst();
+    if (names.length) await db.execute(sql.raw(`truncate ${names.map((n) => `"${n}"`).join(", ")} restart identity cascade`));
     resetLoginLockouts();
     resetSessionTouches();
     resetPasskeyChallenges();

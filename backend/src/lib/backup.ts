@@ -13,6 +13,7 @@ import { z } from "zod";
 import * as schema from "../db/schema.js";
 import { appSettings, userSettings, users } from "../db/schema.js";
 import { logEvent } from "./appLog.js";
+import { waitOnClose } from "./schedule.js";
 import { HttpError, badRequest } from "./errors.js";
 import { QUOTA_KEY } from "./restaurants/index.js";
 import { decryptSecret } from "./secrets.js";
@@ -48,6 +49,7 @@ export const backupHooks = {
   lockTimeoutMs: 30_000, // a restore waits this long for a table someone is using, then says to try again
   rename: (from: string, to: string) => fs.rename(from, to),
   remove: (file: string) => fs.rm(file, { force: true }), // pruning old backups
+  started: async (): Promise<void> => {}, // called once a backup or restore holds the lock (tests hold it there)
 };
 
 // ---------- the tables, from the Drizzle schema (a new table is backed up without touching this file) ----------
@@ -107,6 +109,7 @@ async function exclusive<T>(fn: () => Promise<T>): Promise<T> {
   if (busy) throw new HttpError(409, BACKUP_BUSY);
   busy = true;
   try {
+    await backupHooks.started();
     return await fn();
   } finally {
     busy = false;
@@ -582,14 +585,21 @@ export async function backupProblem(app: FastifyInstance): Promise<string | null
 }
 
 /** Checks when the server starts, then every hour (a server that was off at BACKUP_HOUR still gets its backup). */
+// Closing the server waits for a check still running (a backup half written would be left behind, and its
+// queries would run on against a database the server has let go of)
 export function scheduleBackups(app: FastifyInstance) {
   let timer: NodeJS.Timeout | undefined;
+  let running: Promise<unknown> = Promise.resolve();
+  const check = () => (running = dailyBackupCheck(app).catch(() => null));
   app.addHook("onReady", async () => {
-    void dailyBackupCheck(app);
-    timer = setInterval(() => void dailyBackupCheck(app), CHECK_EVERY_MS);
+    void check();
+    timer = setInterval(() => void check(), CHECK_EVERY_MS);
     timer.unref();
   });
-  app.addHook("onClose", async () => clearInterval(timer));
+  app.addHook("onClose", async () => {
+    clearInterval(timer);
+    await waitOnClose(app, "daily backup", running);
+  });
 }
 
 export function formatSize(bytes: number) {

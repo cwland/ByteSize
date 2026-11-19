@@ -69,6 +69,65 @@ describe("formatAmount", () => {
     expect(one("1 chocolate chip cookie", 3)).toBe("3 chocolate chip cookies");
   });
 
+  it("compound names whose first word is a measure but isn't the counted thing pluralise the last word (§37)", () => {
+    const one = (label: string, q: number) => formatAmount([{ label, grams: 10 }], 0, "serving", q, 1);
+    expect(one("1 tortilla chip", 2)).toBe("2 tortilla chips");
+    expect(one("1 cookie dough bite", 2)).toBe("2 cookie dough bites");
+    expect(one("1 roll-up", 2)).toBe("2 roll-ups");
+    expect(one("1 fruit roll-up", 3)).toBe("3 fruit roll-ups");
+    expect(one("1 cracker crisp", 4)).toBe("4 cracker crisps");
+    expect(one("1 bar bite", 2)).toBe("2 bar bites");
+    expect(one("1 peanut butter cup", 2)).toBe("2 peanut butter cups");
+    // ...back to one
+    expect(one("10 tortilla chips", 0.1)).toBe("1 tortilla chip");
+    expect(one("2 cookie dough bites", 0.5)).toBe("1 cookie dough bite");
+    expect(one("2 roll-ups", 0.5)).toBe("1 roll-up");
+    // the measure still counts when what follows it is what's in it
+    expect(one("1 slice whole wheat bread", 2)).toBe("2 slices whole wheat bread");
+    expect(one("1 link sausage", 2)).toBe("2 links sausage");
+    expect(one("1 cup sliced", 2)).toBe("2 cups sliced");
+    expect(one("1 tortilla", 2)).toBe("2 tortillas");
+    expect(one("1 cookie", 2)).toBe("2 cookies");
+  });
+
+  it("a plural last word in a 1-or-less label is what's in the measure: the measure takes the count (review fix 1)", () => {
+    const one = (label: string, q: number) => formatAmount([{ label, grams: 10 }], 0, "serving", q, 1);
+    expect(one("1 cup chocolate chips", 2)).toBe("2 cups chocolate chips");
+    expect(one("1/4 cup tortilla chips", 2)).toBe("½ cup tortilla chips");
+    expect(one("2 cups chocolate chips", 0.5)).toBe("1 cup chocolate chips");
+    expect(one("1 bag potato chips", 2)).toBe("2 bags potato chips");
+    expect(one("1 package peanut butter cups", 2)).toBe("2 packages peanut butter cups");
+    expect(one("1 cup rice crisps", 2)).toBe("2 cups rice crisps");
+    // ...while a counted last word that agrees with the label's count still takes it
+    expect(one("1 tortilla chip", 2)).toBe("2 tortilla chips");
+    expect(one("10 tortilla chips", 0.1)).toBe("1 tortilla chip");
+    expect(one("1 cookie dough bite", 2)).toBe("2 cookie dough bites");
+    expect(one("6 pitted prunes", 1)).toBe("6 pitted prunes");
+    expect(one("1 cup sliced", 2)).toBe("2 cups sliced");
+    expect(one("1 slice whole wheat bread", 2)).toBe("2 slices whole wheat bread");
+    expect(one("1 large", 2)).toBe("2 large");
+    expect(one("1 medium egg", 2)).toBe("2 medium eggs");
+    expect(one("1 tbsp", 2)).toBe("2 tbsp");
+  });
+
+  it("singularises -ies words to what they were: cookies → cookie, berries → berry (§37)", () => {
+    const one = (label: string, q: number) => formatAmount([{ label, grams: 10 }], 0, "serving", q, 1);
+    expect(one("2 cookies", 0.5)).toBe("1 cookie");
+    expect(one("2 chocolate chip cookies", 0.5)).toBe("1 chocolate chip cookie");
+    expect(one("2 brownies", 0.5)).toBe("1 brownie");
+    expect(one("2 smoothies", 0.5)).toBe("1 smoothie");
+    expect(one("2 pies", 0.5)).toBe("1 pie");
+    expect(one("2 veggies", 0.5)).toBe("1 veggie");
+    expect(one("2 strawberries", 0.5)).toBe("1 strawberry");
+    expect(one("2 patties", 0.5)).toBe("1 patty");
+    expect(one("2 candies", 0.5)).toBe("1 candy");
+    expect(one("2 cookies, crumbled", 0.5)).toBe("1 cookie, crumbled");
+    // and the other way stays right
+    expect(one("1 cookie", 3)).toBe("3 cookies");
+    expect(one("1 strawberry", 3)).toBe("3 strawberries");
+    expect(one("1 brownie", 2)).toBe("2 brownies");
+  });
+
   it("writes units as people say them", () => {
     expect(formatAmount(milk, 0, "cup", 0.333, 1)).toBe("⅓ cup");
     expect(formatAmount(milk, 0, "cup", 1.5, 1)).toBe("1½ cups");

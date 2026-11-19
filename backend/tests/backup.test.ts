@@ -14,7 +14,7 @@ import { aiSettings } from "./foodFakes.js";
 import { setRestaurantKeys } from "./restaurantFakes.js";
 import { multipart, plainPhoto } from "./photoFakes.js";
 import * as schema from "../src/db/schema.js";
-import { dashboardLayouts,
+import { logCombines, dashboardLayouts,
   appLog,
   appSettings,
   badges,
@@ -41,6 +41,7 @@ import { dashboardLayouts,
 } from "../src/db/schema.js";
 import { encryptSecret } from "../src/lib/secrets.js";
 import { storePhoto } from "../src/lib/photos.js";
+import { scheduleHooks } from "../src/lib/schedule.js";
 import { BACKED_UP_TABLES, CACHE_REFERENCES, SKIP_TABLES, backupHooks, cleanLeftovers, cleanLeftoversOnStart, dailyBackupCheck, dailyStatus, writeBackup } from "../src/lib/backup.js";
 
 let t: TestApp;
@@ -130,7 +131,10 @@ async function seed() {
       { userId: u.id, day: "2026-11-15", meal: "snacks", name: "Protein bar", icon: "🍫", imageUrl: `/api/photos/${photo.id}`, source: "user_food", sourceRef: String(custom.id), unit: "serving", quantity: 1, fraction: 0.333333333333, perServing: { calories: 210 }, servings: [], nutrients: { calories: 69.99999993 }, aiEstimated: true },
     ]);
   }
-  await t.db.insert(logEntries).values({ userId: a.id, day: "2026-11-14", meal: "lunch", name: "Food logged", icon: "🥣", source: "cache", sourceRef: `cache:${loggedOnly.id}`, unit: "g", quantity: 5, perServing: {}, servings: [], nutrients: {} });
+  const [logged] = await t.db.insert(logEntries).values({ userId: a.id, day: "2026-11-14", meal: "lunch", name: "Food logged", icon: "🥣", source: "cache", sourceRef: `cache:${loggedOnly.id}`, unit: "g", quantity: 5, perServing: {}, servings: [], nutrients: {} }).returning();
+  // What a combine did (Undo's record): backed up, though not in Download my data
+  const g = (quantity: number) => ({ servingIndex: 0, unit: "g", quantity, fraction: 1 });
+  await t.db.insert(logCombines).values({ userId: a.id, entryId: logged.id, before: g(2), after: g(5), added: g(3), addedServings: [], splitDay: "2026-11-14", splitMeal: "lunch" });
   return { admin, a, b, photo, cacheId: cache.id, unusedCacheId: unused.id, apiKey };
 }
 
@@ -289,7 +293,10 @@ describe("backups", () => {
     const keyed = await t.app.inject({ method: "GET", url: "/api/day/2026-11-15", headers: { authorization: `Bearer ${apiKey}` } });
     expect(keyed.statusCode).toBe(200);
     const list = await t.api("GET", "/api/admin/backups");
-    expect(list.body.backups.map((x: any) => x.name)).toEqual([expect.stringMatching(/-before-restore\.tar\.gz$/), backup.name].sort().reverse());
+    // the backup and the safety one made before restoring (in either order: they can fall in the same second or not)
+    const names: string[] = list.body.backups.map((x: any) => x.name);
+    expect(names).toHaveLength(2);
+    expect(names).toEqual(expect.arrayContaining([backup.name, expect.stringMatching(/-before-restore\.tar\.gz$/)]));
     // The safety backup holds what was there just before (the changed name)
     const safety = await backupJson(list.body.backups.find((x: any) => x.name.endsWith("-before-restore.tar.gz")).name);
     expect(safety.tables.users.find((u: any) => u.id === a.id).display_name).toBe("Changed");
@@ -604,9 +611,21 @@ describe("backups", () => {
 
   it("lock: two backups at once, the second is told one is running", async () => {
     await seed();
-    const [x, y] = await Promise.all([t.api("POST", "/api/admin/backups"), t.api("POST", "/api/admin/backups")]);
-    expect([x.status, y.status].sort()).toEqual([200, 409]);
-    expect([x, y].find((r) => r.status === 409)!.body).toEqual({ error: "A backup is already running." });
+    // The first is held inside the lock until the second has been answered, however busy the machine is
+    let entered!: () => void;
+    const inside = new Promise<void>((r) => (entered = r));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    backupHooks.started = async () => {
+      entered();
+      await gate;
+    };
+    const first = t.api("POST", "/api/admin/backups");
+    await inside;
+    const second = await t.api("POST", "/api/admin/backups");
+    expect(second).toMatchObject({ status: 409, body: { error: "A backup is already running." } });
+    release();
+    expect((await first).status).toBe(200);
     expect(backupFiles()).toHaveLength(1);
   });
 
@@ -705,6 +724,67 @@ describe("backups", () => {
       await cleanLeftovers({ db: t.db, dataDir: dir } as never);
       expect((await t.db.select().from(appLog)).filter((l) => l.level === "warning")).toHaveLength(2);
     } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("closing the server waits for a daily backup still being written (nothing runs on after it)", async () => {
+    await seed();
+    process.env.BACKUP_HOUR = "0"; // due as soon as it starts
+    const dir = mkdtempSync(path.join(tmpdir(), "bytesize-close-"));
+    let entered!: () => void;
+    const inside = new Promise<void>((r) => (entered = r));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    backupHooks.started = async () => {
+      entered();
+      await gate;
+    };
+    try {
+      const app = buildApp({ db: t.db, jwtSecret: TEST_SECRET, rateLimit: false, dataDir: dir });
+      await app.ready();
+      await inside; // the start-up check is writing one
+      let closed = false;
+      const closing = app.close().then(() => void (closed = true));
+      await new Promise((r) => setTimeout(r, 200));
+      expect(closed).toBe(false);
+      release();
+      await closing;
+      expect(readdirSync(path.join(dir, "backups")).filter((n) => n.endsWith(".tar.gz"))).toHaveLength(1);
+    } finally {
+      release();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("closing waits at most a while for a backup that hangs, then closes anyway", async () => {
+    await seed();
+    process.env.BACKUP_HOUR = "0";
+    const dir = mkdtempSync(path.join(tmpdir(), "bytesize-hang-"));
+    let entered!: () => void;
+    const inside = new Promise<void>((r) => (entered = r));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    backupHooks.started = async () => {
+      entered();
+      await gate;
+    };
+    scheduleHooks.closeWaitMs = 300;
+    try {
+      const app = buildApp({ db: t.db, jwtSecret: TEST_SECRET, rateLimit: false, dataDir: dir });
+      await app.ready();
+      await inside;
+      const began = Date.now();
+      await app.close(); // the backup never finishes on its own
+      expect(Date.now() - began).toBeLessThan(5000);
+    } finally {
+      scheduleHooks.closeWaitMs = 10_000;
+      release();
+      // the held backup carries on: wait until it has written its file, so it isn't still reading the tables
+      // when the next test empties them
+      const done = () => existsSync(path.join(dir, "backups")) && readdirSync(path.join(dir, "backups")).some((n) => n.endsWith(".tar.gz"));
+      for (let i = 0; i < 400 && !done(); i++) await new Promise((r) => setTimeout(r, 25));
+      expect(done()).toBe(true);
       rmSync(dir, { recursive: true, force: true });
     }
   });

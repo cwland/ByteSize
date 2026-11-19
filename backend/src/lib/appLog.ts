@@ -28,8 +28,21 @@ const clip = (s: string | null | undefined, n: number) => (s ? s.replace(/\s+/g,
 const cutoff = () => new Date(Date.now() - LOG_DAYS * 24 * 60 * 60 * 1000);
 let writes = 0;
 
+// Lines being written (many callers don't wait): tests wait for them before emptying the tables
+const pending = new Set<Promise<void>>();
+export const logsPending = () => pending.size;
+export async function logsSettled(): Promise<void> {
+  while (pending.size) await Promise.allSettled([...pending]);
+}
+
 // Best effort: a log problem never breaks what's being logged
-export async function logEvent(db: Db, e: LogEntry) {
+export function logEvent(db: Db, e: LogEntry): Promise<void> {
+  const write = writeLine(db, e).finally(() => pending.delete(write));
+  pending.add(write);
+  return write;
+}
+
+async function writeLine(db: Db, e: LogEntry) {
   try {
     await db.insert(appLog).values({ category: e.category, level: e.level, event: clip(e.event, 300)!, source: clip(e.source, 120), detail: clip(e.detail, 1000), userId: e.userId ?? null });
     if (++writes % 50 === 0) await db.delete(appLog).where(lt(appLog.at, cutoff()));

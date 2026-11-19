@@ -158,6 +158,42 @@ describe("Dashboard widgets", () => {
     expect(editCards(columns()[2])).toEqual(["day-totals", "weight", "next-shot"]);
   });
 
+  it("keyboard focus stays on the moved widget's button after a move across columns, or the nearest sensible one (§37)", async () => {
+    show();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit dashboard" }));
+    const button = (name: string) => screen.getByRole("button", { name });
+    // Water (middle) right: still able to go right? No (the last column): the Move right button turns
+    // disabled, so focus goes to the opposite move, Move left
+    button("Move Water right").focus();
+    await user.keyboard("{Enter}");
+    expect(editCards(columns()[2])).toContain("water");
+    expect(button("Move Water right")).toBeDisabled();
+    expect(button("Move Water left")).toHaveFocus();
+    // Water left (from the right column to the middle): Move left is still enabled, so it keeps focus
+    await user.keyboard("{Enter}");
+    expect(editCards(columns()[1])).toContain("water");
+    expect(button("Move Water left")).toHaveFocus();
+    // and again into the first column: Move left disabled → Move right
+    await user.keyboard("{Enter}");
+    expect(editCards(columns()[0])).toContain("water");
+    expect(button("Move Water right")).toHaveFocus();
+    // a move within a column keeps focus too
+    button("Move Streak up").focus();
+    await user.keyboard("{Enter}");
+    expect(button("Move Streak up")).toHaveFocus();
+  });
+
+  it("phones: a move up past the top of a column keeps focus on the moved widget", async () => {
+    show({ wide: false });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit dashboard" }));
+    screen.getByRole("button", { name: "Move Budget up" }).focus();
+    await user.keyboard("{Enter}"); // Budget goes from the middle column to the first: the top, so up is disabled
+    expect(screen.getByRole("button", { name: "Move Budget up" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Move Budget down" })).toHaveFocus();
+  });
+
   it("phones: edit mode moves widgets up and down (no left/right) in reading order", async () => {
     const server = show({ wide: false });
     const user = userEvent.setup();

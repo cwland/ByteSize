@@ -14,7 +14,10 @@ export type DetailFood = { name: string; brand?: string | null; icon: string; im
 // A sensible first portion: the food's own serving (e.g. "1 bar") rather than "100 g"
 const ML_PER_FL_OZ = 29.5735;
 const GRAMS_ONLY = /^\s*[\d.]+\s*(g|grams?)\s*$/i; // "240 g": a serving that names no volume
-const BARE_AMOUNT = /^\s*[\d.,/\s]+\s*(g|grams?|ml|millilit(?:er|re)s?|l|lit(?:er|re)s?|oz|fl\.?\s*oz)\s*$/i; // "100 g", "100 ml": an amount, not an item
+// "100 g", "100 ml", "8 fl oz", "1 L": an amount in a unit of weight or volume, not an item. Kitchen measures
+// ("1 cup", "2 tbsp", "1 tsp") are NOT bare amounts: a drink whose only serving is "1 cup" starts at that serving
+// (1 × "1 cup"), like "1 can", not at the cup's-worth fallback (defaultPortion.test.ts pins this).
+const BARE_AMOUNT = /^\s*[\d.,/\s]+\s*(g|grams?|ml|millilit(?:er|re)s?|l|lit(?:er|re)s?|oz|fl\.?\s*oz)\s*$/i;
 
 // Where a food starts: its own serving; a drink measured in grams starts in fl oz (or ml), same amount,
 // or a cup's worth when its only serving is a bare amount ("100 ml"). A single serving that names an item

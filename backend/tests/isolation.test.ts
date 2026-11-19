@@ -416,14 +416,13 @@ describe("per-user isolation", () => {
     expect((await a.as("GET", "/api/restaurants/recent-chains")).body).toEqual({ chains: ["Chipotle"] });
   });
 
-  it("a user can't split (undo a combine of) another user's entry", async () => {
+  it("a user can't undo another user's combine", async () => {
     const { a, b } = await twoUsers(t);
     const f = (await a.as("POST", "/api/my-foods", { name: "Egg", servings: [{ label: "1 large", grams: 50 }], nutrients: { calories: 70 } })).body.food;
     const add = () => a.as("POST", "/api/log", { day: "2026-11-17", meal: "breakfast", food: { kind: "user_food", id: f.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
     await add();
     const { combined } = (await add()).body;
-    const body = { before: combined.before, added: combined.added, ...combined.splitTo };
-    expect((await b.as("POST", `/api/log/${combined.entry.id}/split`, body)).status).toBe(404);
+    expect((await b.as("POST", `/api/log/combines/${combined.id}/undo`)).status).toBe(404);
     expect((await a.as("GET", "/api/day/2026-11-17")).body.entries.map((e: any) => e.quantity)).toEqual([2]);
     expect((await b.as("GET", "/api/day/2026-11-17")).body.entries).toEqual([]);
   });
