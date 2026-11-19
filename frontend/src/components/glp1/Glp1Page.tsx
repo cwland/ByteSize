@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api";
+import { notifySettingsChanged } from "../../day";
 import { useHash } from "../../routes";
 import { useSession } from "../../session";
 import { dayLabel, todayIn, useSelectedDay } from "../../selectedDay";
@@ -165,6 +166,7 @@ function Setup({ settings, today, onSaved }: { settings: Glp1Settings | null; to
     setBusy(true);
     try {
       onSaved(await api<Glp1View>("PUT", "/api/glp1/settings", { medication: medication.trim(), doseMg, injectionWeekday: Number(weekday) }));
+      notifySettingsChanged(); // GLP-1 is on now: the rail's GLP-1 item reads it from the settings (§46)
       setEditing(false);
     } catch (e) {
       setMsg(errorMsg(e));

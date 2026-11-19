@@ -52,7 +52,7 @@ describe("AppShell on a wide screen", () => {
   it("GLP-1 is a rail item for people with GLP-1 tracking on (it left the Goals page, §40a), current on the GLP-1 page", async () => {
     window.location.hash = "#/glp1";
     wideScreen();
-    fakeServer({ ...routes, "GET /api/glp1": () => glp1View() });
+    fakeServer({ ...routes, "GET /api/glp1": () => glp1View(), "GET /api/settings/me": () => ({ ...settingsMe, glp1On: true }) });
     renderWithSession(<AppShell />, { timezone: "America/Boise" });
     const rail = screen.getByRole("navigation", { name: "Main" });
     const item = await within(rail).findByRole("link", { name: "GLP-1" });
@@ -63,9 +63,9 @@ describe("AppShell on a wide screen", () => {
     window.location.hash = "";
   });
 
-  it("the body profile saying GLP-1 (not set up yet) also shows the rail item; neither: none", async () => {
+  it("the settings say whether GLP-1 is on (set up, or the body profile says so: the server's rule, §46)", async () => {
     wideScreen();
-    fakeServer({ ...routes, "GET /api/body": () => ({ body: { glp1: true } }) });
+    fakeServer({ ...routes, "GET /api/settings/me": () => ({ ...settingsMe, glp1On: true }) });
     renderWithSession(<AppShell />, { timezone: "America/Boise" });
     expect(await within(screen.getByRole("navigation", { name: "Main" })).findByRole("link", { name: "GLP-1" })).toBeInTheDocument();
   });

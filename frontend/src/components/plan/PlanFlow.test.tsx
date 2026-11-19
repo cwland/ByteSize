@@ -7,6 +7,34 @@ import { renderWithSession } from "../../test/renderWithSession";
 import { bodyA, plansA, plansNoSafe, steadyTargets } from "../../test/fixtures";
 
 describe("plan flow", () => {
+  it("saving the body (its GLP-1 switch) tells the settings to reload, so the rail's GLP-1 item follows (§46)", async () => {
+    const changed = vi.fn();
+    window.addEventListener("bytesize:settings-changed", changed);
+    try {
+      fakeServer({
+        "GET /api/body": () => ({ body: null }),
+        "PUT /api/body": (b) => ({ body: { ...b, needsReview: false } }),
+        "GET /api/plans": () => plansA,
+      });
+      renderWithSession(<PlanFlow onDone={vi.fn()} />);
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("radio", { name: "Male" }));
+      await user.type(screen.getByLabelText("Birthdate"), "1974-06-01");
+      await user.type(screen.getByLabelText("Height (ft)"), "6");
+      await user.type(screen.getByLabelText("Height (in)"), "0");
+      await user.type(screen.getByLabelText("Current weight (lb)"), "226");
+      await user.type(screen.getByLabelText("Goal weight (lb)"), "180");
+      await user.click(screen.getByRole("radio", { name: /On your feet some of the day/ }));
+      await user.click(screen.getByRole("switch", { name: "Are you taking a GLP-1 medicine?" }));
+      expect(changed).not.toHaveBeenCalled();
+      await user.click(screen.getByRole("button", { name: "See my plans" }));
+      await screen.findByRole("heading", { name: "Choose your plan" });
+      expect(changed).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener("bytesize:settings-changed", changed);
+    }
+  });
+
   it("body form sends a birthdate and the new activity level", async () => {
     const server = fakeServer({
       "GET /api/body": () => ({ body: null }),

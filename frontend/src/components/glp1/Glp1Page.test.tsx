@@ -51,6 +51,22 @@ describe("Glp1Page", () => {
     expect(screen.getByText("Next shot Fri, Nov 20")).toBeInTheDocument();
   });
 
+  it("setting GLP-1 up tells the settings to reload, so the rail's GLP-1 item shows (§46)", async () => {
+    const changed = vi.fn();
+    window.addEventListener("bytesize:settings-changed", changed);
+    try {
+      show(noGlp1, { "PUT /api/glp1/settings": (b) => glp1View({ settings: b }) });
+      const setup = await screen.findByRole("region", { name: "Setup" });
+      const user = userEvent.setup();
+      await user.type(within(setup).getByLabelText("Medication"), "Zepbound");
+      await user.type(within(setup).getByLabelText("Dose (mg)"), "2.5");
+      await user.click(within(setup).getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
+    } finally {
+      window.removeEventListener("bytesize:settings-changed", changed);
+    }
+  });
+
   it("with settings shows them and Edit opens the form filled in", async () => {
     show(glp1View());
     const setup = await screen.findByRole("region", { name: "Setup" });

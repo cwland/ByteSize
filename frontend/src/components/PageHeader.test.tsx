@@ -71,7 +71,7 @@ describe("the chosen look from the first paint (§37)", () => {
     localStorage.setItem("bytesize-look:1", JSON.stringify({ dateFormat: "iso", weekStart: 1 }));
     paint({ "GET /api/settings/me": () => ({ ...settingsMe, dateFormat: "dmy-slash", weekStart: 6 }) });
     expect(await screen.findByRole("heading", { level: 1, name: "18/11/2026" })).toBeInTheDocument();
-    expect(JSON.parse(localStorage.getItem("bytesize-look:1")!)).toEqual({ dateFormat: "dmy-slash", weekStart: 6 });
+    expect(JSON.parse(localStorage.getItem("bytesize-look:1")!)).toEqual({ dateFormat: "dmy-slash", weekStart: 6, glp1On: false });
   });
 
   it("something unreadable remembered is ignored", () => {

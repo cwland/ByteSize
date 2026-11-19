@@ -53,6 +53,7 @@ export const DEFAULT_SETTINGS: SettingsMe = {
   waterButtonsMl: [237, 473],
   weekStart: 0,
   dateFormat: DEFAULT_DATE_FORMAT,
+  glp1On: false,
 };
 
 // The last settings the server gave (or that were saved): where a new mount starts, so the week
@@ -72,9 +73,10 @@ function rememberedLook(userId: number | null): Partial<SettingsMe> {
   }
   if (userId === null) return {};
   try {
-    const v = JSON.parse(localStorage.getItem(lookKey(userId)) ?? "null") as { dateFormat?: unknown; weekStart?: unknown } | null;
+    const v = JSON.parse(localStorage.getItem(lookKey(userId)) ?? "null") as { dateFormat?: unknown; weekStart?: unknown; glp1On?: unknown } | null;
     const out: Partial<SettingsMe> = {};
     if (typeof v?.dateFormat === "string") out.dateFormat = v.dateFormat;
+    if (typeof v?.glp1On === "boolean") out.glp1On = v.glp1On; // the side rail's GLP-1 item from the first paint (§46)
     if (Number.isInteger(v?.weekStart) && (v!.weekStart as number) >= 0 && (v!.weekStart as number) <= 6) out.weekStart = v!.weekStart as number;
     return out;
   } catch {
@@ -84,7 +86,7 @@ function rememberedLook(userId: number | null): Partial<SettingsMe> {
 function rememberLook(userId: number | null, s: SettingsMe) {
   if (userId === null) return;
   try {
-    localStorage.setItem(lookKey(userId), JSON.stringify({ dateFormat: s.dateFormat, weekStart: s.weekStart }));
+    localStorage.setItem(lookKey(userId), JSON.stringify({ dateFormat: s.dateFormat, weekStart: s.weekStart, glp1On: s.glp1On }));
   } catch {
     // no storage (private mode): the default shows first, as before
   }

@@ -1,5 +1,6 @@
 import { useId, useState, type FormEvent } from "react";
 import { api } from "../../api";
+import { notifySettingsChanged } from "../../day";
 import { useSession } from "../../session";
 import { todayIn } from "../../selectedDay";
 import type { Activity, Body } from "../../types";
@@ -54,6 +55,7 @@ export default function BodyForm({ initial, onSaved }: { initial: Body | null; o
     setBusy(true);
     try {
       const out = await api<{ body: Body }>("PUT", "/api/body", body);
+      notifySettingsChanged(); // "taking a GLP-1" may have changed: the rail's GLP-1 item reads it from the settings (§46)
       onSaved(out.body);
     } catch (err) {
       setMsg(errorMsg(err));
