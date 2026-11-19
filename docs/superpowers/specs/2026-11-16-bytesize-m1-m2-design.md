@@ -1485,3 +1485,15 @@ Cory picked option **B** of three mock-ups.
   the same row, a compact **Sort: Recent ▾** dropdown (Recent, Most used, A–Z).
 - No full-width stretched segmented rows any more. The row wraps on narrow phones (pills first, sort under them,
   right-aligned). Choices are remembered on this device as they are today.
+
+## 44. Hover text on every icon button (Cory, 2026-11-18)
+
+**Asked for.** "Any icons used in the app should have hover text to describe what they do, like move, copy, etc."
+- Every button or link that shows only an icon (no visible words) has hover text saying what it does — a verb phrase
+  with its object where useful ("Move to another meal", "Copy to another day", "Delete Banana", "Change plan",
+  "Clear search", "Show key", "Copy key", "Previous week", "Close") — and the same words as its accessible name
+  (`aria-label`), so screen readers say the same thing. Buttons with visible words don't need it.
+- One small shared `IconButton` (or equivalent helper) so new icon buttons can't forget it.
+- A test walks every rendered screen the test suite already renders (or a list of the main screens) and fails if any
+  button/link with no visible text lacks an accessible name and a title.
+- Hover text appears on desktop hover and on long-press where the browser supports it; on touch it's harmless.
