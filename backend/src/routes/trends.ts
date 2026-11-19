@@ -13,6 +13,7 @@ import { averages, judge, trendOn, TREND_NUTRIENTS, weekStartOf, type DayLog, ty
 import { DEFAULT_WEEK_START } from "./settings-me.js";
 import { targetsOn } from "./body-plans.js";
 import { calorieDays } from "../lib/calorieDays.js";
+import { goalsWithProgress } from "./goals.js";
 
 // Weekly trends, badges and vacation mode. Who is asking comes only from the login.
 
@@ -104,7 +105,9 @@ export default async function trendRoutes(app: FastifyInstance) {
   // Every badge (earned or not; "new" = earned and not yet shown), storing any newly earned
   app.get("/api/badges", async (req) => {
     const userId = requireUser(req);
-    return refreshBadges(db, userId, await todayFor(app, userId));
+    const today = await todayFor(app, userId);
+    await goalsWithProgress(db, userId, today); // keeps any goal whose end has passed: a completed one earns Goal met
+    return refreshBadges(db, userId, today);
   });
 
   // The celebration was shown: these badges are no longer new

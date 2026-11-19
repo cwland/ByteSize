@@ -1,5 +1,6 @@
 // Badges (pure): which badges a person's history earns, and on which day each was first earned.
 // Stored on first earn and never removed (routes/trends.ts); this only works out what the history shows.
+// "goal_met" (§40c) is stored by routes/goals.ts when a goal ends completed.
 
 import { addDays, daysBetween } from "./days.js";
 import { KG_PER_LB, trendOf, type WeighInPoint } from "./weight.js";
@@ -91,5 +92,5 @@ export function badgeList(stored: { badge: string; earnedOn: string; seen: boole
     lost.push(id);
     if (!byId.has(id)) break;
   }
-  return [item("first_weigh_in"), ...lost.map(item), item("halfway"), item("goal_reached"), ...STREAKS.map((n) => item(`streak_${n}`)), item("shots_on_time_4")];
+  return [item("first_weigh_in"), ...lost.map(item), item("halfway"), item("goal_reached"), ...STREAKS.map((n) => item(`streak_${n}`)), item("shots_on_time_4"), item("goal_met")];
 }

@@ -32,6 +32,7 @@ import weightRoutes from "./routes/weight.js";
 import weightImportRoutes from "./routes/weight-import.js";
 import glp1Routes from "./routes/glp1.js";
 import activityRoutes from "./routes/activity.js";
+import goalRoutes from "./routes/goals.js";
 import trendRoutes from "./routes/trends.js";
 import culuryRoutes from "./routes/culury.js";
 import restaurantRoutes from "./routes/restaurants.js";
@@ -212,6 +213,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(weightImportRoutes); // Settings › Data: weight history from a CSV (multipart for its own routes only)
   app.register(glp1Routes);
   app.register(activityRoutes); // steps, workouts, workout calories in the plan (§40b)
+  app.register(goalRoutes); // goals with a start and end (§40c)
   app.register(trendRoutes); // weekly trends, badges, vacations
   app.register(culuryRoutes); // the person's Culury link: meal plan and recipes
   app.register(restaurantRoutes); // restaurant menus (Spoonacular, FatSecret)

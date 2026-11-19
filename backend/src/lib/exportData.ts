@@ -5,10 +5,11 @@ import { Column, eq, inArray, is } from "drizzle-orm";
 import { PgTable, getTableConfig } from "drizzle-orm/pg-core";
 import { zipSync } from "fflate";
 import * as schema from "../db/schema.js";
-import { activitySteps, glp1Shots, logEntries, recipeItems, sideEffects, uploads, userFoods, userSettings, users, weighIns, workouts } from "../db/schema.js";
+import { activitySteps, goals, glp1Shots, logEntries, recipeItems, sideEffects, uploads, userFoods, userSettings, users, weighIns, workouts } from "../db/schema.js";
 import { HttpError } from "./errors.js";
 import { MEALS, localDay } from "./days.js";
 import { activityDays } from "./activity.js";
+import { GOAL_NAMES, type GoalProgress, type GoalType } from "./goals.js";
 
 // "Download my data": one zip with the person's own data as spreadsheets (CSV), everything as JSON, and their photos.
 // Only this person's rows and files, and nothing that could sign anyone in.
@@ -101,6 +102,7 @@ export async function buildExport(app: FastifyInstance, userId: number): Promise
     uploads: (typeof uploads.$inferSelect)[];
     activity_steps: (typeof activitySteps.$inferSelect)[];
     workouts: (typeof workouts.$inferSelect)[];
+    goals: (typeof goals.$inferSelect)[];
   };
 
   const byDay = <T extends { day: string; id: number }>(rows: T[]) => [...rows].sort((a, b) => a.day.localeCompare(b.day) || a.id - b.id);
@@ -130,6 +132,27 @@ export async function buildExport(app: FastifyInstance, userId: number): Promise
   ]);
   const typeName = (ty: string) => (ty === "hiit" ? "HIIT" : words(ty));
   const workoutsCsv = toCsv([["Day", "Type", "Minutes", "Calories", "From", "Note"], ...byDay(t.workouts).map((w) => [w.day, typeName(w.type), w.minutes, w.calories, from(w.source), w.note])]);
+  // Goals (§40c): oldest start first; a finished one's kept result
+  const PERIODS = { week: "Each week", month: "Each month", stretch: "Whole stretch" } as const;
+  const goalsCsv = toCsv([
+    ["Name", "Kind", "Target", "Period", "Start", "End", "Result", "Periods hit"],
+    ...[...t.goals]
+      .sort((a, b) => a.startDay.localeCompare(b.startDay) || a.id - b.id)
+      .map((g) => {
+        const r = g.result as GoalProgress | null;
+        const kind = GOAL_NAMES[g.type as GoalType] ?? g.type;
+        return [
+          g.name,
+          g.type === "steps" ? `${kind} (${g.measure === "average" ? "average per day" : "total"})` : kind,
+          g.type === "weight_by_date" ? `${round(g.target)} kg` : g.target,
+          PERIODS[g.period] ?? g.period,
+          g.startDay,
+          g.endDay,
+          r ? (r.state === "completed" ? "Completed" : "Missed") : g.endedAt ? "Ended" : "In progress",
+          r ? `${r.hit} of ${r.of}` : null,
+        ];
+      }),
+  ]);
   const myFoodsCsv = toCsv([
     ["Name", "Brand", "Kind", "Serving", "Calories", "Protein (g)", "Carbs (g)", "Fat (g)", "Fiber (g)"],
     ...[...t.user_foods].sort((a, b) => a.name.localeCompare(b.name) || a.id - b.id).map((f) => [f.name, f.brand, f.kind, f.servings[0]?.label, num(f.nutrients.calories), num(f.nutrients.protein_g), num(f.nutrients.carbs_g), num(f.nutrients.fat_g), num(f.nutrients.fiber_g)]),
@@ -154,6 +177,7 @@ export async function buildExport(app: FastifyInstance, userId: number): Promise
     "my-foods.csv": enc.encode(myFoodsCsv),
     "activity.csv": enc.encode(activityCsv),
     "workouts.csv": enc.encode(workoutsCsv),
+    "goals.csv": enc.encode(goalsCsv),
     "bytesize-export.json": enc.encode(JSON.stringify(json, null, 2)),
   };
   // Photos (already compressed JPEGs): only this person's own folder; a missing file is skipped
