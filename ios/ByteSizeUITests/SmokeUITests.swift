@@ -15,7 +15,8 @@ final class SmokeUITests: XCTestCase {
     func testSignInTabsMenuProfileSignOut() {
         shot("1-sign-in")
         signIn(password: "pw")
-        dismissSavePassword()
+        XCTAssertTrue(app.buttons["Dashboard"].waitForExistence(timeout: 5))
+        dismissSavePassword(timeout: 6)
 
         for tab in ["Dashboard", "Food Log", "Goals", "My Foods", "Quick add"] {
             XCTAssertTrue(app.buttons[tab].waitForExistence(timeout: 5), "missing \(tab)")
@@ -25,6 +26,11 @@ final class SmokeUITests: XCTestCase {
         // Closed: the quick actions aren't on screen (or read by VoiceOver)
         XCTAssertFalse(app.buttons["Track Food"].exists)
         app.buttons["Quick add"].tap()
+        if !app.buttons["Track Food"].waitForExistence(timeout: 3) {
+            // the Save Password prompt can show up late and take the tap
+            dismissSavePassword(timeout: 2)
+            app.buttons["Quick add"].tap()
+        }
         for action in ["Track Food", "Scan Food", "Photo", "Describe Food"] {
             XCTAssertTrue(app.buttons[action].waitForExistence(timeout: 3), "missing \(action)")
             XCTAssertTrue(app.buttons[action].isHittable, "\(action) can't be tapped")
@@ -69,14 +75,16 @@ final class SmokeUITests: XCTestCase {
     }
 
     /// iOS offers to save the password after signing in; say Not Now so it doesn't swallow the next tap.
-    private func dismissSavePassword() {
-        for source in [app!, XCUIApplication(bundleIdentifier: "com.apple.springboard")] {
-            let notNow = source.buttons["Not Now"]
-            if notNow.waitForExistence(timeout: 3) {
-                notNow.tap()
+    private func dismissSavePassword(timeout: TimeInterval) {
+        let sources = [app!, XCUIApplication(bundleIdentifier: "com.apple.springboard")]
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            for source in sources where source.buttons["Not Now"].exists {
+                source.buttons["Not Now"].tap()
                 return
             }
-        }
+            usleep(250_000)
+        } while Date() < deadline
     }
 
     private func shot(_ name: String) {
