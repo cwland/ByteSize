@@ -13,8 +13,7 @@ _(add as they come in)_
   shot-day effects, protein help, food swaps, plateau check, ask a question about your data. (Cory, 2026-11-18)
 - **iPhone app (M5)** — live barcode scanning, Apple Health (steps, workouts, weight) via the API, scan a nutrition
   label when a barcode isn't found.
-- **Culury meal planning** — ByteSize foods/recipes in Culury's planner.
-- More widget library items: weekly trend chart, protein ring on its own, Culury meal-plan widget.
+- More widget library items: weekly trend chart, protein ring on its own.
 
 ## Deferred minors (from reviews)
 
