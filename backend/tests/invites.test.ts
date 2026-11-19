@@ -6,6 +6,8 @@ import { buildApp } from "../src/app.js";
 import { appLog, invites, users } from "../src/db/schema.js";
 import { hashApiKey } from "../src/lib/auth.js";
 import { resetForgotLimits } from "../src/routes/password-reset.js";
+import { cleanupInvites } from "../src/lib/invites.js";
+import { runCleanups } from "../src/lib/lookups.js";
 
 // Invite someone by email (§36): Settings › Users (admin), only with email set up; the person picks their password
 let t: TestApp;
@@ -241,5 +243,38 @@ describe("the invite link's address", () => {
     expect(r.body.error).toBe("Set ByteSize's own address in Settings › Email so the invite link can point at it.");
     expect(t.mail.sent).toHaveLength(0);
     expect((await t.db.select().from(users).where(eq(users.username, "dana")))).toEqual([]);
+  });
+});
+
+describe("the invite link keeps the app's sub-path (§46)", () => {
+  it("an app address with a path (behind a proxy at /bytesize) keeps it in the link", async () => {
+    await t.api("PUT", "/api/settings/email", { ...gmail, appUrl: "https://home.example.com/bytesize/" });
+    t.mail.sent.length = 0;
+    await invite();
+    expect(t.mail.sent[0].text).toContain("https://home.example.com/bytesize/#/invite/");
+    expect(t.mail.sent[0].html).toContain(`href="https://home.example.com/bytesize/#/invite/${tokenIn()}"`);
+  });
+});
+
+describe("cleaning up old invite links (§46)", () => {
+  it("removes expired links and links of people who already have a password; live ones stay", async () => {
+    const dana = (await invite()).body.user;
+    const lee = (await invite({ name: "Lee", username: "lee", email: "lee@example.com" })).body.user;
+    const kim = (await invite({ name: "Kim", username: "kim", email: "kim@example.com" })).body.user;
+    // Dana's link is 8 days old; Kim got a password some other way (the row is stale)
+    await t.db.update(invites).set({ expiresAt: new Date(Date.now() - DAY) }).where(eq(invites.userId, dana.id));
+    await t.db.update(users).set({ passwordHash: "x" }).where(eq(users.id, kim.id));
+    expect(await cleanupInvites(t.app)).toBe(2);
+    expect((await t.db.select().from(invites)).map((r) => r.userId)).toEqual([lee.id]);
+    // Dana is still listed as Invited (Resend sends a new link)
+    const list = (await t.api("GET", "/api/admin/users")).body.users;
+    expect(list.find((u: any) => u.username === "dana")).toMatchObject({ invited: true, inviteSentAt: null });
+  });
+
+  it("runs with the hourly cleanup", async () => {
+    const dana = (await invite()).body.user;
+    await t.db.update(invites).set({ expiresAt: new Date(Date.now() - DAY) }).where(eq(invites.userId, dana.id));
+    await runCleanups(t.app);
+    expect(await t.db.select().from(invites)).toEqual([]);
   });
 });

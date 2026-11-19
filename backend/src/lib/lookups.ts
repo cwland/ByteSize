@@ -6,6 +6,7 @@ import { and, desc, eq, ilike, inArray, isNotNull, isNull, lt, or, sql, type SQL
 import { foodCache, foodSearches, restaurantSearches } from "../db/schema.js";
 import { waitOnClose } from "./schedule.js";
 import { logEvent } from "./appLog.js";
+import { cleanupInvites } from "./invites.js";
 import { HttpError, badRequest, notFound } from "./errors.js";
 import { cacheUpsert, SOURCE_TIMEOUT_MS, toResult, type FoodResult } from "./foods.js";
 import { offByBarcode } from "./foodSources/off.js";
@@ -65,9 +66,14 @@ export async function cleanupLookups(app: FastifyInstance): Promise<{ foods: num
   return { foods, searches };
 }
 
+/** The hourly cleanups: kept lookups, then old invite links (§46). Each logs its own failure; never throws. */
+export async function runCleanups(app: FastifyInstance) {
+  await cleanupLookups(app).catch((err) => logEvent(app.db, { category: "schedule", level: "error", source: "Lookup cleanup", event: "The lookup cleanup failed", detail: (err as Error).message }));
+  await cleanupInvites(app).catch((err) => logEvent(app.db, { category: "schedule", level: "error", source: "Invite cleanup", event: "The invite cleanup failed", detail: (err as Error).message }));
+}
+
 export function scheduleLookupCleanup(app: FastifyInstance) {
-  const run = () =>
-    cleanupLookups(app).catch((err) => logEvent(app.db, { category: "schedule", level: "error", source: "Lookup cleanup", event: "The lookup cleanup failed", detail: (err as Error).message }));
+  const run = () => runCleanups(app);
   let timer: NodeJS.Timeout | undefined;
   let running: Promise<unknown> = Promise.resolve();
   app.addHook("onReady", async () => {

@@ -64,6 +64,13 @@ export default function App() {
     setAuth({ status: "in", user });
   };
 
+  // The used invite token leaves the address bar and history: replaced in place, so Back can't return to it (§46)
+  const acceptedInvite = (token: string, user: User) => {
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}#/`);
+    window.dispatchEvent(new Event("hashchange")); // replaceState fires none; useHash reads the new address
+    signedIn(token, user);
+  };
+
   if (auth.status === "loading") return <div className="min-h-screen bg-page" />;
   if (auth.status === "offline") {
     return (
@@ -76,7 +83,7 @@ export default function App() {
     );
   }
   if (auth.status === "setup") return <SetupWizard onAccount={signedIn} onDone={() => void check()} />;
-  if (inviteToken) return <InvitePage token={inviteToken} onDone={signedIn} />;
+  if (inviteToken) return <InvitePage token={inviteToken} onDone={acceptedInvite} />;
   if (auth.status === "login") return <AuthScreen onDone={signedIn} />;
 
   const setUser = (user: User) => setAuth({ status: "in", user });

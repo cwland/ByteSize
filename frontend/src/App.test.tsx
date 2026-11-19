@@ -46,12 +46,16 @@ describe("App", () => {
     render(<App />);
     expect(await screen.findByRole("heading", { name: "Welcome to ByteSize, Dana" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
+    const entries = window.history.length;
     await userEvent.type(screen.getByLabelText("New password"), "dana-password-1");
     await userEvent.type(screen.getByLabelText("Confirm new password"), "dana-password-1");
     await userEvent.click(screen.getByRole("button", { name: "Set password and sign in" }));
     expect(await screen.findByRole("heading", { name: "Set up ByteSize", level: 1 })).toBeInTheDocument(); // first-run setup
     expect(window.location.hash).toBe("#/");
     expect(getToken()).toBe("dana-token");
+    // The used token is gone from the address and from history: replaced, not a new entry Back returns past (§46)
+    expect(window.history.length).toBe(entries);
+    expect(window.location.href).not.toContain("abcDEF123_-");
   });
 
   it("signing out forgets the person's remembered date look on this device", async () => {
