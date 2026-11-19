@@ -19,8 +19,20 @@ final class HTTPStub: URLProtocol, @unchecked Sendable {
         var json: [String: Any]? { body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } }
     }
 
-    nonisolated(unsafe) static var handler: (URLRequest) -> Reply = { _ in .json(404, #"{"error":"Not found"}"#) }
-    nonisolated(unsafe) static var requests: [Recorded] = []
+    // Requests can arrive on several threads at once (a store loading two things together): guard both with a lock
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var _handler: (URLRequest) -> Reply = { _ in .json(404, #"{"error":"Not found"}"#) }
+    nonisolated(unsafe) private static var _requests: [Recorded] = []
+
+    static var handler: (URLRequest) -> Reply {
+        get { lock.withLock { _handler } }
+        set { lock.withLock { _handler = newValue } }
+    }
+
+    static var requests: [Recorded] {
+        get { lock.withLock { _requests } }
+        set { lock.withLock { _requests = newValue } }
+    }
 
     static var session: URLSession {
         let config = URLSessionConfiguration.ephemeral
@@ -39,7 +51,8 @@ final class HTTPStub: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
 
     override func startLoading() {
-        HTTPStub.requests.append(Recorded(request: request, body: request.httpBody ?? readStream(request.httpBodyStream)))
+        let recorded = Recorded(request: request, body: request.httpBody ?? readStream(request.httpBodyStream))
+        HTTPStub.lock.withLock { HTTPStub._requests.append(recorded) }
         reply(HTTPStub.handler(request))
     }
 
