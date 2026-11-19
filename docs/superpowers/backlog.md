@@ -23,6 +23,3 @@ _(add as they come in)_
   moment an email is marked sent, a second email is possible; when questions are used up, focus can't return to the
   chat box.
 - Seed-demo: --replace clears all of the account's badges (real ones on a test account too).
-
-## From Insights planning (Cory, 2026-11-18)
-
