@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
-import { dashboardLayouts } from "../src/db/schema.js";
+import { dashboardLayouts, userSettings } from "../src/db/schema.js";
 import { WIDGET_IDS } from "../src/lib/widgets.js";
 
 // The Dashboard's widget layout (§28): saved per person, { version: 1, columns: string[][] }
@@ -32,6 +32,27 @@ describe("dashboard layout", () => {
     expect(await t.db.select().from(dashboardLayouts)).toHaveLength(1);
   });
 
+  it("Insights (§43) joins a Dashboard saved before it, once: below Day totals; taken off later, it stays off", async () => {
+    const old = [["food"], ["budget", "water"], ["day-totals", "weight", "streak"]];
+    await t.db.insert(dashboardLayouts).values({ userId: 1, columns: old }); // saved before Insights
+    const withIt = { version: 1, columns: [["food"], ["budget", "water"], ["day-totals", "insights", "weight", "streak"]] };
+    expect((await t.api("GET", "/api/dashboard/layout")).body).toEqual({ layout: withIt });
+    expect((await t.api("GET", "/api/layouts/dashboard")).body).toEqual({ layout: withIt }); // kept, and only once
+    expect((await t.db.select().from(userSettings))[0].insightsWidgetOffered).toBe(true);
+    expect((await t.api("PUT", "/api/dashboard/layout", { version: 1, columns: old })).status).toBe(200);
+    expect((await t.api("GET", "/api/dashboard/layout")).body).toEqual({ layout: { version: 1, columns: old } });
+  });
+
+  it("Insights joins a saved Dashboard without Day totals at the bottom of the right column; one saved after it is left alone", async () => {
+    await t.db.insert(dashboardLayouts).values({ userId: 1, columns: [["food"]] });
+    expect((await t.api("GET", "/api/dashboard/layout")).body.layout.columns).toEqual([["food"], [], ["insights"]]);
+    // Ben saves his own layout (without Insights) before ever reading one: never added
+    const ben = await t.createUser("ben");
+    const as = (m: string, url: string, body?: unknown) => t.app.inject({ method: m as any, url, payload: body as any, headers: { authorization: `Bearer ${ben.token}` } });
+    await as("PUT", "/api/dashboard/layout", { version: 1, columns: [["streak"]] });
+    expect(JSON.parse((await as("GET", "/api/dashboard/layout")).body).layout.columns).toEqual([["streak"]]);
+  });
+
   it("refuses more than 3 columns, unknown widgets and a widget twice", async () => {
     const bad = [
       { version: 1, columns: [[], [], [], ["food"]] },
@@ -49,6 +70,7 @@ describe("dashboard layout", () => {
   it("drops widgets ByteSize no longer has from a saved layout", async () => {
     const me = (await t.api("GET", "/api/auth/me")).body.user;
     await t.db.insert(dashboardLayouts).values({ userId: me.id, columns: [["food", "old-widget"], ["budget"]] });
+    await t.db.insert(userSettings).values({ userId: me.id, insightsWidgetOffered: true }); // (Insights already offered)
     expect((await t.api("GET", "/api/dashboard/layout")).body).toEqual({ layout: { version: 1, columns: [["food"], ["budget"]] } });
   });
 

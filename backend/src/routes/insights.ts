@@ -7,14 +7,13 @@ import { HttpError } from "../lib/errors.js";
 import { requireSignedIn, requireUser } from "../lib/guards.js";
 import {
   INSIGHTS_OFF,
-  TOO_MANY_QUESTIONS,
-  answerQuestion,
+  answerClaimed,
+  claimQuestion,
+  claimRefresh,
   insightView,
   insightsView,
   latestRecap,
-  questionsLeft,
-  refreshTooSoon,
-  refreshWait,
+  refreshFailed,
   setWeekly,
   weekBefore,
   writeProtein,
@@ -43,22 +42,26 @@ export default async function insightsRoutes(app: FastifyInstance) {
     const userId = requireSignedIn(req);
     const { kind } = z.object({ kind: z.enum(["recap", "protein"], { error: "Choose the recap or protein help" }) }).parse(req.body ?? {});
     await aiReady(app);
-    const wait = await refreshWait(app, userId, kind);
-    if (wait > 0) throw refreshTooSoon(wait);
+    await claimRefresh(app, userId, kind); // 429 when too soon; this try counts from now, worked or not
     const today = await todayFor(app, userId);
     const weekStart = await weekStartFor(app.db, userId);
     const thisWeek = { from: addDays(weekBefore(today, weekStart).to, 1), to: today };
-    return answered(req, reply, "POST /api/insights/refresh", userId, async (o) => ({
-      insight: insightView(kind === "recap" ? await writeRecap(app, userId, "refresh", thisWeek, o) : await writeProtein(app, userId, "refresh", today, o)),
-    }));
+    return answered(req, reply, "POST /api/insights/refresh", userId, async (o) => {
+      try {
+        return { insight: insightView(kind === "recap" ? await writeRecap(app, userId, "refresh", thisWeek, o) : await writeProtein(app, userId, "refresh", today, o)) };
+      } catch (err) {
+        if (err instanceof HttpError && err.statusCode === 502) throw refreshFailed();
+        throw err;
+      }
+    });
   });
 
   app.post("/api/insights/ask", async (req, reply) => {
     const userId = requireSignedIn(req);
     const { question } = z.object({ question: z.string().trim().min(3, "Type a question").max(300, "Keep the question under 300 characters") }).parse(req.body ?? {});
     await aiReady(app);
-    if ((await questionsLeft(app, userId)) <= 0) throw new HttpError(429, TOO_MANY_QUESTIONS);
-    return answered(req, reply, "POST /api/insights/ask", userId, async (o) => ({ insight: insightView(await answerQuestion(app, userId, question, o)) }));
+    const claim = await claimQuestion(app, userId, question); // 429 when today's are used up
+    return answered(req, reply, "POST /api/insights/ask", userId, async (o) => ({ insight: insightView(await answerClaimed(app, userId, claim, o)) }));
   });
 
   // The answer, as one JSON or as lines with progress (as Describe it, routes/foods.ts). Going away stops the AI request.

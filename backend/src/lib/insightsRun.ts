@@ -2,7 +2,7 @@
 // failover, a cut-off answer asked again with more room), keeping what it wrote, the on-demand limits, and the weekly
 // run. What the AI is told and how its answers are read: lib/insights.ts (pure).
 import type { FastifyInstance } from "fastify";
-import { and, asc, count, countDistinct, desc, eq, gte, inArray, isNotNull, lte, ne, notInArray } from "drizzle-orm";
+import { and, asc, count, countDistinct, desc, eq, gte, inArray, isNotNull, lt, lte, ne, notInArray, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { activitySteps, glp1Settings, glp1Shots, insights, logEntries, targets, userBody, userSettings, users, weighIns, workouts } from "../db/schema.js";
 import { AiError, AiStopped, type AiProgress } from "./ai.js";
@@ -32,6 +32,7 @@ import { activeGoals } from "./goalsData.js";
 
 export const INSIGHTS_OFF = "Insights need an AI service. An admin can set one up in Settings › Integrations.";
 export const INSIGHTS_FAILED = "Couldn't write your insights right now. Try again in a little while.";
+export const REFRESH_FAILED = "Couldn't write your insights right now. Try again in 10 minutes.";
 export const REFRESH_EVERY_MS = 10 * 60_000; // Refresh: once per 10 minutes per card per person
 export const QUESTIONS_PER_DAY = 20; // and questions: 20 a day (the person's day)
 export const KEEP_ANSWERS = 20;
@@ -47,6 +48,14 @@ const MAX_TOKENS = 3000;
 
 type Opts = { signal?: AbortSignal; onProgress?: (p: AiProgress) => void };
 type Person = { timezone: string; units: "imperial" | "metric"; weekStart: number; weeklyOn: boolean };
+
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+const INSIGHTS_LOCK = 43; // (§43) with the person's id: one limit check or card write at a time per person
+/** Holds this person's insights lock until the transaction ends. */
+const lockPerson = (tx: Tx, userId: number) => tx.execute(sql`select pg_advisory_xact_lock(${INSIGHTS_LOCK}, ${userId})`);
+/** An answer still being written (a question asked, its answer not back yet): counted for the day, never shown. */
+const PENDING = { pending: true };
+const notPending = sql`(${insights.content} ->> 'pending') is null`;
 
 async function personOf(db: Db, userId: number): Promise<Person> {
   const [u] = await db
@@ -139,6 +148,7 @@ export async function writeRecap(app: FastifyInstance, userId: number, source: "
   const json = await askAi(app, userId, recapAsk(buildSummary(input), source === "refresh"), opts);
   const recap = readRecap(json) ?? (await unusable(app, userId, "weekly recap", json));
   const row = await app.db.transaction(async (tx) => {
+    await lockPerson(tx, userId);
     // The week's "so far" recap (and, for the final one, seed-demo's) gives way to this one
     await tx.delete(insights).where(and(eq(insights.userId, userId), eq(insights.kind, "recap"), inArray(insights.source, source === "weekly" ? ["refresh", "demo"] : ["refresh"]), eq(insights.periodStart, period.from)));
     const [made] = await tx
@@ -161,6 +171,7 @@ export async function writeProtein(app: FastifyInstance, userId: number, source:
   const json = await askAi(app, userId, proteinAsk(summary, facts), opts);
   const advice = readProtein(json, summary) ?? (await unusable(app, userId, "protein help", json));
   const row = await app.db.transaction(async (tx) => {
+    await lockPerson(tx, userId);
     await tx.delete(insights).where(and(eq(insights.userId, userId), eq(insights.kind, "protein")));
     const [made] = await tx.insert(insights).values({ userId, kind: "protein", source, periodStart: from, periodEnd: to, content: { ...advice, facts }, createdAt: app.now() }).returning();
     return made;
@@ -169,44 +180,86 @@ export async function writeProtein(app: FastifyInstance, userId: number, source:
   return row;
 }
 
-/** An answer from the person's own data for the range the question implies; the last 20 are kept. */
-export async function answerQuestion(app: FastifyInstance, userId: number, question: string, opts: Opts = {}) {
+export type QuestionClaim = { id: number; question: string; from: string; to: string; today: string };
+
+/**
+ * A question's place in today's 20, taken under the person's lock (two at once can't both have the last one): a
+ * pending answer row, filled in by answerClaimed or removed if no answer comes. 429 when today's are used up.
+ */
+export async function claimQuestion(app: FastifyInstance, userId: number, question: string): Promise<QuestionClaim> {
   const person = await personOf(app.db, userId);
-  const today = localDay(person.timezone, app.now());
+  const now = app.now();
+  const today = localDay(person.timezone, now);
   const range = questionRange(question, today, person.weekStart);
-  const input = await loadSummaryInput(app.db, userId, range.from, range.to, person, today);
-  const json = await askAi(app, userId, questionAsk(buildSummary(input), question), opts);
-  const content = readAnswer(json) ?? (await unusable(app, userId, "answer", json));
-  const row = await app.db.transaction(async (tx) => {
-    const [made] = await tx.insert(insights).values({ userId, kind: "answer", source: "ask", periodStart: range.from, periodEnd: range.to, question, content, createdAt: app.now() }).returning();
-    const keep = (await tx.select({ id: insights.id }).from(insights).where(and(eq(insights.userId, userId), eq(insights.kind, "answer"))).orderBy(desc(insights.createdAt), desc(insights.id)).limit(KEEP_ANSWERS)).map((r) => r.id);
-    await tx.delete(insights).where(and(eq(insights.userId, userId), eq(insights.kind, "answer"), notInArray(insights.id, keep)));
-    return made;
+  return app.db.transaction(async (tx) => {
+    await lockPerson(tx, userId);
+    // A pending answer from a request that never finished (the server stopped): gone after an hour
+    await tx.delete(insights).where(and(eq(insights.userId, userId), eq(insights.kind, "answer"), sql`not ${notPending}`, lt(insights.createdAt, new Date(now.getTime() - HOUR_MS))));
+    if ((await questionsLeft(app, userId, person.timezone, tx)) <= 0) throw new HttpError(429, TOO_MANY_QUESTIONS);
+    const [row] = await tx.insert(insights).values({ userId, kind: "answer", source: "ask", periodStart: range.from, periodEnd: range.to, question, content: PENDING, createdAt: now }).returning({ id: insights.id });
+    return { id: row.id, question, ...range, today };
   });
-  countUsage(app, userId, "ai_insights");
-  return row;
+}
+
+/** The answer to a claimed question, from the person's own data for its range; the last 20 are kept. No answer: the claim is let go. */
+export async function answerClaimed(app: FastifyInstance, userId: number, claim: QuestionClaim, opts: Opts = {}) {
+  try {
+    const person = await personOf(app.db, userId);
+    const input = await loadSummaryInput(app.db, userId, claim.from, claim.to, person, claim.today);
+    const json = await askAi(app, userId, questionAsk(buildSummary(input), claim.question), opts);
+    const content = readAnswer(json) ?? (await unusable(app, userId, "answer", json));
+    const row = await app.db.transaction(async (tx) => {
+      await lockPerson(tx, userId);
+      const [made] = await tx.update(insights).set({ content }).where(and(eq(insights.id, claim.id), eq(insights.userId, userId))).returning();
+      const mine = and(eq(insights.userId, userId), eq(insights.kind, "answer"), notPending);
+      const keep = (await tx.select({ id: insights.id }).from(insights).where(mine).orderBy(desc(insights.createdAt), desc(insights.id)).limit(KEEP_ANSWERS)).map((r) => r.id);
+      await tx.delete(insights).where(and(mine, notInArray(insights.id, keep)));
+      return made;
+    });
+    if (!row) throw new HttpError(502, INSIGHTS_FAILED); // the claim was cleaned up meanwhile (very slow AI)
+    countUsage(app, userId, "ai_insights");
+    return row;
+  } catch (err) {
+    await app.db.delete(insights).where(and(eq(insights.id, claim.id), eq(insights.userId, userId), sql`not ${notPending}`));
+    throw err;
+  }
+}
+
+/** Claim and answer in one (tests and callers that don't stream). */
+export async function answerQuestion(app: FastifyInstance, userId: number, question: string, opts: Opts = {}) {
+  return answerClaimed(app, userId, await claimQuestion(app, userId, question), opts);
 }
 
 // ---------- limits ----------
 
-/** Seconds until this card can be refreshed again (0: now). Only refreshes that worked count. */
-export async function refreshWait(app: FastifyInstance, userId: number, kind: "recap" | "protein"): Promise<number> {
-  const [last] = await app.db
-    .select({ at: insights.createdAt })
-    .from(insights)
-    .where(and(eq(insights.userId, userId), eq(insights.kind, kind), eq(insights.source, "refresh")))
-    .orderBy(desc(insights.createdAt))
-    .limit(1);
-  if (!last) return 0;
-  return Math.max(0, Math.ceil((last.at.getTime() + REFRESH_EVERY_MS - app.now().getTime()) / 1000));
+const triedColumn = (kind: "recap" | "protein") => (kind === "recap" ? userSettings.insightsRecapTriedAt : userSettings.insightsProteinTriedAt);
+const secondsLeft = (app: FastifyInstance, at: Date | null | undefined) => (at ? Math.max(0, Math.ceil((at.getTime() + REFRESH_EVERY_MS - app.now().getTime()) / 1000)) : 0);
+
+/** Seconds until this card can be refreshed again (0: now). Every try counts, worked or not. */
+export async function refreshWait(app: FastifyInstance, userId: number, kind: "recap" | "protein", db: Db | Tx = app.db): Promise<number> {
+  const [row] = await db.select({ at: triedColumn(kind) }).from(userSettings).where(eq(userSettings.userId, userId));
+  return secondsLeft(app, row?.at);
 }
 
+/** A refresh of this card, noted under the person's lock before the AI is asked (so two at once can't both go); 429 when too soon. */
+export async function claimRefresh(app: FastifyInstance, userId: number, kind: "recap" | "protein") {
+  await app.db.transaction(async (tx) => {
+    await lockPerson(tx, userId);
+    const wait = await refreshWait(app, userId, kind, tx);
+    if (wait > 0) throw refreshTooSoon(wait);
+    const set = kind === "recap" ? { insightsRecapTriedAt: app.now() } : { insightsProteinTriedAt: app.now() };
+    await tx.insert(userSettings).values({ userId, ...set }).onConflictDoUpdate({ target: userSettings.userId, set });
+  });
+}
+/** A refresh whose AI didn't answer: it still counts, so say when to try again. */
+export const refreshFailed = () => new HttpError(502, REFRESH_FAILED, { retryAfterSec: REFRESH_EVERY_MS / 1000 });
+
 /** Questions the person can still ask today (their own day). */
-export async function questionsLeft(app: FastifyInstance, userId: number, timezone?: string): Promise<number> {
+export async function questionsLeft(app: FastifyInstance, userId: number, timezone?: string, db: Db | Tx = app.db): Promise<number> {
   const tz = timezone ?? (await personOf(app.db, userId)).timezone;
   const now = app.now();
   const today = localDay(tz, now);
-  const recent = await app.db
+  const recent = await db
     .select({ at: insights.createdAt })
     .from(insights)
     .where(and(eq(insights.userId, userId), eq(insights.kind, "answer"), gte(insights.createdAt, new Date(now.getTime() - 27 * HOUR_MS))));
@@ -232,7 +285,7 @@ export async function insightsView(app: FastifyInstance, userId: number) {
     loadSummaryInput(app.db, userId, week.from, week.to, person).then(weekNumbers),
     app.db.select().from(insights).where(mine("recap")).orderBy(desc(insights.periodStart), ...newest(insights.createdAt)).limit(KEEP_RECAPS),
     app.db.select().from(insights).where(mine("protein")).orderBy(...newest(insights.createdAt)).limit(1),
-    app.db.select().from(insights).where(mine("answer")).orderBy(...newest(insights.createdAt)).limit(KEEP_ANSWERS),
+    app.db.select().from(insights).where(and(mine("answer"), notPending)).orderBy(...newest(insights.createdAt)).limit(KEEP_ANSWERS),
     questionsLeft(app, userId, person.timezone),
     refreshWait(app, userId, "recap"),
     refreshWait(app, userId, "protein"),

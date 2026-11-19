@@ -228,6 +228,11 @@ export const userSettings = pgTable("user_settings", {
   culuryEnabled: boolean("culury_enabled"),
   // Insights' weekly recap (§43): the switch on the Insights page, on by default
   insightsWeekly: boolean("insights_weekly").notNull().default(true),
+  // When the person last asked for a card (worked or not): Refresh waits 10 minutes after it, per card
+  insightsRecapTriedAt: timestamp("insights_recap_tried_at", { withTimezone: true }),
+  insightsProteinTriedAt: timestamp("insights_protein_tried_at", { withTimezone: true }),
+  // The Insights widget was put on (or offered with) their saved Dashboard once; taken off later, it stays off
+  insightsWidgetOffered: boolean("insights_widget_offered").notNull().default(false),
 });
 
 // Daily targets. The targets in force on day D: the latest effective_from <= D (ties: highest id).

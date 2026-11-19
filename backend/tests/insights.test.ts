@@ -179,22 +179,36 @@ describe("Refresh", () => {
     expect((await t.api("POST", "/api/insights/refresh", { kind: "answer" })).status).toBe(400);
   });
 
-  it("an answer that can't be used: a friendly error, the last good card kept, and the try doesn't use up the 10 minutes", async () => {
+  it("an answer that can't be used: a friendly error saying when to try again, the last good card kept; the try counts toward the 10 minutes", async () => {
     await seed();
     await aiServices();
     await t.api("POST", "/api/insights/refresh", { kind: "recap" });
-    t.clock.date = new Date(NOON_WED.getTime() + 11 * 60_000);
+    let at = NOON_WED.getTime();
     for (const bad of ["Sorry, I can't do that.", { summary: "No tip" }, { summary: 5, wentWell: [], tryNext: "" }]) {
+      at += 11 * 60_000;
+      t.clock.date = new Date(at);
       replies.recap = bad;
       const r = await t.api("POST", "/api/insights/refresh", { kind: "recap" });
       expect(r.status).toBe(502);
-      expect(r.body.error).toBe("Couldn't write your insights right now. Try again in a little while.");
+      expect(r.body).toEqual({ error: "Couldn't write your insights right now. Try again in 10 minutes.", retryAfterSec: 600 });
+      // a failing AI isn't asked again at once
+      expect((await t.api("POST", "/api/insights/refresh", { kind: "recap" })).status).toBe(429);
     }
     const page = (await t.api("GET", "/api/insights")).body;
     expect(page.recaps).toHaveLength(1);
     expect(page.recaps[0].content.summary).toBe(RECAP.summary);
+    expect(page.limits.recapRefreshIn).toBe(600);
+    t.clock.date = new Date(at + 10 * 60_000);
     replies.recap = { ...RECAP, summary: "Fresh." };
     expect((await t.api("POST", "/api/insights/refresh", { kind: "recap" })).body.insight.content.summary).toBe("Fresh.");
+  });
+
+  it("two refreshes at once (two tabs): one is asked, the other waits its turn", async () => {
+    await seed();
+    await aiServices();
+    const both = await Promise.all([t.api("POST", "/api/insights/refresh", { kind: "recap" }), t.api("POST", "/api/insights/refresh", { kind: "recap" })]);
+    expect(both.map((r) => r.status).sort()).toEqual([200, 429]);
+    expect(t.ai.calls).toHaveLength(1);
   });
 
   it("an answer cut off for room is asked again with more room", async () => {
@@ -226,7 +240,7 @@ describe("Refresh", () => {
     t.clock.date = new Date(NOON_WED.getTime() + 11 * 60_000);
     const down = await t.api("POST", "/api/insights/refresh", { kind: "recap" }, { accept: "application/x-ndjson" });
     const last = String(down.body).trim().split("\n").map((l) => JSON.parse(l)).at(-1);
-    expect(last).toEqual({ error: "Couldn't write your insights right now. Try again in a little while.", status: 502 });
+    expect(last).toEqual({ error: "Couldn't write your insights right now. Try again in 10 minutes.", retryAfterSec: 600, status: 502 });
   });
 });
 
@@ -243,6 +257,20 @@ describe("Ask a question", () => {
     const page = (await t.api("GET", "/api/insights")).body;
     expect(page.answers.map((a: any) => a.question)).toEqual(["How was last week?", "How's my protein?"]);
     expect(page.limits.questionsLeft).toBe(18);
+  });
+
+  it("the 20th and 21st question at once: one is answered, the other told the day's are used up; a failed question doesn't count", async () => {
+    await aiServices();
+    await t.db.insert(insights).values(Array.from({ length: 19 }, (_, i) => ({ userId: 1, kind: "answer" as const, source: "ask" as const, periodStart: "2026-11-18", periodEnd: "2026-11-18", question: `Q${i}?`, content: { answer: "a", offTopic: false }, createdAt: new Date(NOON_WED.getTime() - 1000 * (i + 1)) })));
+    replies.answer = "not json";
+    expect((await t.api("POST", "/api/insights/ask", { question: "Fails?" })).status).toBe(502);
+    expect((await t.api("GET", "/api/insights")).body.limits.questionsLeft).toBe(1);
+    replies.answer = { answer: "Yes." };
+    const both = await Promise.all([t.api("POST", "/api/insights/ask", { question: "One?" }), t.api("POST", "/api/insights/ask", { question: "Two?" })]);
+    expect(both.map((r) => r.status).sort()).toEqual([200, 429]);
+    const page = (await t.api("GET", "/api/insights")).body;
+    expect(page.answers).toHaveLength(20);
+    expect(page.answers.every((a: any) => a.content.answer)).toBe(true); // nothing half-done is shown
   });
 
   it("a question about something else gets the polite reply", async () => {

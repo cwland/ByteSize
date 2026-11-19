@@ -1,5 +1,5 @@
 {
-  "id": "f3a5b43c-720d-438f-b8da-52c760ade89b",
+  "id": "629ba919-4eb1-4246-a25a-5e712f8dacb9",
   "prevId": "2d763fe8-c715-484f-bdbb-3c92d9cf74f9",
   "version": "7",
   "dialect": "postgresql",
@@ -3062,6 +3062,25 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
+        },
+        "insights_recap_tried_at": {
+          "name": "insights_recap_tried_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "insights_protein_tried_at": {
+          "name": "insights_protein_tried_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "insights_widget_offered": {
+          "name": "insights_widget_offered",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         }
       },
       "indexes": {},
