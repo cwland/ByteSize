@@ -19,6 +19,8 @@ public final class SessionStore {
     /// The client for the signed-in server; nil when signed out.
     public private(set) var api: APIClient?
 
+    /// Bumped on every sign-out: a 401 from a client made before then can't sign out a newer login.
+    private var generation = 0
     private let tokens: TokenStore
     private let defaults: UserDefaults
     private let session: URLSession
@@ -40,8 +42,9 @@ public final class SessionStore {
     /// A client for any server (used before sign-in to check the address), wired to sign out on a 401.
     public func client(for server: ServerAddress) -> APIClient {
         let tokens = self.tokens
+        let made = generation
         return APIClient(base: server, token: { tokens.read() }, session: session) { [weak self] in
-            await self?.handleUnauthorized()
+            await self?.handleUnauthorized(from: made)
         }
     }
 
@@ -90,7 +93,8 @@ public final class SessionStore {
         Task.detached { _ = try? await tellServer.send(Auth.logout()) }
     }
 
-    func handleUnauthorized() {
+    func handleUnauthorized(from made: Int) {
+        guard made == generation else { return } // an earlier login's request
         if case .signedOut = state { return }
         clear(notice: Self.signedOutNotice)
     }
@@ -115,6 +119,7 @@ public final class SessionStore {
     }
 
     private func clear(notice: String?) {
+        generation += 1
         tokens.write(nil)
         defaults.removeObject(forKey: Key.lastUser)
         api = nil

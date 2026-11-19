@@ -37,7 +37,7 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(d.entries[0].meal, .breakfast)
         XCTAssertEqual(d.totals["calories"], 1138)
         XCTAssertEqual(d.meals["breakfast"]?.calories, 260)
-        XCTAssertEqual(d.targets?.calories, Range(min: 1500, max: 2000))
+        XCTAssertEqual(d.targets?.calories, TargetRange(min: 1500, max: 2000))
         XCTAssertEqual(d.targets?.water_ml.max, 3000)
         XCTAssertEqual(d.streak, 12)
     }

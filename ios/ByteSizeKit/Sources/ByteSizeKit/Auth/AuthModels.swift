@@ -13,6 +13,8 @@ public struct User: Codable, Equatable, Sendable {
     public let colorMode: String?
     /// imperial or metric.
     public let units: String
+    /// The account's timezone (e.g. America/Boise): "today" is this zone's day, as on the web.
+    public let timezone: String?
 }
 
 /// What the sign-in screen can offer (`GET /api/auth/status`).
