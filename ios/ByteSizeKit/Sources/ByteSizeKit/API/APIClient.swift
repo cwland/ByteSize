@@ -47,6 +47,8 @@ public actor APIClient {
         let isJSON = (http.value(forHTTPHeaderField: "Content-Type") ?? "").contains("json")
 
         if (200..<300).contains(http.statusCode) {
+            // No Content (e.g. a delete): fine when the caller expects nothing back
+            if http.statusCode == 204, let nothing = Empty() as? R { return nothing }
             guard isJSON, let decoded = try? JSONDecoder().decode(R.self, from: data) else {
                 throw APIError.notByteSize(host: base.host)
             }
