@@ -1270,6 +1270,9 @@ Options: `--user <username>` (default: the account that set up the server, i.e. 
   profile" when the account had no body details (needed for GLP-1 tracking and the weight goal). `--replace` also
   deletes that account's Undo records of combined entries (their entries are gone); earned badges are left as they
   are. It prints what it deleted and what it made.
+- Plans (Cory, after testing: "everything before today says there is no plan"): when the account's earliest plan
+  starts after the first seeded day (e.g. set up today), a copy of it — same plan and numbers — is added starting on
+  the first seeded day, so every seeded day has a plan. Re-runs don't add another copy.
 - Same output every run for the same options and day (seeded random), ending today in the server's time zone.
 
 **What it makes** (all through the same tables/rules the app uses, so totals, rings, streaks, trends, badges and

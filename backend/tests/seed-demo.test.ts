@@ -184,6 +184,23 @@ describe("npm run seed-demo", () => {
     expect(DEMO_FOODS.filter((f) => f.barcode).length).toBeGreaterThanOrEqual(3);
   });
 
+  it("a plan that starts today (set up today) also covers the seeded days: copied back to the first day, same plan and numbers", async () => {
+    const id = await idOf("demo");
+    const plan = { plan: "steady", caloriesMin: 1700, caloriesMax: 2100, proteinMin: 120, proteinMax: 140, fiberMin: 28, fiberMax: 34, waterMin: 2200, waterMax: 3200 };
+    await t.db.insert(targets).values({ userId: id, effectiveFrom: TODAY, ...plan });
+    const r = await seedDemo(t.db, args());
+    const as = await signIn();
+    for (const day of [r.from, "2026-10-01", TODAY]) {
+      const goals = (await as("GET", `/api/day/${day}`)).body.targets;
+      expect(goals, day).toMatchObject({ calories: { min: 1700, max: 2100 }, protein_g: { min: 120, max: 140 } });
+    }
+    const rows = await t.db.select().from(targets).where(eq(targets.userId, id));
+    expect(rows.map((x) => [x.effectiveFrom, x.plan]).sort()).toEqual([[r.from, "steady"], [TODAY, "steady"]]);
+    // Run again (--replace): no second copy
+    await seedDemo(t.db, args({ replace: true }));
+    expect((await t.db.select().from(targets).where(eq(targets.userId, id))).length).toBe(2);
+  });
+
   it("keeps goals and GLP-1 already set; sets them only where unset", async () => {
     const id = await idOf("demo");
     await t.db.insert(targets).values({ userId: id, effectiveFrom: "2026-01-01", plan: "steady", caloriesMin: 1800, caloriesMax: 2200, proteinMin: 90, proteinMax: 100, fiberMin: 25, fiberMax: 30, waterMin: 2000, waterMax: 3000 });
