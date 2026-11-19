@@ -33,6 +33,8 @@ public final class SessionStore {
         self.defaults = defaults
         self.session = session
         server = defaults.string(forKey: Key.server).flatMap { ServerAddress($0) }
+        // Nothing saved: straight to sign-in (no restore step to wait for)
+        if server == nil || tokens.read() == nil { state = .signedOut(notice: nil) }
     }
 
     /// A client for any server (used before sign-in to check the address), wired to sign out on a 401.
