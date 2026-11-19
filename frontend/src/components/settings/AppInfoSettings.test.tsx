@@ -102,10 +102,13 @@ describe("Settings › App info", () => {
 
   it("the numbers count up from 0, a little staggered, and end at their values", async () => {
     delete (window as { matchMedia?: unknown }).matchMedia; // no reduce motion
-    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] }); // setTimeout stays real for the waiting helpers
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
     fakeServer({ "GET /api/app-info": () => info() });
-    renderWithSession(<AppInfoSettings />);
-    await screen.findByRole("group", { name: "Days logged" });
+    // Rendered inside act, so the answer, its render and the tiles' effects (each starting its count) are all done
+    // before the clock moves: waiting with findBy* left the effects to a later task, which under load could run
+    // after the first advance and start counting late (§46). Nothing here waits on real time.
+    await act(async () => void renderWithSession(<AppInfoSettings />));
+    screen.getByRole("group", { name: "Days logged" });
     expect(shown("Days logged")).toBe("0");
     expect(value("Days logged")).toBe("1,234"); // screen readers don't wait
     act(() => void vi.advanceTimersByTime(250));
