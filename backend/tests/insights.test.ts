@@ -30,11 +30,11 @@ function answer(_url: string, body: any) {
   const text = userText(body);
   if (text.includes("Write a recap")) return reply(replies.recap);
   if (text.includes("Help this person get enough protein")) return reply(replies.protein);
-  if (text.includes("The person asks")) return reply(replies.answer);
+  if (text.includes("<question>")) return reply(replies.answer);
   return reply({ ok: true });
 }
 const aiServices = (services = [{ name: "Home AI", provider: "openai", apiKey: "sk-home-ai", model: "gpt" }]) => t.api("PUT", "/api/settings/ai", { enabled: true, mode: "auto", maxPerRun: 50, timeoutSec: 5, services });
-const summaryOf = (call: { body: any }) => JSON.parse(/Data summary \(JSON\):\n(.*)\n/.exec(userText(call.body))![1]);
+const summaryOf = (call: { body: any }) => JSON.parse(/<data>\n(.*)\n<\/data>/.exec(userText(call.body))![1]);
 
 // The admin "cory" (user 1): a plan, last week (8-14 Nov, Sunday start) logged on 3 days, this week on 1
 async function seed(userId = 1) {
@@ -237,7 +237,7 @@ describe("Ask a question", () => {
     const r = await t.api("POST", "/api/insights/ask", { question: "How's my protein?" });
     expect(r.status).toBe(200);
     expect(r.body.insight).toMatchObject({ kind: "answer", question: "How's my protein?", periodStart: "2026-10-22", periodEnd: "2026-11-18", content: { answer: "You averaged 92 g of protein a day.", offTopic: false } });
-    expect(userText(t.ai.calls[0].body)).toContain('The person asks: "How\'s my protein?"');
+    expect(userText(t.ai.calls[0].body)).toContain('<question>\n"How\'s my protein?"\n</question>');
     await t.api("POST", "/api/insights/ask", { question: "How was last week?" });
     expect(summaryOf(t.ai.calls[1]).period).toEqual({ from: "2026-11-08", to: "2026-11-14" });
     const page = (await t.api("GET", "/api/insights")).body;
