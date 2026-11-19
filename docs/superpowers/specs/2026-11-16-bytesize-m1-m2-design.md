@@ -1442,3 +1442,12 @@ the data). Three parts, built in order; each ships on its own.
 
 **Left to the builder.** Visual design within the app's existing style; chart details; exact copy beyond the above;
 how the registry marks which pages a widget fits.
+
+## 41. Dashboard polish: food card title, plan on Day totals, no My foods button (Cory, 2026-11-18)
+
+- **Food widget title inside its card.** "Today's food" / "Food on …" (and the Select/edit controls beside it) sits
+  inside the widget's card at the top, the same way the other widgets show their titles, so card tops line up.
+- **Plan name on Day totals** (the top-right widget): a line "Plan: <plan name>" (the same name the Goals plan card
+  shows, e.g. "Steady"; "Your own targets" when set by hand) with a small change icon button ("Change plan") that
+  opens the plan picker (the same flow as Goals › Change plan); with no plan, "Pick a plan" opens it.
+- **No My foods button** on the food widget (My foods stays in the side menu / phone bar).
