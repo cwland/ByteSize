@@ -137,6 +137,17 @@ describe("Goals", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("one estimate and one weight request: the Weight card's line and the Goal date agree", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-17T20:00:00Z"));
+    const server = fakeServer({ ...m3Routes, "GET /api/targets": () => ({ targets: steadyTargets }), "GET /api/weight": () => weightJson() });
+    renderWithSession(<GoalsPage />);
+    const weight = await screen.findByRole("region", { name: "Weight" });
+    expect(await within(weight).findByText("Losing 1.2 lb a week — goal around Jun 29, 2027")).toBeInTheDocument();
+    expect(await within(screen.getByRole("region", { name: "Goal date" })).findByText(/At your pace:/)).toHaveTextContent("around Jun 29, 2027");
+    expect(server.sent.filter((x) => x.path.startsWith("/api/weight"))).toHaveLength(1);
+  });
+
   it("shows the person's saved Goals layout", async () => {
     const server = fakeServer({
       ...m3Routes,

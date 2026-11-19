@@ -21,7 +21,7 @@ export function weightJson(over: Record<string, unknown> = {}) {
     goalKg: lb(180),
     lostKg: lb(3.9),
     projection: { status: "ok", date: "2027-06-29", kgPerWeek: lb(1.2) },
-    goalDate: { status: "not_enough" },
+    goalDate: { status: "ok", kgPerWeek: lb(1.2), toGoKg: lb(42.1), weeks: { min: 30, max: 35 }, date: "2027-06-29", earliest: "2027-06-08", latest: "2027-07-20" },
     replanHint: false,
     ...over,
   };

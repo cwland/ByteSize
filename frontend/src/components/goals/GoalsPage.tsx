@@ -11,6 +11,7 @@ import { useWide } from "../../wide";
 import { EditLayoutButton, WidgetColumns, useWidgetLayout } from "../dashboard/WidgetPage";
 import type { WidgetProps } from "../dashboard/widgets";
 import { GoalsContext, type GoalsMode } from "./goalsContext";
+import { WeightProvider } from "../../weight";
 
 // The mode a Goals address opens: "#/goals/plan" the plan picker (the Dashboard's "Pick a plan"), "#/goals/details"
 // Edit my details (the goal date's "Set a goal weight")
@@ -64,12 +65,14 @@ export default function GoalsPage() {
 
   return (
     <GoalsContext.Provider value={{ targets, setMode }}>
+      <WeightProvider>
       <div className={`flex flex-col ${wide ? "gap-5" : "gap-3"}`}>
         {wide ? <PageHeader title="Goals">{editButton}</PageHeader> : <h1 className="sr-only">Goals</h1>}
         {!wide && editButton && <div className="flex justify-end">{editButton}</div>}
         <Notice msg={msg} />
         <WidgetColumns layout={layout} props={props} wideGrid={wideGrid} />
       </div>
+      </WeightProvider>
     </GoalsContext.Provider>
   );
 }

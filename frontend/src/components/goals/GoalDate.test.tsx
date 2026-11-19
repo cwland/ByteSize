@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, within } from "@testing-library/react";
 import GoalDateWidget, { goalDateCopy } from "./GoalDate";
 import type { GoalDate } from "../../types";
@@ -17,8 +17,8 @@ describe("goalDateCopy (§40a)", () => {
     expect(goalDateCopy(ok, "imperial", undefined, TODAY)).toEqual({
       kind: "ok",
       weeks: "23–25 weeks",
-      date: "Apr 5",
-      range: "Mar 22 – Apr 19",
+      date: "Apr 5, 2027",
+      range: "Mar 22 – Apr 19, 2027",
       pace: "−1.4 lb a week",
       toGo: "39.4 lb to go",
     });
@@ -39,7 +39,9 @@ describe("goalDateCopy (§40a)", () => {
       pace: "−0.6 kg a week",
       toGo: "17.9 kg to go",
     });
-    expect(goalDateCopy(ok, "metric", "weekday-long-day-month-long", TODAY)).toMatchObject({ date: "5 April", range: "22 March – 19 April" });
+    expect(goalDateCopy(ok, "metric", "weekday-long-day-month-long", TODAY)).toMatchObject({ date: "5 April 2027", range: "22 March – 19 April 2027" });
+    // This year's dates have no year
+    expect(goalDateCopy({ ...ok, date: "2026-12-20", earliest: "2026-12-10", latest: "2026-12-30" }, "imperial", undefined, TODAY)).toMatchObject({ date: "Dec 20", range: "Dec 10 – Dec 30" });
   });
 
   it("reached, gaining or flat, too little data, no goal weight", () => {
@@ -51,12 +53,18 @@ describe("goalDateCopy (§40a)", () => {
 });
 
 describe("Goal date widget", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-18T20:00:00Z"));
+  });
+  afterEach(() => void vi.useRealTimers());
+
   it("shows the estimate as a range, with its dates, the pace and how far to go", async () => {
     fakeServer({ ...m3Routes, "GET /api/settings/me": () => settingsMe, "GET /api/weight": () => weightJson({ goalDate: { ...ok, date: "2027-04-05" } }) });
     renderWithSession(<GoalDateWidget />);
     const box = await screen.findByRole("region", { name: "Goal date" });
-    expect(await within(box).findByText(/At your pace:/)).toHaveTextContent("At your pace: 23–25 weeks, around Apr 5");
-    expect(within(box).getByText("Mar 22 – Apr 19")).toBeInTheDocument();
+    expect(await within(box).findByText(/At your pace:/)).toHaveTextContent("At your pace: 23–25 weeks, around Apr 5, 2027");
+    expect(within(box).getByText("Mar 22 – Apr 19, 2027")).toBeInTheDocument();
     expect(within(box).getByText("−1.4 lb a week")).toBeInTheDocument();
     expect(within(box).getByText("39.4 lb to go")).toBeInTheDocument();
   });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { createContext, createElement, useContext, useEffect, useState, type ReactNode } from "react";
 import { api } from "./api";
 import type { Weight } from "./types";
 
@@ -10,11 +10,12 @@ export const onWeightChanged = (on: () => void) => {
   return () => window.removeEventListener(EVENT, on);
 };
 
-// GET /api/weight (optionally windowed; from/to inclusive), reloaded when a weigh-in changes
-export function useWeight(from?: string, to?: string) {
+// GET /api/weight (optionally windowed; from/to inclusive), reloaded when a weigh-in changes. enabled false: no request.
+export function useWeight(from?: string, to?: string, enabled = true) {
   const [data, setData] = useState<Weight | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
+    if (!enabled) return;
     let live = true;
     const qs = [from && `from=${from}`, to && `to=${to}`].filter(Boolean).join("&");
     const load = () =>
@@ -31,8 +32,21 @@ export function useWeight(from?: string, to?: string) {
       live = false;
       off();
     };
-  }, [from, to]);
+  }, [from, to, enabled]);
   return { data, error };
+}
+
+// Every weigh-in (GET /api/weight, not windowed), loaded once for a page whose widgets share it (Goals: the Weight
+// chart and the Goal date); outside a provider each caller loads its own
+type WeightState = { data: Weight | null; error: string | null };
+const WeightContext = createContext<WeightState | null>(null);
+export function WeightProvider({ children }: { children: ReactNode }) {
+  return createElement(WeightContext.Provider, { value: useWeight() }, children);
+}
+export function useAllWeight(): WeightState {
+  const shared = useContext(WeightContext);
+  const own = useWeight(undefined, undefined, shared === null);
+  return shared ?? own;
 }
 
 // "2026-10-20" -> "Oct 20"; longDay -> "Oct 20, 2026"

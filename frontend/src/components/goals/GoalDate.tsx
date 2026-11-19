@@ -1,11 +1,11 @@
 import { CalendarClock } from "lucide-react";
 import { useSettingsMe } from "../../day";
-import { formatDay } from "../../dateFormat";
+import { formatDay, formatDayRange } from "../../dateFormat";
 import { todayIn } from "../../selectedDay";
 import { useSession } from "../../session";
 import type { GoalDate, Units } from "../../types";
 import { formatWeight } from "../../units";
-import { useWeight } from "../../weight";
+import { useAllWeight } from "../../weight";
 import { Notice } from "../ui/Notice";
 import { linkButton } from "../ui/styles";
 
@@ -29,7 +29,7 @@ export function goalDateCopy(g: GoalDate, units: Units, dateFormat: string | und
         kind: "ok",
         weeks: weeksText(g.weeks),
         date: day(g.date),
-        range: `${day(g.earliest)} – ${day(g.latest)}`,
+        range: formatDayRange(g.earliest, g.latest, dateFormat, today),
         pace: `−${formatWeight(g.kgPerWeek, units)} a week`,
         toGo: `${formatWeight(g.toGoKg, units)} to go`,
       };
@@ -48,7 +48,7 @@ export function goalDateCopy(g: GoalDate, units: Units, dateFormat: string | und
 export default function GoalDateWidget() {
   const { user } = useSession();
   const { dateFormat } = useSettingsMe();
-  const { data, error } = useWeight();
+  const { data, error } = useAllWeight();
   const copy = data ? goalDateCopy(data.goalDate, user.units, dateFormat, todayIn(user.timezone)) : null;
   return (
     <section aria-label="Goal date" className="rounded-2xl bg-container p-5">

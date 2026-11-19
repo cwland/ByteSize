@@ -25,28 +25,35 @@ describe("WeightSection (Goals)", () => {
     expect(within(section).getByTestId("weight-lost")).toHaveTextContent("3.9 lb");
     expect(within(section).getByText("Losing 1.2 lb a week — goal around Jun 29, 2027")).toBeInTheDocument();
     expect(within(section).getByRole("img", { name: /^Weight from Oct 20 to Nov 17/ })).toBeInTheDocument();
-    expect(server.sent[0].path).toBe("/api/weight?from=2026-10-18&to=2026-11-17");
+    // One request for every weigh-in; the ranges are cut here (the goal date needs them all anyway)
+    expect(server.sent.map((x) => x.path).filter((p) => p.startsWith("/api/weight"))).toEqual(["/api/weight"]);
     expect(within(section).getByRole("button", { name: "1 month" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("Your weight has changed — check your plan")).not.toBeInTheDocument();
+  });
+
+  // The same estimate as the Goal date widget (§40a): its pace and middle date, never a second number
+  it.each([
+    [{ status: "not_enough" }, "Not enough weigh-ins yet"],
+    [{ status: "not_heading", kgPerWeek: -0.2 }, "Not losing right now"],
+    [{ status: "not_heading", kgPerWeek: 0.5 * KG }, "Losing 0.5 lb a week"],
+    [{ status: "reached" }, "You've reached your goal"],
+    [{ status: "ok", kgPerWeek: 1.3 * KG, toGoKg: 30, weeks: { min: 33, max: 38 }, date: "2027-07-13", earliest: "2027-07-01", latest: "2027-08-10" }, "Losing 1.3 lb a week — goal around Jul 13, 2027"],
+    [{ status: "ok", kgPerWeek: 0.01, toGoKg: 1, weeks: { min: 9, max: 12 }, date: "2026-12-30", earliest: "2026-12-20", latest: "2027-01-23" }, "Losing slowly — goal around Dec 30"],
+  ])("goal date %o reads %s", async (goalDate, text) => {
+    fakeServer({ "GET /api/weight": () => weightJson({ goalDate, projection: { status: "ok", date: "2027-06-29", kgPerWeek: 1.2 * KG } }) });
+    renderWithSession(<WeightSection onReplan={() => {}} />);
+    expect(await screen.findByText(text)).toBeInTheDocument();
   });
 
   it.each([
     [{ status: "not_enough" }, "Not enough weigh-ins yet"],
     [{ status: "not_losing", kgPerWeek: -0.2 }, "Not losing right now"],
-    [{ status: "reached" }, "You've reached your goal"],
     [{ status: "ok", kgPerWeek: 0.5 }, "Losing 1.1 lb a week"],
     [{ status: "ok", kgPerWeek: 0.01 }, "Losing slowly"],
-  ])("projection %o reads %s", async (projection, text) => {
-    fakeServer({ "GET /api/weight": () => weightJson({ projection, ...(projection.status === "ok" ? { goalKg: null } : {}) }) });
+  ])("no goal weight: projection %o reads %s", async (projection, text) => {
+    fakeServer({ "GET /api/weight": () => weightJson({ projection, goalKg: null, goalDate: { status: "no_goal" } }) });
     renderWithSession(<WeightSection onReplan={() => {}} />);
     expect(await screen.findByText(text)).toBeInTheDocument();
-  });
-
-  it("a goal at or above the starting weight, with the trend at or under it, reads as at the goal, not as not losing", async () => {
-    fakeServer({ "GET /api/weight": () => weightJson({ goalKg: 230 * KG, projection: { status: "not_losing" } }) });
-    renderWithSession(<WeightSection onReplan={() => {}} />);
-    expect(await screen.findByText("At or below your goal weight")).toBeInTheDocument();
-    expect(screen.queryByText("Not losing right now")).not.toBeInTheDocument();
   });
 
   it("a gain reads as gained so far", async () => {
@@ -65,15 +72,21 @@ describe("WeightSection (Goals)", () => {
     expect(onReplan).toHaveBeenCalled();
   });
 
-  it("range chips ask for 3 months and for all", async () => {
-    const server = fakeServer({ "GET /api/weight": () => weightJson() });
+  it("range chips cut the weigh-ins already loaded: 1 month, 3 months, all", async () => {
+    const old = { day: "2026-07-01", weightKg: 230 * KG, trendKg: 230 * KG, note: null };
+    const server = fakeServer({ "GET /api/weight": () => weightJson({ weighIns: [old, ...sampleWeighIns], start: { day: old.day, weightKg: old.weightKg } }) });
     renderWithSession(<WeightSection onReplan={() => {}} />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "3 months" }));
-    await vi.waitFor(() => expect(server.sent.at(-1)!.path).toBe("/api/weight?from=2026-08-18&to=2026-11-17"));
+    const list = await screen.findByRole("list", { name: "Weigh-ins" });
+    expect(within(list).queryByRole("button", { name: /Jul 1/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "3 months" }));
     expect(screen.getByRole("button", { name: "3 months" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("img", { name: /^Weight from Oct 20 to Nov 17/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "All" }));
-    await vi.waitFor(() => expect(server.sent.at(-1)!.path).toBe("/api/weight"));
+    expect(screen.getByRole("img", { name: /^Weight from Jul 1 to Nov 17/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^Show all/ }));
+    expect(within(screen.getByRole("list", { name: "Weigh-ins" })).getByRole("button", { name: /Jul 1/ })).toBeInTheDocument();
+    expect(server.sent.map((x) => x.path).filter((p) => p.startsWith("/api/weight"))).toEqual(["/api/weight"]);
   });
 
   it("edits a past weigh-in from the list", async () => {
@@ -96,7 +109,7 @@ describe("WeightSection (Goals)", () => {
     expect(put.path).toBe("/api/weigh-ins/2026-11-13");
     expect(put.body.weightKg).toBeCloseTo(222 * KG, 9);
     // the list reloads after the save
-    await vi.waitFor(() => expect(server.sent.filter((s) => s.method === "GET")).toHaveLength(2));
+    await vi.waitFor(() => expect(server.sent.filter((s) => s.method === "GET" && s.path.startsWith("/api/weight"))).toHaveLength(2));
   });
 
   it("saving an untouched weight keeps the exact stored kg", async () => {
