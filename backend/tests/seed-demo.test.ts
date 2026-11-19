@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { asUser } from "./isolation.js";
-import { glp1Shots, glp1Settings, logEntries, recipeItems, targets, usageCounts, userBody, userFoods, users, weighIns } from "../src/db/schema.js";
+import { logCombines, glp1Shots, glp1Settings, logEntries, recipeItems, targets, usageCounts, userBody, userFoods, users, weighIns } from "../src/db/schema.js";
 import {
   DEFAULT_DAYS, DEMO_FOODS, DEMO_NOTE, DEMO_QUICK_MEALS, HAS_DATA, INJECTION_WEEKDAY, START_LB, USAGE,
   instantAt, parseSeedArgs, planDemo, seedDemo, type PlannedDay,
@@ -381,6 +381,17 @@ describe("npm run seed-demo", () => {
     const orphan = await t.db.execute(sql`select count(*)::int as n from recipe_items r left join user_foods u on u.id = r.recipe_id where u.id is null`);
     expect((orphan.rows[0] as any).n).toBe(0);
     expect((await t.db.select().from(recipeItems)).length).toBe(DEMO_QUICK_MEALS.reduce((s, q) => s + q.parts.length, 0));
+  });
+
+  it("--replace deletes cleanly when the account has Undo records for combined entries (log_combines)", async () => {
+    await seedDemo(t.db, args());
+    const id = await idOf("demo");
+    const [e] = await t.db.select().from(logEntries).where(eq(logEntries.userId, id)).limit(1);
+    const p = { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 };
+    await t.db.insert(logCombines).values({ userId: id, entryId: e.id, before: p, after: { ...p, quantity: 2 }, added: p, addedServings: [{ label: "1" }], splitDay: e.day, splitMeal: e.meal } as any);
+    await expect(seedDemo(t.db, args({ replace: true }))).resolves.toMatchObject({ replaced: true });
+    expect((await t.db.select().from(logCombines).where(eq(logCombines.userId, id)))[0].entryId).toBeNull();
+    expect((await t.db.select().from(logCombines)).length).toBe(1); // the seeder makes none of its own
   });
 
   it("--replace on an account with no tracking still just fills it; earlier demo foods are not duplicated", async () => {
