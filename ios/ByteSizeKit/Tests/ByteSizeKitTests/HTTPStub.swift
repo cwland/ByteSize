@@ -3,7 +3,7 @@ import Foundation
 /// A fake server for tests: every request made through `HTTPStub.session` is answered by `HTTPStub.handler`
 /// and recorded in `HTTPStub.requests` (with its body).
 final class HTTPStub: URLProtocol, @unchecked Sendable {
-    enum Reply {
+    enum Reply: Sendable {
         case json(Int, String)
         case raw(Int, contentType: String, body: String)
         case fail(URLError.Code)
@@ -21,10 +21,11 @@ final class HTTPStub: URLProtocol, @unchecked Sendable {
 
     // Requests can arrive on several threads at once (a store loading two things together): guard both with a lock
     private static let lock = NSLock()
-    nonisolated(unsafe) private static var _handler: (URLRequest) -> Reply = { _ in .json(404, #"{"error":"Not found"}"#) }
+    nonisolated(unsafe) private static var _handler: @Sendable (URLRequest) -> Reply = { _ in .json(404, #"{"error":"Not found"}"#) }
     nonisolated(unsafe) private static var _requests: [Recorded] = []
 
-    static var handler: (URLRequest) -> Reply {
+    /// Runs on URLSession's own threads: it must not touch main-actor state (hence @Sendable).
+    static var handler: @Sendable (URLRequest) -> Reply {
         get { lock.withLock { _handler } }
         set { lock.withLock { _handler = newValue } }
     }

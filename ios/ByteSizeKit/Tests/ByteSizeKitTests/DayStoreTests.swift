@@ -8,7 +8,7 @@ final class DayStoreTests: XCTestCase {
     /// 2026-11-20 06:30 UTC = 2026-11-19 23:30 in Denver
     private let lateEvening = ISO8601DateFormatter().date(from: "2026-11-20T06:30:00Z")!
 
-    private func dayJSON(_ day: String) -> String { Fixtures.day.replacingOccurrences(of: "2026-11-19", with: day) }
+    private nonisolated static func dayJSON(_ day: String) -> String { Fixtures.day.replacingOccurrences(of: "2026-11-19", with: day) }
 
     /// Answers any /api/day/<d> with that day, and logged days with one day.
     private func serveDays(delay: [String: TimeInterval] = [:]) {
@@ -17,8 +17,9 @@ final class DayStoreTests: XCTestCase {
             let path = req.url?.path() ?? ""
             if path.hasPrefix("/api/day/") {
                 let d = String(path.dropFirst("/api/day/".count))
-                let answer = HTTPStub.Reply.json(200, self.dayJSON(d))
-                return delay[d].map { .delayed($0, answer) } ?? answer
+                let answer = HTTPStub.Reply.json(200, DayStoreTests.dayJSON(d))
+                if let wait = delay[d] { return .delayed(wait, answer) }
+                return answer
             }
             if path == "/api/days/logged" { return .json(200, #"{"days":["2026-11-17"]}"#) }
             return .json(404, #"{"error":"Not found"}"#)
