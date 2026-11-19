@@ -191,6 +191,54 @@ describe("Insights page", () => {
     await waitFor(() => expect(toggle).toHaveAttribute("aria-checked", "false"));
   });
 
+  describe("Email me my weekly recap (§45)", () => {
+    const withEmail = (email: Record<string, unknown>) => ({ "GET /api/insights": () => insightsJson({ email: { on: false, available: true, hasAddress: true, ...email } }) });
+
+    it("a switch under Weekly recap, off by default; turning it on saves it", async () => {
+      const server = fakeServer({ ...withEmail({}), "PUT /api/insights/settings": (b: any) => b });
+      renderWithSession(<InsightsPage />);
+      const toggle = await screen.findByRole("switch", { name: "Email me my weekly recap" });
+      expect(toggle).toHaveAttribute("aria-checked", "false");
+      expect(toggle).toBeEnabled();
+      const weekly = screen.getByRole("switch", { name: "Weekly recap" });
+      expect(weekly.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      await userEvent.setup().click(toggle);
+      expect(server.writes()[0]).toMatchObject({ path: "/api/insights/settings", body: { emailOn: true } });
+      expect(server.writes()[0].body).not.toHaveProperty("weeklyOn");
+      await waitFor(() => expect(toggle).toHaveAttribute("aria-checked", "true"));
+    });
+
+    it("shows it on when it is on", async () => {
+      fakeServer(withEmail({ on: true }));
+      renderWithSession(<InsightsPage />);
+      expect(await screen.findByRole("switch", { name: "Email me my weekly recap" })).toHaveAttribute("aria-checked", "true");
+    });
+
+    it("hidden when the server's email isn't set up", async () => {
+      fakeServer(withEmail({ available: false }));
+      renderWithSession(<InsightsPage />);
+      await screen.findByRole("switch", { name: "Weekly recap" });
+      expect(screen.queryByRole("switch", { name: "Email me my weekly recap" })).not.toBeInTheDocument();
+    });
+
+    it("disabled, saying why, when the account has no email address", async () => {
+      fakeServer(withEmail({ hasAddress: false }));
+      renderWithSession(<InsightsPage />);
+      const toggle = await screen.findByRole("switch", { name: "Email me my weekly recap" });
+      expect(toggle).toBeDisabled();
+      expect(screen.getByText("Add an email address in Settings › Profile")).toBeInTheDocument();
+    });
+
+    it("a refused save puts the switch back and says why", async () => {
+      fakeServer({ ...withEmail({}), "PUT /api/insights/settings": () => new Response(JSON.stringify({ error: "Add an email address in Settings › Profile" }), { status: 409, headers: { "content-type": "application/json" } }) });
+      renderWithSession(<InsightsPage />);
+      const toggle = await screen.findByRole("switch", { name: "Email me my weekly recap" });
+      await userEvent.setup().click(toggle);
+      expect(await screen.findByText("Add an email address in Settings › Profile")).toBeInTheDocument();
+      expect(toggle).toHaveAttribute("aria-checked", "false");
+    });
+  });
+
   it("metric weights, and a gain is shown with a plus", async () => {
     fakeServer({ "GET /api/insights": () => insightsJson({ recaps: [recapRow({ content: { ...recapRow().content, numbers: weekNumbers({ trendChange: 0.4, weightUnit: "kg" }) } })] }) });
     renderWithSession(<InsightsPage />, { units: "metric" });

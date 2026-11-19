@@ -97,7 +97,7 @@ async function seed() {
   const [corrected, loggedOnly, inRecipeOnly, unused] = await t.db.insert(foodCache).values([cached("corrected"), cached("logged"), cached("recipe"), cached("unused")]).returning();
   for (const [i, u] of [a, b].entries()) {
     await t.db.insert(userBody).values({ userId: u.id, sex: i ? "male" : "female", birthDate: "1985-03-0" + (i + 1), heightCm: 170.18 + i, weightKg: 81.123456789, goalWeightKg: 70, activity: "some", glp1: i === 0, targetsWeightKg: null });
-    await t.db.insert(userSettings).values({ userId: u.id, weekStart: 1, dateFormat: i ? "weekday-long-month-short" : "dmy-dot", waterButtonsMl: [250, 500], culuryUrl: i ? null : "http://culury.lan:4000", culuryKeyEnc: i ? null : encryptSecret("cul_key", TEST_SECRET), insightsWeekly: i === 1 });
+    await t.db.insert(userSettings).values({ userId: u.id, weekStart: 1, dateFormat: i ? "weekday-long-month-short" : "dmy-dot", waterButtonsMl: [250, 500], culuryUrl: i ? null : "http://culury.lan:4000", culuryKeyEnc: i ? null : encryptSecret("cul_key", TEST_SECRET), insightsWeekly: i === 1, insightsEmail: i === 0 });
     await t.db.insert(targets).values({ userId: u.id, effectiveFrom: "2026-11-01", plan: "steady", caloriesMin: 1600, caloriesMax: 1800, proteinMin: 100.5, proteinMax: 140, fiberMin: 25, fiberMax: 38, waterMin: 2000, waterMax: 3000 });
     await t.db.insert(weighIns).values({ userId: u.id, day: "2026-11-10", weightKg: 82.4 + i / 10, note: i ? null : "after run, \"tired\"" });
     await t.db.insert(glp1Settings).values({ userId: u.id, medication: "semaglutide", doseMg: 0.25, injectionWeekday: 3 });
@@ -111,7 +111,7 @@ async function seed() {
     await t.db.insert(schema.workoutCalorieModes).values({ userId: u.id, effectiveFrom: "2026-11-01", mode: i ? "bank" : "add", countPct: 75, weeklyCap: 1200 });
     // §43: what the AI wrote (a weekly recap with the app's numbers, an answer to a question)
     await t.db.insert(schema.insights).values([
-      { userId: u.id, kind: "recap", source: "weekly", periodStart: "2026-11-08", periodEnd: "2026-11-14", content: { summary: `Week ${i}`, wentWell: ["Logged"], slipped: [], tryNext: "Eggs", numbers: { daysLogged: 3 } } },
+      { userId: u.id, kind: "recap", source: "weekly", periodStart: "2026-11-08", periodEnd: "2026-11-14", content: { summary: `Week ${i}`, wentWell: ["Logged"], slipped: [], tryNext: "Eggs", numbers: { daysLogged: 3 } }, emailedAt: new Date("2026-11-15T13:06:00Z"), emailTries: 2 },
       { userId: u.id, kind: "answer", source: "ask", periodStart: "2026-10-22", periodEnd: "2026-11-18", question: "How's my protein?", content: { answer: "Fine", offTopic: false } },
     ]);
     await t.db.insert(usageCounts).values([{ userId: u.id, key: "barcodes_scanned", count: 3 + i }, { userId: u.id, key: "outside_off", count: 1 }]); // App info's numbers are the person's own data

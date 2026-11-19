@@ -2,10 +2,12 @@
 // failover, a cut-off answer asked again with more room), keeping what it wrote, the on-demand limits, and the weekly
 // run. What the AI is told and how its answers are read: lib/insights.ts (pure).
 import type { FastifyInstance } from "fastify";
-import { and, asc, count, countDistinct, desc, eq, gte, inArray, isNotNull, lt, lte, ne, notInArray, sql } from "drizzle-orm";
+import { and, asc, count, countDistinct, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, notInArray, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { activitySteps, glp1Settings, glp1Shots, insights, logEntries, targets, userBody, userSettings, users, weighIns, workouts } from "../db/schema.js";
 import { AiError, AiStopped, type AiProgress } from "./ai.js";
+import { originOf } from "./mail.js";
+import { buildRecapEmail } from "./recapEmail.js";
 import { logEvent } from "./appLog.js";
 import { calorieDays } from "./calorieDays.js";
 import { addDays, localDay } from "./days.js";
@@ -47,7 +49,7 @@ const HOUR_MS = 60 * 60_000;
 const MAX_TOKENS = 3000;
 
 type Opts = { signal?: AbortSignal; onProgress?: (p: AiProgress) => void };
-type Person = { timezone: string; units: "imperial" | "metric"; weekStart: number; weeklyOn: boolean };
+type Person = { timezone: string; units: "imperial" | "metric"; weekStart: number; weeklyOn: boolean; emailOn: boolean; email: string | null };
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 const INSIGHTS_LOCK = 43; // (§43) with the person's id: one limit check or card write at a time per person
@@ -59,12 +61,12 @@ const notPending = sql`(${insights.content} ->> 'pending') is null`;
 
 async function personOf(db: Db, userId: number): Promise<Person> {
   const [u] = await db
-    .select({ timezone: users.timezone, units: users.units, weekStart: userSettings.weekStart, weeklyOn: userSettings.insightsWeekly })
+    .select({ timezone: users.timezone, units: users.units, email: users.email, weekStart: userSettings.weekStart, weeklyOn: userSettings.insightsWeekly, emailOn: userSettings.insightsEmail })
     .from(users)
     .leftJoin(userSettings, eq(userSettings.userId, users.id))
     .where(eq(users.id, userId));
   if (!u) throw new HttpError(401, "Not logged in");
-  return { timezone: u.timezone, units: u.units, weekStart: u.weekStart ?? 0, weeklyOn: u.weeklyOn ?? true };
+  return { timezone: u.timezone, units: u.units, weekStart: u.weekStart ?? 0, weeklyOn: u.weeklyOn ?? true, emailOn: u.emailOn ?? false, email: u.email };
 }
 
 /** The week before the one holding `today` (the person's week start). */
@@ -77,7 +79,7 @@ export const weekBefore = (today: string, weekStart: number) => {
  * Everything the summary is built from, for `from`..`to` (weigh-ins from the first, for the trend). today: the person's
  * today, to add their active goals (§40c); left out where only the numbers are wanted.
  */
-export async function loadSummaryInput(db: Db, userId: number, from: string, to: string, person: Person, today?: string): Promise<SummaryInput> {
+export async function loadSummaryInput(db: Db, userId: number, from: string, to: string, person: Pick<Person, "units" | "weekStart">, today?: string): Promise<SummaryInput> {
   const inRange = <T extends typeof logEntries | typeof glp1Shots | typeof activitySteps | typeof workouts>(tbl: T) => and(eq(tbl.userId, userId), gte(tbl.day, from), lte(tbl.day, to));
   const [entries, targetRows, days, weigh, shots, steps, done, body, glp] = await Promise.all([
     db.select().from(logEntries).where(inRange(logEntries)).orderBy(asc(logEntries.day), asc(logEntries.id)),
@@ -151,9 +153,19 @@ export async function writeRecap(app: FastifyInstance, userId: number, source: "
     await lockPerson(tx, userId);
     // The week's "so far" recap (and, for the final one, seed-demo's) gives way to this one
     await tx.delete(insights).where(and(eq(insights.userId, userId), eq(insights.kind, "recap"), inArray(insights.source, source === "weekly" ? ["refresh", "demo"] : ["refresh"]), eq(insights.periodStart, period.from)));
+    // The week's final recap written again (§45): it keeps the "emailed" marker, so it is never sent twice
+    let sent: Date | null = null;
+    let tries = 0;
+    if (source === "weekly") {
+      const old = await tx.delete(insights).where(and(eq(insights.userId, userId), eq(insights.kind, "recap"), eq(insights.source, "weekly"), eq(insights.periodStart, period.from))).returning({ at: insights.emailedAt, tries: insights.emailTries });
+      for (const o of old) {
+        if (o.at && (!sent || o.at > sent)) sent = o.at;
+        tries = Math.max(tries, o.tries);
+      }
+    }
     const [made] = await tx
       .insert(insights)
-      .values({ userId, kind: "recap", source, periodStart: period.from, periodEnd: period.to, content: { ...recap, numbers: weekNumbers(input) }, createdAt: app.now() })
+      .values({ userId, kind: "recap", source, periodStart: period.from, periodEnd: period.to, content: { ...recap, numbers: weekNumbers(input) }, createdAt: app.now(), emailedAt: sent, emailTries: tries })
       .returning();
     return made;
   });
@@ -293,6 +305,7 @@ export async function insightsView(app: FastifyInstance, userId: number) {
   return {
     aiReady,
     weeklyOn: person.weeklyOn,
+    email: { on: person.emailOn, available: !!(await app.mail.active()), hasAddress: !!person.email },
     week: { ...week, numbers },
     recaps: recaps.map(insightView),
     protein: protein[0] ? insightView(protein[0]) : null,
@@ -314,10 +327,69 @@ export async function latestRecap(app: FastifyInstance, userId: number) {
   return { aiReady, recap: r ? { periodStart: r.periodStart, periodEnd: r.periodEnd, soFar: r.source === "refresh", summary: typeof summary === "string" ? summary : "", createdAt: r.createdAt.toISOString() } : null };
 }
 
-export async function setWeekly(app: FastifyInstance, userId: number, weeklyOn: boolean) {
-  await app.db.insert(userSettings).values({ userId, insightsWeekly: weeklyOn }).onConflictDoUpdate({ target: userSettings.userId, set: { insightsWeekly: weeklyOn } });
-  return { weeklyOn };
+export const NO_MAIL_SERVER = "Email isn't set up on this server. An admin can set it up in Settings › Email.";
+export const NO_ACCOUNT_EMAIL = "Add an email address in Settings › Profile";
+
+/** The switches on the Insights page: the weekly recap, and (§45) emailing it. Emailing needs server email and an address on the account. */
+export async function setInsightsSwitches(app: FastifyInstance, userId: number, change: { weeklyOn?: boolean; emailOn?: boolean }) {
+  if (change.emailOn) {
+    const person = await personOf(app.db, userId);
+    if (!(await app.mail.active())) throw new HttpError(409, NO_MAIL_SERVER);
+    if (!person.email) throw new HttpError(409, NO_ACCOUNT_EMAIL);
+  }
+  const set = { ...(change.weeklyOn === undefined ? {} : { insightsWeekly: change.weeklyOn }), ...(change.emailOn === undefined ? {} : { insightsEmail: change.emailOn }) };
+  await app.db.insert(userSettings).values({ userId, ...set }).onConflictDoUpdate({ target: userSettings.userId, set });
+  const p = await personOf(app.db, userId);
+  return { weeklyOn: p.weeklyOn, emailOn: p.emailOn };
 }
+
+// ---------- emailing the recap (§45) ----------
+
+export const EMAIL_TRIES = 4; // the first send and 3 retries (one with each hourly check)
+
+/**
+ * Emails a weekly recap to its person, once. Only a final weekly recap (never "so far" or seed-demo), only while the
+ * switch is on, the account has an address and the server has email. The try is counted before sending (under one
+ * update, so two checks can't both send); a failure is logged and left for the next hourly check, up to EMAIL_TRIES.
+ * Never throws.
+ */
+export async function emailRecap(app: FastifyInstance, recapId: number): Promise<void> {
+  try {
+    const [r] = await app.db.select().from(insights).where(and(eq(insights.id, recapId), eq(insights.kind, "recap"), eq(insights.source, "weekly"), isNull(insights.emailedAt), lt(insights.emailTries, EMAIL_TRIES)));
+    if (!r) return;
+    const [u] = await app.db
+      .select({ email: users.email, name: users.displayName, username: users.username, disabled: users.disabled, on: userSettings.insightsEmail, dateFormat: userSettings.dateFormat })
+      .from(users)
+      .leftJoin(userSettings, eq(userSettings.userId, users.id))
+      .where(eq(users.id, r.userId));
+    if (!u || u.disabled || !u.on || !u.email) return;
+    const active = await app.mail.active();
+    if (!active) return;
+    const claimed = await app.db.update(insights).set({ emailTries: r.emailTries + 1 }).where(and(eq(insights.id, r.id), isNull(insights.emailedAt), eq(insights.emailTries, r.emailTries))).returning({ id: insights.id });
+    if (claimed.length === 0) return;
+    const base = originOf(active.config.appUrl) ?? app.appOrigins[0] ?? null;
+    const mail = buildRecapEmail({ name: u.name?.trim() || u.username, from: r.periodStart, to: r.periodEnd, dateFormat: u.dateFormat ?? "weekday-long-month-short", content: r.content as never, link: base ? `${base}/#/insights` : null });
+    const tries = r.emailTries + 1;
+    try {
+      await app.mail.send({ to: u.email, subject: mail.subject, text: mail.text, html: mail.html }, "recap", { config: active.config, userId: r.userId });
+      await app.db.update(insights).set({ emailedAt: app.now() }).where(eq(insights.id, r.id));
+    } catch (err) {
+      await logEvent(app.db, {
+        category: "schedule",
+        level: tries >= EMAIL_TRIES ? "error" : "warning",
+        source: "Weekly insights",
+        event: tries >= EMAIL_TRIES ? `The recap email for ${r.periodStart} couldn't be sent (gave up after ${tries} tries)` : `The recap email for ${r.periodStart} couldn't be sent (try ${tries} of ${EMAIL_TRIES}; trying again with the next hourly check)`,
+        detail: (err as Error).message,
+        userId: r.userId,
+      });
+    }
+  } catch (err) {
+    console.error("The recap email failed:", err); // e.g. the database is down: nothing here may fail the recap
+  }
+}
+
+/** Sends in the background: nothing waits for the mail server. */
+const emailInBackground = (app: FastifyInstance, recapId: number) => app.mail.background(() => emailRecap(app, recapId), (err) => console.error("The recap email failed:", err));
 
 // ---------- the weekly run ----------
 
@@ -355,7 +427,15 @@ export async function weeklyInsightsCheck(app: FastifyInstance, signal?: AbortSi
       .select({ done: count() })
       .from(insights)
       .where(and(eq(insights.userId, p.id), eq(insights.kind, "recap"), eq(insights.source, "weekly"), eq(insights.periodStart, week.from)));
-    if (done > 0) continue;
+    if (done > 0) {
+      // A recap whose email failed earlier: tried again (§45)
+      const [again] = await app.db
+        .select({ id: insights.id })
+        .from(insights)
+        .where(and(eq(insights.userId, p.id), eq(insights.kind, "recap"), eq(insights.source, "weekly"), eq(insights.periodStart, week.from), isNull(insights.emailedAt), gt(insights.emailTries, 0), lt(insights.emailTries, EMAIL_TRIES)));
+      if (again) emailInBackground(app, again.id);
+      continue;
+    }
     const [{ days }] = await app.db
       .select({ days: countDistinct(logEntries.day) })
       .from(logEntries)
@@ -369,8 +449,9 @@ export async function weeklyInsightsCheck(app: FastifyInstance, signal?: AbortSi
     const before = tries.get(key);
     if (before && (before.tries >= WEEKLY_TRIES || now.getTime() - before.at < RETRY_AFTER_MS)) continue;
     try {
-      await writeRecap(app, p.id, "weekly", week, { signal });
+      const recap = await writeRecap(app, p.id, "weekly", week, { signal });
       tries.delete(key);
+      emailInBackground(app, recap.id); // when they've asked for it (§45); never holds up or fails the recap
       written.push(p.id);
     } catch (err) {
       if (signal?.aborted) break;

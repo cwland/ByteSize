@@ -44,10 +44,31 @@ export default function InsightsPage() {
       setMsg(errorMsg(e));
     }
   };
+  const setEmail = async (on: boolean) => {
+    setView((v) => v && { ...v, email: { ...v.email, on } });
+    try {
+      await api("PUT", "/api/insights/settings", { emailOn: on });
+    } catch (e) {
+      setView((v) => v && { ...v, email: { ...v.email, on: !on } });
+      setMsg(errorMsg(e));
+    }
+  };
+  // The email switch (§45) is there only when the server can send email; it needs an address on the account
   const weekly = view && (
-    <div className="flex items-center gap-3">
-      <span className="text-sm font-semibold text-subtle">Weekly recap</span>
-      <Toggle label="Weekly recap" checked={view.weeklyOn} onChange={setWeekly} />
+    <div className="flex flex-col gap-2 sm:items-end">
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-semibold text-subtle">Weekly recap</span>
+        <Toggle label="Weekly recap" checked={view.weeklyOn} onChange={setWeekly} />
+      </div>
+      {view.email.available && (
+        <div className="flex flex-col gap-1 sm:items-end">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-subtle">Email me my weekly recap</span>
+            <Toggle label="Email me my weekly recap" checked={view.email.on && view.email.hasAddress} disabled={!view.email.hasAddress} onChange={setEmail} />
+          </div>
+          {!view.email.hasAddress && <span className="text-xs text-subtle">Add an email address in Settings › Profile</span>}
+        </div>
+      )}
     </div>
   );
 

@@ -11,6 +11,7 @@ import { requireAdmin } from "../lib/guards.js";
 import { logSignIn, startSession } from "../lib/sessions.js";
 import { normalizeUsername, publicUser } from "../lib/users.js";
 import { USERNAME_TAKEN, adminRowFor, email, isUniqueViolation, password, usernameField } from "./admin-users.js";
+import { escapeHtml, originOf } from "../lib/mail.js";
 
 // Invite by email (Settings › Users, admin, only with email set up). The invited person is a users row with
 // no password, so nothing signs them in until they open the emailed link (#/invite/<token>) and choose one.
@@ -25,14 +26,6 @@ const NOT_INVITED = "This person has already accepted their invite";
 export const expiredInvite = (admin: string | null) => `This invite link has expired or was already used. Ask ${admin || "your ByteSize admin"} for a new one.`;
 
 const nameOf = (u: { displayName: string | null; username: string }) => u.displayName?.trim() || u.username;
-const originOf = (u: string | null | undefined) => {
-  try {
-    return u ? new URL(u).origin : null;
-  } catch {
-    return null;
-  }
-};
-const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 export default async function inviteRoutes(app: FastifyInstance) {
   const { db } = app;

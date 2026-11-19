@@ -14,7 +14,7 @@ import {
   insightsView,
   latestRecap,
   refreshFailed,
-  setWeekly,
+  setInsightsSwitches,
   weekBefore,
   writeProtein,
   writeRecap,
@@ -32,8 +32,11 @@ export default async function insightsRoutes(app: FastifyInstance) {
 
   app.put("/api/insights/settings", async (req) => {
     const userId = requireSignedIn(req);
-    const { weeklyOn } = z.object({ weeklyOn: z.boolean() }).parse(req.body ?? {});
-    return setWeekly(app, userId, weeklyOn);
+    const body = z
+      .object({ weeklyOn: z.boolean().optional(), emailOn: z.boolean().optional() })
+      .refine((b) => b.weeklyOn !== undefined || b.emailOn !== undefined, "Choose what to change")
+      .parse(req.body ?? {});
+    return setInsightsSwitches(app, userId, body);
   });
 
   // Refresh a card: the recap (this week so far) or protein help. Asked for as lines (accept: application/x-ndjson), it

@@ -228,6 +228,8 @@ export const userSettings = pgTable("user_settings", {
   culuryEnabled: boolean("culury_enabled"),
   // Insights' weekly recap (§43): the switch on the Insights page, on by default
   insightsWeekly: boolean("insights_weekly").notNull().default(true),
+  // §45: email the weekly recap to the account's address; each person opts in, off by default
+  insightsEmail: boolean("insights_email").notNull().default(false),
   // When the person last asked for a card (worked or not): Refresh waits 10 minutes after it, per card
   insightsRecapTriedAt: timestamp("insights_recap_tried_at", { withTimezone: true }),
   insightsProteinTriedAt: timestamp("insights_protein_tried_at", { withTimezone: true }),
@@ -642,6 +644,9 @@ export const insights = pgTable(
     question: text("question"), // answers: what was asked
     content: jsonb("content").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // §45: a weekly recap emailed to the person: when it went out (the "sent for week" marker), and how many sends were tried
+    emailedAt: timestamp("emailed_at", { withTimezone: true }),
+    emailTries: integer("email_tries").notNull().default(0),
   },
   (t) => [index("insights_user_kind_created_idx").on(t.userId, t.kind, t.createdAt)]
 );
