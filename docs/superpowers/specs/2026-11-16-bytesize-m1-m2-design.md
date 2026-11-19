@@ -1252,18 +1252,19 @@ Pending invites are skipped by backups like other short-lived tokens (the invite
 
 **Asked for.** "Is there a way to populate the version I'm testing on my Mac with a few months' worth of tracking and
 weight loss?"
-Calls made for Cory (to confirm): a command-line tool like reset-password, not a button in the app; by default it
-makes a separate **demo** account so real data is never touched.
+Cory (follow-up): "I want it in the data I'm testing so I can use it over and over again, not a special one."
+Calls made for Cory (to confirm): a command-line tool like reset-password; it fills the account he tests with (his
+own, admin included) and can be re-run to wipe and refill it.
 
 **Command.** `cd backend && npm run seed-demo` (Docker: `docker compose exec -u node bytesize npm run seed-demo`).
-Options: `--user <username>` (default `demo`), `--password <pw>` (default `demo-password`; only used when it creates
-the account), `--days <n>` (default 90, 7–365), `--replace`.
-- Creates the account if missing (not admin; first-run setup marked done; GLP-1 tracking on; goals set: calories
-  1500–2000, protein 110–130 g, plus the app's usual other targets) and prints how to sign in.
-- An existing account is filled only if it has no log entries, weigh-ins, water or shots; otherwise it stops with a
-  message naming `--replace`, which first deletes that one account's entries, weigh-ins, water, shots and the demo
-  foods it made earlier (nothing else, no other account). It never fills an admin account ("Use a non-admin
-  account").
+Options: `--user <username>` (default: the account that set up the server, i.e. the first admin), `--days <n>`
+(default 90, 7–365), `--replace`.
+- Fills the named existing account (any account, admin included; it never creates accounts). Turns GLP-1 tracking on
+  and sets goals (calories 1500–2000, protein 110–130 g, the app's usual other targets) only where they aren't set.
+- If the account already has log entries, weigh-ins, water or shots, it stops and says to add `--replace`.
+  `--replace` deletes that one account's log entries, weigh-ins, water, shots, and the foods/quick meals the seeder
+  made on earlier runs, then fills it again — meant to be run over and over. Nothing else of that account (settings,
+  keys, other My foods) and nothing of any other account is touched. It prints what it deleted and what it made.
 - Same output every run for the same options and day (seeded random), ending today in the server's time zone.
 
 **What it makes** (all through the same tables/rules the app uses, so totals, rings, streaks, trends, badges and
@@ -1279,5 +1280,5 @@ App info read it normally):
 - **GLP-1 shots** weekly on the same weekday: 2.5 mg for 4 weeks, then 5 mg, then 7.5 mg; sites rotate.
 - **Water** most days (4–9 glasses); supplements if the app tracks them.
 - A few **App info** counts (barcodes scanned, lookups saved, AI estimates) so that tab isn't empty.
-- Tested: the account and its data are created; a second run without --replace changes nothing; --replace touches
-  only that account; an admin account is refused; totals for a sample day are within the ranges above.
+- Tested: the account is filled; a second run without --replace changes nothing; --replace refills it and touches
+  only that account's tracking rows and seeded foods (other My foods and other accounts untouched); totals for a sample day are within the ranges above.
