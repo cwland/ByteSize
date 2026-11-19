@@ -1383,7 +1383,7 @@ the data). Three parts, built in order; each ships on its own.
   weeks (at least 14 days and 6 weigh-ins, else "Keep weighing in — about two weeks of weigh-ins gives an estimate").
   Pace = the slope of a least-squares line through those trend points; the range is the pace ± 1.5 standard errors
   of the slope of a least-squares line through the weigh-ins themselves over the same days (the trend smooths their
-  ups and downs away), at least ±10% of the pace, and its slow end never below half the pace; so steady weigh-ins
+  ups and downs away), at least ±5% of the pace (Cory, 2026-11-18: ±10% read too wide on steady data), and its slow end never below half the pace; so steady weigh-ins
   give a range of a few weeks and bumpy ones a wider range. (Revised after Cory's walk: the first version used the
   two half-windows' slopes, which gave "28–40 weeks" on steady data.) Shows:
   "At your pace: **23–25 weeks**, around **Apr 5**" with the earliest–latest dates under it ("Mar 22 – Apr 19"),

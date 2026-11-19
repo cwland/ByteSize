@@ -129,13 +129,13 @@ export const GOAL_DATE_DAYS = 42; // the last 6 weeks
 export const GOAL_DATE_MIN_DAYS = 14; // first to last weigh-in in the window, both counted
 export const GOAL_DATE_MIN_WEIGH_INS = 6;
 const GOAL_DATE_SE = 1.5; // the range: the pace ± 1.5 standard errors of the slope...
-const GOAL_DATE_SPREAD = 0.1; // ...and at least ±10% of the pace
+const GOAL_DATE_SPREAD = 0.05; // ...and at least ±5% of the pace
 const GOAL_DATE_SLOWEST = 0.5; // its slow end at most twice the time (an unsure slope would make it endless)
 
 /**
  * The Goal date widget (§40a): when the trend reaches the goal at the current pace, as a range. Over the last 6 weeks'
  * trend points (≥ 14 days, ≥ 6 weigh-ins): pace = least-squares slope of the trend; the range is the pace ± 1.5
- * standard errors of the slope of the weigh-ins themselves over those days (at least ±10% of the pace), so steady
+ * standard errors of the slope of the weigh-ins themselves over those days (at least ±5% of the pace), so steady
  * weigh-ins give a tight range and bumpy ones a wider one. Days are
  * counted from the last weigh-in's trend; every day is after today. `trendPoints` sorted by day (as trendOf gives them).
  */

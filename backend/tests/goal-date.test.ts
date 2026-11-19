@@ -4,17 +4,17 @@ import { addDays } from "../src/lib/days.js";
 
 // The Goal date widget's numbers (§40a): the trend over the last 6 weeks (≥ 14 days and ≥ 6 weigh-ins), the pace
 // from a least-squares line through it, and a range of the pace ± 1.5 standard errors of the slope of the weigh-ins
-// themselves over the same days (at least ±10%): steady weigh-ins give a tight range, bumpy ones a wider one.
+// themselves over the same days (at least ±5%): steady weigh-ins give a tight range, bumpy ones a wider one.
 const TODAY = "2026-11-18";
 // Daily trend points ending `endDaysAgo` before today: trend(i) = start + slope(i), i = 0 … n − 1
 const series = (n: number, start: number, slope: (i: number) => number, endDaysAgo = 0): TrendPoint[] =>
   Array.from({ length: n }, (_, i) => ({ day: addDays(TODAY, -(n - 1 - i) - endDaysAgo), trendKg: start + slope(i) }));
 
 describe("goalDateOf", () => {
-  it("steady: 0.7 kg a week with 14 kg to go is 20 weeks; a straight line's range is the ±10% floor", () => {
+  it("steady: 0.7 kg a week with 14 kg to go is 20 weeks; a straight line's range is the ±5% floor", () => {
     const pts = series(42, 100, (i) => -0.1 * i); // Oct 8 … Nov 18, ends at 95.9
     const g = goalDateOf(pts, 81.9, TODAY);
-    expect(g).toMatchObject({ status: "ok", date: "2027-04-07", earliest: "2027-03-26", latest: "2027-04-23", weeks: { min: 18, max: 22 } });
+    expect(g).toMatchObject({ status: "ok", date: "2027-04-07", earliest: "2027-04-01", latest: "2027-04-15", weeks: { min: 19, max: 21 } });
     if (g.status !== "ok") throw new Error("not ok");
     expect(g.kgPerWeek).toBeCloseTo(0.7, 9);
     expect(g.toGoKg).toBeCloseTo(14, 9);
