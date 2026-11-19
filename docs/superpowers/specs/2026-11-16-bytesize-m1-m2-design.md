@@ -1319,3 +1319,26 @@ none changes how a feature is meant to work.
   counted for every source (USDA, FatSecret, Spoonacular), not just Open Food Facts.
 - **Drinks**: the comment on bare amounts says that "1 cup"/"2 tbsp" style servings count as bare amounts or not —
   whichever the code does — and a test pins it.
+
+## 39. Tap the date for a calendar (Cory, 2026-11-18)
+
+**Asked for.** "Make the date clickable; when clicked it pulls up a calendar view; a dot shows what days a user logged
+info on."
+Calls made for Cory (to confirm): a dot means the day has at least one food entry (the same rule as "Days logged" and
+streaks; water, weigh-ins and shots alone don't count); tapping a day goes to that day.
+
+**Opening it.** The centred date in the page header (§24/§33, in the person's chosen format) is a button
+("Choose a day", aria-haspopup="dialog", aria-expanded). Tapping it opens a small calendar right under it (a popover on
+wide screens; on phones the same panel full-width under the header). It closes with the X, Escape, choosing a day, or
+tapping the date again — not by clicking outside (§27).
+
+**Calendar.** One month at a time, opening on the month of the day being viewed: month and year title with ‹ › to
+change month and a **Today** button; weekday letters starting on the person's week start; 6 rows. Each day shows its
+number; a small dot under days with food logged; today has a ring; the day being viewed is filled. Days after today
+are shown but can't be chosen (dimmed), matching the week strip. Arrow keys move between days, Enter chooses, Page Up/
+Down change month; focus starts on the viewed day; screen readers hear "Wednesday, November 18, logged" / "not
+logged".
+
+**Server.** `GET /api/log/days?from=YYYY-MM-DD&to=YYYY-MM-DD` → `{ days: ["YYYY-MM-DD", …] }`, the person's dates with
+at least one food entry in that range (inclusive; range at most 62 days, else 400; bad dates 400). Per-user isolation
+test. The calendar asks for the visible 6-week span and caches months it has seen until a log change.
