@@ -140,7 +140,10 @@ cd backend && npm run reset-password -- <username>
 Fill an existing account (the first admin unless you name one) with about 90 days of food, water, weigh-ins (245 lb
 trending down) and weekly GLP-1 shots. It never creates an account. If the account already has tracking it stops;
 `--replace` deletes that account's entries, weigh-ins, water, shots and the foods this command made, then fills it
-again, so you can run it over and over. Nothing else is touched. Options: `--user <username>`, `--days <7-365>`, `--replace`.
+again, so you can run it over and over (it also deletes that account's Undo records for combined entries; earned
+badges are left as they are). Nothing else is touched, except what filling sets, which it prints under "Also set":
+the body weight (follows the latest weigh-in), the GLP-1 settings, three App info counts (and a starter profile if
+the account has none); `--replace` resets these too. Options: `--user <username>`, `--days <7-365>`, `--replace`.
 
 ```
 # Docker

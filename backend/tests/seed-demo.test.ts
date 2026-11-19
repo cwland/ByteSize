@@ -5,7 +5,7 @@ import { asUser } from "./isolation.js";
 import { logCombines, glp1Shots, glp1Settings, logEntries, recipeItems, targets, usageCounts, userBody, userFoods, users, weighIns } from "../src/db/schema.js";
 import {
   DEFAULT_DAYS, DEMO_FOODS, DEMO_NOTE, DEMO_QUICK_MEALS, HAS_DATA, INJECTION_WEEKDAY, START_LB, USAGE,
-  instantAt, parseSeedArgs, planDemo, seedDemo, type PlannedDay,
+  describeSeed, instantAt, parseSeedArgs, planDemo, seedDemo, type PlannedDay,
 } from "../src/lib/demoData.js";
 import { addDays, weekdayOf } from "../src/lib/days.js";
 import { KG_PER_LB } from "../src/lib/weight.js";
@@ -170,7 +170,7 @@ describe("npm run seed-demo", () => {
 
   it("fills the account (GLP-1 on, goals set, setup untouched); the person's own sign-in is unchanged", async () => {
     const r = await seedDemo(t.db, args());
-    expect(r).toMatchObject({ username: "demo", replaced: false, deleted: { entries: 0, weighIns: 0, shots: 0, foods: 0 }, timezone: TZ, from: "2026-08-21", to: TODAY, foods: DEMO_FOODS.length, quickMeals: 2 });
+    expect(r).toMatchObject({ username: "demo", replaced: false, deleted: { entries: 0, weighIns: 0, shots: 0, foods: 0, combines: 0 }, timezone: TZ, from: "2026-08-21", to: TODAY, foods: DEMO_FOODS.length, quickMeals: 2 });
     const [u] = await t.db.select().from(users).where(eq(users.username, "demo"));
     expect(u).toMatchObject({ isAdmin: false, timezone: TZ });
     expect((await t.db.select().from(users)).length).toBe(2); // no account was made
@@ -369,7 +369,7 @@ describe("npm run seed-demo", () => {
     for (let i = 0; i < 2; i++) {
       const r = await seedDemo(t.db, args({ replace: true }));
       expect(r.replaced).toBe(true);
-      expect(r.deleted).toEqual({ entries: first.entries + first.waterEntries, weighIns: first.weighIns, shots: first.shots, foods: DEMO_FOODS.length + DEMO_QUICK_MEALS.length });
+      expect(r.deleted).toEqual({ entries: first.entries + first.waterEntries, weighIns: first.weighIns, shots: first.shots, foods: DEMO_FOODS.length + DEMO_QUICK_MEALS.length, combines: 0 });
       expect(r).toMatchObject({ entries: first.entries, waterEntries: first.waterEntries, weighIns: first.weighIns, shots: first.shots });
       expect(await counts(demoId)).toEqual(demoBefore); // refilled, foods not doubled, the hand-made one stays
     }
@@ -383,15 +383,35 @@ describe("npm run seed-demo", () => {
     expect((await t.db.select().from(recipeItems)).length).toBe(DEMO_QUICK_MEALS.reduce((s, q) => s + q.parts.length, 0));
   });
 
-  it("--replace deletes cleanly when the account has Undo records for combined entries (log_combines)", async () => {
+  it("--replace deletes the account's Undo records for combined entries (log_combines), and no one else's", async () => {
     await seedDemo(t.db, args());
     const id = await idOf("demo");
     const [e] = await t.db.select().from(logEntries).where(eq(logEntries.userId, id)).limit(1);
     const p = { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 };
     await t.db.insert(logCombines).values({ userId: id, entryId: e.id, before: p, after: { ...p, quantity: 2 }, added: p, addedServings: [{ label: "1" }], splitDay: e.day, splitMeal: e.meal } as any);
     await expect(seedDemo(t.db, args({ replace: true }))).resolves.toMatchObject({ replaced: true });
-    expect((await t.db.select().from(logCombines).where(eq(logCombines.userId, id)))[0].entryId).toBeNull();
-    expect((await t.db.select().from(logCombines)).length).toBe(1); // the seeder makes none of its own
+    expect((await t.db.select().from(logCombines)).length).toBe(0); // gone with the entries; the seeder makes none of its own
+  });
+
+  it("says what else it set (body weight, GLP-1, App info counts, a starter profile) and what --replace deleted, and --replace clears the account's undo records", async () => {
+    const first = await seedDemo(t.db, args());
+    const text = describeSeed(first, 90).join("\n");
+    expect(text).toMatch(/Also set: body weight to \d+\.\d lb \(latest weigh-in\), GLP-1 settings \(Zepbound, Fridays\), App info counts \(3\)\./);
+    expect(text).toContain("Made a starter profile");
+    expect(text).not.toContain("Deleted from");
+    const id = await idOf("demo");
+    const [b] = await t.db.select().from(userBody).where(eq(userBody.userId, id));
+    const [w] = await t.db.select().from(weighIns).where(eq(weighIns.userId, id)).orderBy(sql`day desc`).limit(1);
+    expect(text).toContain(`body weight to ${(Math.round((b.weightKg / KG_PER_LB) * 10) / 10).toFixed(1)} lb`);
+    expect(b.weightKg).toBeCloseTo(w.weightKg, 5);
+    const [e] = await t.db.select().from(logEntries).where(eq(logEntries.userId, id)).limit(1);
+    const p = { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 };
+    await t.db.insert(logCombines).values({ userId: id, entryId: e.id, before: p, after: p, added: p, addedServings: [{ label: "1" }], splitDay: e.day, splitMeal: e.meal } as any);
+    const again = await seedDemo(t.db, args({ replace: true }));
+    const text2 = describeSeed(again, 90).join("\n");
+    expect(text2).not.toContain("Made a starter profile"); // the profile exists now
+    expect(text2).toMatch(/Deleted from demo: \d+ log entries \(water included\), \d+ weigh-ins, 13 shots, 28 demo foods and quick meals, 1 undo records\./);
+    expect((await t.db.select().from(logCombines).where(eq(logCombines.userId, id))).length).toBe(0);
   });
 
   it("--replace on an account with no tracking still just fills it; earlier demo foods are not duplicated", async () => {

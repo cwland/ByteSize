@@ -1264,7 +1264,12 @@ Options: `--user <username>` (default: the account that set up the server, i.e. 
 - If the account already has log entries, weigh-ins, water or shots, it stops and says to add `--replace`.
   `--replace` deletes that one account's log entries, weigh-ins, water, shots, and the foods/quick meals the seeder
   made on earlier runs, then fills it again — meant to be run over and over. Nothing else of that account (settings,
-  keys, other My foods) and nothing of any other account is touched. It prints what it deleted and what it made.
+  keys, other My foods) and nothing of any other account is touched, except what filling it sets, which it says
+  at the end ("Also set: …"): the body weight follows the latest weigh-in (as for any weigh-in), the GLP-1 settings
+  match the seeded shots, and three App info counts are set (so re-runs give the same numbers); "Made a starter
+  profile" when the account had no body details (needed for GLP-1 tracking and the weight goal). `--replace` also
+  deletes that account's Undo records of combined entries (their entries are gone); earned badges are left as they
+  are. It prints what it deleted and what it made.
 - Same output every run for the same options and day (seeded random), ending today in the server's time zone.
 
 **What it makes** (all through the same tables/rules the app uses, so totals, rings, streaks, trends, badges and

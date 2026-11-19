@@ -7,7 +7,7 @@
 import { and, asc, count, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db/index.js";
-import { glp1Settings, glp1Shots, logEntries, targets, usageCounts, userBody, userFoods, users, weighIns } from "../db/schema.js";
+import { glp1Settings, glp1Shots, logCombines, logEntries, targets, usageCounts, userBody, userFoods, users, weighIns } from "../db/schema.js";
 import { addDays, localDay, weekdayOf, type Meal } from "./days.js";
 import { createMyFood, type FoodResult } from "./foods.js";
 import { nextSite, type Site } from "./glp1.js";
@@ -299,7 +299,9 @@ export type SeedResult = {
   username: string;
   replaced: boolean;
   /** what --replace removed */
-  deleted: { entries: number; weighIns: number; shots: number; foods: number };
+  deleted: { entries: number; weighIns: number; shots: number; foods: number; combines: number };
+  /** set along the way, besides the tracking rows: said in the output */
+  alsoSet: { bodyWeight: string; medication: string; usageCounts: number; madeProfile: boolean };
   timezone: string;
   from: string;
   to: string;
@@ -342,7 +344,7 @@ export async function seedDemo(db: Db, opts: SeedOptions): Promise<SeedResult> {
       throw new Error(`No account has that username (this command never creates one). Accounts: ${all.map((u) => u.username).join(", ") || "none yet"}`);
     }
     const username = user.username;
-    const deleted = { entries: 0, weighIns: 0, shots: 0, foods: 0 };
+    const deleted = { entries: 0, weighIns: 0, shots: 0, foods: 0, combines: 0 };
     const has = async (table: typeof logEntries | typeof weighIns | typeof glp1Shots) => (await dbx.select({ n: count() }).from(table).where(eq(table.userId, user.id)))[0].n > 0;
     let replaced = false;
     if ((await has(logEntries)) || (await has(weighIns)) || (await has(glp1Shots))) {
@@ -350,6 +352,8 @@ export async function seedDemo(db: Db, opts: SeedOptions): Promise<SeedResult> {
       // Only this account's tracking (recipe items go with their meal, below)
       deleted.entries = (await dbx.delete(logEntries).where(eq(logEntries.userId, user.id)).returning({ id: logEntries.id })).length;
       deleted.weighIns = (await dbx.delete(weighIns).where(eq(weighIns.userId, user.id)).returning({ id: weighIns.id })).length;
+      // Undo records of combined entries (their entries are gone, so Undo could not work)
+      deleted.combines = (await dbx.delete(logCombines).where(eq(logCombines.userId, user.id)).returning({ id: logCombines.id })).length;
       deleted.shots = (await dbx.delete(glp1Shots).where(eq(glp1Shots.userId, user.id)).returning({ id: glp1Shots.id })).length;
       replaced = true;
     }
@@ -429,6 +433,7 @@ export async function seedDemo(db: Db, opts: SeedOptions): Promise<SeedResult> {
     // --- profile, goals, GLP-1 ---
     const [body] = await dbx.select().from(userBody).where(eq(userBody.userId, userId));
     const startKg = START_LB * KG_PER_LB;
+    const madeProfile = !body;
     if (!body) {
       await dbx.insert(userBody).values({ userId, sex: "female", birthDate: "1984-06-01", heightCm: 168, weightKg: startKg, goalWeightKg: GOAL_LB * KG_PER_LB, activity: "some", glp1: true, targetsWeightKg: startKg });
     } else if (!body.glp1) {
@@ -456,10 +461,14 @@ export async function seedDemo(db: Db, opts: SeedOptions): Promise<SeedResult> {
       await dbx.insert(usageCounts).values({ userId, key, count: n }).onConflictDoUpdate({ target: [usageCounts.userId, usageCounts.key], set: { count: sql`excluded.count` } });
     }
 
+    const [after] = await dbx.select({ kg: userBody.weightKg }).from(userBody).where(eq(userBody.userId, userId));
+    const bodyWeight = metric ? `${(Math.round(after.kg * 10) / 10).toFixed(1)} kg` : `${(Math.round((after.kg / KG_PER_LB) * 10) / 10).toFixed(1)} lb`;
+
     return {
       username,
       replaced,
       deleted,
+      alsoSet: { bodyWeight, medication: MEDICATION, usageCounts: Object.keys(plan.usage).length, madeProfile },
       timezone,
       from: plan.from,
       to: plan.today,
@@ -485,4 +494,22 @@ function entry(userId: number, day: string, meal: Meal, f: EntryFood, portion: {
     perServing: f.nutrients, servings: f.servings, nutrients, aiEstimated: f.aiFields.length > 0, groupRef,
     createdAt: at, updatedAt: at,
   };
+}
+
+const WEEKDAYS = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
+
+/** What the command prints when it is done (one line each). */
+export function describeSeed(r: SeedResult, days: number): string[] {
+  const lines: string[] = [];
+  const d = r.deleted;
+  if (r.replaced || d.foods) {
+    lines.push(`Deleted from ${r.username}: ${d.entries} log entries (water included), ${d.weighIns} weigh-ins, ${d.shots} shots, ${d.foods} demo foods and quick meals, ${d.combines} undo records.`);
+  }
+  lines.push(`Filled ${r.username} (${r.timezone}) from ${r.from} to ${r.to}:`);
+  lines.push(`  ${r.foods} My foods and ${r.quickMeals} quick meals, ${r.entries} food log entries over ${days - r.emptyDays} days (${r.emptyDays} left empty), ${r.waterEntries} water entries,`);
+  lines.push(`  ${r.weighIns} weigh-ins, ${r.shots} GLP-1 shots.`);
+  lines.push(`Also set: body weight to ${r.alsoSet.bodyWeight} (latest weigh-in), GLP-1 settings (${r.alsoSet.medication}, ${WEEKDAYS[INJECTION_WEEKDAY]}), App info counts (${r.alsoSet.usageCounts}).`);
+  if (r.alsoSet.madeProfile) lines.push("Made a starter profile (body details) because the account had none.");
+  lines.push("Sign in as that account to see it. Run again with --replace to wipe and refill.");
+  return lines;
 }
