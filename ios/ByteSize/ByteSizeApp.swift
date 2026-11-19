@@ -7,7 +7,18 @@ struct ByteSizeApp: App {
     @State private var profile: ProfileModel
 
     init() {
-        let session = SessionStore(tokens: KeychainTokenStore())
+        let session: SessionStore
+        #if DEBUG
+        if StubServer.isOn {
+            // UI tests: a pretend server and throwaway settings, nothing saved to the Keychain
+            let defaults = StubServer.defaults
+            session = SessionStore(tokens: InMemoryTokenStore(), defaults: defaults, session: StubServer.session)
+            _session = State(initialValue: session)
+            _profile = State(initialValue: ProfileModel(session: session, defaults: defaults))
+            return
+        }
+        #endif
+        session = SessionStore(tokens: KeychainTokenStore())
         _session = State(initialValue: session)
         _profile = State(initialValue: ProfileModel(session: session))
     }

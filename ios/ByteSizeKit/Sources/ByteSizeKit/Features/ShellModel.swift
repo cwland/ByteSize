@@ -29,13 +29,13 @@ public enum AppTab: String, CaseIterable, Identifiable, Sendable {
 
 /// The radial (+) menu's buttons, in arc order left to right.
 public enum QuickAction: String, CaseIterable, Identifiable, Sendable {
-    case add, scan, photo, describe
+    case track, scan, photo, describe
 
     public var id: String { rawValue }
 
     public var title: String {
         switch self {
-        case .add: "Add Food"
+        case .track: "Track Food"
         case .scan: "Scan Food"
         case .photo: "Photo"
         case .describe: "Describe Food"
@@ -44,7 +44,7 @@ public enum QuickAction: String, CaseIterable, Identifiable, Sendable {
 
     public var systemImage: String {
         switch self {
-        case .add: "magnifyingglass"
+        case .track: "magnifyingglass"
         case .scan: "barcode.viewfinder"
         case .photo: "camera"
         case .describe: "text.bubble"
