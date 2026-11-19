@@ -13,8 +13,9 @@ export const KEY_ACCESS = ["read", "log"] as const;
 export type KeyAccess = (typeof KEY_ACCESS)[number];
 export const KEY_ACCESS_LABELS: Record<KeyAccess, string> = { read: "Read only", log: "Read and log" };
 
-// Read only: the person's own data (day, log, foods, my foods, weight, GLP-1, goals/targets, trends, activity, app info).
-// Goals (§40c) are read only for every key: they're made and changed in the app.
+// Read only: the person's own data (day, log, foods, my foods, weight, GLP-1, goals/targets, trends, activity, app info,
+// insights). Goals (§40c) are read only for every key: they're made and changed in the app. Insights (§43): reading
+// only; Refresh, Ask and the weekly switch aren't for keys.
 export const KEY_READ_ROUTES: ReadonlySet<string> = new Set([
   "GET /api/health",
   "GET /api/day/:date",
@@ -43,6 +44,8 @@ export const KEY_READ_ROUTES: ReadonlySet<string> = new Set([
   "GET /api/workout-calories",
   "GET /api/goals",
   "GET /api/goals/:id",
+  "GET /api/insights",
+  "GET /api/insights/latest",
 ]);
 
 // Read and log adds: log entries (water is a log entry), weigh-ins, GLP-1 shots and side effects, steps and workouts

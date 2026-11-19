@@ -10,7 +10,7 @@ import { logEvent } from "./appLog.js";
 /** Outside sources, as keyed here (the order Settings › App info lists them). */
 export const OUTSIDE_SOURCES = ["off", "usda", "fatsecret", "spoonacular", "culury"] as const;
 export type OutsideSource = (typeof OUTSIDE_SOURCES)[number];
-export type UsageKey = "barcodes_scanned" | "photos_read" | "ai_estimates" | "lookups_saved" | `outside_${OutsideSource}`;
+export type UsageKey = "barcodes_scanned" | "photos_read" | "ai_estimates" | "ai_insights" | "lookups_saved" | `outside_${OutsideSource}`;
 
 const pending = new Set<Promise<void>>();
 

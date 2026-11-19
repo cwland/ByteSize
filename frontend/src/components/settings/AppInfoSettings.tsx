@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { BookMarked, CalendarDays, CalendarHeart, Camera, Flame, Globe, Layers, ScanBarcode, Scale, Sparkles, Syringe, TrendingDown, Users, Utensils, Zap, type LucideIcon } from "lucide-react";
+import { BookMarked, CalendarDays, CalendarHeart, Camera, Flame, Globe, Layers, Lightbulb, Scale, ScanBarcode, Sparkles, Syringe, TrendingDown, Users, Utensils, Zap, type LucideIcon } from "lucide-react";
 import { api } from "../../api";
 import { shortDay } from "../../format";
 import type { AppInfo } from "../../types";
@@ -85,6 +85,7 @@ export default function AppInfoSettings() {
     { label: "Barcodes scanned", Icon: ScanBarcode, value: you.barcodesScanned },
     { label: "Photos read", Icon: Camera, value: you.photosRead },
     { label: "AI estimates", Icon: Sparkles, value: you.aiEstimates },
+    { label: "AI insights", Icon: Lightbulb, value: you.aiInsights ?? 0 },
     { label: "Lookups saved", Icon: Zap, value: you.lookupsSaved },
     { label: "Outside lookups", Icon: Globe, value: o.total, lines: [["Open Food Facts", o.off], ["USDA", o.usda], ["FatSecret", o.fatsecret], ["Spoonacular", o.spoonacular], ["Culury", o.culury]] },
   ];

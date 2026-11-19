@@ -184,10 +184,11 @@ describe("Goals", () => {
     await user.click(screen.getByRole("button", { name: "Add widget" }));
     const list = screen.getByRole("dialog", { name: "Add widget" });
     // Only Goals widgets are offered here
-    expect(within(list).getAllByRole("button", { name: /^Add / }).map((b) => b.getAttribute("aria-label"))).toEqual(["Add Badges"]);
+    expect(within(list).getAllByRole("button", { name: /^Add / }).map((b) => b.getAttribute("aria-label"))).toEqual(["Add Insights", "Add Badges"]); // Insights (§43) is offered on Goals too
     await user.click(within(list).getByRole("button", { name: "Add Badges" }));
     await user.click(screen.getByRole("button", { name: "Add widget" }));
-    expect(within(screen.getByRole("dialog", { name: "Add widget" })).getByText("Every widget is on this page")).toBeInTheDocument();
+    // Insights isn't on Goals by default: still offered
+    expect(within(screen.getByRole("dialog", { name: "Add widget" })).getAllByRole("button", { name: /^Add / }).map((b) => b.getAttribute("aria-label"))).toEqual(["Add Insights"]);
     await user.click(within(screen.getByRole("dialog", { name: "Add widget" })).getByRole("button", { name: "Close" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(server.writes()).toEqual([expect.objectContaining({ method: "PUT", path: "/api/layouts/goals", body: { version: 1, columns: [["goal-date", "your-plan", "goals"], ["weight-chart", "activity", "weekly-trends", "past-goals"], ["badges"]] } })]); // added to the shortest column

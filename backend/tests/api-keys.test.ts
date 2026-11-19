@@ -233,6 +233,19 @@ describe("using a key", () => {
     expect((await withKey(reader.key, "GET", "/api/workout-calories")).status).toBe(200);
   });
 
+  it("insights (§43): a read key reads them; no key can refresh, ask or change the weekly switch", async () => {
+    const reader = await newKey("reader", "read");
+    const logger = await newKey("phone", "log");
+    for (const k of [reader.key, logger.key]) {
+      expect((await withKey(k, "GET", "/api/insights")).status).toBe(200);
+      expect((await withKey(k, "GET", "/api/insights/latest")).status).toBe(200);
+      expect((await withKey(k, "POST", "/api/insights/refresh", { kind: "recap" })).status).toBe(403);
+      expect((await withKey(k, "POST", "/api/insights/ask", { question: "How's my protein?" })).status).toBe(403);
+      expect((await withKey(k, "PUT", "/api/insights/settings", { weeklyOn: false })).status).toBe(403);
+    }
+    expect((await t.api("GET", "/api/insights")).body.weeklyOn).toBe(true);
+  });
+
   it("goals (§40c): any key reads them with their progress; no key makes, edits, ends or deletes one", async () => {
     const reader = await newKey("reader", "read");
     const logger = await newKey("phone", "log");
@@ -354,6 +367,8 @@ describe("using a key", () => {
         "GET /api/workout-calories",
         "GET /api/goals",
         "GET /api/goals/:id",
+        "GET /api/insights",
+        "GET /api/insights/latest",
       ].sort()
     );
     expect([...KEY_LOG_ROUTES].sort()).toEqual(

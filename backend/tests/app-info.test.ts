@@ -51,7 +51,7 @@ describe("GET /api/app-info", () => {
     expect(r.body.you).toEqual({
       daysLogged: 0, foodsLogged: 0, differentFoods: 0, myFoods: 0, weighIns: 0, weightLost: null, shots: null, longestStreak: 0,
       memberSince: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-      barcodesScanned: 0, photosRead: 0, aiEstimates: 0, lookupsSaved: 0,
+      barcodesScanned: 0, photosRead: 0, aiEstimates: 0, aiInsights: 0, lookupsSaved: 0,
       outsideLookups: { total: 0, off: 0, usda: 0, fatsecret: 0, spoonacular: 0, culury: 0 },
     });
     expect(r.body.version).toBe(APP_VERSION);
@@ -93,9 +93,9 @@ describe("GET /api/app-info", () => {
   });
 
   it("the counted numbers: barcodes, photos, AI estimates, lookups saved, outside lookups with a total", async () => {
-    for (const [key, n] of [["barcodes_scanned", 4], ["photos_read", 2], ["ai_estimates", 3], ["lookups_saved", 7], ["outside_off", 2], ["outside_usda", 1], ["outside_culury", 5]] as const) countUsage(t.app, 1, key, n);
+    for (const [key, n] of [["barcodes_scanned", 4], ["photos_read", 2], ["ai_estimates", 3], ["ai_insights", 6], ["lookups_saved", 7], ["outside_off", 2], ["outside_usda", 1], ["outside_culury", 5]] as const) countUsage(t.app, 1, key, n);
     expect((await info()).body.you).toMatchObject({
-      barcodesScanned: 4, photosRead: 2, aiEstimates: 3, lookupsSaved: 7,
+      barcodesScanned: 4, photosRead: 2, aiEstimates: 3, aiInsights: 6, lookupsSaved: 7,
       outsideLookups: { total: 8, off: 2, usda: 1, fatsecret: 0, spoonacular: 0, culury: 5 },
     });
   });

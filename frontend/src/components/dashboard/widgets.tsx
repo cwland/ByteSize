@@ -24,6 +24,7 @@ import { GoalsListWidget, PastGoalsWidget } from "../goals/GoalWidgets";
 import { kindName } from "../goals/goalCopy";
 import type { Goal } from "../../types";
 import { planPickerHref } from "../../plans";
+import InsightsWidget from "../insights/InsightsWidget";
 
 // The widget registry (§28, §40a): the one list every widget page (Dashboard, Goals), the Add widget list and the
 // layout read. Adding a widget later means adding one entry here (and its id, per page, to backend/src/lib/widgets.ts,
@@ -198,6 +199,8 @@ export const WIDGETS: WidgetDef[] = [
   { id: "budget", pages: { dashboard: 1 }, fits: "narrow", title: "Budget", description: "Calories left in your range, with protein, fiber and water rings", Component: Budget },
   { id: "water", pages: { dashboard: 1 }, fits: "narrow", title: "Water", description: "Add a glass of water in one tap", Component: Water },
   { id: "day-totals", pages: { dashboard: 2 }, fits: "narrow", title: "Day totals", description: "Calories, protein, carbs, fat and more against your targets", Component: ({ data, isToday }) => <DayTotalsWidget data={data} isToday={isToday} /> },
+  // §43: below Day totals (in reading order on phones, where it's the way to the Insights page); offered on Goals
+  { id: "insights", pages: { dashboard: 2, goals: null }, fits: "narrow", title: "Insights", description: "Your newest weekly recap, and the way to all your insights", Component: () => <InsightsWidget /> },
   { id: "weight", pages: { dashboard: 2 }, fits: "narrow", title: "Weight", description: "Your latest weigh-in and how it's trending", Component: ({ wide }) => <WeightCard trend={wide} /> },
   { id: "next-shot", pages: { dashboard: 2 }, fits: "narrow", title: "Next shot", description: "When your next GLP-1 shot is due", onlyWhen: "Shows when GLP-1 is on", Component: () => <Glp1Card /> },
   { id: "streak", pages: { dashboard: 2 }, fits: "narrow", title: "Streak", description: "Days in a row you've logged food", Component: Streak },

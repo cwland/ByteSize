@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 
-// Hash routes: #/ Dashboard, #/log/my-foods?from=<route> My Foods, #/goals Goals, #/settings[/<section>].
+// Hash routes: #/ Dashboard, #/log/my-foods?from=<route> My Foods, #/goals Goals, #/insights Insights (§43; not in the
+// phone bottom bar: phones reach it from the Insights widget), #/settings[/<section>].
 // There is no Log page (§28): #/log (and old links to it) open the Dashboard.
-export type Page = "dashboard" | "myfoods" | "goals" | "settings";
+export type Page = "dashboard" | "myfoods" | "goals" | "insights" | "settings";
 
 export const PAGES: { id: Page; label: string; href: string }[] = [
   { id: "dashboard", label: "Dashboard", href: "#/" },
@@ -13,7 +14,7 @@ export const PAGES: { id: Page; label: string; href: string }[] = [
 
 export function pageFromHash(hash = window.location.hash): Page {
   const first = hash.replace(/^#\/?/, "").split(/[/?]/)[0];
-  if (first === "goals" || first === "settings") return first;
+  if (first === "goals" || first === "settings" || first === "insights") return first;
   if (isMyFoods(hash)) return "myfoods";
   return "dashboard";
 }

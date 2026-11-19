@@ -118,6 +118,20 @@ describe("GET /api/export", () => {
     expect(foods).toContain("Toast,,custom,2 slices,160,6,30,2,4");
   });
 
+  it("insights (§43): the person's recaps, protein help and answers, with their questions; the weekly switch", async () => {
+    await t.db.insert(schema.insights).values([
+      { userId: 1, kind: "recap", source: "weekly", periodStart: "2026-11-08", periodEnd: "2026-11-14", content: { summary: "Good week", wentWell: ["Logged"], slipped: [], tryNext: "Eggs" } },
+      { userId: 1, kind: "answer", source: "ask", periodStart: "2026-10-22", periodEnd: "2026-11-18", question: "How's my protein?", content: { answer: "Fine", offTopic: false } },
+    ]);
+    await t.api("PUT", "/api/insights/settings", { weeklyOn: false });
+    const json = JSON.parse((await download()).text("bytesize-export.json"));
+    expect(json.tables.insights.map((r: any) => [r.kind, r.source, r.periodStart, r.question, r.content.summary ?? r.content.answer]).sort()).toEqual([
+      ["answer", "ask", "2026-10-22", "How's my protein?", "Fine"],
+      ["recap", "weekly", "2026-11-08", null, "Good week"],
+    ]);
+    expect(json.tables.user_settings[0]).toMatchObject({ insightsWeekly: false });
+  });
+
   it("the json holds every per-person table (and no secrets)", async () => {
     await seed();
     expect((await t.api("PUT", "/api/settings/culury", { url: "http://culury.lan:4000", apiKey: "SECRET-KEY-123" })).status).toBeLessThan(500);

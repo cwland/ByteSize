@@ -4,8 +4,8 @@
 export const LAYOUT_PAGES = ["dashboard", "goals"] as const;
 export type LayoutPage = (typeof LAYOUT_PAGES)[number];
 export const PAGE_WIDGETS: Record<LayoutPage, readonly string[]> = {
-  dashboard: ["food", "budget", "water", "activity", "day-totals", "weight", "next-shot", "streak", "goal-date", "goals"],
-  goals: ["your-plan", "goal-date", "weight-chart", "weekly-trends", "badges", "activity", "goals", "past-goals"],
+  dashboard: ["food", "budget", "water", "activity", "day-totals", "insights", "weight", "next-shot", "streak", "goal-date", "goals"],
+  goals: ["your-plan", "goal-date", "weight-chart", "weekly-trends", "badges", "activity", "goals", "past-goals", "insights"],
 };
 /** The Dashboard's widgets (the page §28 started with) */
 export const WIDGET_IDS = PAGE_WIDGETS.dashboard;
@@ -18,3 +18,16 @@ export const GOAL_WIDGET_PREFIX = "goal:";
 export const GOAL_WIDGET = /^goal:([1-9]\d{0,9})$/;
 export const GOAL_WIDGET_PAGES: readonly LayoutPage[] = ["dashboard", "goals"];
 export const goalWidgetId = (id: number) => `${GOAL_WIDGET_PREFIX}${id}`;
+
+/**
+ * §43: a Dashboard saved before Insights, with Insights put in once: right below Day totals, or else at the bottom of
+ * the right-hand column (phones reach the Insights page from this widget).
+ */
+export function withInsights(columns: string[][]): string[][] {
+  if (columns.some((c) => c.includes("insights"))) return columns;
+  const cols = Array.from({ length: Math.max(MAX_COLUMNS, columns.length) }, (_, i) => [...(columns[i] ?? [])]);
+  const at = cols.findIndex((c) => c.includes("day-totals"));
+  if (at >= 0) cols[at].splice(cols[at].indexOf("day-totals") + 1, 0, "insights");
+  else cols[MAX_COLUMNS - 1].push("insights");
+  return cols;
+}

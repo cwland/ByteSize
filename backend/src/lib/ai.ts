@@ -40,8 +40,9 @@ export interface StoredService {
   photos: boolean; // can read photos (meals, nutrition labels)
 }
 
-// What a request needs: "food" (working out a food or meal, any service), "quick", or "photo"
-export type AiTask = "food" | "quick" | "photo";
+// What a request needs: "food" (working out a food or meal, any service), "quick", "photo", or "insights" (§43: the
+// coach's recap, protein help and answers, any service)
+export type AiTask = "food" | "quick" | "photo" | "insights";
 export interface AiImage {
   mime: string; // image/jpeg ...
   base64: string;

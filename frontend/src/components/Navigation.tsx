@@ -1,10 +1,11 @@
-import { BookOpen, House, Plus, Settings, Target } from "lucide-react";
+import { BookOpen, House, Lightbulb, Plus, Settings, Target } from "lucide-react";
 import { PAGES, myFoodsHref, type Page } from "../routes";
 
 const ICONS: Record<Page, JSX.Element> = {
   dashboard: <House className="size-6" />,
   myfoods: <BookOpen className="size-6" />,
   goals: <Target className="size-6" />,
+  insights: <Lightbulb className="size-6" />, // (not a tab: the bottom bar is unchanged)
   settings: <Settings className="size-6" />,
 };
 

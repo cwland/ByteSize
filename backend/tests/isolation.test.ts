@@ -427,6 +427,35 @@ describe("per-user isolation", () => {
     expect((await b.as("GET", "/api/day/2026-11-17")).body.entries).toEqual([]);
   });
 
+  it("insights (§43): a person's recaps, protein help, answers, limits and weekly switch are their own, and the AI sees only their data", async () => {
+    const { a, b } = await twoUsers(t);
+    await t.api("PUT", "/api/settings/ai", aiSettings);
+    t.clock.date = new Date("2026-11-18T19:00:00Z");
+    const today = "2026-11-18"; // in Boise
+    const { logEntries } = await import("../src/db/schema.js");
+    await t.db.insert(logEntries).values({ userId: a.id, day: today, meal: "lunch", name: "Anna's salmon", icon: "🐟", source: "cache", unit: "g", quantity: 100, perServing: {}, servings: [], nutrients: { calories: 200, protein_g: 22 } });
+    t.ai.respond = (_url: string, body: any) => {
+      const text: string = body.messages[1].content;
+      const json = text.includes("Write a recap") ? { summary: "s", wentWell: ["w"], slipped: [], tryNext: "t" } : { answer: "a" };
+      return { status: 200, json: { choices: [{ message: { content: JSON.stringify(json) } }] } };
+    };
+    expect((await a.as("POST", "/api/insights/refresh", { kind: "recap" })).status).toBe(200);
+    expect((await a.as("POST", "/api/insights/ask", { question: "How's my protein?" })).status).toBe(200);
+    expect(JSON.stringify(t.ai.calls[0].body)).toContain("Anna's salmon");
+    // Ben: nothing of Anna's, and her limits aren't his
+    const bens = (await b.as("GET", "/api/insights")).body;
+    expect(bens).toMatchObject({ recaps: [], protein: null, answers: [], limits: { questionsLeft: 20, recapRefreshIn: 0 } });
+    expect((await b.as("GET", "/api/insights/latest")).body.recap).toBeNull();
+    expect((await b.as("POST", "/api/insights/refresh", { kind: "recap" })).status).toBe(200);
+    expect((await b.as("POST", "/api/insights/ask", { question: "What did I eat?" })).status).toBe(200);
+    for (const call of t.ai.calls.slice(2)) expect(JSON.stringify(call.body)).not.toContain("Anna's salmon");
+    expect((await a.as("GET", "/api/insights")).body.answers.map((x: any) => x.question)).toEqual(["How's my protein?"]);
+    // The weekly switch
+    expect((await b.as("PUT", "/api/insights/settings", { weeklyOn: false })).status).toBe(200);
+    expect((await a.as("GET", "/api/insights")).body.weeklyOn).toBe(true);
+    expect((await b.as("GET", "/api/insights")).body.weeklyOn).toBe(false);
+  });
+
   it("a person's Dashboard layout is their own", async () => {
     const { a, b } = await twoUsers(t);
     const annas = { version: 1, columns: [["streak"], ["food"], []] };

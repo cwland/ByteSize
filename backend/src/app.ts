@@ -40,6 +40,8 @@ import backupRoutes from "./routes/backups.js";
 import { scheduleBackups } from "./lib/backup.js";
 import exportRoutes from "./routes/export.js";
 import appInfoRoutes from "./routes/app-info.js";
+import insightsRoutes from "./routes/insights.js";
+import { scheduleInsights } from "./lib/insightsRun.js";
 import { scheduleCountingSince } from "./lib/usage.js";
 import { scheduleLookupCleanup } from "./lib/lookups.js";
 import { scheduleUploadCleanup, setPhotoSecret } from "./lib/photos.js";
@@ -98,6 +100,7 @@ export interface AppOptions {
   dataDir?: string; // default: DATA_DIR, else ./data/app (tests use a temp folder)
   sleep?: (ms: number) => Promise<void>;
   backupSchedule?: boolean; // the daily backup (default on; tests turn it off)
+  insightsSchedule?: boolean; // the weekly insights run (default on; tests turn it off and call it themselves)
   emailEnv?: EmailConfig | null; // email settings from .env (used when none are saved in the app)
   mailTransport?: TransportFactory; // tests swap in a fake: no email is ever sent
   oauthFetch?: typeof fetch; // tests: a pretend OAuth provider
@@ -221,9 +224,11 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(exportRoutes); // Download my data
   app.register(appInfoRoutes); // Settings › App info: fun usage numbers
   app.register(apiKeyRoutes); // Settings › API keys: a person's own keys for their tools
+  app.register(insightsRoutes); // Insights (§43): weekly recap, protein help and food swaps, ask a question
   scheduleUploadCleanup(app);
   scheduleCountingSince(app); // the day usage counting began
   scheduleLookupCleanup(app); // kept foods and searches past their source's hours (foods in use stay)
   if (opts.backupSchedule ?? true) scheduleBackups(app); // daily backup after BACKUP_HOUR
+  if (opts.insightsSchedule ?? true) scheduleInsights(app); // each person's weekly recap, about 6 am after their week ends
   return app;
 }

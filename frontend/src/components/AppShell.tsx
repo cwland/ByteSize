@@ -14,6 +14,7 @@ import type { Meal, SavedBody, Targets } from "../types";
 import SettingsPage from "./settings/SettingsPage";
 import MyFoodsPage from "./myfoods/MyFoodsPage";
 import Glp1Page from "./glp1/Glp1Page";
+import InsightsPage from "./insights/InsightsPage";
 import { isGlp1, isOldLog, pageFromHash, useHash, type Page } from "../routes";
 import { useSession } from "../session";
 import { SelectedDayProvider, todayIn, useSelectedDay } from "../selectedDay";
@@ -59,6 +60,7 @@ export default function AppShell() {
       {page === "dashboard" && (isGlp1(hash) ? <Glp1Page /> : <Dashboard />)}
       {page === "myfoods" && <MyFoodsPage />}
       {page === "goals" && <GoalsPage />}
+      {page === "insights" && <InsightsPage />}
       {page === "settings" && <SettingsPage />}
     </>
   );

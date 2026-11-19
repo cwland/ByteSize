@@ -2,12 +2,14 @@
 // `npm run seed-demo`. Two halves:
 //   planDemo()  pure: what happens on each day, from a seeded random number generator and "today"
 //   seedDemo()  writes it, through the same lib functions and tables the app uses
-// Everything the seeder makes is either dated rows of the one account (cleared by --replace) or foods
-// carrying DEMO_NOTE (found and removed by --replace), so nothing else is ever touched.
+// Everything the seeder makes is either dated rows of the one account (cleared by --replace), foods carrying DEMO_NOTE
+// or insights with source "demo" (found and removed by --replace), so nothing else is ever touched.
 import { and, asc, count, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db/index.js";
-import { activitySteps, goals, glp1Settings, glp1Shots, logCombines, logEntries, targets, usageCounts, userBody, userFoods, users, weighIns, workouts } from "../db/schema.js";
+import { activitySteps, goals, glp1Settings, glp1Shots, insights, logCombines, logEntries, targets, usageCounts, userBody, userFoods, userSettings, users, weighIns, workouts } from "../db/schema.js";
+import { proteinFacts, weekNumbers, type ProteinFacts, type WeekNumbers } from "./insights.js";
+import { loadSummaryInput, weekBefore } from "./insightsRun.js";
 import { estimateCalories, type WorkoutType } from "./activity.js";
 import { addDays, localDay, weekdayOf, type Meal } from "./days.js";
 import { createMyFood, type FoodResult } from "./foods.js";
@@ -359,7 +361,7 @@ export type SeedResult = {
   username: string;
   replaced: boolean;
   /** what --replace removed */
-  deleted: { entries: number; weighIns: number; shots: number; foods: number; combines: number; steps: number; workouts: number; goals: number };
+  deleted: { entries: number; weighIns: number; shots: number; foods: number; combines: number; steps: number; workouts: number; goals: number; insights: number };
   /** set along the way, besides the tracking rows: said in the output */
   alsoSet: { bodyWeight: string; medication: string; usageCounts: number; madeProfile: boolean };
   timezone: string;
@@ -376,6 +378,8 @@ export type SeedResult = {
   workouts: number;
   /** §40c: goals made (ended ones kept with their result; met = completed) */
   goals: { active: number; past: number; met: number };
+  /** §43: a weekly recap and a protein help card, written here (no AI) */
+  insights: number;
 };
 
 export const HAS_DATA = "That account already has tracking (entries, weigh-ins, water, shots, steps, workouts or goals). Add --replace to delete those, and the demo foods made earlier, and fill it again.";
@@ -408,7 +412,7 @@ export async function seedDemo(db: Db, opts: SeedOptions): Promise<SeedResult> {
       throw new Error(`No account has that username (this command never creates one). Accounts: ${all.map((u) => u.username).join(", ") || "none yet"}`);
     }
     const username = user.username;
-    const deleted = { entries: 0, weighIns: 0, shots: 0, foods: 0, combines: 0, steps: 0, workouts: 0, goals: 0 };
+    const deleted = { entries: 0, weighIns: 0, shots: 0, foods: 0, combines: 0, steps: 0, workouts: 0, goals: 0, insights: 0 };
     const has = async (table: typeof logEntries | typeof weighIns | typeof glp1Shots | typeof activitySteps | typeof workouts | typeof goals) => (await dbx.select({ n: count() }).from(table).where(eq(table.userId, user.id)))[0].n > 0;
     let replaced = false;
     if ((await has(logEntries)) || (await has(weighIns)) || (await has(glp1Shots)) || (await has(activitySteps)) || (await has(workouts)) || (await has(goals))) {
@@ -429,6 +433,8 @@ export async function seedDemo(db: Db, opts: SeedOptions): Promise<SeedResult> {
     }
     // Demo foods from an earlier run, whether or not the tracking is still there
     deleted.foods = (await dbx.delete(userFoods).where(and(eq(userFoods.userId, user.id), eq(userFoods.notes, DEMO_NOTE))).returning({ id: userFoods.id })).length;
+    // ...and its demo insights (the person's own stay)
+    deleted.insights = (await dbx.delete(insights).where(and(eq(insights.userId, user.id), eq(insights.source, "demo"))).returning({ id: insights.id })).length;
 
     const userId = user.id;
     const timezone = user.timezone;
@@ -554,6 +560,19 @@ export async function seedDemo(db: Db, opts: SeedOptions): Promise<SeedResult> {
       await dbx.insert(usageCounts).values({ userId, key, count: n }).onConflictDoUpdate({ target: [usageCounts.userId, usageCounts.key], set: { count: sql`excluded.count` } });
     }
 
+    // --- Insights (§43): last week's recap and protein help, with the app's own numbers and fixed words (no AI) ---
+    const [st] = await dbx.select({ weekStart: userSettings.weekStart }).from(userSettings).where(eq(userSettings.userId, userId));
+    const person = { timezone, units: user.units, weekStart: st?.weekStart ?? 0, weeklyOn: true };
+    const week = weekBefore(today, person.weekStart);
+    const numbers = weekNumbers(await loadSummaryInput(dbx, userId, week.from, week.to, person));
+    const proteinFrom = addDays(week.to, -27);
+    const facts = proteinFacts(await loadSummaryInput(dbx, userId, proteinFrom, week.to, person));
+    const demo = demoInsights(numbers, facts);
+    await dbx.insert(insights).values([
+      { userId, kind: "recap", source: "demo", periodStart: week.from, periodEnd: week.to, content: { ...demo.recap, numbers }, createdAt: now },
+      { userId, kind: "protein", source: "demo", periodStart: proteinFrom, periodEnd: week.to, content: { ...demo.protein, facts }, createdAt: now },
+    ]);
+
     const [after] = await dbx.select({ kg: userBody.weightKg }).from(userBody).where(eq(userBody.userId, userId));
     const bodyWeight = metric ? `${(Math.round(after.kg * 10) / 10).toFixed(1)} kg` : `${(Math.round((after.kg / KG_PER_LB) * 10) / 10).toFixed(1)} lb`;
 
@@ -575,9 +594,35 @@ export async function seedDemo(db: Db, opts: SeedOptions): Promise<SeedResult> {
       stepDays: stepRows.length,
       workouts: workoutRows.length,
       goals: { active: kept.active.length, past: kept.past.length, met: kept.past.filter((g) => g.progress.state === "completed").length },
+      insights: 2,
     };
   });
 }
+
+/** Insights' demo cards: fixed words around the app's own numbers (the seeder never asks an AI). */
+export function demoInsights(n: WeekNumbers, f: ProteinFacts) {
+  const protein = n.avgProtein === null ? "" : ` Protein averaged ${n.avgProtein} g a day${n.plan ? ` against your ${n.plan.proteinMin} g minimum` : ""}.`;
+  const short = f.shortDays.length;
+  const swaps = f.topSources.length && DEMO_SWAP_FROM.some((name) => f.topSources.some((x) => x.food === name)) ? [DEMO_SWAP] : [];
+  return {
+    recap: {
+      summary: `You logged ${n.daysLogged} of 7 days and were in your calorie range on ${n.daysInRange}.${protein}`,
+      wentWell: ["You kept logging, even on busy days", n.workouts.count ? `${n.workouts.count} workouts (${n.workouts.minutes} minutes)` : `Water on ${n.waterDays} days`],
+      slipped: short ? ["Protein ran short on a few days"] : [],
+      tryNext: "Start days that look light with Greek yogurt or a protein shake.",
+    },
+    protein: {
+      intro: `Protein fell short on ${short} of ${f.daysLogged} logged days.`,
+      additions: [
+        { suggestion: "Greek yogurt at breakfast", why: "17 g of protein for 100 calories" },
+        { suggestion: "A protein shake in the afternoon", why: "30 g of protein for 160 calories" },
+      ],
+      swaps,
+    },
+  };
+}
+const DEMO_SWAP = { food: "Granola bar", swap: "String cheese", saving: "70 calories, and 4 g more protein" };
+const DEMO_SWAP_FROM = ["Granola bar"];
 
 type EntryFood = Pick<FoodResult, "kind" | "id" | "name" | "brand" | "icon" | "servings" | "nutrients" | "aiFields">;
 
@@ -599,13 +644,14 @@ export function describeSeed(r: SeedResult, days: number): string[] {
   const lines: string[] = [];
   const d = r.deleted;
   if (r.replaced || d.foods) {
-    lines.push(`Deleted from ${r.username}: ${d.entries} log entries (water included), ${d.weighIns} weigh-ins, ${d.shots} shots, ${d.steps} days of steps, ${d.workouts} workouts, ${d.goals} goals, ${d.foods} demo foods and quick meals, ${d.combines} undo records.`);
+    lines.push(`Deleted from ${r.username}: ${d.entries} log entries (water included), ${d.weighIns} weigh-ins, ${d.shots} shots, ${d.steps} days of steps, ${d.workouts} workouts, ${d.goals} goals, ${d.foods} demo foods and quick meals, ${d.combines} undo records, ${d.insights} demo insights.`);
   }
   lines.push(`Filled ${r.username} (${r.timezone}) from ${r.from} to ${r.to}:`);
   lines.push(`  ${r.foods} My foods and ${r.quickMeals} quick meals, ${r.entries} food log entries over ${days - r.emptyDays} days (${r.emptyDays} left empty), ${r.waterEntries} water entries,`);
   lines.push(`  ${r.weighIns} weigh-ins, ${r.shots} GLP-1 shots, ${r.stepDays} days of steps, ${r.workouts} workouts,`);
   lines.push(`  ${r.goals.active} active goals and ${r.goals.past} ended ones (${r.goals.met} met).`);
   lines.push(`Also set: body weight to ${r.alsoSet.bodyWeight} (latest weigh-in), GLP-1 settings (${r.alsoSet.medication}, ${WEEKDAYS[INJECTION_WEEKDAY]}), App info counts (${r.alsoSet.usageCounts}).`);
+  lines.push("Insights: one weekly recap and one protein help card (written by the seeder, not an AI).");
   if (r.alsoSet.madeProfile) lines.push("Made a starter profile (body details) because the account had none.");
   lines.push("Sign in as that account to see it. Run again with --replace to wipe and refill.");
   return lines;

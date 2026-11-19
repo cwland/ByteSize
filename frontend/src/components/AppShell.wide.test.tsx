@@ -32,7 +32,7 @@ describe("AppShell on a wide screen", () => {
     const navs = screen.getAllByRole("navigation", { name: "Main" });
     expect(navs).toHaveLength(1);
     const rail = navs[0];
-    expect(within(rail).getAllByRole("link").map((a) => a.getAttribute("aria-label") ?? a.textContent)).toEqual(["ByteSize home", "Dashboard", "Goals", "My foods", "Settings", "Your profile"]);
+    expect(within(rail).getAllByRole("link").map((a) => a.getAttribute("aria-label") ?? a.textContent)).toEqual(["ByteSize home", "Dashboard", "Goals", "Insights", "My foods", "Settings", "Your profile"]);
     expect(within(rail).getByRole("link", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
     expect(within(rail).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "#/settings");
     // No + in the rail: food is added from the Food widget
@@ -58,7 +58,7 @@ describe("AppShell on a wide screen", () => {
     const item = await within(rail).findByRole("link", { name: "GLP-1" });
     expect(item).toHaveAttribute("href", "#/glp1");
     expect(item).toHaveAttribute("aria-current", "page");
-    expect(within(rail).getAllByRole("link").map((a) => a.getAttribute("aria-label") ?? a.textContent)).toEqual(["ByteSize home", "Dashboard", "Goals", "GLP-1", "My foods", "Settings", "Your profile"]);
+    expect(within(rail).getAllByRole("link").map((a) => a.getAttribute("aria-label") ?? a.textContent)).toEqual(["ByteSize home", "Dashboard", "Goals", "Insights", "GLP-1", "My foods", "Settings", "Your profile"]);
     expect(within(rail).getByRole("link", { name: "Dashboard" })).not.toHaveAttribute("aria-current");
     window.location.hash = "";
   });

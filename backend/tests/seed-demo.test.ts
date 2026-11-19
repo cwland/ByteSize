@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { asUser } from "./isolation.js";
-import { activitySteps, goals, logCombines, glp1Shots, glp1Settings, logEntries, recipeItems, targets, usageCounts, userBody, userFoods, users, weighIns, workouts } from "../src/db/schema.js";
+import { activitySteps, goals, insights, logCombines, glp1Shots, glp1Settings, logEntries, recipeItems, targets, usageCounts, userBody, userFoods, users, weighIns, workouts } from "../src/db/schema.js";
 import {
   DEFAULT_DAYS, DEMO_FOODS, DEMO_NOTE, DEMO_QUICK_MEALS, HAS_DATA, INJECTION_WEEKDAY, START_LB, USAGE,
   describeSeed, instantAt, parseSeedArgs, planDemo, planDemoGoals, seedDemo, type PlannedDay,
@@ -420,6 +420,35 @@ describe("npm run seed-demo", () => {
     expect(describeSeed(r, 90).join("\n")).toContain(`${r.stepDays} days of steps, ${r.workouts} workouts`);
   });
 
+  it("adds one weekly recap and one protein help card (no AI call) so Insights isn't empty; --replace clears and refills them", async () => {
+    const r = await seedDemo(t.db, args());
+    expect(r.insights).toBe(2);
+    expect(t.ai.calls).toHaveLength(0);
+    const id = await idOf("demo");
+    const rows = await t.db.select().from(insights).where(eq(insights.userId, id));
+    // Last week: Sun 8 - Sat 14 Nov (Sunday start); protein help: the 4 weeks to its end
+    expect(rows.map((x) => [x.kind, x.source, x.periodStart, x.periodEnd]).sort()).toEqual([
+      ["protein", "demo", "2026-10-18", "2026-11-14"],
+      ["recap", "demo", "2026-11-08", "2026-11-14"],
+    ]);
+    const as = await signIn();
+    const page = (await as("GET", "/api/insights")).body;
+    // The recap's numbers are the app's, the same as the page works out for that week
+    expect(page.recaps[0]).toMatchObject({ soFar: false, content: { summary: expect.stringMatching(/You logged \d of 7 days/), wentWell: expect.any(Array), tryNext: expect.any(String) } });
+    expect(page.recaps[0].content.numbers).toEqual(page.week.numbers);
+    expect(page.protein.content.facts.topSources.length).toBeGreaterThan(0);
+    expect(page.protein.content.additions.length).toBeGreaterThan(0);
+    expect(describeSeed(r, 90).join("\n")).toContain("Insights: one weekly recap and one protein help card");
+    // Refilled, not doubled; what the person's own AI wrote (a recap, an answer) is left alone
+    await t.db.insert(insights).values([
+      { userId: id, kind: "recap", source: "weekly", periodStart: "2026-11-01", periodEnd: "2026-11-07", content: { summary: "Mine" } },
+      { userId: id, kind: "answer", source: "ask", periodStart: TODAY, periodEnd: TODAY, question: "Mine?", content: { answer: "Yes", offTopic: false } },
+    ]);
+    const again = await seedDemo(t.db, args({ replace: true }));
+    expect(again.deleted.insights).toBe(2);
+    expect((await t.db.select().from(insights).where(eq(insights.userId, id))).map((x) => x.source).sort()).toEqual(["ask", "demo", "demo", "weekly"]);
+  });
+
   it("writes the goals: active ones on the Goals page, ended ones kept with a result, at least one met and one missed", async () => {
     const r = await seedDemo(t.db, args());
     const as = await signIn();
@@ -458,7 +487,7 @@ describe("npm run seed-demo", () => {
     for (let i = 0; i < 2; i++) {
       const r = await seedDemo(t.db, args({ replace: true }));
       expect(r.replaced).toBe(true);
-      expect(r.deleted).toEqual({ entries: first.entries + first.waterEntries, weighIns: first.weighIns, shots: first.shots, foods: DEMO_FOODS.length + DEMO_QUICK_MEALS.length, combines: 0, steps: first.stepDays, workouts: first.workouts, goals: first.goals.active + first.goals.past });
+      expect(r.deleted).toEqual({ entries: first.entries + first.waterEntries, weighIns: first.weighIns, shots: first.shots, foods: DEMO_FOODS.length + DEMO_QUICK_MEALS.length, combines: 0, steps: first.stepDays, workouts: first.workouts, insights: 2, goals: first.goals.active + first.goals.past });
       expect(r).toMatchObject({ entries: first.entries, waterEntries: first.waterEntries, weighIns: first.weighIns, shots: first.shots });
       expect(await counts(demoId)).toEqual(demoBefore); // refilled, foods not doubled, the hand-made one stays
     }
@@ -499,7 +528,7 @@ describe("npm run seed-demo", () => {
     const again = await seedDemo(t.db, args({ replace: true }));
     const text2 = describeSeed(again, 90).join("\n");
     expect(text2).not.toContain("Made a starter profile"); // the profile exists now
-    expect(text2).toMatch(/Deleted from demo: \d+ log entries \(water included\), \d+ weigh-ins, 13 shots, 28 days of steps, \d+ workouts, \d+ goals, 28 demo foods and quick meals, 1 undo records\./);
+    expect(text2).toMatch(/Deleted from demo: \d+ log entries \(water included\), \d+ weigh-ins, 13 shots, 28 days of steps, \d+ workouts, \d+ goals, 28 demo foods and quick meals, 1 undo records, 2 demo insights\./);
     expect((await t.db.select().from(logCombines).where(eq(logCombines.userId, id))).length).toBe(0);
   });
 
