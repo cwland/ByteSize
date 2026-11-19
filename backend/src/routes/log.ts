@@ -15,6 +15,8 @@ import { DEFAULT_MEAL_WINDOWS } from "./settings-me.js";
 import { signImageUrl, unsignImageUrl } from "../lib/photos.js";
 import { entryIcon } from "../lib/foodIcons.js";
 import { targetsOn } from "./body-plans.js";
+import { activityOn } from "./activity.js";
+import { calorieWeeks } from "../lib/calorieDays.js";
 
 // The food log: entries keep a snapshot of the food (per-serving nutrients and servings), so editing
 // the food later never changes what was logged. Who is asking comes only from the login.
@@ -37,6 +39,7 @@ export type LogEntry = {
   aiEstimated: boolean;
   source: string;
   sourceRef: string | null;
+  treat: boolean; // §40b: paid from the weekly workout-calorie bank on purpose
 };
 type Portion = { servingIndex: number; unit: Unit; quantity: number; fraction: number };
 
@@ -61,6 +64,8 @@ const foodBody = z.object({
   fraction: portionFields.fraction.default(1),
   // Only for a Culury recipe without nutrition: an AI estimate per serving (logged as AI-estimated)
   nutrients: z.record(z.string(), z.number().nonnegative().max(1000000)).optional(),
+  // §40b: a treat, paid from the weekly bank (never combined with the same food logged as a normal entry)
+  treat: z.boolean().default(false),
 });
 const ESTIMATE_ONLY = "An estimate can only be sent for a Culury recipe without nutrition";
 const mealLogBody = z.object({ day: DAY.optional(), meal: z.enum(MEALS).optional(), foodId: id, items: itemList.optional() });
@@ -69,7 +74,7 @@ const waterBody = z.object({
   meal: z.literal("supplements", { error: "Water goes with supplements" }).default("supplements"),
   water_ml: z.number().positive("Enter an amount above 0").max(10000, "That's more water than one entry can hold"),
 });
-const patchBody = z.object(portionFields).partial();
+const patchBody = z.object({ ...portionFields, treat: z.boolean() }).partial();
 const mealQuery = z.object({ meal: z.enum(MEALS, { error: "Choose a meal" }).optional() });
 const MAX_LOGGED_DAYS = 62;
 const loggedQuery = z.object({ from: DAY, to: DAY });
@@ -93,6 +98,7 @@ export function toEntry(r: Row): LogEntry {
     aiEstimated: r.aiEstimated,
     source: r.source,
     sourceRef: r.sourceRef,
+    treat: r.treat,
   };
 }
 
@@ -116,7 +122,11 @@ async function dayView(app: FastifyInstance, userId: number, day: string) {
     .where(and(eq(logEntries.userId, userId), eq(logEntries.day, day)))
     .orderBy(asc(logEntries.createdAt), asc(logEntries.id));
   const entries = rows.map(toEntry);
-  const targets = await targetsOn(app.db, userId, day);
+  // The plan's targets, with the day's workout calories counted in (§40b: "add" grows the calorie range)
+  const [planTargets, activity, weeks] = await Promise.all([targetsOn(app.db, userId, day), activityOn(app.db, userId, day), calorieWeeks(app.db, userId, day, day)]);
+  const week = weeks[weeks.length - 1];
+  const me = week.days[week.days.length - 1];
+  const targets = planTargets && me.range ? { ...planTargets, calories: me.range } : planTargets;
   // Sums over every entry; "unknown" counts only foods (a water entry isn't missing fiber)
   const sums = sumNutrients(entries.map((e) => e.nutrients));
   const unknownCount = sumNutrients(rows.filter((r) => !isWater(r)).map((r) => r.nutrients as Nutrients)).unknownCount;
@@ -126,8 +136,28 @@ async function dayView(app: FastifyInstance, userId: number, day: string) {
       return [m, { calories: s.calories ?? 0, protein_g: s.protein_g ?? 0, carbs_g: s.carbs_g ?? 0, fat_g: s.fat_g ?? 0, fiber_g: s.fiber_g ?? 0, suggested: suggestedFor(m, targets?.calories) }];
     })
   );
-  // Exercise is shown but never changes the budget (no exercise logging yet: always 0)
-  return { day, entries, totals: { ...sums, unknownCount }, meals, targets, exercise: { calories: 0 }, streak: await streak(app.db, userId, await todayFor(app, userId)) };
+  const workoutCalories = {
+    mode: me.mode,
+    countPct: me.settings.countPct,
+    weeklyCap: me.settings.weeklyCap,
+    earned: activity.earned,
+    added: me.added,
+    planCalories: planTargets?.calories ?? null,
+    status: me.status, // the day's calories against its range; a bank-covered day is "in"
+    bank:
+      me.mode === "bank"
+        ? {
+            weekStart: week.weekStart,
+            balance: me.balance,
+            deposited: week.deposited,
+            spent: week.spent,
+            weeklyCap: me.settings.weeklyCap,
+            days: week.days.map((d) => ({ day: d.day, deposit: d.deposit, spent: d.treatSpent + d.covered })),
+            thisDay: { overBy: me.overBy, covered: me.covered, treatSpent: me.treatSpent },
+          }
+        : null,
+  };
+  return { day, entries, totals: { ...sums, unknownCount }, meals, targets, exercise: { calories: activity.earned }, activity, workoutCalories, streak: await streak(app.db, userId, await todayFor(app, userId)) };
 }
 
 /**
@@ -245,7 +275,7 @@ async function mealNow(db: Db, userId: number, timezone: string, now: Date): Pro
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 /** What a food being added is, for telling whether a meal already has it. */
-type FoodSnapshot = { source: string; sourceRef: string | null; name: string; perServing: Nutrients; servings: Serving[] };
+type FoodSnapshot = { source: string; sourceRef: string | null; name: string; perServing: Nutrients; servings: Serving[]; treat?: boolean };
 /**
  * What a combine did: its id (Undo: POST /api/log/combines/:id/undo), the grown entry, its amount before, the
  * amount added, and where Undo puts the addition back. The server keeps the same (log_combines), so Undo
@@ -258,7 +288,7 @@ const COMBINE_KEPT_MS = 24 * 60 * 60 * 1000;
 export const logHooks = { undoLocked: async (): Promise<void> => {} };
 
 const portionOf = (r: Row): Portion => ({ servingIndex: r.servingIndex, unit: r.unit as Unit, quantity: r.quantity, fraction: r.fraction });
-const snapshotOf = (r: Row): FoodSnapshot => ({ source: r.source, sourceRef: r.sourceRef, name: r.name, perServing: r.perServing as Nutrients, servings: r.servings as Serving[] });
+const snapshotOf = (r: Row): FoodSnapshot => ({ source: r.source, sourceRef: r.sourceRef, name: r.name, perServing: r.perServing as Nutrients, servings: r.servings as Serving[], treat: r.treat });
 // JSON with object keys in order, so { a, b } and { b, a } compare equal
 const stable = (v: unknown) => JSON.stringify(v, (_k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
 
@@ -269,6 +299,8 @@ const stable = (v: unknown) => JSON.stringify(v, (_k, x) => (x && typeof x === "
  */
 function sameFood(food: FoodSnapshot, r: Row): boolean {
   if (food.source === "water" || isWater(r)) return false;
+  // A treat stays its own entry (the bank shows it), and nothing grows into one
+  if (food.treat || r.treat) return false;
   if (stable(food.perServing) !== stable(r.perServing)) return false;
   if (food.sourceRef || r.sourceRef) return food.sourceRef === r.sourceRef;
   return food.name === r.name && stable(food.servings) === stable(r.servings);
@@ -420,7 +452,7 @@ export default async function foodLogRoutes(app: FastifyInstance) {
       // Already in this meal: that entry grows instead
       await lockMeal(tx, userId, { day, meal });
       await lockRows(tx, userId, [], { day, meal });
-      const grown = await combineInto(tx, userId, { day, meal }, { source: food.kind, sourceRef, name: food.name, perServing: food.nutrients, servings: food.servings }, b, { day, meal }, now);
+      const grown = await combineInto(tx, userId, { day, meal }, { source: food.kind, sourceRef, name: food.name, perServing: food.nutrients, servings: food.servings, treat: b.treat }, b, { day, meal }, now);
       const [inserted] = grown
         ? [grown.row]
         : await tx
@@ -443,6 +475,7 @@ export default async function foodLogRoutes(app: FastifyInstance) {
             servings: food.servings,
             nutrients,
             aiEstimated: food.aiFields.length > 0,
+            treat: b.treat,
             createdAt: now,
             updatedAt: now,
           })
@@ -531,6 +564,7 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     const { id: entryId } = idParam.parse(req.params);
     const p = patchBody.parse(req.body ?? {});
     const row = await ownEntry(db, userId, entryId);
+    if (p.treat && isWater(row)) throw badRequest("Water can't be a treat");
     const portion: Portion = {
       servingIndex: p.servingIndex ?? row.servingIndex,
       unit: p.unit ?? (row.unit as Unit),
@@ -540,7 +574,7 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     const nutrients = portionNutrients(row.perServing as Nutrients, row.servings as Serving[], portion);
     const [updated] = await db
       .update(logEntries)
-      .set({ ...portion, nutrients, updatedAt: app.now() })
+      .set({ ...portion, nutrients, ...(p.treat === undefined ? {} : { treat: p.treat }), updatedAt: app.now() })
       .where(and(eq(logEntries.id, entryId), eq(logEntries.userId, userId)))
       .returning();
     return { entry: toEntry(updated) };

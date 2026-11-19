@@ -205,11 +205,32 @@ describe("using a key", () => {
       ["PUT", `/api/weigh-ins/${DAY}`, { weightKg: 80 }],
       ["DELETE", "/api/log/1"],
       ["PUT", `/api/glp1/shots/${DAY}`, {}],
+      ["PUT", `/api/steps/${DAY}`, { steps: 100 }],
+      ["POST", "/api/workouts", { day: DAY, type: "walk", minutes: 10 }],
+      ["DELETE", "/api/workouts/1"],
     ] as const) {
       const r = await withKey(made.key, m, url, body);
       expect([m, url, r.status, r.body.error]).toEqual([m, url, 403, READ_ONLY_KEY]);
     }
     expect((await t.api("GET", `/api/day/${DAY}`)).body.entries).toEqual([]);
+  });
+
+  it("steps and workouts: a read key reads them; a read-and-log key sends them the way a phone Shortcut does (safe to resend)", async () => {
+    const reader = await newKey("reader", "read");
+    const logger = await newKey("phone", "log");
+    for (let i = 0; i < 2; i++) expect((await withKey(logger.key, "PUT", `/api/steps/${DAY}`, { steps: 8123, source: "health" })).status).toBe(200);
+    for (let i = 0; i < 2; i++) expect((await withKey(logger.key, "POST", "/api/workouts", { day: DAY, type: "run", minutes: 30, calories: 300, source: "health", externalId: "HK-9" })).status).toBe(200);
+    const read = await withKey(reader.key, "GET", `/api/activity/${DAY}`);
+    expect(read.status).toBe(200);
+    expect(read.body).toMatchObject({ steps: 8123, stepsSource: "health", workouts: [{ externalId: "HK-9" }] });
+    expect((await withKey(reader.key, "GET", `/api/activity?from=${DAY}&to=${DAY}`)).body.days).toMatchObject([{ steps: 8123, workouts: 1 }]);
+    const w = read.body.workouts[0];
+    expect((await withKey(logger.key, "PATCH", `/api/workouts/${w.id}`, { minutes: 31 })).status).toBe(200);
+    expect((await withKey(logger.key, "DELETE", `/api/workouts/${w.id}`)).status).toBe(204);
+    expect((await withKey(logger.key, "DELETE", `/api/steps/${DAY}?source=health`)).status).toBe(204);
+    // The plan setting is changed only in the app
+    expect((await withKey(logger.key, "PUT", "/api/workout-calories", { mode: "bank" })).status).toBe(403);
+    expect((await withKey(reader.key, "GET", "/api/workout-calories")).status).toBe(200);
   });
 
   it("a read-and-log key adds, edits and deletes log entries, water and weigh-ins for its owner", async () => {
@@ -305,6 +326,10 @@ describe("using a key", () => {
         "GET /api/badges",
         "GET /api/vacations",
         "GET /api/app-info",
+        "GET /api/activity/:day",
+        "GET /api/activity",
+        "GET /api/workouts/estimate",
+        "GET /api/workout-calories",
       ].sort()
     );
     expect([...KEY_LOG_ROUTES].sort()).toEqual(
@@ -319,6 +344,11 @@ describe("using a key", () => {
         "PUT /api/glp1/shots/:day",
         "DELETE /api/glp1/shots/:day",
         "PUT /api/side-effects/:day",
+        "PUT /api/steps/:day",
+        "DELETE /api/steps/:day",
+        "POST /api/workouts",
+        "PATCH /api/workouts/:id",
+        "DELETE /api/workouts/:id",
       ].sort()
     );
     // every listed route really exists

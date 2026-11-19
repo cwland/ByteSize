@@ -56,6 +56,7 @@ describe("food log", () => {
       aiEstimated: false,
       source: "cache",
       sourceRef: `cache:${food.id}`,
+      treat: false,
     });
     expect((await getDay()).entries).toEqual([res.body.entry]);
   });
@@ -226,6 +227,7 @@ describe("food log", () => {
       aiEstimated: false,
       source: "water",
       sourceRef: null,
+      treat: false,
     });
     // a water entry's amount can be changed like any other
     const more = await t.api("PATCH", `/api/log/${res.body.entry.id}`, { servingIndex: 0, unit: "ml", quantity: 473, fraction: 1 });

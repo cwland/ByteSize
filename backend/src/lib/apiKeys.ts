@@ -13,7 +13,7 @@ export const KEY_ACCESS = ["read", "log"] as const;
 export type KeyAccess = (typeof KEY_ACCESS)[number];
 export const KEY_ACCESS_LABELS: Record<KeyAccess, string> = { read: "Read only", log: "Read and log" };
 
-// Read only: the person's own data (day, log, foods, my foods, weight, GLP-1, goals/targets, trends, app info)
+// Read only: the person's own data (day, log, foods, my foods, weight, GLP-1, goals/targets, trends, activity, app info)
 export const KEY_READ_ROUTES: ReadonlySet<string> = new Set([
   "GET /api/health",
   "GET /api/day/:date",
@@ -36,9 +36,14 @@ export const KEY_READ_ROUTES: ReadonlySet<string> = new Set([
   "GET /api/badges",
   "GET /api/vacations",
   "GET /api/app-info",
+  "GET /api/activity/:day",
+  "GET /api/activity",
+  "GET /api/workouts/estimate",
+  "GET /api/workout-calories",
 ]);
 
-// Read and log adds: log entries (water is a log entry), weigh-ins, GLP-1 shots and side effects
+// Read and log adds: log entries (water is a log entry), weigh-ins, GLP-1 shots and side effects, steps and workouts
+// (a phone sends Health's as source "health": steps by day, workouts by their externalId, so a resend is safe)
 export const KEY_LOG_ROUTES: ReadonlySet<string> = new Set([
   "POST /api/log",
   "POST /api/log/meal",
@@ -50,6 +55,11 @@ export const KEY_LOG_ROUTES: ReadonlySet<string> = new Set([
   "PUT /api/glp1/shots/:day",
   "DELETE /api/glp1/shots/:day",
   "PUT /api/side-effects/:day",
+  "PUT /api/steps/:day",
+  "DELETE /api/steps/:day",
+  "POST /api/workouts",
+  "PATCH /api/workouts/:id",
+  "DELETE /api/workouts/:id",
 ]);
 
 export const BAD_KEY = "That API key isn't valid.";

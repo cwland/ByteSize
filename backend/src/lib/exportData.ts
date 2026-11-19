@@ -5,9 +5,10 @@ import { Column, eq, inArray, is } from "drizzle-orm";
 import { PgTable, getTableConfig } from "drizzle-orm/pg-core";
 import { zipSync } from "fflate";
 import * as schema from "../db/schema.js";
-import { glp1Shots, logEntries, recipeItems, sideEffects, uploads, userFoods, userSettings, users, weighIns } from "../db/schema.js";
+import { activitySteps, glp1Shots, logEntries, recipeItems, sideEffects, uploads, userFoods, userSettings, users, weighIns, workouts } from "../db/schema.js";
 import { HttpError } from "./errors.js";
 import { MEALS, localDay } from "./days.js";
+import { activityDays } from "./activity.js";
 
 // "Download my data": one zip with the person's own data as spreadsheets (CSV), everything as JSON, and their photos.
 // Only this person's rows and files, and nothing that could sign anyone in.
@@ -98,16 +99,18 @@ export async function buildExport(app: FastifyInstance, userId: number): Promise
     side_effects: (typeof sideEffects.$inferSelect)[];
     user_foods: (typeof userFoods.$inferSelect)[];
     uploads: (typeof uploads.$inferSelect)[];
+    activity_steps: (typeof activitySteps.$inferSelect)[];
+    workouts: (typeof workouts.$inferSelect)[];
   };
 
   const byDay = <T extends { day: string; id: number }>(rows: T[]) => [...rows].sort((a, b) => a.day.localeCompare(b.day) || a.id - b.id);
   const mealRank = (m: string) => MEALS.indexOf(m as (typeof MEALS)[number]);
 
   const foodLog = toCsv([
-    ["Day", "Meal", "Food", "Brand", "Amount", ...NUTRIENT_COLUMNS.map(([, h]) => h), "AI estimated"],
+    ["Day", "Meal", "Food", "Brand", "Amount", ...NUTRIENT_COLUMNS.map(([, h]) => h), "AI estimated", "Treat"],
     ...[...t.log_entries]
       .sort((a, b) => a.day.localeCompare(b.day) || mealRank(a.meal) - mealRank(b.meal) || a.id - b.id)
-      .map((e) => [e.day, e.meal, e.name, e.brand, `${round(e.quantity * e.fraction)} ${unitText(e)}`, ...NUTRIENT_COLUMNS.map(([k]) => num(e.nutrients[k])), e.aiEstimated ? "Yes" : "No"]),
+      .map((e) => [e.day, e.meal, e.name, e.brand, `${round(e.quantity * e.fraction)} ${unitText(e)}`, ...NUTRIENT_COLUMNS.map(([k]) => num(e.nutrients[k])), e.aiEstimated ? "Yes" : "No", e.treat ? "Yes" : "No"]),
   ]);
   const weighInsCsv = toCsv([["Day", "Weight (kg)", "Weight (lb)", "Note"], ...byDay(t.weigh_ins).map((w) => [w.day, round(w.weightKg), round(w.weightKg * 2.2046226218, 1), w.note])]);
   const shotsCsv = toCsv([["Day", "Medication", "Dose", "Site", "Note"], ...byDay(t.glp1_shots).map((s) => [s.day, s.medication, `${s.doseMg} mg`, words(s.site), s.note])]);
@@ -118,6 +121,15 @@ export async function buildExport(app: FastifyInstance, userId: number): Promise
     names.forEach((n, i) => effectRows.push([d.day, words(n), d.effects[n], i === 0 ? d.note : null]));
   }
   const sideEffectsCsv = toCsv([["Day", "Effect", "Severity", "Note"], ...effectRows]);
+  // Activity (§40b): one line per day with steps or workouts, then every workout
+  const from = (s: string) => (s === "health" ? "Health" : "Typed");
+  const activeDays = [...new Set([...t.activity_steps.map((r) => r.day), ...t.workouts.map((r) => r.day)])].sort();
+  const activityCsv = toCsv([
+    ["Day", "Steps", "Steps from", "Workouts", "Active minutes", "Workout calories"],
+    ...activeDays.map((d) => activityDays(t.activity_steps, t.workouts, d, d)[0]).map((a) => [a.day, a.steps, a.stepsSource && from(a.stepsSource), a.workouts, a.activeMinutes, a.earned]),
+  ]);
+  const typeName = (ty: string) => (ty === "hiit" ? "HIIT" : words(ty));
+  const workoutsCsv = toCsv([["Day", "Type", "Minutes", "Calories", "From", "Note"], ...byDay(t.workouts).map((w) => [w.day, typeName(w.type), w.minutes, w.calories, from(w.source), w.note])]);
   const myFoodsCsv = toCsv([
     ["Name", "Brand", "Kind", "Serving", "Calories", "Protein (g)", "Carbs (g)", "Fat (g)", "Fiber (g)"],
     ...[...t.user_foods].sort((a, b) => a.name.localeCompare(b.name) || a.id - b.id).map((f) => [f.name, f.brand, f.kind, f.servings[0]?.label, num(f.nutrients.calories), num(f.nutrients.protein_g), num(f.nutrients.carbs_g), num(f.nutrients.fat_g), num(f.nutrients.fiber_g)]),
@@ -140,6 +152,8 @@ export async function buildExport(app: FastifyInstance, userId: number): Promise
     "shots.csv": enc.encode(shotsCsv),
     "side-effects.csv": enc.encode(sideEffectsCsv),
     "my-foods.csv": enc.encode(myFoodsCsv),
+    "activity.csv": enc.encode(activityCsv),
+    "workouts.csv": enc.encode(workoutsCsv),
     "bytesize-export.json": enc.encode(JSON.stringify(json, null, 2)),
   };
   // Photos (already compressed JPEGs): only this person's own folder; a missing file is skipped

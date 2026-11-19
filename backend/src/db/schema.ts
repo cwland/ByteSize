@@ -340,6 +340,8 @@ export const logEntries = pgTable(
     servings: jsonb("servings").$type<ServingJson[]>().notNull(),
     nutrients: jsonb("nutrients").$type<NutrientsJson>().notNull(), // for the amount logged
     aiEstimated: boolean("ai_estimated").notNull().default(false),
+    // §40b: logged as a treat, paid from the weekly workout-calorie bank on purpose
+    treat: boolean("treat").notNull().default(false),
     groupRef: text("group_ref"), // quick:<user_food id> when logged from a quick meal (one entry per item)
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -559,4 +561,58 @@ export const dashboardLayouts = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.page] })]
+);
+
+// ---- §40b: activity ----
+
+// Steps: one row per person, day and source (manual = typed, health = sent by the phone). The day's steps are the
+// Health number when there is one, else the typed one (lib/activity.ts daySteps). A resend replaces the row.
+export const activitySteps = pgTable(
+  "activity_steps",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    day: date("day", { mode: "string" }).notNull(),
+    source: text("source").$type<"manual" | "health">().notNull(),
+    steps: integer("steps").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("activity_steps_user_day_source_idx").on(t.userId, t.day, t.source)]
+);
+
+// Workouts: type (lib/activity.ts WORKOUT_TYPES), minutes, calories (null: not known, counted as 0). Health ones
+// carry the phone's id for the workout, unique per person, so a resend updates instead of adding a second.
+export const workouts = pgTable(
+  "workouts",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    day: date("day", { mode: "string" }).notNull(),
+    type: text("type").notNull(),
+    minutes: integer("minutes").notNull(),
+    calories: integer("calories"),
+    source: text("source").$type<"manual" | "health">().notNull().default("manual"),
+    externalId: text("external_id"),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("workouts_user_day_idx").on(t.userId, t.day), uniqueIndex("workouts_user_external_idx").on(t.userId, t.externalId).where(sql`${t.externalId} is not null`)]
+);
+
+// Goals › Your plan › Workout calories (lib/workoutCalories.ts): a history like targets. The setting in force on day D
+// is the latest effective_from <= D (ties: highest id), so a change applies from that day on and past days keep theirs.
+// No row: "Just show them".
+export const workoutCalorieModes = pgTable(
+  "workout_calorie_modes",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    effectiveFrom: date("effective_from", { mode: "string" }).notNull(),
+    mode: text("mode").$type<"show" | "add" | "bank">().notNull(),
+    countPct: integer("count_pct").notNull().default(50),
+    weeklyCap: integer("weekly_cap").notNull().default(1000),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("workout_calorie_modes_user_from_idx").on(t.userId, t.effectiveFrom)]
 );

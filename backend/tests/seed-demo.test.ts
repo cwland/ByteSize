@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { asUser } from "./isolation.js";
-import { logCombines, glp1Shots, glp1Settings, logEntries, recipeItems, targets, usageCounts, userBody, userFoods, users, weighIns } from "../src/db/schema.js";
+import { activitySteps, logCombines, glp1Shots, glp1Settings, logEntries, recipeItems, targets, usageCounts, userBody, userFoods, users, weighIns, workouts } from "../src/db/schema.js";
 import {
   DEFAULT_DAYS, DEMO_FOODS, DEMO_NOTE, DEMO_QUICK_MEALS, HAS_DATA, INJECTION_WEEKDAY, START_LB, USAGE,
   describeSeed, instantAt, parseSeedArgs, planDemo, seedDemo, type PlannedDay,
@@ -45,6 +45,8 @@ const counts = async (userId: number) => ({
   weighIns: (await t.db.select().from(weighIns).where(eq(weighIns.userId, userId))).length,
   shots: (await t.db.select().from(glp1Shots).where(eq(glp1Shots.userId, userId))).length,
   foods: (await t.db.select().from(userFoods).where(eq(userFoods.userId, userId))).length,
+  steps: (await t.db.select().from(activitySteps).where(eq(activitySteps.userId, userId))).length,
+  workouts: (await t.db.select().from(workouts).where(eq(workouts.userId, userId))).length,
 });
 
 describe("the plan (pure)", () => {
@@ -119,6 +121,26 @@ describe("the plan (pure)", () => {
     expect(withSnacks).toBeGreaterThan(365 * 0.4);
   });
 
+  it("activity (§40b): steps on each of the last four weeks' days, mostly from Health, and about three workouts a week (none today)", () => {
+    const p = plan();
+    const recent = p.days.slice(-28);
+    expect(p.days.slice(0, -28).every((d) => d.steps === null && d.workouts.length === 0)).toBe(true);
+    expect(recent.every((d) => d.steps !== null)).toBe(true);
+    for (const d of recent.slice(0, -1)) expect(d.steps!.steps).toBeGreaterThanOrEqual(3500);
+    expect(recent.filter((d) => d.steps!.source === "health").length).toBeGreaterThan(18);
+    const sessions = recent.flatMap((d) => d.workouts);
+    expect(sessions.length).toBeGreaterThanOrEqual(8);
+    expect(sessions.length).toBeLessThanOrEqual(16);
+    expect(new Set(sessions.map((w) => w.type)).size).toBeGreaterThanOrEqual(3);
+    for (const w of sessions) {
+      expect(w.minutes).toBeGreaterThanOrEqual(20);
+      expect(w.calories).toBeGreaterThan(50);
+    }
+    expect(recent.at(-1)!.workouts).toEqual([]);
+    // short runs get activity on every day
+    expect(plan({ days: 7 }).days.every((d) => d.steps !== null)).toBe(true);
+  });
+
   it("water is 4 to 9 glasses on most days", () => {
     const p = plan({ days: 365 });
     const fed = p.days.slice(0, -1).filter((d) => !d.empty);
@@ -170,7 +192,7 @@ describe("npm run seed-demo", () => {
 
   it("fills the account (GLP-1 on, goals set, setup untouched); the person's own sign-in is unchanged", async () => {
     const r = await seedDemo(t.db, args());
-    expect(r).toMatchObject({ username: "demo", replaced: false, deleted: { entries: 0, weighIns: 0, shots: 0, foods: 0, combines: 0 }, timezone: TZ, from: "2026-08-21", to: TODAY, foods: DEMO_FOODS.length, quickMeals: 2 });
+    expect(r).toMatchObject({ username: "demo", replaced: false, deleted: { entries: 0, weighIns: 0, shots: 0, foods: 0, combines: 0, steps: 0, workouts: 0 }, timezone: TZ, from: "2026-08-21", to: TODAY, foods: DEMO_FOODS.length, quickMeals: 2 });
     const [u] = await t.db.select().from(users).where(eq(users.username, "demo"));
     expect(u).toMatchObject({ isAdmin: false, timezone: TZ });
     expect((await t.db.select().from(users)).length).toBe(2); // no account was made
@@ -364,6 +386,21 @@ describe("npm run seed-demo", () => {
     expect(await counts(id)).toEqual(before);
   });
 
+  it("writes the steps and workouts the Activity widget reads, and counts them", async () => {
+    const r = await seedDemo(t.db, args());
+    const p = planDemo({ today: TODAY, days: 90 });
+    expect(r.stepDays).toBe(28);
+    expect(r.workouts).toBe(p.days.flatMap((d) => d.workouts).length);
+    const as = await signIn();
+    const yesterday = p.days.at(-2)!;
+    const a = (await as("GET", `/api/activity/${yesterday.day}`)).body;
+    expect(a.steps).toBe(yesterday.steps!.steps);
+    expect(a.workouts.length).toBe(yesterday.workouts.length);
+    const range = (await as("GET", `/api/activity?from=${addDays(TODAY, -27)}&to=${TODAY}`)).body;
+    expect(range.workouts.length).toBe(r.workouts);
+    expect(describeSeed(r, 90).join("\n")).toContain(`${r.stepDays} days of steps, ${r.workouts} workouts`);
+  });
+
   it("--replace deletes that account's tracking and earlier demo foods, refills it, and prints what it deleted; other My foods, settings and accounts are untouched", async () => {
     const { id: samId } = await member("sam");
     const sam = await signIn("sam");
@@ -386,7 +423,7 @@ describe("npm run seed-demo", () => {
     for (let i = 0; i < 2; i++) {
       const r = await seedDemo(t.db, args({ replace: true }));
       expect(r.replaced).toBe(true);
-      expect(r.deleted).toEqual({ entries: first.entries + first.waterEntries, weighIns: first.weighIns, shots: first.shots, foods: DEMO_FOODS.length + DEMO_QUICK_MEALS.length, combines: 0 });
+      expect(r.deleted).toEqual({ entries: first.entries + first.waterEntries, weighIns: first.weighIns, shots: first.shots, foods: DEMO_FOODS.length + DEMO_QUICK_MEALS.length, combines: 0, steps: first.stepDays, workouts: first.workouts });
       expect(r).toMatchObject({ entries: first.entries, waterEntries: first.waterEntries, weighIns: first.weighIns, shots: first.shots });
       expect(await counts(demoId)).toEqual(demoBefore); // refilled, foods not doubled, the hand-made one stays
     }
@@ -427,7 +464,7 @@ describe("npm run seed-demo", () => {
     const again = await seedDemo(t.db, args({ replace: true }));
     const text2 = describeSeed(again, 90).join("\n");
     expect(text2).not.toContain("Made a starter profile"); // the profile exists now
-    expect(text2).toMatch(/Deleted from demo: \d+ log entries \(water included\), \d+ weigh-ins, 13 shots, 28 demo foods and quick meals, 1 undo records\./);
+    expect(text2).toMatch(/Deleted from demo: \d+ log entries \(water included\), \d+ weigh-ins, 13 shots, 28 days of steps, \d+ workouts, 28 demo foods and quick meals, 1 undo records\./);
     expect((await t.db.select().from(logCombines).where(eq(logCombines.userId, id))).length).toBe(0);
   });
 

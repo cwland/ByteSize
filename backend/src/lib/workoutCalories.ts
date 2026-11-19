@@ -63,6 +63,7 @@ export type BankDay = {
 export type BankDayResult = {
   day: string;
   mode: WorkoutMode;
+  settings: WorkoutCalorieSettings;
   range: Range | null; // as judged (grown in "add" mode)
   added: number; // "add" mode: what the range grew by
   deposit: number;
@@ -86,7 +87,7 @@ export function bankWeek(days: BankDay[]): { days: BankDayResult[]; balance: num
     const range = addedRange(d.range, d.earned, s);
     const added = s.mode === "add" && d.range ? counted(d.earned, s.countPct) : 0;
     if (s.mode !== "bank") {
-      return { day: d.day, mode: s.mode, range, added, deposit: 0, treatSpent: 0, overBy: range && d.logged ? Math.max(0, d.food - range.max) : 0, covered: 0, balance, status: calorieStatus(d.food, range, false, d.logged) };
+      return { day: d.day, mode: s.mode, settings: s, range, added, deposit: 0, treatSpent: 0, overBy: range && d.logged ? Math.max(0, d.food - range.max) : 0, covered: 0, balance, status: calorieStatus(d.food, range, false, d.logged) };
     }
     const deposit = Math.max(0, Math.min(counted(d.earned, s.countPct), Math.max(0, s.weeklyCap) - deposited));
     deposited += deposit;
@@ -98,7 +99,7 @@ export function bankWeek(days: BankDay[]): { days: BankDayResult[]; balance: num
     const covered = Math.min(overBy, balance);
     balance -= covered;
     spent += treatSpent + covered;
-    return { day: d.day, mode: s.mode, range, added, deposit, treatSpent, overBy, covered, balance, status: calorieStatus(food, range, overBy > 0 && covered === overBy, d.logged) };
+    return { day: d.day, mode: s.mode, settings: s, range, added, deposit, treatSpent, overBy, covered, balance, status: calorieStatus(food, range, overBy > 0 && covered === overBy, d.logged) };
   });
   return { days: out, balance, deposited, spent };
 }

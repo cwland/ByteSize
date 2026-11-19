@@ -105,6 +105,10 @@ async function seed() {
     await t.db.insert(sideEffects).values({ userId: u.id, day: "2026-11-13", effects: { nausea: 2 }, note: null });
     await t.db.insert(badges).values({ userId: u.id, badge: "first_log", earnedOn: "2026-11-10", seen: i === 1 });
     await t.db.insert(vacations).values({ userId: u.id, fromDay: "2026-12-20", toDay: "2026-12-27" });
+    // §40b: steps (typed and from Health), workouts (one from Health with its id), the workout-calorie setting
+    await t.db.insert(schema.activitySteps).values([{ userId: u.id, day: "2026-11-12", source: "manual", steps: 4000 + i }, { userId: u.id, day: "2026-11-12", source: "health", steps: 6100 }]);
+    await t.db.insert(schema.workouts).values([{ userId: u.id, day: "2026-11-12", type: "run", minutes: 30, calories: 300, note: i ? null : "hills" }, { userId: u.id, day: "2026-11-13", type: "walk", minutes: 20, calories: null, source: "health", externalId: `HK-${i}` }]);
+    await t.db.insert(schema.workoutCalorieModes).values({ userId: u.id, effectiveFrom: "2026-11-01", mode: i ? "bank" : "add", countPct: 75, weeklyCap: 1200 });
     await t.db.insert(usageCounts).values([{ userId: u.id, key: "barcodes_scanned", count: 3 + i }, { userId: u.id, key: "outside_off", count: 1 }]); // App info's numbers are the person's own data
     await t.db.insert(restaurantFavourites).values({ userId: u.id, cacheId: cache.id, chain: "Acme Diner" });
     await t.db.insert(dashboardLayouts).values({ userId: u.id, columns: i ? [["food"], [], ["budget"]] : [["budget", "water"], ["food"]] }); // the person's Dashboard

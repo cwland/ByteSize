@@ -12,6 +12,7 @@ import { trendOf } from "../lib/weight.js";
 import { averages, judge, trendOn, TREND_NUTRIENTS, weekStartOf, type DayLog, type Status, type TrendNutrient } from "../lib/trends.js";
 import { DEFAULT_WEEK_START } from "./settings-me.js";
 import { targetsOn } from "./body-plans.js";
+import { calorieDays } from "../lib/calorieDays.js";
 
 // Weekly trends, badges and vacation mode. Who is asking comes only from the login.
 
@@ -41,6 +42,8 @@ async function weekly(db: Db, userId: number, today: string, weeks: number) {
     else d.foods.push(r.nutrients as Nutrients);
     byDay.set(r.day, d);
   }
+  // Days whose calories were in range, worked out with workout calories (a bank-covered day counts, §40b)
+  const calorie = await calorieDays(db, userId, oldest, today, s?.weekStart ?? DEFAULT_WEEK_START);
   const series = trendOf(await db.select({ day: weighIns.day, weightKg: weighIns.weightKg }).from(weighIns).where(and(eq(weighIns.userId, userId), lte(weighIns.day, today))));
 
   const out = [];
@@ -56,7 +59,8 @@ async function weekly(db: Db, userId: number, today: string, weeks: number) {
     const inWeek = series.filter((p) => p.day >= start && p.day <= end);
     const before = trendOn(series, addDays(start, -1));
     const weightChangeKg = inWeek.length ? roundKg(inWeek[inWeek.length - 1].trendKg - (before ?? inWeek[0].trendKg)) : null;
-    out.push({ start, end, daysLogged: days.length, avg, status, weightChangeKg });
+    const caloriesInRange = calorie.filter((d) => d.day >= start && d.day <= end && d.status === "in").length;
+    out.push({ start, end, daysLogged: days.length, caloriesInRange, avg, status, weightChangeKg });
   }
   return out;
 }
