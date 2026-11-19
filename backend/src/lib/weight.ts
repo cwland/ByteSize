@@ -84,19 +84,27 @@ export function projectionOf(trendPoints: readonly TrendPoint[], goalKg: number 
   return { status: "ok", date: addDays(today, days), kgPerWeek };
 }
 
-/** Least-squares slope (kg a day) of trend points with at least two different days */
-function slopeOf(points: readonly TrendPoint[]): number {
+/**
+ * Least-squares line through points on at least two different days: its slope (kg a day) and the slope's
+ * standard error (how sure that slope is: 0 for points on a straight line; 0 with only two points).
+ */
+function lineOf(points: readonly { day: string }[], y: (i: number) => number): { slope: number; slopeSe: number } {
   const xs = points.map((p) => dayNumber(p.day));
-  const ys = points.map((p) => p.trendKg);
-  const mx = xs.reduce((s, x) => s + x, 0) / xs.length;
-  const my = ys.reduce((s, y) => s + y, 0) / ys.length;
+  const ys = points.map((_, i) => y(i));
+  const n = xs.length;
+  const mx = xs.reduce((s, x) => s + x, 0) / n;
+  const my = ys.reduce((s, y) => s + y, 0) / n;
   let sxy = 0;
   let sxx = 0;
-  for (let i = 0; i < xs.length; i++) {
+  for (let i = 0; i < n; i++) {
     sxy += (xs[i] - mx) * (ys[i] - my);
     sxx += (xs[i] - mx) ** 2;
   }
-  return sxy / sxx;
+  const slope = sxy / sxx;
+  if (n < 3) return { slope, slopeSe: 0 };
+  let rss = 0;
+  for (let i = 0; i < n; i++) rss += (ys[i] - (my + slope * (xs[i] - mx))) ** 2;
+  return { slope, slopeSe: Math.sqrt(rss / (n - 2) / sxx) };
 }
 
 export type GoalDate =
@@ -120,16 +128,18 @@ export type GoalDate =
 export const GOAL_DATE_DAYS = 42; // the last 6 weeks
 export const GOAL_DATE_MIN_DAYS = 14; // first to last weigh-in in the window, both counted
 export const GOAL_DATE_MIN_WEIGH_INS = 6;
-const GOAL_DATE_SPREAD = 0.15; // the range is at least ±15% of the pace
-const GOAL_DATE_SLOWEST = 0.5; // ...and its slow end at most twice the time (a half that gained would make it endless)
+const GOAL_DATE_SE = 1.5; // the range: the pace ± 1.5 standard errors of the slope...
+const GOAL_DATE_SPREAD = 0.1; // ...and at least ±10% of the pace
+const GOAL_DATE_SLOWEST = 0.5; // its slow end at most twice the time (an unsure slope would make it endless)
 
 /**
  * The Goal date widget (§40a): when the trend reaches the goal at the current pace, as a range. Over the last 6 weeks'
- * trend points (≥ 14 days, ≥ 6 weigh-ins): pace = least-squares slope; the range comes from the slopes of the window's
- * first and second halves (by count), or ±15% of the pace where that's wider, so a bumpy stretch widens it. Days are
+ * trend points (≥ 14 days, ≥ 6 weigh-ins): pace = least-squares slope of the trend; the range is the pace ± 1.5
+ * standard errors of the slope of the weigh-ins themselves over those days (at least ±10% of the pace), so steady
+ * weigh-ins give a tight range and bumpy ones a wider one. Days are
  * counted from the last weigh-in's trend; every day is after today. `trendPoints` sorted by day (as trendOf gives them).
  */
-export function goalDateOf(trendPoints: readonly TrendPoint[], goalKg: number | null, today: string): GoalDate {
+export function goalDateOf(trendPoints: readonly (TrendPoint & { weightKg?: number })[], goalKg: number | null, today: string): GoalDate {
   if (goalKg === null) return { status: "no_goal" };
   const recent = trendPoints.filter((p) => p.day > addDays(today, -GOAL_DATE_DAYS) && p.day <= today);
   const last = recent[recent.length - 1] ?? trendPoints.filter((p) => p.day <= today).at(-1);
@@ -139,13 +149,14 @@ export function goalDateOf(trendPoints: readonly TrendPoint[], goalKg: number | 
   }
 
   // Round away float noise so a flat line isn't "losing" 1e-15 kg a week
-  const lossPerDay = -slopeOf(recent);
+  const lossPerDay = -lineOf(recent, (i) => recent[i].trendKg).slope;
+  // How sure the pace is: from the weigh-ins themselves (the trend smooths their ups and downs away)
+  const { slopeSe } = lineOf(recent, (i) => recent[i].weightKg ?? recent[i].trendKg);
   const kgPerWeek = Math.round(lossPerDay * 7 * 1e9) / 1e9 + 0; // + 0: never −0
   const toGoKg = last.trendKg - goalKg;
-  const half = Math.ceil(recent.length / 2);
-  const halves = [-slopeOf(recent.slice(0, half)), -slopeOf(recent.slice(recent.length - half))];
-  const fast = Math.max(...halves, lossPerDay * (1 + GOAL_DATE_SPREAD));
-  const slow = Math.max(Math.min(...halves, lossPerDay * (1 - GOAL_DATE_SPREAD)), lossPerDay * GOAL_DATE_SLOWEST);
+  const spread = Math.max(GOAL_DATE_SE * slopeSe, GOAL_DATE_SPREAD * lossPerDay);
+  const fast = lossPerDay + spread;
+  const slow = Math.max(lossPerDay - spread, lossPerDay * GOAL_DATE_SLOWEST);
 
   // Days from today to where the trend meets the goal at `rate` kg a day (from the last weigh-in; at least tomorrow)
   const fromToday = (rate: number) => {

@@ -1381,12 +1381,17 @@ the data). Three parts, built in order; each ships on its own.
   mode** moves to Settings › Profile (same control and behaviour), not on Goals.
 - **Goal date widget** ("Goal date"; also offered on the Dashboard). Uses the trend weight (§13 A) over the last 6
   weeks (at least 14 days and 6 weigh-ins, else "Keep weighing in — about two weeks of weigh-ins gives an estimate").
-  Pace = the slope of a least-squares line through those trend points; the range comes from the slopes of the
-  first and second halves of that window, or ±15% of the pace if that's wider, so a bumpy stretch widens it. Shows:
+  Pace = the slope of a least-squares line through those trend points; the range is the pace ± 1.5 standard errors
+  of the slope of a least-squares line through the weigh-ins themselves over the same days (the trend smooths their
+  ups and downs away), at least ±10% of the pace, and its slow end never below half the pace; so steady weigh-ins
+  give a range of a few weeks and bumpy ones a wider range. (Revised after Cory's walk: the first version used the
+  two half-windows' slopes, which gave "28–40 weeks" on steady data.) Shows:
   "At your pace: **23–25 weeks**, around **Apr 5**" with the earliest–latest dates under it ("Mar 22 – Apr 19"),
   the pace ("−1.4 lb a week"), and how far to go ("39.4 lb to go"). Goal reached → "You've reached your goal 🎉";
   gaining or flat → "At this pace you're not heading toward your goal yet" (no date); no goal weight → a link to set
-  one. Weeks rounded to whole weeks; dates in the person's date format (§33). Pure function with tests (steady,
+  one. Weeks rounded to whole weeks; dates in the person's date format (§33), without the weekday, with the year when
+  it isn't this year ("Jul 13, 2027"; a range "Jun 2 – Aug 23, 2027"). The Weight card's "Losing … — goal around …"
+  line uses the same estimate (its pace and middle date), so the page never shows two different numbers. Pure function with tests (steady,
   bumpy, gaining, reached, too little data, metric).
 
 ### 40b. Activity: steps and workouts, and workout calories in the plan

@@ -573,6 +573,20 @@ describe("backups", () => {
     expect(readdirSync(uploadsDir())).toEqual([]);
   });
 
+  it("older schema: layout rows from before pages (no page column) restore as each person's Dashboard layout", async () => {
+    await seed();
+    const b = await makeBackup();
+    const json = await backupJson(b.name);
+    json.schema = 18; // before 0018_layouts_per_page
+    json.tables.dashboard_layouts = json.tables.dashboard_layouts.filter((r: any) => r.page === "dashboard").map(({ page: _page, ...r }: any) => r);
+    expect(json.tables.dashboard_layouts.length).toBe(2);
+    const r = await restoreUpload(tarGz([tarEntry("bytesize.json", { data: JSON.stringify(json) })]));
+    expect(r.status).toBe(200);
+    const rows = await t.db.select().from(dashboardLayouts);
+    expect(rows.map((x) => x.page)).toEqual(["dashboard", "dashboard"]);
+    expect(rows.map((x) => x.columns)).toEqual(expect.arrayContaining([[["food"], [], ["budget"]], [["budget", "water"], ["food"]]]));
+  });
+
   it("names: a name that isn't a backup's can't reach any file", async () => {
     await t.login();
     mkdirSync(backupsDir(), { recursive: true });

@@ -1,36 +1,50 @@
 import { describe, expect, it } from "vitest";
-import { goalDateOf, type TrendPoint } from "../src/lib/weight.js";
+import { goalDateOf, trendOf, type TrendPoint } from "../src/lib/weight.js";
 import { addDays } from "../src/lib/days.js";
 
 // The Goal date widget's numbers (§40a): the trend over the last 6 weeks (≥ 14 days and ≥ 6 weigh-ins), the pace
-// from a least-squares line through it, and a range from the two halves' slopes or ±15% of the pace, whichever is wider.
+// from a least-squares line through it, and a range of the pace ± 1.5 standard errors of the slope of the weigh-ins
+// themselves over the same days (at least ±10%): steady weigh-ins give a tight range, bumpy ones a wider one.
 const TODAY = "2026-11-18";
 // Daily trend points ending `endDaysAgo` before today: trend(i) = start + slope(i), i = 0 … n − 1
 const series = (n: number, start: number, slope: (i: number) => number, endDaysAgo = 0): TrendPoint[] =>
   Array.from({ length: n }, (_, i) => ({ day: addDays(TODAY, -(n - 1 - i) - endDaysAgo), trendKg: start + slope(i) }));
 
 describe("goalDateOf", () => {
-  it("steady: 0.7 kg a week with 14 kg to go is 20 weeks; the range is ±15% of the pace", () => {
+  it("steady: 0.7 kg a week with 14 kg to go is 20 weeks; a straight line's range is the ±10% floor", () => {
     const pts = series(42, 100, (i) => -0.1 * i); // Oct 8 … Nov 18, ends at 95.9
     const g = goalDateOf(pts, 81.9, TODAY);
-    expect(g).toMatchObject({ status: "ok", date: "2027-04-07", earliest: "2027-03-20", latest: "2027-05-02", weeks: { min: 17, max: 24 } });
+    expect(g).toMatchObject({ status: "ok", date: "2027-04-07", earliest: "2027-03-26", latest: "2027-04-23", weeks: { min: 18, max: 22 } });
     if (g.status !== "ok") throw new Error("not ok");
     expect(g.kgPerWeek).toBeCloseTo(0.7, 9);
     expect(g.toGoKg).toBeCloseTo(14, 9);
   });
 
-  it("bumpy: fast then slow widens the range past ±15%, and the date sits inside it", () => {
-    // 0.2 kg a day for three weeks, then 0.05 kg a day
-    const pts = series(42, 100, (i) => (i <= 20 ? -0.2 * i : -4 - 0.05 * (i - 20)));
-    const g = goalDateOf(pts, 80, TODAY);
+  it("steady weigh-ins with everyday ups and downs (about 1.4 lb a week): a range of a few weeks, not months", () => {
+    // Daily weigh-ins over 6 weeks: −0.09 kg a day, ±0.6 kg of day-to-day noise; the trend smooths it
+    const noise = [0.5, -0.3, 0.6, -0.6, 0.1, 0.4, -0.5, 0.2, -0.1, 0.6, -0.4, 0.0, 0.3, -0.6];
+    const weighIns = Array.from({ length: 42 }, (_, i) => ({ day: addDays(TODAY, i - 41), weightKg: 105 - 0.09 * i + noise[i % noise.length] }));
+    const trend = trendOf(weighIns);
+    const g = goalDateOf(trend, trend[trend.length - 1].trendKg - 19, TODAY); // ~30 weeks to go
     if (g.status !== "ok") throw new Error(`not ok: ${g.status}`);
-    const steady = goalDateOf(series(42, 100, (i) => -(g.kgPerWeek / 7) * i), 100 - (g.kgPerWeek / 7) * 41 - g.toGoKg, TODAY);
-    if (steady.status !== "ok") throw new Error("steady not ok");
-    // Same pace and distance, a wider range
-    expect(g.weeks.max - g.weeks.min).toBeGreaterThan(steady.weeks.max - steady.weeks.min);
-    expect(g.earliest < g.date && g.date < g.latest).toBe(true);
-    expect(g.earliest < steady.earliest).toBe(true);
-    expect(g.latest > steady.latest).toBe(true);
+    expect(g.weeks.min).toBeGreaterThanOrEqual(24);
+    expect(g.weeks.max).toBeLessThanOrEqual(38);
+    expect(g.weeks.max - g.weeks.min).toBeLessThanOrEqual(8);
+  });
+
+  it("bumpy: big day-to-day swings in the weigh-ins widen the range; the date sits inside it", () => {
+    // The same 0.09 kg a day, with ±0.3 kg or ±2.5 kg of day-to-day swing
+    const shape = [1, -0.6, 0.8, -1, 0.2, 0.7, -0.9, 0.4, -0.2, 1, -0.7, 0, 0.5, -1];
+    const run = (swing: number) => {
+      const trend = trendOf(Array.from({ length: 42 }, (_, i) => ({ day: addDays(TODAY, i - 41), weightKg: 105 - 0.09 * i + swing * shape[i % shape.length] })));
+      const g = goalDateOf(trend, 85, TODAY);
+      if (g.status !== "ok") throw new Error(`not ok: ${g.status}`);
+      return g;
+    };
+    const calm = run(0.3);
+    const bumpy = run(2.5);
+    expect(bumpy.weeks.max - bumpy.weeks.min).toBeGreaterThan(calm.weeks.max - calm.weeks.min + 4);
+    expect(bumpy.earliest < bumpy.date && bumpy.date < bumpy.latest).toBe(true);
   });
 
   it("gaining or flat: not heading toward the goal (no date)", () => {
