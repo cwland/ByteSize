@@ -25,6 +25,7 @@ struct RadialMenu: View {
             let offsets = radialOffsets(count: QuickAction.allCases.count, radius: radius, spreadDegrees: 130)
             ForEach(Array(QuickAction.allCases.enumerated()), id: \.element) { index, action in
                 actionButton(action)
+                    .accessibilityHidden(!shell.menuOpen)
                     .offset(x: shell.menuOpen ? offsets[index].x : 0, y: shell.menuOpen ? offsets[index].y : 0)
                     .scaleEffect(shell.menuOpen ? 1 : 0.3)
                     .opacity(shell.menuOpen ? 1 : 0)
