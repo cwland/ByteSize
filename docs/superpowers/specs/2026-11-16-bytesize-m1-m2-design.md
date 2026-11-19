@@ -1607,3 +1607,22 @@ Calls made for Cory (to confirm): each person opts in; off by default; it goes t
   a 4–6 day partial week can't earn Goal met; a later change of week start doesn't turn a missed goal into "ended"
   (judge by the week start in force when the goal was made — store it on the goal).
 - **Insights** (§43): a test that the size cap drops food lists oldest-first.
+
+## 47. Insights: ask as a chat (Cory, 2026-11-19)
+
+**Asked for.** "Move Ask a question to the top, but instead of a box, just a sentence with an icon in the title. Users
+click it and it pops a chat-style box to talk to the AI; keep the history so when the box comes up again the same
+info is there."
+- **Trigger**: at the top of the Insights page, in the title area, a link-styled button with a chat icon: "Ask about
+  your eating, weight or habits" (the Ask a question card is removed from the page). On phones the same line sits
+  under the title.
+- **Chat panel**: opens as a sheet (wide: a right-side panel / centred sheet like the others; phones: full screen)
+  titled "Ask ByteSize". Messages as bubbles — the person's on the right, the AI's on the left — newest at the bottom,
+  scrolled to the bottom on open; a text box with Send at the bottom (Enter sends, Shift+Enter new line); "Thinking…
+  asking AI" with the spinner while waiting (never the service name); Close (X) and Escape close it (not outside
+  clicks, §27). A **Clear chat** action (asks first) empties the history.
+- **History**: the conversation is the stored question/answer history (§43), shown in order every time the panel
+  opens, on any device. Keep the last 50 messages (25 exchanges); older ones drop off.
+- **Follow-ups**: each new question is sent with the previous few exchanges (up to the last 4, within the §43 size
+  cap) so "what about last month?" works; the answer is still grounded only in the person's data summary.
+- Limits, privacy, prompt rules, errors and API-key rules stay as in §43.
