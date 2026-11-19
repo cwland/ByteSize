@@ -145,7 +145,7 @@ export const WIDGETS: WidgetDef[] = [
   { id: "goal-date", pages: { goals: 0, dashboard: null }, fits: "narrow", title: "Goal date", description: "When you'll reach your goal weight at your current pace", Component: () => <GoalDateWidget /> },
   { id: "weight-chart", pages: { goals: 1 }, fits: "wide", title: "Weight", description: "Your weight chart with start, now and goal, and your weigh-ins", Component: () => <GoalsWeight /> },
   { id: "weekly-trends", pages: { goals: 1 }, fits: "wide", title: "Weekly trends", description: "Each week's averages against your targets", Component: () => <WeeklyTrends /> },
-  { id: "badges", pages: { goals: 1 }, fits: "wide", title: "Badges", description: "Badges you've earned and the ones still to get", Component: () => <Badges /> },
+  { id: "badges", pages: { goals: 0 }, fits: "narrow", title: "Badges", description: "Badges you've earned and the ones still to get", Component: () => <Badges /> },
 ];
 
 function DayTotalsWidget({ data }: { data: Day | null }) {

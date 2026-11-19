@@ -33,7 +33,7 @@ function show(over: Record<string, () => unknown> = {}) {
 }
 
 describe("Goals on a wide screen", () => {
-  it("has a page title with Edit page, and two columns as before: plan and goal date; weight, trends and badges", async () => {
+  it("has a page title with Edit page, and two balanced columns: plan, goal date and badges; weight and trends", async () => {
     show();
     expect(screen.getByRole("heading", { level: 1, name: "Goals" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit page" })).toBeInTheDocument();
@@ -44,7 +44,7 @@ describe("Goals on a wide screen", () => {
     expect(within(left).getByRole("region", { name: "Goal date" })).toBeInTheDocument();
     expect(within(right).getByRole("region", { name: "Weight" })).toBeInTheDocument();
     expect(within(right).getByRole("region", { name: "Weekly trends" })).toBeInTheDocument();
-    expect(await within(right).findByRole("region", { name: "Badges" })).toBeInTheDocument();
+    expect(await within(left).findByRole("region", { name: "Badges" })).toBeInTheDocument();
   });
 
   it("three columns in use: equal columns, as on the Dashboard", async () => {

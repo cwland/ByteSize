@@ -71,9 +71,9 @@ export default function FoodWidget({ day, data, isToday }: { day: string; data: 
   const entries = data?.entries ?? [];
   const title = isToday || !data ? "Today's food" : `Food on ${dayLabel(data.day)}`;
   return (
-    <section aria-label={title} className="flex flex-col gap-3">
-      {/* The title and its controls in a card of their own at the top, as other widgets show their titles (§41) */}
-      <div data-testid="food-title" className="flex flex-wrap items-center gap-2 rounded-2xl bg-container px-4 py-3">
+    // One card, as every widget is (§41): the title and its controls at the top, each meal a section inside, divided by a line
+    <section aria-label={title} className="flex flex-col gap-3 rounded-2xl bg-container p-4">
+      <div className="flex flex-wrap items-center gap-2">
         <h2 className="mr-auto text-lg font-bold">{title}</h2>
         {selecting && (
           <>
@@ -114,6 +114,7 @@ export default function FoodWidget({ day, data, isToday }: { day: string; data: 
               setSelected(new Set([e.id]));
             }}
             onSaveAsMeal={() => setSavingMeal(m)}
+            inset
           />
         ))}
 

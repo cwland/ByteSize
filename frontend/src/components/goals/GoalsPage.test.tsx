@@ -127,12 +127,12 @@ describe("Goals", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("orders Goals by default: plan, goal date, weight, weekly trends, badges; no error notices by default", async () => {
+  it("orders Goals by default: plan, goal date, badges (left), then weight, weekly trends (right); no error notices by default", async () => {
     fakeServer({ ...m3Routes, "GET /api/targets": () => ({ targets: steadyTargets }) });
     renderWithSession(<GoalsPage />);
     await screen.findByText("Steady plan");
     await screen.findByRole("region", { name: "Badges" });
-    const order = ["Plan", "Goal date", "Weight", "Weekly trends", "Badges"].map((name) => screen.getByRole("region", { name }));
+    const order = ["Plan", "Goal date", "Badges", "Weight", "Weekly trends"].map((name) => screen.getByRole("region", { name }));
     for (let i = 1; i < order.length; i++) expect(order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -175,7 +175,7 @@ describe("Goals", () => {
     await user.click(screen.getByRole("button", { name: "Edit page" }));
     // Widgets are cards while editing (they don't load or work)
     expect(screen.queryByText("Steady plan")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("group").map((g) => g.getAttribute("aria-label"))).toEqual(["Your plan", "Goal date", "Weight", "Weekly trends", "Badges"]);
+    expect(screen.getAllByRole("group").map((g) => g.getAttribute("aria-label"))).toEqual(["Your plan", "Goal date", "Badges", "Weight", "Weekly trends"]);
     await user.click(screen.getByRole("button", { name: "Move Goal date up" }));
     await user.click(screen.getByRole("button", { name: "Remove Badges" }));
     await user.click(screen.getByRole("button", { name: "Add widget" }));
