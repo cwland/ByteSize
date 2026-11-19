@@ -1,0 +1,13 @@
+# Local development database: docker compose -f docker-compose.dev.yml up -d
+# Creates "bytesize" (the app) and "bytesize_test" (the tests) for user bytesize / bytesize.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bytesize
+      POSTGRES_PASSWORD: bytesize
+      POSTGRES_DB: bytesize
+    ports: ["5432:5432"]
+    volumes:
+      - ./data/dev-postgres:/var/lib/postgresql/data
+      - ./scripts/dev-db-init.sql:/docker-entrypoint-initdb.d/init.sql:ro

@@ -1,0 +1,1 @@
+ALTER TABLE "user_settings" ADD COLUMN "date_format" text DEFAULT 'weekday-long-month-short' NOT NULL;

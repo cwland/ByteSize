@@ -1,0 +1,32 @@
+{
+  "fdcId": 2346404,
+  "description": "GREEK NONFAT YOGURT, PLAIN",
+  "dataType": "Branded",
+  "gtinUpc": "036632035676",
+  "publishedDate": "2022-10-28",
+  "brandOwner": "Danone US, LLC",
+  "brandName": "OIKOS",
+  "ingredients": "CULTURED GRADE A NON FAT MILK.",
+  "marketCountry": "United States",
+  "foodCategory": "Yogurt",
+  "brandedFoodCategory": "Yogurt",
+  "dataSource": "LI",
+  "packageWeight": "32 oz/907 g",
+  "servingSizeUnit": "g",
+  "servingSize": 170,
+  "householdServingFullText": "3/4 cup",
+  "foodNutrients": [
+    { "nutrientId": 1003, "nutrientName": "Protein", "nutrientNumber": "203", "unitName": "G", "derivationCode": "LCCS", "value": 10 },
+    { "nutrientId": 1004, "nutrientName": "Total lipid (fat)", "nutrientNumber": "204", "unitName": "G", "derivationCode": "LCCD", "value": 0 },
+    { "nutrientId": 1005, "nutrientName": "Carbohydrate, by difference", "nutrientNumber": "205", "unitName": "G", "derivationCode": "LCCS", "value": 3.53 },
+    { "nutrientId": 1008, "nutrientName": "Energy", "nutrientNumber": "208", "unitName": "KCAL", "derivationCode": "LCCS", "value": 53 },
+    { "nutrientId": 2000, "nutrientName": "Total Sugars", "nutrientNumber": "269", "unitName": "G", "derivationCode": "LCCS", "value": 2.35 },
+    { "nutrientId": 1235, "nutrientName": "Sugars, added", "nutrientNumber": "539", "unitName": "G", "derivationCode": "LCCD", "value": 0 },
+    { "nutrientId": 1079, "nutrientName": "Fiber, total dietary", "nutrientNumber": "291", "unitName": "G", "derivationCode": "LCCD", "value": 0 },
+    { "nutrientId": 1087, "nutrientName": "Calcium, Ca", "nutrientNumber": "301", "unitName": "MG", "derivationCode": "LCCD", "value": 118 },
+    { "nutrientId": 1092, "nutrientName": "Potassium, K", "nutrientNumber": "306", "unitName": "MG", "derivationCode": "LCCD", "value": 141 },
+    { "nutrientId": 1093, "nutrientName": "Sodium, Na", "nutrientNumber": "307", "unitName": "MG", "derivationCode": "LCCS", "value": 35 },
+    { "nutrientId": 1258, "nutrientName": "Fatty acids, total saturated", "nutrientNumber": "606", "unitName": "G", "derivationCode": "LCCS", "value": 0 }
+  ],
+  "score": 389.1
+}
