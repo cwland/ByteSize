@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { users } from "../db/schema.js";
 import { HttpError } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
+import { emailRecapOff } from "../lib/insightsRun.js";
 import { publicUser } from "../lib/users.js";
 
 // Settings › Profile › Theme (the list is in the web app's themes)
@@ -53,6 +54,7 @@ export default async function profileRoutes(app: FastifyInstance) {
       ? await db.update(users).set(changes).where(eq(users.id, userId)).returning()
       : await db.select().from(users).where(eq(users.id, userId));
     if (!user) throw new HttpError(401, "Not logged in");
+    if (body.email !== undefined && !user.email) await emailRecapOff(db, userId); // no address: no weekly recap email (§45)
     return { user: publicUser(user) };
   });
 

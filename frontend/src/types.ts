@@ -274,6 +274,7 @@ export type Insight = RecapInsight | ProteinInsight | AnswerInsight;
 export type InsightsView = {
   aiReady: boolean;
   weeklyOn: boolean;
+  email: { on: boolean; available: boolean; hasAddress: boolean }; // §45: emailing the weekly recap
   week: { from: string; to: string; numbers: WeekNumbers };
   recaps: RecapInsight[];
   protein: ProteinInsight | null;

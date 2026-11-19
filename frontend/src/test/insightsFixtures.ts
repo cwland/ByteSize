@@ -81,6 +81,7 @@ export const answerRow = (over: Record<string, unknown> = {}) => ({
 export const insightsJson = (over: Record<string, unknown> = {}) => ({
   aiReady: true,
   weeklyOn: true,
+  email: { on: false, available: true, hasAddress: true },
   week: { from: "2026-11-08", to: "2026-11-14", numbers: weekNumbers() },
   recaps: [recapRow(), recapRow({ id: 9, periodStart: "2026-11-01", periodEnd: "2026-11-07", content: { ...recapRow().content, summary: "The week before." } })],
   protein: proteinRow(),

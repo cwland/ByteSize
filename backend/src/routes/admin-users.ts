@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { emailRecapOff } from "../lib/insightsRun.js";
 import { z } from "zod";
 import { and, asc, eq, isNotNull, max, ne, sql } from "drizzle-orm";
 import { invites, sessions, users } from "../db/schema.js";
@@ -122,6 +123,7 @@ export default async function adminUserRoutes(app: FastifyInstance) {
         ...(signOut ? { tokenVersion: sql`${users.tokenVersion} + 1` } : {}),
       })
       .where(eq(users.id, id));
+    if (body.email === null) await emailRecapOff(db, id); // no address: no weekly recap email (§45)
     if (signOut) await revokeAll(db, id, undefined, app.now());
     if (body.password !== undefined) await db.delete(invites).where(eq(invites.userId, id)); // has a password now: the invite is done
     return { user: await getRow(id) };

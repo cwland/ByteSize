@@ -84,8 +84,25 @@ export function emailConfigFromEnv(env: NodeJS.ProcessEnv): EmailConfig | null {
 
 export const fromHeader = (c: EmailConfig) => (c.fromName ? `"${c.fromName.replace(/["\\]/g, "")}" <${c.fromAddress}>` : c.fromAddress);
 
-export type EmailKind = "test" | "reset-code" | "invite";
-const EMAIL_KIND_LABELS: Record<EmailKind, string> = { test: "Test email", "reset-code": "Password reset code", invite: "Invite" };
+export type EmailKind = "test" | "reset-code" | "invite" | "recap";
+const EMAIL_KIND_LABELS: Record<EmailKind, string> = { test: "Test email", "reset-code": "Password reset code", invite: "Invite", recap: "Weekly recap" };
+
+/** The address's origin ("https://host:port"), or null for nothing usable. */
+export const originOf = (u: string | null | undefined) => {
+  try {
+    const o = u ? new URL(u).origin : null;
+    return o === "null" ? null : o; // (javascript:, data: and the like have no origin)
+  } catch {
+    return null;
+  }
+};
+/** The app's address as saved, its sub-path kept (ByteSize behind a proxy at /bytesize), no trailing slash (§46). */
+export const appBaseOf = (u: string | null | undefined) => {
+  const origin = originOf(u);
+  if (!origin) return null;
+  return `${origin}${new URL(u!).pathname.replace(/\/+$/, "")}`;
+};
+export const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 // What decides whether email gets through: a test email proves these, so only a change to them needs a new test
 const connectionPrint = (c: EmailConfig) => crypto.createHash("sha256").update(JSON.stringify([c.host, c.port, c.security, c.username, c.password, c.fromAddress])).digest("hex");

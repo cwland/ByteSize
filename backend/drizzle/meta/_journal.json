@@ -159,8 +159,15 @@
     {
       "idx": 22,
       "version": "7",
-      "when": 1795101628543,
-      "tag": "0022_goal_week_start_badge_count",
+      "when": 1795101187527,
+      "tag": "0022_recap_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1795104825745,
+      "tag": "0023_goal_week_start_badge_count",
       "breakpoints": true
     }
   ]

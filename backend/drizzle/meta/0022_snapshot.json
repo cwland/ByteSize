@@ -1,5 +1,5 @@
 {
-  "id": "ca340eb8-9259-4951-94f3-3df3adb0a4f1",
+  "id": "e52152a4-1319-4140-aff7-4e8ffce227b1",
   "prevId": "629ba919-4eb1-4246-a25a-5e712f8dacb9",
   "version": "7",
   "dialect": "postgresql",
@@ -376,13 +376,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
-        },
-        "count": {
-          "name": "count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         }
       },
       "indexes": {},
@@ -941,12 +934,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
-        },
-        "week_start": {
-          "name": "week_start",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -1051,6 +1038,19 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "emailed_at": {
+          "name": "emailed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email_tries": {
+          "name": "email_tries",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         }
       },
       "indexes": {
@@ -3075,6 +3075,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
+        },
+        "insights_email": {
+          "name": "insights_email",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "insights_recap_tried_at": {
           "name": "insights_recap_tried_at",

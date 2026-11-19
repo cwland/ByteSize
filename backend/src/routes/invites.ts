@@ -11,6 +11,7 @@ import { requireAdmin } from "../lib/guards.js";
 import { logSignIn, startSession } from "../lib/sessions.js";
 import { normalizeUsername, publicUser } from "../lib/users.js";
 import { USERNAME_TAKEN, adminRowFor, email, isUniqueViolation, password, usernameField } from "./admin-users.js";
+import { appBaseOf, escapeHtml, originOf } from "../lib/mail.js";
 
 // Invite by email (Settings › Users, admin, only with email set up). The invited person is a users row with
 // no password, so nothing signs them in until they open the emailed link (#/invite/<token>) and choose one.
@@ -25,24 +26,6 @@ const NOT_INVITED = "This person has already accepted their invite";
 export const expiredInvite = (admin: string | null) => `This invite link has expired or was already used. Ask ${admin || "your ByteSize admin"} for a new one.`;
 
 const nameOf = (u: { displayName: string | null; username: string }) => u.displayName?.trim() || u.username;
-const originOf = (u: string | null | undefined) => {
-  try {
-    return u ? new URL(u).origin : null;
-  } catch {
-    return null;
-  }
-};
-/** The app's address as saved, sub-path kept (ByteSize behind a proxy at /bytesize), no trailing slash. */
-const baseOf = (u: string | null | undefined) => {
-  try {
-    if (!u) return null;
-    const url = new URL(u);
-    return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
-  } catch {
-    return null;
-  }
-};
-const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 export default async function inviteRoutes(app: FastifyInstance) {
   const { db } = app;
@@ -52,7 +35,7 @@ export default async function inviteRoutes(app: FastifyInstance) {
   async function ready(req: FastifyRequest) {
     const active = await app.mail.active();
     if (!active) throw new HttpError(409, NO_EMAIL);
-    const base = baseOf(active.config.appUrl) ?? app.appOrigins[0] ?? originOf(typeof req.headers.origin === "string" ? req.headers.origin : null);
+    const base = appBaseOf(active.config.appUrl) ?? app.appOrigins[0] ?? originOf(typeof req.headers.origin === "string" ? req.headers.origin : null);
     if (!base) throw new HttpError(409, NO_ADDRESS);
     return base;
   }

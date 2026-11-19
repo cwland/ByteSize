@@ -2,10 +2,12 @@
 // failover, a cut-off answer asked again with more room), keeping what it wrote, the on-demand limits, and the weekly
 // run. What the AI is told and how its answers are read: lib/insights.ts (pure).
 import type { FastifyInstance } from "fastify";
-import { and, asc, count, countDistinct, desc, eq, gte, inArray, isNotNull, lt, lte, ne, notInArray, sql } from "drizzle-orm";
+import { and, asc, count, countDistinct, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, notInArray, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { activitySteps, glp1Settings, glp1Shots, insights, logEntries, targets, userBody, userSettings, users, weighIns, workouts } from "../db/schema.js";
 import { AiError, AiStopped, type AiProgress } from "./ai.js";
+import { appBaseOf, originOf } from "./mail.js";
+import { buildRecapEmail } from "./recapEmail.js";
 import { logEvent } from "./appLog.js";
 import { calorieDays } from "./calorieDays.js";
 import { addDays, localDay } from "./days.js";
@@ -16,6 +18,8 @@ import {
   goalsForSummary,
   proteinAsk,
   proteinFacts,
+  earlierFor,
+  EARLIER_EXCHANGES,
   questionAsk,
   questionRange,
   readAnswer,
@@ -35,7 +39,7 @@ export const INSIGHTS_FAILED = "Couldn't write your insights right now. Try agai
 export const REFRESH_FAILED = "Couldn't write your insights right now. Try again in 10 minutes.";
 export const REFRESH_EVERY_MS = 10 * 60_000; // Refresh: once per 10 minutes per card per person
 export const QUESTIONS_PER_DAY = 20; // and questions: 20 a day (the person's day)
-export const KEEP_ANSWERS = 20;
+export const KEEP_ANSWERS = 25; // the chat (§47) keeps the last 25 exchanges: 50 messages
 export const KEEP_RECAPS = 27; // shown: this one and about half a year of past recaps
 export const PROTEIN_DAYS = 28;
 export const MIN_LOGGED_DAYS = 3; // the weekly recap is skipped for a week with fewer
@@ -47,7 +51,7 @@ const HOUR_MS = 60 * 60_000;
 const MAX_TOKENS = 3000;
 
 type Opts = { signal?: AbortSignal; onProgress?: (p: AiProgress) => void };
-type Person = { timezone: string; units: "imperial" | "metric"; weekStart: number; weeklyOn: boolean };
+type Person = { timezone: string; units: "imperial" | "metric"; weekStart: number; weeklyOn: boolean; emailOn: boolean; email: string | null };
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 const INSIGHTS_LOCK = 43; // (§43) with the person's id: one limit check or card write at a time per person
@@ -56,15 +60,19 @@ const lockPerson = (tx: Tx, userId: number) => tx.execute(sql`select pg_advisory
 /** An answer still being written (a question asked, its answer not back yet): counted for the day, never shown. */
 const PENDING = { pending: true };
 const notPending = sql`(${insights.content} ->> 'pending') is null`;
+/** A question cleared with Clear chat (§47): its words are gone, the row stays so the day's 20 questions still count. */
+const CLEARED = { cleared: true };
+const notCleared = sql`(${insights.content} ->> 'cleared') is null`;
+const shown = and(notPending, notCleared);
 
 async function personOf(db: Db, userId: number): Promise<Person> {
   const [u] = await db
-    .select({ timezone: users.timezone, units: users.units, weekStart: userSettings.weekStart, weeklyOn: userSettings.insightsWeekly })
+    .select({ timezone: users.timezone, units: users.units, email: users.email, weekStart: userSettings.weekStart, weeklyOn: userSettings.insightsWeekly, emailOn: userSettings.insightsEmail })
     .from(users)
     .leftJoin(userSettings, eq(userSettings.userId, users.id))
     .where(eq(users.id, userId));
   if (!u) throw new HttpError(401, "Not logged in");
-  return { timezone: u.timezone, units: u.units, weekStart: u.weekStart ?? 0, weeklyOn: u.weeklyOn ?? true };
+  return { timezone: u.timezone, units: u.units, weekStart: u.weekStart ?? 0, weeklyOn: u.weeklyOn ?? true, emailOn: u.emailOn ?? false, email: u.email };
 }
 
 /** The week before the one holding `today` (the person's week start). */
@@ -77,7 +85,7 @@ export const weekBefore = (today: string, weekStart: number) => {
  * Everything the summary is built from, for `from`..`to` (weigh-ins from the first, for the trend). today: the person's
  * today, to add their active goals (§40c); left out where only the numbers are wanted.
  */
-export async function loadSummaryInput(db: Db, userId: number, from: string, to: string, person: Person, today?: string): Promise<SummaryInput> {
+export async function loadSummaryInput(db: Db, userId: number, from: string, to: string, person: Pick<Person, "units" | "weekStart">, today?: string): Promise<SummaryInput> {
   const inRange = <T extends typeof logEntries | typeof glp1Shots | typeof activitySteps | typeof workouts>(tbl: T) => and(eq(tbl.userId, userId), gte(tbl.day, from), lte(tbl.day, to));
   const [entries, targetRows, days, weigh, shots, steps, done, body, glp] = await Promise.all([
     db.select().from(logEntries).where(inRange(logEntries)).orderBy(asc(logEntries.day), asc(logEntries.id)),
@@ -151,9 +159,19 @@ export async function writeRecap(app: FastifyInstance, userId: number, source: "
     await lockPerson(tx, userId);
     // The week's "so far" recap (and, for the final one, seed-demo's) gives way to this one
     await tx.delete(insights).where(and(eq(insights.userId, userId), eq(insights.kind, "recap"), inArray(insights.source, source === "weekly" ? ["refresh", "demo"] : ["refresh"]), eq(insights.periodStart, period.from)));
+    // The week's final recap written again (§45): it keeps the "emailed" marker, so it is never sent twice
+    let sent: Date | null = null;
+    let tries = 0;
+    if (source === "weekly") {
+      const old = await tx.delete(insights).where(and(eq(insights.userId, userId), eq(insights.kind, "recap"), eq(insights.source, "weekly"), eq(insights.periodStart, period.from))).returning({ at: insights.emailedAt, tries: insights.emailTries });
+      for (const o of old) {
+        if (o.at && (!sent || o.at > sent)) sent = o.at;
+        tries = Math.max(tries, o.tries);
+      }
+    }
     const [made] = await tx
       .insert(insights)
-      .values({ userId, kind: "recap", source, periodStart: period.from, periodEnd: period.to, content: { ...recap, numbers: weekNumbers(input) }, createdAt: app.now() })
+      .values({ userId, kind: "recap", source, periodStart: period.from, periodEnd: period.to, content: { ...recap, numbers: weekNumbers(input) }, createdAt: app.now(), emailedAt: sent, emailTries: tries })
       .returning();
     return made;
   });
@@ -195,6 +213,8 @@ export async function claimQuestion(app: FastifyInstance, userId: number, questi
     await lockPerson(tx, userId);
     // A pending answer from a request that never finished (the server stopped): gone after an hour
     await tx.delete(insights).where(and(eq(insights.userId, userId), eq(insights.kind, "answer"), sql`not ${notPending}`, lt(insights.createdAt, new Date(now.getTime() - HOUR_MS))));
+    // Cleared questions no longer count after a day (their rows only held the day's count)
+    await tx.delete(insights).where(and(eq(insights.userId, userId), eq(insights.kind, "answer"), sql`not ${notCleared}`, lt(insights.createdAt, new Date(now.getTime() - 27 * HOUR_MS))));
     if ((await questionsLeft(app, userId, person.timezone, tx)) <= 0) throw new HttpError(429, TOO_MANY_QUESTIONS);
     const [row] = await tx.insert(insights).values({ userId, kind: "answer", source: "ask", periodStart: range.from, periodEnd: range.to, question, content: PENDING, createdAt: now }).returning({ id: insights.id });
     return { id: row.id, question, ...range, today };
@@ -206,12 +226,13 @@ export async function answerClaimed(app: FastifyInstance, userId: number, claim:
   try {
     const person = await personOf(app.db, userId);
     const input = await loadSummaryInput(app.db, userId, claim.from, claim.to, person, claim.today);
-    const json = await askAi(app, userId, questionAsk(buildSummary(input), claim.question), opts);
+    const summary = buildSummary(input);
+    const json = await askAi(app, userId, questionAsk(summary, claim.question, earlierFor(summary, await earlierExchanges(app.db, userId, claim.id))), opts);
     const content = readAnswer(json) ?? (await unusable(app, userId, "answer", json));
     const row = await app.db.transaction(async (tx) => {
       await lockPerson(tx, userId);
       const [made] = await tx.update(insights).set({ content }).where(and(eq(insights.id, claim.id), eq(insights.userId, userId))).returning();
-      const mine = and(eq(insights.userId, userId), eq(insights.kind, "answer"), notPending);
+      const mine = and(eq(insights.userId, userId), eq(insights.kind, "answer"), shown);
       const keep = (await tx.select({ id: insights.id }).from(insights).where(mine).orderBy(desc(insights.createdAt), desc(insights.id)).limit(KEEP_ANSWERS)).map((r) => r.id);
       await tx.delete(insights).where(and(mine, notInArray(insights.id, keep)));
       return made;
@@ -223,6 +244,26 @@ export async function answerClaimed(app: FastifyInstance, userId: number, claim:
     await app.db.delete(insights).where(and(eq(insights.id, claim.id), eq(insights.userId, userId), sql`not ${notPending}`));
     throw err;
   }
+}
+
+/** The exchanges before a question in this chat (§47), oldest first: what they asked and what they were told (not off-topic ones). */
+async function earlierExchanges(db: Db, userId: number, beforeId: number) {
+  const rows = await db
+    .select({ question: insights.question, content: insights.content })
+    .from(insights)
+    .where(and(eq(insights.userId, userId), eq(insights.kind, "answer"), shown, lt(insights.id, beforeId), isNotNull(insights.question), sql`(${insights.content} ->> 'offTopic') is distinct from 'true'`, sql`(${insights.content} ->> 'answer') is not null`))
+    .orderBy(desc(insights.createdAt), desc(insights.id))
+    .limit(EARLIER_EXCHANGES);
+  return rows.reverse().map((r) => ({ question: r.question!, answer: String((r.content as { answer: unknown }).answer) }));
+}
+
+/** Clear chat: the person's questions and answers are emptied (what was said is erased). The day's question count stays. */
+export async function clearChat(app: FastifyInstance, userId: number) {
+  return app.db.transaction(async (tx) => {
+    await lockPerson(tx, userId);
+    const cleared = await tx.update(insights).set({ question: null, content: CLEARED }).where(and(eq(insights.userId, userId), eq(insights.kind, "answer"), shown)).returning({ id: insights.id });
+    return { cleared: cleared.length };
+  });
 }
 
 /** Claim and answer in one (tests and callers that don't stream). */
@@ -285,7 +326,7 @@ export async function insightsView(app: FastifyInstance, userId: number) {
     loadSummaryInput(app.db, userId, week.from, week.to, person).then(weekNumbers),
     app.db.select().from(insights).where(mine("recap")).orderBy(desc(insights.periodStart), ...newest(insights.createdAt)).limit(KEEP_RECAPS),
     app.db.select().from(insights).where(mine("protein")).orderBy(...newest(insights.createdAt)).limit(1),
-    app.db.select().from(insights).where(and(mine("answer"), notPending)).orderBy(...newest(insights.createdAt)).limit(KEEP_ANSWERS),
+    app.db.select().from(insights).where(and(mine("answer"), shown)).orderBy(...newest(insights.createdAt)).limit(KEEP_ANSWERS),
     questionsLeft(app, userId, person.timezone),
     refreshWait(app, userId, "recap"),
     refreshWait(app, userId, "protein"),
@@ -293,6 +334,7 @@ export async function insightsView(app: FastifyInstance, userId: number) {
   return {
     aiReady,
     weeklyOn: person.weeklyOn,
+    email: { on: person.emailOn, available: !!(await app.mail.active()), hasAddress: !!person.email },
     week: { ...week, numbers },
     recaps: recaps.map(insightView),
     protein: protein[0] ? insightView(protein[0]) : null,
@@ -314,10 +356,91 @@ export async function latestRecap(app: FastifyInstance, userId: number) {
   return { aiReady, recap: r ? { periodStart: r.periodStart, periodEnd: r.periodEnd, soFar: r.source === "refresh", summary: typeof summary === "string" ? summary : "", createdAt: r.createdAt.toISOString() } : null };
 }
 
-export async function setWeekly(app: FastifyInstance, userId: number, weeklyOn: boolean) {
-  await app.db.insert(userSettings).values({ userId, insightsWeekly: weeklyOn }).onConflictDoUpdate({ target: userSettings.userId, set: { insightsWeekly: weeklyOn } });
-  return { weeklyOn };
+export const NO_MAIL_SERVER = "Email isn't set up on this server. An admin can set it up in Settings › Email.";
+export const NO_ACCOUNT_EMAIL = "Add an email address in Settings › Profile";
+
+/** The switches on the Insights page: the weekly recap, and (§45) emailing it. Emailing needs server email and an address on the account. */
+export async function setInsightsSwitches(app: FastifyInstance, userId: number, change: { weeklyOn?: boolean; emailOn?: boolean }) {
+  // Without an AI service nothing can be turned on (turning off is always fine; what was chosen is kept for when one is set up)
+  if ((change.weeklyOn || change.emailOn) && !(await app.ai.active("insights"))) throw new HttpError(409, INSIGHTS_OFF);
+  if (change.emailOn) {
+    const person = await personOf(app.db, userId);
+    if (!(await app.mail.active())) throw new HttpError(409, NO_MAIL_SERVER);
+    if (!person.email) throw new HttpError(409, NO_ACCOUNT_EMAIL);
+  }
+  const set = { ...(change.weeklyOn === undefined ? {} : { insightsWeekly: change.weeklyOn }), ...(change.emailOn === undefined ? {} : { insightsEmail: change.emailOn }) };
+  await app.db.insert(userSettings).values({ userId, ...set }).onConflictDoUpdate({ target: userSettings.userId, set });
+  const p = await personOf(app.db, userId);
+  return { weeklyOn: p.weeklyOn, emailOn: p.emailOn };
 }
+
+// ---------- emailing the recap (§45) ----------
+
+/** A person left with no email address: their weekly recap email goes off (adding an address later doesn't restart it). */
+export const emailRecapOff = (db: Db, userId: number) => db.update(userSettings).set({ insightsEmail: false }).where(eq(userSettings.userId, userId));
+
+export const EMAIL_TRIES = 4; // the first send and 3 retries (one with each hourly check)
+
+/**
+ * Emails a weekly recap to its person, once. Only a final weekly recap (never "so far" or seed-demo), only while the
+ * switch is on, the account has an address and the server has email. The try is counted before sending (under one
+ * update, so two checks can't both send); a failure is logged and left for the next hourly check, up to EMAIL_TRIES.
+ * Never throws.
+ */
+export async function emailRecap(app: FastifyInstance, recapId: number): Promise<void> {
+  try {
+    const [r] = await app.db.select().from(insights).where(and(eq(insights.id, recapId), eq(insights.kind, "recap"), eq(insights.source, "weekly"), isNull(insights.emailedAt), lt(insights.emailTries, EMAIL_TRIES)));
+    if (!r) return;
+    const [u] = await app.db
+      .select({ email: users.email, name: users.displayName, username: users.username, disabled: users.disabled, on: userSettings.insightsEmail, dateFormat: userSettings.dateFormat })
+      .from(users)
+      .leftJoin(userSettings, eq(userSettings.userId, users.id))
+      .where(eq(users.id, r.userId));
+    if (!u || u.disabled || !u.on || !u.email) return;
+    const active = await app.mail.active();
+    if (!active) return;
+    const claimed = await app.db.update(insights).set({ emailTries: r.emailTries + 1 }).where(and(eq(insights.id, r.id), isNull(insights.emailedAt), eq(insights.emailTries, r.emailTries))).returning({ id: insights.id });
+    if (claimed.length === 0) return;
+    const base = appBaseOf(active.config.appUrl) ?? originOf(app.appOrigins[0]); // sub-path kept, as invites (§46)
+    const mail = buildRecapEmail({ name: u.name?.trim() || u.username, from: r.periodStart, to: r.periodEnd, dateFormat: u.dateFormat ?? "weekday-long-month-short", content: r.content as never, link: base ? `${base}/#/insights` : null });
+    const tries = r.emailTries + 1;
+    try {
+      await app.mail.send({ to: u.email, subject: mail.subject, text: mail.text, html: mail.html }, "recap", { config: active.config, userId: r.userId });
+    } catch (err) {
+      await logEvent(app.db, {
+        category: "schedule",
+        level: tries >= EMAIL_TRIES ? "error" : "warning",
+        source: "Weekly insights",
+        event: tries >= EMAIL_TRIES ? `The recap email for ${r.periodStart} couldn't be sent (gave up after ${tries} tries)` : `The recap email for ${r.periodStart} couldn't be sent (try ${tries} of ${EMAIL_TRIES}; trying again with the next hourly check)`,
+        detail: (err as Error).message,
+        userId: r.userId,
+      });
+      return;
+    }
+    // Sent. Marking it is separate: if that fails the recap must still never go out twice, so it is given no more tries
+    try {
+      await app.db.update(insights).set({ emailedAt: app.now() }).where(eq(insights.id, r.id));
+    } catch (err) {
+      await app.db.update(insights).set({ emailTries: EMAIL_TRIES }).where(eq(insights.id, r.id)).catch(() => {});
+      await logEvent(app.db, { category: "schedule", level: "warning", source: "Weekly insights", event: `The recap email for ${r.periodStart} was sent but couldn't be marked as sent (it won't be sent again)`, detail: (err as Error).message, userId: r.userId }).catch(() => {});
+    }
+  } catch (err) {
+    console.error("The recap email failed:", err); // e.g. the database is down: nothing here may fail the recap
+  }
+}
+
+/** Recap emails that failed earlier (tried, not yet sent, under EMAIL_TRIES): each tried again, in the background. */
+async function retryRecapEmails(app: FastifyInstance) {
+  const again = await app.db
+    .select({ id: insights.id })
+    .from(insights)
+    .where(and(eq(insights.kind, "recap"), eq(insights.source, "weekly"), isNull(insights.emailedAt), gt(insights.emailTries, 0), lt(insights.emailTries, EMAIL_TRIES)))
+    .orderBy(asc(insights.id));
+  for (const r of again) emailInBackground(app, r.id);
+}
+
+/** Sends in the background: nothing waits for the mail server. */
+const emailInBackground = (app: FastifyInstance, recapId: number) => app.mail.background(() => emailRecap(app, recapId), (err) => console.error("The recap email failed:", err));
 
 // ---------- the weekly run ----------
 
@@ -336,7 +459,8 @@ const localHour = (timeZone: string, now: Date) => Number(new Intl.DateTimeForma
  * AI isn't set up. A failed recap is tried again an hour later, up to 3 more times. Returns whose recaps were written.
  */
 export async function weeklyInsightsCheck(app: FastifyInstance, signal?: AbortSignal): Promise<number[]> {
-  if (!(await app.ai.active("insights"))) return [];
+  if (!(await app.ai.active("insights"))) return []; // no AI: no recaps, and no recap emails either (§43 "No AI set up")
+  await retryRecapEmails(app);
   const people = await app.db
     .select({ id: users.id, timezone: users.timezone, weekStart: userSettings.weekStart, weeklyOn: userSettings.insightsWeekly })
     .from(users)
@@ -369,8 +493,9 @@ export async function weeklyInsightsCheck(app: FastifyInstance, signal?: AbortSi
     const before = tries.get(key);
     if (before && (before.tries >= WEEKLY_TRIES || now.getTime() - before.at < RETRY_AFTER_MS)) continue;
     try {
-      await writeRecap(app, p.id, "weekly", week, { signal });
+      const recap = await writeRecap(app, p.id, "weekly", week, { signal });
       tries.delete(key);
+      emailInBackground(app, recap.id); // when they've asked for it (§45); never holds up or fails the recap
       written.push(p.id);
     } catch (err) {
       if (signal?.aborted) break;

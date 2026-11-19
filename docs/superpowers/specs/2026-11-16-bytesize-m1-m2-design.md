@@ -1551,6 +1551,16 @@ content json, created). Per-user isolation, backed up, in "Download my data". Re
 keys; Refresh/ask and the switch are not allowed for keys. seed-demo adds one recap and one protein card (static,
 no AI call) so the page isn't empty; --replace clears them.
 
+**No AI set up (Cory, 2026-11-19; applies to §43, §45 and §47).** When no AI service is set up, or all are switched
+off, the Insights controls can't be used: the Weekly recap and Email me my weekly recap switches show off and disabled
+(the server refuses turning either on with 409 and the same "Set one up in Settings › Integrations" message; turning
+off is always allowed, and what a person chose is kept for when AI is back); Refresh on the recap and on Protein help
+is disabled; Ask can't send (the chat still opens, read-only, with its history, text box and Send disabled; the server
+refuses ask and refresh with 503). The disabled controls point at the page's "Set one up in Settings › Integrations"
+note (hover and screen-reader description). The weekly run and the recap emails (including retries) don't run for
+anyone. Stored recaps, protein help and the chat history stay visible. Once a service is set up again everything
+enables on the next page load; no restart.
+
 ## 44. Hover text on every icon button (Cory, 2026-11-18)
 
 **Asked for.** "Any icons used in the app should have hover text to describe what they do, like move, copy, etc."
@@ -1607,3 +1617,22 @@ Calls made for Cory (to confirm): each person opts in; off by default; it goes t
   a 4–6 day partial week can't earn Goal met; a later change of week start doesn't turn a missed goal into "ended"
   (judge by the week start in force when the goal was made — store it on the goal).
 - **Insights** (§43): a test that the size cap drops food lists oldest-first.
+
+## 47. Insights: ask as a chat (Cory, 2026-11-19)
+
+**Asked for.** "Move Ask a question to the top, but instead of a box, just a sentence with an icon in the title. Users
+click it and it pops a chat-style box to talk to the AI; keep the history so when the box comes up again the same
+info is there."
+- **Trigger**: at the top of the Insights page, in the title area, a link-styled button with a chat icon: "Ask about
+  your eating, weight or habits" (the Ask a question card is removed from the page). On phones the same line sits
+  under the title.
+- **Chat panel**: opens as a sheet (wide: a right-side panel / centred sheet like the others; phones: full screen)
+  titled "Ask ByteSize". Messages as bubbles — the person's on the right, the AI's on the left — newest at the bottom,
+  scrolled to the bottom on open; a text box with Send at the bottom (Enter sends, Shift+Enter new line); "Thinking…
+  asking AI" with the spinner while waiting (never the service name); Close (X) and Escape close it (not outside
+  clicks, §27). A **Clear chat** action (asks first) empties the history.
+- **History**: the conversation is the stored question/answer history (§43), shown in order every time the panel
+  opens, on any device. Keep the last 50 messages (25 exchanges); older ones drop off.
+- **Follow-ups**: each new question is sent with the previous few exchanges (up to the last 4, within the §43 size
+  cap) so "what about last month?" works; the answer is still grounded only in the person's data summary.
+- Limits, privacy, prompt rules, errors and API-key rules stay as in §43.

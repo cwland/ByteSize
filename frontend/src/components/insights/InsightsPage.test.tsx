@@ -7,7 +7,7 @@ import { renderWithSession } from "../../test/renderWithSession";
 import { wideScreen } from "../../test/wide";
 import { answerRow, insightsJson, proteinRow, recapRow, streamed, weekNumbers } from "../../test/insightsFixtures";
 
-// Insights (§43): the weekly recap with the app's numbers, protein help and food swaps, ask a question
+// Insights (§43): the weekly recap with the app's numbers, protein help and food swaps; asking is a chat (AskChat.test.tsx)
 
 const stat = (card: HTMLElement, name: string) => within(card).getByRole("group", { name });
 
@@ -73,8 +73,63 @@ describe("Insights page", () => {
     expect(within(note).getByRole("link", { name: "Settings › Integrations" })).toHaveAttribute("href", "#/settings/integrations");
     const card = screen.getByRole("region", { name: "Weekly recap" });
     expect(stat(card, "Days logged")).toHaveTextContent("3 of 7");
-    expect(within(card).queryByRole("button", { name: "Refresh weekly recap" })).not.toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Ask about your eating, weight or habits" })).toBeDisabled();
+    expect(within(card).getByRole("button", { name: "Refresh weekly recap" })).toBeDisabled();
+  });
+
+  describe("no AI service set up (or all switched off)", () => {
+    const noAi = (over: Record<string, unknown> = {}) => fakeServer({ "GET /api/insights": () => insightsJson({ aiReady: false, weeklyOn: true, email: { on: true, available: true, hasAddress: true }, ...over }) });
+
+    it("the Weekly recap and Email switches show off and disabled, described by the note", async () => {
+      noAi();
+      renderWithSession(<InsightsPage />);
+      const note = await screen.findByText(/no AI service is set up/i);
+      for (const name of ["Weekly recap", "Email me my weekly recap"]) {
+        const toggle = screen.getByRole("switch", { name });
+        expect(toggle).toBeDisabled();
+        expect(toggle).toHaveAttribute("aria-checked", "false");
+        expect(toggle).toHaveAccessibleDescription(note.textContent!);
+      }
+    });
+
+    it("both Refresh buttons are there but disabled, described by the note", async () => {
+      noAi();
+      renderWithSession(<InsightsPage />);
+      const note = await screen.findByText(/no AI service is set up/i);
+      for (const [region, name] of [["Weekly recap", "Refresh weekly recap"], ["Protein help and food swaps", "Refresh protein help"]]) {
+        const button = within(screen.getByRole("region", { name: region })).getByRole("button", { name });
+        expect(button).toBeDisabled();
+        expect(button).toHaveAccessibleDescription(note.textContent!);
+      }
+    });
+
+    it("what was stored stays visible, and the chat opens read-only with its history", async () => {
+      noAi();
+      renderWithSession(<InsightsPage />);
+      expect(await screen.findByText("A solid week: you logged 3 days and hit your range on 2.")).toBeInTheDocument();
+      await userEvent.setup().click(screen.getByRole("button", { name: "Ask about your eating, weight or habits" }));
+      const chat = await screen.findByRole("dialog", { name: "Ask ByteSize" });
+      expect(within(chat).getAllByTestId("bubble")).toHaveLength(2);
+      expect(within(chat).getByRole("textbox", { name: "Your question" })).toBeDisabled();
+      expect(within(chat).getByRole("button", { name: "Send" })).toBeDisabled();
+    });
+
+    it("a switch isn't saved when clicked (nothing is sent)", async () => {
+      const server = noAi();
+      renderWithSession(<InsightsPage />);
+      await screen.findByText(/no AI service is set up/i);
+      await userEvent.setup().click(screen.getByRole("switch", { name: "Weekly recap" }));
+      expect(server.writes()).toHaveLength(0);
+    });
+
+    it("with a service set up again (next page load) everything is enabled", async () => {
+      fakeServer({ "GET /api/insights": () => insightsJson({ aiReady: true, email: { on: false, available: true, hasAddress: true } }) });
+      renderWithSession(<InsightsPage />);
+      await screen.findByRole("region", { name: "Weekly recap" });
+      expect(screen.getByRole("switch", { name: "Weekly recap" })).toBeEnabled();
+      expect(screen.getByRole("switch", { name: "Email me my weekly recap" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Refresh weekly recap" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Refresh protein help" })).toBeEnabled();
+    });
   });
 
   it("Refresh: 'Thinking… asking AI' with the turning wheel, then the new recap; another AI said plainly", async () => {
@@ -153,34 +208,6 @@ describe("Insights page", () => {
     expect(within(card).getByText(/Refresh to get protein help/)).toBeInTheDocument();
   });
 
-  it("ask a question: the answer comes from the person's data, newest first", async () => {
-    let page = insightsJson();
-    const server = fakeServer({ "GET /api/insights": () => page, "POST /api/insights/ask": (b: any) => {
-      const made = answerRow({ id: 7, question: b.question, content: { answer: "Mostly chicken.", offTopic: false } });
-      page = insightsJson({ answers: [made, answerRow()], limits: { ...insightsJson().limits, questionsLeft: 18 } });
-      return { insight: made };
-    } });
-    renderWithSession(<InsightsPage />);
-    const user = userEvent.setup();
-    const card = await screen.findByRole("region", { name: "Ask a question" });
-    const box = within(card).getByRole("textbox", { name: "Ask about your eating, weight or habits" });
-    await user.type(box, "Where does my protein come from?");
-    await user.click(within(card).getByRole("button", { name: "Ask" }));
-    expect(server.writes()[0]).toMatchObject({ path: "/api/insights/ask", body: { question: "Where does my protein come from?" } });
-    const answers = await within(card).findByRole("list", { name: "Your questions" });
-    await waitFor(() => expect(within(answers).getAllByRole("listitem")).toHaveLength(2));
-    expect(within(answers).getAllByRole("listitem")[0]).toHaveTextContent("Where does my protein come from?Mostly chicken.");
-    expect(box).toHaveValue("");
-  });
-
-  it("20 questions a day: a friendly message when they're used up", async () => {
-    fakeServer({ "GET /api/insights": () => insightsJson({ limits: { ...insightsJson().limits, questionsLeft: 0 } }) });
-    renderWithSession(<InsightsPage />);
-    const card = await screen.findByRole("region", { name: "Ask a question" });
-    expect(within(card).getByText("You've asked 20 questions today. You can ask more tomorrow.")).toBeInTheDocument();
-    expect(within(card).getByRole("button", { name: "Ask" })).toBeDisabled();
-  });
-
   it("the weekly switch", async () => {
     const server = fakeServer({ "GET /api/insights": () => insightsJson(), "PUT /api/insights/settings": (b: any) => b });
     renderWithSession(<InsightsPage />);
@@ -189,6 +216,54 @@ describe("Insights page", () => {
     await userEvent.setup().click(toggle);
     expect(server.writes()[0]).toMatchObject({ path: "/api/insights/settings", body: { weeklyOn: false } });
     await waitFor(() => expect(toggle).toHaveAttribute("aria-checked", "false"));
+  });
+
+  describe("Email me my weekly recap (§45)", () => {
+    const withEmail = (email: Record<string, unknown>) => ({ "GET /api/insights": () => insightsJson({ email: { on: false, available: true, hasAddress: true, ...email } }) });
+
+    it("a switch under Weekly recap, off by default; turning it on saves it", async () => {
+      const server = fakeServer({ ...withEmail({}), "PUT /api/insights/settings": (b: any) => b });
+      renderWithSession(<InsightsPage />);
+      const toggle = await screen.findByRole("switch", { name: "Email me my weekly recap" });
+      expect(toggle).toHaveAttribute("aria-checked", "false");
+      expect(toggle).toBeEnabled();
+      const weekly = screen.getByRole("switch", { name: "Weekly recap" });
+      expect(weekly.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      await userEvent.setup().click(toggle);
+      expect(server.writes()[0]).toMatchObject({ path: "/api/insights/settings", body: { emailOn: true } });
+      expect(server.writes()[0].body).not.toHaveProperty("weeklyOn");
+      await waitFor(() => expect(toggle).toHaveAttribute("aria-checked", "true"));
+    });
+
+    it("shows it on when it is on", async () => {
+      fakeServer(withEmail({ on: true }));
+      renderWithSession(<InsightsPage />);
+      expect(await screen.findByRole("switch", { name: "Email me my weekly recap" })).toHaveAttribute("aria-checked", "true");
+    });
+
+    it("hidden when the server's email isn't set up", async () => {
+      fakeServer(withEmail({ available: false }));
+      renderWithSession(<InsightsPage />);
+      await screen.findByRole("switch", { name: "Weekly recap" });
+      expect(screen.queryByRole("switch", { name: "Email me my weekly recap" })).not.toBeInTheDocument();
+    });
+
+    it("disabled, saying why, when the account has no email address", async () => {
+      fakeServer(withEmail({ hasAddress: false }));
+      renderWithSession(<InsightsPage />);
+      const toggle = await screen.findByRole("switch", { name: "Email me my weekly recap" });
+      expect(toggle).toBeDisabled();
+      expect(screen.getByText("Add an email address in Settings › Profile")).toBeInTheDocument();
+    });
+
+    it("a refused save puts the switch back and says why", async () => {
+      fakeServer({ ...withEmail({}), "PUT /api/insights/settings": () => new Response(JSON.stringify({ error: "Add an email address in Settings › Profile" }), { status: 409, headers: { "content-type": "application/json" } }) });
+      renderWithSession(<InsightsPage />);
+      const toggle = await screen.findByRole("switch", { name: "Email me my weekly recap" });
+      await userEvent.setup().click(toggle);
+      expect(await screen.findByText("Add an email address in Settings › Profile")).toBeInTheDocument();
+      expect(toggle).toHaveAttribute("aria-checked", "false");
+    });
   });
 
   it("metric weights, and a gain is shown with a plus", async () => {

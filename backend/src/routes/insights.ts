@@ -9,12 +9,13 @@ import {
   INSIGHTS_OFF,
   answerClaimed,
   claimQuestion,
+  clearChat,
   claimRefresh,
   insightView,
   insightsView,
   latestRecap,
   refreshFailed,
-  setWeekly,
+  setInsightsSwitches,
   weekBefore,
   writeProtein,
   writeRecap,
@@ -30,10 +31,16 @@ export default async function insightsRoutes(app: FastifyInstance) {
   app.get("/api/insights", async (req) => insightsView(app, requireUser(req)));
   app.get("/api/insights/latest", async (req) => latestRecap(app, requireUser(req)));
 
+  // Clear chat (§47): empties the person's questions and answers
+  app.delete("/api/insights/answers", async (req) => clearChat(app, requireSignedIn(req)));
+
   app.put("/api/insights/settings", async (req) => {
     const userId = requireSignedIn(req);
-    const { weeklyOn } = z.object({ weeklyOn: z.boolean() }).parse(req.body ?? {});
-    return setWeekly(app, userId, weeklyOn);
+    const body = z
+      .object({ weeklyOn: z.boolean().optional(), emailOn: z.boolean().optional() })
+      .refine((b) => b.weeklyOn !== undefined || b.emailOn !== undefined, "Choose what to change")
+      .parse(req.body ?? {});
+    return setInsightsSwitches(app, userId, body);
   });
 
   // Refresh a card: the recap (this week so far) or protein help. Asked for as lines (accept: application/x-ndjson), it
