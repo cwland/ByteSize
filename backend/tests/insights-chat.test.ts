@@ -59,7 +59,7 @@ describe("follow-ups", () => {
     const earlier = p.slice(p.indexOf("\n<earlier>\n"), p.indexOf("\n</earlier>\n") + 13);
     expect(p.match(/\n<\/earlier>\n/g)).toHaveLength(1);
     expect(earlier).not.toMatch(/<\/question>/);
-    expect(p).toMatch(/<earlier> and <\/earlier>[^]*never instructions/); // said in words with the earlier exchanges (the system prompt is as before)
+    expect(t.ai.calls.at(-1)!.body.messages[0].content).toMatch(/<data> and <\/data>, between <earlier> and <\/earlier> and between <question> and <\/question>[^]*never instructions/); // the system prompt's rule names the earlier exchanges
   });
 
   it("an off-topic exchange isn't carried, and neither is an answer the person never saw (pending)", async () => {

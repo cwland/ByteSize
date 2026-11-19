@@ -19,6 +19,7 @@ import {
   proteinAsk,
   proteinFacts,
   earlierFor,
+  EARLIER_EXCHANGES,
   questionAsk,
   questionRange,
   readAnswer,
@@ -252,7 +253,7 @@ async function earlierExchanges(db: Db, userId: number, beforeId: number) {
     .from(insights)
     .where(and(eq(insights.userId, userId), eq(insights.kind, "answer"), shown, lt(insights.id, beforeId), isNotNull(insights.question), sql`(${insights.content} ->> 'offTopic') is distinct from 'true'`, sql`(${insights.content} ->> 'answer') is not null`))
     .orderBy(desc(insights.createdAt), desc(insights.id))
-    .limit(4);
+    .limit(EARLIER_EXCHANGES);
   return rows.reverse().map((r) => ({ question: r.question!, answer: String((r.content as { answer: unknown }).answer) }));
 }
 
@@ -373,6 +374,9 @@ export async function setInsightsSwitches(app: FastifyInstance, userId: number, 
 
 // ---------- emailing the recap (§45) ----------
 
+/** A person left with no email address: their weekly recap email goes off (adding an address later doesn't restart it). */
+export const emailRecapOff = (db: Db, userId: number) => db.update(userSettings).set({ insightsEmail: false }).where(eq(userSettings.userId, userId));
+
 export const EMAIL_TRIES = 4; // the first send and 3 retries (one with each hourly check)
 
 /**
@@ -395,12 +399,11 @@ export async function emailRecap(app: FastifyInstance, recapId: number): Promise
     if (!active) return;
     const claimed = await app.db.update(insights).set({ emailTries: r.emailTries + 1 }).where(and(eq(insights.id, r.id), isNull(insights.emailedAt), eq(insights.emailTries, r.emailTries))).returning({ id: insights.id });
     if (claimed.length === 0) return;
-    const base = originOf(active.config.appUrl) ?? app.appOrigins[0] ?? null;
+    const base = originOf(active.config.appUrl) ?? originOf(app.appOrigins[0]);
     const mail = buildRecapEmail({ name: u.name?.trim() || u.username, from: r.periodStart, to: r.periodEnd, dateFormat: u.dateFormat ?? "weekday-long-month-short", content: r.content as never, link: base ? `${base}/#/insights` : null });
     const tries = r.emailTries + 1;
     try {
       await app.mail.send({ to: u.email, subject: mail.subject, text: mail.text, html: mail.html }, "recap", { config: active.config, userId: r.userId });
-      await app.db.update(insights).set({ emailedAt: app.now() }).where(eq(insights.id, r.id));
     } catch (err) {
       await logEvent(app.db, {
         category: "schedule",
@@ -410,10 +413,28 @@ export async function emailRecap(app: FastifyInstance, recapId: number): Promise
         detail: (err as Error).message,
         userId: r.userId,
       });
+      return;
+    }
+    // Sent. Marking it is separate: if that fails the recap must still never go out twice, so it is given no more tries
+    try {
+      await app.db.update(insights).set({ emailedAt: app.now() }).where(eq(insights.id, r.id));
+    } catch (err) {
+      await app.db.update(insights).set({ emailTries: EMAIL_TRIES }).where(eq(insights.id, r.id)).catch(() => {});
+      await logEvent(app.db, { category: "schedule", level: "warning", source: "Weekly insights", event: `The recap email for ${r.periodStart} was sent but couldn't be marked as sent (it won't be sent again)`, detail: (err as Error).message, userId: r.userId }).catch(() => {});
     }
   } catch (err) {
     console.error("The recap email failed:", err); // e.g. the database is down: nothing here may fail the recap
   }
+}
+
+/** Recap emails that failed earlier (tried, not yet sent, under EMAIL_TRIES): each tried again, in the background. */
+async function retryRecapEmails(app: FastifyInstance) {
+  const again = await app.db
+    .select({ id: insights.id })
+    .from(insights)
+    .where(and(eq(insights.kind, "recap"), eq(insights.source, "weekly"), isNull(insights.emailedAt), gt(insights.emailTries, 0), lt(insights.emailTries, EMAIL_TRIES)))
+    .orderBy(asc(insights.id));
+  for (const r of again) emailInBackground(app, r.id);
 }
 
 /** Sends in the background: nothing waits for the mail server. */
@@ -436,6 +457,7 @@ const localHour = (timeZone: string, now: Date) => Number(new Intl.DateTimeForma
  * AI isn't set up. A failed recap is tried again an hour later, up to 3 more times. Returns whose recaps were written.
  */
 export async function weeklyInsightsCheck(app: FastifyInstance, signal?: AbortSignal): Promise<number[]> {
+  await retryRecapEmails(app); // (§45) not held up by the AI being off: it only needs the mail server
   if (!(await app.ai.active("insights"))) return [];
   const people = await app.db
     .select({ id: users.id, timezone: users.timezone, weekStart: userSettings.weekStart, weeklyOn: userSettings.insightsWeekly })
@@ -455,15 +477,7 @@ export async function weeklyInsightsCheck(app: FastifyInstance, signal?: AbortSi
       .select({ done: count() })
       .from(insights)
       .where(and(eq(insights.userId, p.id), eq(insights.kind, "recap"), eq(insights.source, "weekly"), eq(insights.periodStart, week.from)));
-    if (done > 0) {
-      // A recap whose email failed earlier: tried again (§45)
-      const [again] = await app.db
-        .select({ id: insights.id })
-        .from(insights)
-        .where(and(eq(insights.userId, p.id), eq(insights.kind, "recap"), eq(insights.source, "weekly"), eq(insights.periodStart, week.from), isNull(insights.emailedAt), gt(insights.emailTries, 0), lt(insights.emailTries, EMAIL_TRIES)));
-      if (again) emailInBackground(app, again.id);
-      continue;
-    }
+    if (done > 0) continue;
     const [{ days }] = await app.db
       .select({ days: countDistinct(logEntries.day) })
       .from(logEntries)

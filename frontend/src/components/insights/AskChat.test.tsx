@@ -171,6 +171,47 @@ describe("asking", () => {
   });
 });
 
+describe("focus", () => {
+  it("the box has focus when the chat opens", async () => {
+    fakeServer({ "GET /api/insights": () => page() });
+    renderWithSession(<InsightsPage />);
+    const { chat } = await open();
+    await waitFor(() => expect(within(chat).getByRole("textbox", { name: "Your question" })).toHaveFocus());
+  });
+
+  it("stays in the box while the answer is awaited (read only, not disabled) and after it arrives", async () => {
+    const answer = streamed();
+    let current = page();
+    fakeServer({ "GET /api/insights": () => current, "POST /api/insights/ask": () => answer.response });
+    renderWithSession(<InsightsPage />);
+    const { user, chat } = await open();
+    const box = within(chat).getByRole("textbox", { name: "Your question" });
+    await user.type(box, "Next question?{Enter}");
+    await within(chat).findByRole("status");
+    expect(box).toHaveAttribute("readonly");
+    expect(box).not.toBeDisabled();
+    expect(box).toHaveFocus();
+    const made = answerRow({ id: 14, question: "Next question?", content: { answer: "Sure.", offTopic: false } });
+    current = page({ answers: [made, ...history()] });
+    answer.send({ insight: made });
+    answer.end();
+    await waitFor(() => expect(within(chat).getAllByTestId("bubble")).toHaveLength(6));
+    expect(box).not.toHaveAttribute("readonly");
+    expect(box).toHaveFocus();
+  });
+
+  it("after Clear chat the box has focus again", async () => {
+    let current = page();
+    fakeServer({ "GET /api/insights": () => current, "DELETE /api/insights/answers": () => ((current = page({ answers: [] })), { cleared: 2 }) });
+    renderWithSession(<InsightsPage />);
+    const { user, chat } = await open();
+    await user.click(within(chat).getByRole("button", { name: "Clear chat" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Clear chat" }));
+    await waitFor(() => expect(within(chat).queryAllByTestId("bubble")).toHaveLength(0));
+    await waitFor(() => expect(within(chat).getByRole("textbox", { name: "Your question" })).toHaveFocus());
+  });
+});
+
 describe("closing", () => {
   it("Close (X) and Escape close it; a click on the backdrop doesn't", async () => {
     fakeServer({ "GET /api/insights": () => page() });

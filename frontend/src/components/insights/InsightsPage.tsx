@@ -3,14 +3,14 @@ import { ChevronDown, Lightbulb, MessagesSquare, RefreshCw } from "lucide-react"
 import { api } from "../../api";
 import { dayRange, shortDay } from "../../format";
 import { useSession } from "../../session";
-import type { AnswerInsight, InsightsView, ProteinInsight, RecapInsight, WeekNumbers } from "../../types";
+import type { InsightsView, ProteinInsight, RecapInsight, WeekNumbers } from "../../types";
 import { fmt } from "../../units";
 import { useWide } from "../../wide";
 import PageHeader from "../PageHeader";
 import { AiWorking } from "../log/useEstimate";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Toggle } from "../ui/Toggle";
-import { field, primaryButton, secondaryButton } from "../ui/styles";
+import { secondaryButton } from "../ui/styles";
 import AskChat from "./AskChat";
 import { THINKING, useInsightAi } from "./useInsightAi";
 

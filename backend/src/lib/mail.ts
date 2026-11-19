@@ -90,7 +90,8 @@ const EMAIL_KIND_LABELS: Record<EmailKind, string> = { test: "Test email", "rese
 /** The address's origin ("https://host:port"), or null for nothing usable. */
 export const originOf = (u: string | null | undefined) => {
   try {
-    return u ? new URL(u).origin : null;
+    const o = u ? new URL(u).origin : null;
+    return o === "null" ? null : o; // (javascript:, data: and the like have no origin)
   } catch {
     return null;
   }

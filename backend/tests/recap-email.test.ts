@@ -1,10 +1,12 @@
 import { and, eq } from "drizzle-orm";
+import { vi } from "vitest";
 import { strFromU8, unzipSync } from "fflate";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { glp1Shots, insights, logEntries, targets, userBody, userSettings, users, weighIns } from "../src/db/schema.js";
 import { resetInsightRuns, weeklyInsightsCheck, writeRecap } from "../src/lib/insightsRun.js";
 import { usageSettled } from "../src/lib/usage.js";
 import { setupTestApp, type TestApp } from "./helpers.js";
+import { asUser } from "./isolation.js";
 
 // §45 Email me my weekly recap: the switch, when it goes out, what it holds, and what a failed send does.
 
@@ -267,7 +269,9 @@ describe("a failed send", () => {
     expect(rows.map((r) => r.kind).sort()).toEqual(["protein", "recap"]);
     expect((await recapRow()).emailedAt).toBeNull();
     expect(t.mail.sent).toHaveLength(0);
-    expect((await t.api("GET", "/api/logs?category=email")).body.entries?.[0]?.event ?? JSON.stringify((await t.api("GET", "/api/logs")).body)).toContain("Couldn't send");
+    const logs = (await t.api("GET", "/api/logs")).body as { category: string; level: string; source: string; event: string; detail: string | null }[];
+    expect(logs.find((l) => l.category === "email")).toMatchObject({ level: "error", source: "Weekly recap", event: `Couldn't send "Your ByteSize week: Nov 8–14" to cory@example.com`, detail: "SMTP down" });
+    expect(logs.find((l) => l.category === "schedule" && l.source === "Weekly insights" && /recap email/.test(l.event))).toMatchObject({ level: "warning", event: "The recap email for 2026-11-08 couldn't be sent (try 1 of 4; trying again with the next hourly check)", detail: "SMTP down" });
   });
 
   it("is tried again with the next hourly check, and goes through", async () => {
@@ -310,6 +314,74 @@ describe("a failed send", () => {
     at("2026-11-15T14:10:00Z");
     await check();
     expect(t.mail.sent).toHaveLength(0);
+  });
+  it("a retry still happens while no AI service is set up (the AI being down doesn't pause email)", async () => {
+    await ready();
+    t.mail.failNext = "SMTP down";
+    at(SUN_6AM);
+    await check();
+    await t.api("PUT", "/api/settings/ai", { enabled: false, mode: "auto", maxPerRun: 50, timeoutSec: 5, services: [] });
+    at("2026-11-15T14:10:00Z");
+    await check();
+    expect(t.mail.sent).toHaveLength(1);
+  });
+
+  it("a sent marker that can't be saved never causes a second send", async () => {
+    await ready();
+    let release!: () => void;
+    t.mail.gate = new Promise<void>((r) => (release = r));
+    at(SUN_6AM);
+    await weeklyInsightsCheck(t.app); // the send is waiting on the mail server
+    await vi.waitFor(async () => expect((await recapRow()).emailTries).toBe(1));
+    vi.spyOn(t.app.db, "update").mockImplementationOnce(() => {
+      throw new Error("database went away");
+    });
+    t.mail.gate = null;
+    release();
+    await t.app.mail.idle();
+    vi.restoreAllMocks();
+    expect(t.mail.sent).toHaveLength(1);
+    for (const h of ["14:10", "15:10", "16:10"]) {
+      at(`2026-11-15T${h}:00Z`);
+      await check();
+    }
+    expect(t.mail.sent).toHaveLength(1);
+    const logs = (await t.api("GET", "/api/logs")).body as { event: string }[];
+    expect(logs.some((l) => /was sent but couldn't be marked/.test(l.event))).toBe(true);
+    expect(logs.some((l) => /couldn't be sent/.test(l.event) && l.event.includes("recap email"))).toBe(false);
+  });
+
+  it("removing the account email turns the switch off (so adding one back doesn't start emails silently)", async () => {
+    await ready();
+    expect((await t.api("PATCH", "/api/profile", { email: null })).status).toBe(200);
+    expect((await t.api("GET", "/api/insights")).body.email).toEqual({ on: false, available: true, hasAddress: false });
+    await t.api("PATCH", "/api/profile", { email: "cory@example.com" });
+    expect((await t.api("GET", "/api/insights")).body.email.on).toBe(false);
+    at(SUN_6AM);
+    await check();
+    expect(t.mail.sent).toHaveLength(0);
+  });
+
+  it("an admin removing someone's email turns their switch off too", async () => {
+    await setUpEmail();
+    const sam = await t.createUser("sam");
+    const as = asUser(t, sam.token);
+    await as("PATCH", "/api/profile", { email: "sam@example.com" });
+    expect((await as("PUT", "/api/insights/settings", { emailOn: true })).status).toBe(200);
+    expect((await t.api("PATCH", `/api/admin/users/${sam.id}`, { email: null })).status).toBe(200);
+    expect((await as("GET", "/api/insights")).body.email.on).toBe(false);
+  });
+
+  it("a bad app address gives no link (never 'null/#/insights')", async () => {
+    await ready();
+    await t.api("PUT", "/api/settings/email", { ...gmail, appUrl: null });
+    t.app.appOrigins.splice(0, t.app.appOrigins.length, "javascript:alert(1)");
+    at(SUN_6AM);
+    await check();
+    t.app.appOrigins.length = 0;
+    expect(t.mail.sent).toHaveLength(1);
+    expect(t.mail.sent[0].html).not.toMatch(/null|href=|javascript/);
+    expect(t.mail.sent[0].text).not.toMatch(/null|#\/insights/);
   });
 });
 

@@ -22,11 +22,13 @@ export default function AskChat({ view, onChanged, onClose }: { view: InsightsVi
   const [msg, setMsg] = useState<Msg>(null);
   const [confirming, setConfirming] = useState(false);
   const end = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
   const exchanges = [...view.answers].reverse(); // the page sends the newest first
   const left = view.limits.questionsLeft;
   const used = view.aiReady && left <= 0;
   const blocked = !view.aiReady || left <= 0;
 
+  useEffect(() => void box.current?.focus(), []); // typing starts at once, and the keyboard stays in the dialog
   useEffect(() => void end.current?.scrollIntoView?.({ block: "end" }), [exchanges.length, asking]);
 
   const send = async () => {
@@ -44,6 +46,7 @@ export default function AskChat({ view, onChanged, onClose }: { view: InsightsVi
       void onChanged(); // (today's questions may have run out)
     } finally {
       setAsking(null);
+      box.current?.focus();
     }
   };
 
@@ -56,6 +59,7 @@ export default function AskChat({ view, onChanged, onClose }: { view: InsightsVi
     } catch (err) {
       setMsg(errorMsg(err));
     }
+    box.current?.focus();
   };
 
   return (
@@ -90,7 +94,9 @@ export default function AskChat({ view, onChanged, onClose }: { view: InsightsVi
                 value={text}
                 maxLength={300}
                 rows={2}
-                disabled={blocked || !!ai.step}
+                ref={box}
+                disabled={blocked}
+                readOnly={!!ai.step} // (not disabled: focus would drop out of the dialog while the answer is awaited)
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
