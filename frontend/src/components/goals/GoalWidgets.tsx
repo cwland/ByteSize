@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Pencil, Plus, Target, Trash2, X } from "lucide-react";
+import { Check, Minus, Pencil, Plus, Target, Trash2, X } from "lucide-react";
 import { api } from "../../api";
 import { useSettingsMe } from "../../day";
 import { formatDay, formatDayRange } from "../../dateFormat";
@@ -11,7 +11,7 @@ import { Confirm } from "../ui/Confirm";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { linkButton, secondaryButton } from "../ui/styles";
 import GoalSheet from "./GoalSheet";
-import { datesText, goalSummary, overallText, progressText, resultText, ringFraction, targetText } from "./goalCopy";
+import { datesText, goalSummary, neededText, overallText, periodNote, progressText, resultText, ringFraction, targetText } from "./goalCopy";
 
 // Goals (§40c) as widgets: each active goal (a ring for the current period, a small chart of its periods, the result
 // so far), the Goals list (active goals and + New goal) and Past goals (finished ones, newest first, ✓ or ✗).
@@ -37,13 +37,15 @@ function GoalRing({ fraction, hit, label }: { fraction: number; hit: boolean; la
 const PERIOD_NAME = { week: "Week", month: "Month", stretch: "So far" } as const;
 const MAX_BARS = 12;
 
-// A bar per period (the last 12): its share of the target; hit filled, missed hollow, the current one lighter
+// A bar per period (the last 12): its share of the target; hit filled, missed hollow, the current one lighter, a short
+// one (not counted) faint
 function PeriodBars({ goal, range }: { goal: Goal; range: (a: string, b: string) => string }) {
   const periods = goal.progress.periods.slice(-MAX_BARS);
   if (goal.period === "stretch" || periods.length < 2) return null;
   const hit = periods.filter((p) => p.status === "hit").length;
   const missed = periods.filter((p) => p.status === "missed").length;
-  const summary = `${PERIOD_NAME[goal.period]}s: ${hit} hit, ${missed} missed${periods.some((p) => p.status === "open") ? ", this one under way" : ""}`;
+  const short = periods.filter((p) => p.status === "unjudged").length;
+  const summary = `${PERIOD_NAME[goal.period]}s: ${hit} hit, ${missed} missed${periods.some((p) => p.status === "open") ? ", this one under way" : ""}${short ? `, ${short} too short to count` : ""}`;
   return (
     <div role="img" aria-label={summary} className="mt-3 flex h-10 items-end gap-1">
       {periods.map((p) => {
@@ -51,7 +53,7 @@ function PeriodBars({ goal, range }: { goal: Goal; range: (a: string, b: string)
         const said = `${range(p.start, p.end)}: ${progressText(goal, p, undefined, "")}`;
         return (
           <span key={p.start} title={said} data-status={p.status} className={`relative flex h-10 flex-1 items-end rounded-sm ${p.status === "missed" ? "border border-strong" : "bg-pressed"}`}>
-            <span className={`w-full rounded-sm ${p.status === "hit" ? "bg-success" : p.status === "open" ? "bg-action/60" : "bg-strong"}`} style={{ height: `${Math.max(p.status === "hit" ? 1 : share, 0.04) * 100}%` }} />
+            <span className={`w-full rounded-sm ${p.status === "hit" ? "bg-success" : p.status === "open" ? "bg-action/60" : p.status === "unjudged" ? "bg-strong/40" : "bg-strong"}`} style={{ height: `${Math.max(p.status === "hit" ? 1 : share, 0.04) * 100}%` }} />
           </span>
         );
       })}
@@ -68,6 +70,8 @@ export function GoalWidget({ goal }: { goal: Goal }) {
   const p = shownPeriod(goal);
   const upcoming = goal.progress.state === "upcoming";
   const overall = overallText(goal);
+  const needed = neededText(goal);
+  const note = p ? periodNote(goal, p) : null;
   return (
     <section aria-label={goal.name} className="rounded-2xl bg-container p-5">
       <div className="flex items-start gap-2">
@@ -88,7 +92,9 @@ export function GoalWidget({ goal }: { goal: Goal }) {
             <div className="min-w-0">
               <p className="font-semibold tabular">{progressText(goal, p, units)}</p>
               {p.status === "hit" && <p className="text-sm text-success">{goal.period === "stretch" ? "Reached" : `${PERIOD_NAME[goal.period]} hit`}</p>}
+              {note && <p className="text-xs text-muted">{note}</p>}
               {overall && <p className="text-sm text-subtle">{overall}</p>}
+              {needed && <p className="text-sm text-subtle">{needed}</p>}
             </div>
           </div>
           <PeriodBars goal={goal} range={range} />
@@ -160,14 +166,14 @@ export function PastGoalsWidget() {
               <li key={g.id} aria-label={g.name} className="flex items-start gap-3">
                 <span
                   role="img"
-                  aria-label={r.met === null ? "Ended today" : r.met ? "Completed" : "Missed"}
+                  aria-label={r.met === null ? (g.progress.state === "ended" ? "Ended early" : "Ended today") : r.met ? "Completed" : "Missed"}
                   className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full ${r.met ? "bg-success text-white" : r.met === false ? "bg-pressed text-subtle" : "bg-pressed text-ink"}`}
                 >
-                  {r.met === false ? <X aria-hidden="true" className="size-4" /> : <Check aria-hidden="true" className="size-4" />}
+                  {r.met === false ? <X aria-hidden="true" className="size-4" /> : r.met ? <Check aria-hidden="true" className="size-4" /> : <Minus aria-hidden="true" className="size-4" />}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold">{g.name}</p>
-                  <p className="text-sm text-subtle">{datesText({ ...g, progress: { ...g.progress, state: "completed" } }, day, range)}</p>
+                  <p className="text-sm text-subtle">{datesText(g, day, range, { past: true })}</p>
                   <p className="text-sm tabular">{r.text}</p>
                 </div>
                 <button type="button" aria-label={`Delete ${g.name}`} title="Delete" onClick={() => setDeleting(g)} className="flex size-9 shrink-0 items-center justify-center rounded-full text-subtle hover:bg-pressed hover:text-error">

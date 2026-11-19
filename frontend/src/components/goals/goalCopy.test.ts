@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Goal, GoalPeriodProgress } from "../../types";
-import { datesText, goalSummary, overallText, progressText, resultText, ringFraction, targetText, TARGET_LABEL } from "./goalCopy";
+import { datesText, goalSummary, neededText, overallText, periodNote, progressText, resultText, ringFraction, targetText, TARGET_LABEL } from "./goalCopy";
 
-const progress = (over: Partial<Goal["progress"]> = {}): Goal["progress"] => ({ state: "active", periods: [], current: null, hit: 0, done: 0, of: null, startKg: null, asOf: "2026-11-18", ...over });
+const progress = (over: Partial<Goal["progress"]> = {}): Goal["progress"] => ({ state: "active", periods: [], current: null, hit: 0, done: 0, of: null, needed: null, startKg: null, asOf: "2026-11-18", ...over });
 const goal = (over: Partial<Goal> = {}): Goal => ({
   id: 1,
   type: "logging_days",
@@ -63,9 +63,28 @@ describe("goal copy (§40c)", () => {
     expect(overallText(goal({ period: "stretch", progress: progress({ hit: 1, done: 1 }) }))).toBeNull();
   });
 
+  it("how many weeks or months a goal with an end needs (80%, rounded up)", () => {
+    expect(neededText(goal({ progress: progress({ of: 12, needed: 10 }) }))).toBe("10 of 12 weeks needed");
+    expect(neededText(goal({ period: "month", progress: progress({ of: 1, needed: 1 }) }))).toBe("1 of 1 month needed");
+    expect(neededText(goal({ end: null }))).toBeNull();
+    expect(neededText(goal({ period: "stretch", progress: progress({ of: 1, needed: 1 }) }))).toBeNull();
+  });
+
+  it("a note under the ring for a short partial period and for steps averaged", () => {
+    expect(periodNote(goal(), { ...p(1, 1), status: "unjudged" })).toBe("A short week: shown, not counted");
+    expect(periodNote(goal({ period: "month" }), { ...p(1, 1), status: "unjudged" })).toBe("A short month: shown, not counted");
+    expect(periodNote(goal({ type: "steps", measure: "average" }), p(7000, 8000))).toBe("Average on days with steps");
+    expect(periodNote(goal(), p(1, 3))).toBeNull();
+  });
+
   it("a finished goal: completed or missed, with its final numbers", () => {
     const weeks = goal({ frozen: true, progress: progress({ state: "completed", hit: 4, done: 4, of: 4 }) });
     expect(resultText(weeks, "imperial")).toEqual({ met: true, text: "Completed · 4 of 4 weeks hit" });
+    const most = goal({ frozen: true, progress: progress({ state: "completed", hit: 11, done: 12, of: 12, needed: 10 }) });
+    expect(resultText(most, "imperial")).toEqual({ met: true, text: "Completed · 11 of 12 weeks hit (10 needed)" });
+    // Ended early with nothing long enough to judge
+    expect(resultText(goal({ endedEarly: true, frozen: true, progress: progress({ state: "ended", of: 0, needed: 0 }) }), "imperial")).toEqual({ met: null, text: "Ended early, before a full week" });
+    expect(resultText(goal({ period: "stretch", endedEarly: true, frozen: true, progress: progress({ state: "ended", of: 0, needed: 0 }) }), "imperial")).toEqual({ met: null, text: "Ended early" });
     const stretch = goal({ period: "stretch", progress: progress({ state: "missed", hit: 0, done: 1, of: 1, periods: [p(10, 12, "missed")] }) });
     expect(resultText(stretch, "imperial")).toEqual({ met: false, text: "Missed · 10 of 12 days" });
     const weight = goal({ type: "weight_by_date", period: "stretch", progress: progress({ state: "completed", hit: 1, done: 1, of: 1, periods: [p(81, 81.6466, "hit")] }) });
@@ -78,6 +97,8 @@ describe("goal copy (§40c)", () => {
     expect(datesText(goal(), day)).toBe("11-15 – 12-12");
     expect(datesText(goal({ end: null }), day)).toBe("From 11-15, ongoing");
     expect(datesText(goal({ start: "2026-12-01", progress: progress({ state: "upcoming" }) }), day)).toBe("Starts 12-01 · until 12-12");
+    // A past goal's dates, whatever its state
+    expect(datesText(goal({ progress: progress({ state: "ended" }) }), day, undefined, { past: true })).toBe("11-15 – 12-12");
   });
 
   it("how full the ring is: the share of the target; a weight from its start toward the goal", () => {

@@ -14,6 +14,7 @@ const list = [
   { id: "streak_30", earnedOn: null, seen: false },
   { id: "streak_100", earnedOn: null, seen: false },
   { id: "shots_on_time_4", earnedOn: null, seen: false },
+  { id: "goal_met", earnedOn: "2026-11-15", seen: true, count: 3 },
 ];
 const serve = () => fakeServer({ "GET /api/badges": () => ({ badges: list, new: ["lost_5"] }) });
 const badge = async (name: string) => within(await screen.findByRole("region", { name: "Badges" })).getByRole("listitem", { name });
@@ -43,6 +44,8 @@ describe("Badges", () => {
     expect(await badge("30-day streak")).toHaveTextContent("Log food 30 days in a row");
     expect(await badge("100-day streak")).toHaveTextContent("Log food 100 days in a row");
     expect(await badge("4 shots on time")).toHaveTextContent("Take 4 weekly shots on time in a row");
+    // Goal met (§40c): earned again with each goal completed — the latest day and how many
+    expect(await badge("Goal met")).toHaveTextContent("Earned Nov 15 · 3 goals met");
     // Goals only lists them: the Dashboard celebration is what marks them seen
     expect(server.writes()).toEqual([]);
   });

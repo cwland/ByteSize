@@ -182,7 +182,8 @@ export type AfterInjection = { enough: boolean; days: { offset: number; avgCalor
 // M3 weekly trends, badges, vacation mode (GET /api/trends/weekly, /api/badges, /api/vacations)
 export type TrendKey = "calories" | "protein_g" | "fiber_g" | "water_ml";
 export type WeekTrend = { start: string; end: string; daysLogged: number; caloriesInRange?: number; avg: Record<TrendKey, number | null>; status: Record<TrendKey, "below" | "in" | "above" | null>; weightChangeKg: number | null };
-export type Badge = { id: string; earnedOn: string | null; seen: boolean };
+// count: Goal met only (§40c) — goals completed; earnedOn is the latest one's day
+export type Badge = { id: string; earnedOn: string | null; seen: boolean; count?: number };
 export type Vacation = { id: number; from: string; to: string };
 // Culury link (§14 A): GET/PUT/DELETE /api/settings/culury (the key never comes back), GET /api/culury/plan
 // (selected day first; recipeId null = a note, not loggable), GET /api/culury/recipes/:id
@@ -240,14 +241,18 @@ export type AppInfo = {
 // has passed: frozen). Weight targets and values are kg.
 export type GoalType = "logging_days" | "protein_days" | "calorie_days" | "water_days" | "weigh_ins" | "fiber_days" | "streak" | "steps" | "workouts" | "active_minutes" | "weight_by_date";
 export type GoalPeriod = "week" | "month" | "stretch";
-export type GoalPeriodProgress = { start: string; end: string; value: number | null; target: number; status: "hit" | "missed" | "open" };
+// unjudged: shown, never hit or missed (a partial week under 4 days, a month under 15, a stretch ended early)
+export type GoalPeriodProgress = { start: string; end: string; value: number | null; target: number; status: "hit" | "missed" | "open" | "unjudged" };
 export type GoalProgress = {
-  state: "upcoming" | "active" | "completed" | "missed";
+  // ended: ended early with nothing to judge (neither completed nor missed)
+  state: "upcoming" | "active" | "completed" | "missed" | "ended";
   periods: GoalPeriodProgress[];
   current: GoalPeriodProgress | null;
   hit: number;
   done: number;
   of: number | null;
+  // judged periods to hit to complete it (80% rounded up for each week / each month); null: ongoing
+  needed: number | null;
   startKg: number | null;
   asOf: string;
 };

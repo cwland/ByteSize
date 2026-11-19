@@ -273,6 +273,7 @@ export function goalJson(over: Record<string, unknown> = {}) {
       hit: 1,
       done: 2,
       of: 4,
+      needed: 4,
       startKg: null,
       asOf: "2026-11-18",
     },

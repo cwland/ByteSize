@@ -18,7 +18,7 @@ const workouts = goalJson({
   name: "Work out",
   target: 3,
   end: null,
-  progress: { ...goalJson().progress, periods: [], current: { start: "2026-11-15", end: "2026-11-21", value: 1, target: 3, status: "open" }, hit: 0, done: 0, of: null },
+  progress: { ...goalJson().progress, periods: [], current: { start: "2026-11-15", end: "2026-11-21", value: 1, target: 3, status: "open" }, hit: 0, done: 0, of: null, needed: null },
 });
 const met = goalJson({ id: 3, name: "October logging", start: "2026-10-01", end: "2026-10-31", frozen: true, progress: { ...goalJson().progress, state: "completed", current: null, hit: 5, done: 5, of: 5 } });
 const missed = goalJson({
@@ -30,7 +30,7 @@ const missed = goalJson({
   start: "2026-09-01",
   end: "2026-09-30",
   frozen: true,
-  progress: { state: "missed", periods: [{ start: "2026-09-01", end: "2026-09-30", value: 91.5, target: 90.718474, status: "missed" }], current: null, hit: 0, done: 1, of: 1, startKg: 95, asOf: "2026-09-30" },
+  progress: { state: "missed", periods: [{ start: "2026-09-01", end: "2026-09-30", value: 91.5, target: 90.718474, status: "missed" }], current: null, hit: 0, done: 1, of: 1, needed: 1, startKg: 95, asOf: "2026-09-30" },
 });
 
 function goalsPage(goals: { active: unknown[]; past: unknown[] }, over: Record<string, (b: any, path: string) => unknown> = {}) {
@@ -55,8 +55,18 @@ describe("goals on the Goals page", () => {
     expect(within(w).getByText("Log food 6 days a week")).toBeInTheDocument();
     expect(within(w).getByRole("img", { name: "4 of 6 days this week" })).toBeInTheDocument();
     expect(within(w).getByText("1 of 2 weeks hit")).toBeInTheDocument();
+    expect(within(w).getByText("4 of 4 weeks needed")).toBeInTheDocument();
     expect(within(w).getByRole("img", { name: "Weeks: 1 hit, 1 missed, this one under way" })).toBeInTheDocument();
     expect(within(w).getByText("Nov 1 – Nov 28")).toBeInTheDocument();
+  });
+
+  it("a short first week is shown but not counted; a steps average says it's on days with steps", async () => {
+    const short = { start: "2026-11-21", end: "2026-11-21", value: 0, target: 1, status: "unjudged" };
+    const sat = goalJson({ start: "2026-11-21", progress: { ...goalJson().progress, periods: [short], current: short, hit: 0, done: 0, of: 1, needed: 1 } });
+    const avg = goalJson({ id: 8, type: "steps", measure: "average", name: "Walk more", target: 8000, progress: { ...goalJson().progress, periods: [], current: { start: "2026-11-15", end: "2026-11-21", value: 7000, target: 8000, status: "open" } } });
+    goalsPage({ active: [sat, avg], past: [] });
+    expect(within(await screen.findByRole("region", { name: "Log most days" })).getByText("A short week: shown, not counted")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Walk more" })).getByText("Average on days with steps")).toBeInTheDocument();
   });
 
   it("with nothing saved, a goal's widget joins the shortest column of the default (phones: reading order)", async () => {
@@ -91,12 +101,17 @@ describe("goals on the Goals page", () => {
   });
 
   it("Past goals: newest first, ✓ completed or ✗ missed, with the dates and the final numbers; delete one", async () => {
-    const server = goalsPage({ active: [], past: [met, missed] }, { "DELETE /api/goals/:id": () => ({ status: 204 }) });
+    const ended = goalJson({ id: 1, name: "Gym", start: "2026-08-01", end: "2026-08-01", endedEarly: true, frozen: true, progress: { ...goalJson().progress, state: "ended", periods: [], current: null, hit: 0, done: 0, of: 0, needed: 0 } });
+    const server = goalsPage({ active: [], past: [met, missed, ended] }, { "DELETE /api/goals/:id": () => ({ status: 204 }) });
     const past = await screen.findByRole("region", { name: "Past goals" });
     const items = await within(past).findAllByRole("listitem");
-    expect(items.map((i) => i.getAttribute("aria-label"))).toEqual(["October logging", "Down to 200"]);
+    expect(items.map((i) => i.getAttribute("aria-label"))).toEqual(["October logging", "Down to 200", "Gym"]);
+    // Ended early with nothing to judge: neither ✓ nor ✗
+    expect(within(items[2]).getByRole("img", { name: "Ended early" })).toBeInTheDocument();
+    expect(within(items[2]).getByText("Ended early, before a full week")).toBeInTheDocument();
+    expect(within(items[2]).getByText("Aug 1 – Aug 1")).toBeInTheDocument();
     expect(within(items[0]).getByRole("img", { name: "Completed" })).toBeInTheDocument();
-    expect(within(items[0]).getByText("Completed · 5 of 5 weeks hit")).toBeInTheDocument();
+    expect(within(items[0]).getByText("Completed · 5 of 5 weeks hit (4 needed)")).toBeInTheDocument();
     expect(within(items[0]).getByText("Oct 1 – Oct 31")).toBeInTheDocument();
     expect(within(items[1]).getByRole("img", { name: "Missed" })).toBeInTheDocument();
     expect(within(items[1]).getByText("Missed · ended at 201.7 lb · goal 200 lb")).toBeInTheDocument();

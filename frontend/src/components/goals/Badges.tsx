@@ -48,7 +48,7 @@ function BadgeTile({ badge, units, thisYear }: { badge: Badge; units: Units; thi
           {info.name}
         </p>
         {badge.earnedOn ? (
-          <p className="text-xs text-subtle">{`Earned ${shortDay(badge.earnedOn, !badge.earnedOn.startsWith(thisYear))}`}</p>
+          <p className="text-xs text-subtle">{`Earned ${shortDay(badge.earnedOn, !badge.earnedOn.startsWith(thisYear))}${badge.count ? ` · ${badge.count} ${badge.count === 1 ? "goal" : "goals"} met` : ""}`}</p>
         ) : (
           <p className="text-xs text-muted">
             <span className="font-semibold">Locked</span> · {info.earns}

@@ -89,25 +89,44 @@ export function overallText(g: Pick<Goal, "period" | "progress">): string | null
   return `${fmt(hit)} of ${plural(done, g.period)} hit`;
 }
 
-/** A finished goal: met (✓), missed (✗), or ended today and still being worked out (null), with its final numbers */
+/** Each week / each month with an end: "10 of 12 weeks needed" (80% of the judged periods, rounded up); else null */
+export function neededText(g: Pick<Goal, "period" | "end" | "progress">): string | null {
+  const { needed, of } = g.progress;
+  if (g.period === "stretch" || g.end === null || needed === null || !of) return null;
+  return `${fmt(needed)} of ${plural(of, g.period)} needed`;
+}
+
+/** A line under the ring: a short partial week or month isn't counted; a steps average leaves out days without steps */
+export function periodNote(g: Pick<Goal, "type" | "period" | "measure">, p: GoalPeriodProgress): string | null {
+  if (p.status === "unjudged" && g.period !== "stretch") return `A short ${g.period}: shown, not counted`;
+  if (g.type === "steps" && g.measure === "average") return "Average on days with steps";
+  return null;
+}
+
+/** A finished goal: met (✓), missed (✗), or neither (null: ended today and still being worked out, or ended early with nothing to judge), with its final numbers */
 export function resultText(g: Goal, units: Units): { met: boolean | null; text: string } {
   const pr = g.progress;
+  if (pr.state === "ended") return { met: null, text: g.period === "stretch" ? "Ended early" : `Ended early, before a full ${g.period}` };
   if (pr.state !== "completed" && pr.state !== "missed") {
     const so = overallText(g);
     return { met: null, text: `Ended today${so ? ` · ${so} so far` : ""}` };
   }
   const met = pr.state === "completed";
   const head = met ? "Completed" : "Missed";
-  if (g.period !== "stretch") return { met, text: `${head} · ${fmt(pr.hit)} of ${plural(pr.of ?? pr.done, g.period)} hit` };
+  if (g.period !== "stretch") {
+    const of = pr.of ?? pr.done;
+    const needed = pr.needed !== null && pr.needed !== undefined && pr.needed < of ? ` (${fmt(pr.needed)} needed)` : "";
+    return { met, text: `${head} · ${fmt(pr.hit)} of ${plural(of, g.period)} hit${needed}` };
+  }
   const last = pr.periods[pr.periods.length - 1];
   if (!last) return { met, text: head };
   if (g.type === "weight_by_date") return { met, text: last.value === null ? `${head} · no weigh-ins` : `${head} · ended at ${formatWeight(last.value, units)} · goal ${formatWeight(last.target, units)}` };
   return { met, text: `${head} · ${progressText(g, last, units, "")}` };
 }
 
-/** "Nov 15 – Dec 12", "From Nov 15, ongoing", "Starts Dec 1 · until Dec 12" */
-export function datesText(g: Pick<Goal, "start" | "end" | "progress">, day: DayFmt, range?: (from: string, to: string) => string): string {
-  if (g.progress.state === "upcoming") return `Starts ${day(g.start)}${g.end ? ` · until ${day(g.end)}` : ", ongoing"}`;
+/** "Nov 15 – Dec 12", "From Nov 15, ongoing", "Starts Dec 1 · until Dec 12"; past: its dates only */
+export function datesText(g: Pick<Goal, "start" | "end" | "progress">, day: DayFmt, range?: (from: string, to: string) => string, o: { past?: boolean } = {}): string {
+  if (g.progress.state === "upcoming" && !o.past) return `Starts ${day(g.start)}${g.end ? ` · until ${day(g.end)}` : ", ongoing"}`;
   if (!g.end) return `From ${day(g.start)}, ongoing`;
   return range ? range(g.start, g.end) : `${day(g.start)} – ${day(g.end)}`;
 }
