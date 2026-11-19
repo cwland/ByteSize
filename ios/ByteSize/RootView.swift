@@ -4,12 +4,14 @@ import SwiftUI
 /// Signed out → sign-in; signed in → the app; while checking a saved login → the logo.
 struct RootView: View {
     let session: SessionStore
+    let profile: ProfileModel
     @State private var signIn: SignInModel
     @State private var shell = ShellModel()
     @Environment(\.palette) private var palette
 
-    init(session: SessionStore) {
+    init(session: SessionStore, profile: ProfileModel) {
         self.session = session
+        self.profile = profile
         _signIn = State(initialValue: SignInModel(session: session))
     }
 
@@ -27,7 +29,7 @@ struct RootView: View {
             case .signedOut:
                 SignInView(model: signIn)
             case .signedIn:
-                MainTabView(shell: shell)
+                MainTabView(shell: shell, profile: profile)
             }
         }
         .onChange(of: session.state) { _, state in
