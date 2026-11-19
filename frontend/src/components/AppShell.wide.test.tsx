@@ -6,6 +6,7 @@ import { fakeServer } from "../test/fakeServer";
 import { renderWithSession } from "../test/renderWithSession";
 import { wideScreen } from "../test/wide";
 import { culuryOff, m3Routes, restaurantRoutes, settingsMe } from "../test/fixtures";
+import { glp1View } from "../test/glp1Fixtures";
 
 const routes = {
   ...m3Routes,
@@ -31,7 +32,7 @@ describe("AppShell on a wide screen", () => {
     const navs = screen.getAllByRole("navigation", { name: "Main" });
     expect(navs).toHaveLength(1);
     const rail = navs[0];
-    expect(within(rail).getAllByRole("link").map((a) => a.getAttribute("aria-label") ?? a.textContent)).toEqual(["ByteSize home", "Dashboard", "Goals", "GLP-1", "My foods", "Settings", "Your profile"]);
+    expect(within(rail).getAllByRole("link").map((a) => a.getAttribute("aria-label") ?? a.textContent)).toEqual(["ByteSize home", "Dashboard", "Goals", "My foods", "Settings", "Your profile"]);
     expect(within(rail).getByRole("link", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
     expect(within(rail).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "#/settings");
     // No + in the rail: food is added from the Food widget
@@ -48,16 +49,25 @@ describe("AppShell on a wide screen", () => {
     expect(await screen.findByRole("dialog", { name: "Add food to Lunch" })).toBeInTheDocument();
   });
 
-  it("GLP-1 is a rail item (it left the Goals page, §40a), current on the GLP-1 page", async () => {
+  it("GLP-1 is a rail item for people with GLP-1 tracking on (it left the Goals page, §40a), current on the GLP-1 page", async () => {
     window.location.hash = "#/glp1";
     wideScreen();
-    fakeServer(routes);
+    fakeServer({ ...routes, "GET /api/glp1": () => glp1View() });
     renderWithSession(<AppShell />, { timezone: "America/Boise" });
     const rail = screen.getByRole("navigation", { name: "Main" });
-    expect(within(rail).getByRole("link", { name: "GLP-1" })).toHaveAttribute("href", "#/glp1");
-    expect(within(rail).getByRole("link", { name: "GLP-1" })).toHaveAttribute("aria-current", "page");
+    const item = await within(rail).findByRole("link", { name: "GLP-1" });
+    expect(item).toHaveAttribute("href", "#/glp1");
+    expect(item).toHaveAttribute("aria-current", "page");
+    expect(within(rail).getAllByRole("link").map((a) => a.getAttribute("aria-label") ?? a.textContent)).toEqual(["ByteSize home", "Dashboard", "Goals", "GLP-1", "My foods", "Settings", "Your profile"]);
     expect(within(rail).getByRole("link", { name: "Dashboard" })).not.toHaveAttribute("aria-current");
     window.location.hash = "";
+  });
+
+  it("the body profile saying GLP-1 (not set up yet) also shows the rail item; neither: none", async () => {
+    wideScreen();
+    fakeServer({ ...routes, "GET /api/body": () => ({ body: { glp1: true } }) });
+    renderWithSession(<AppShell />, { timezone: "America/Boise" });
+    expect(await within(screen.getByRole("navigation", { name: "Main" })).findByRole("link", { name: "GLP-1" })).toBeInTheDocument();
   });
 
   it("My foods is its own rail item, current on My foods", async () => {
