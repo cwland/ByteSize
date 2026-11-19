@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { userSettings, type MealWindows } from "../db/schema.js";
+import { glp1Settings, userBody, userSettings, type MealWindows } from "../db/schema.js";
 import { requireUser } from "../lib/guards.js";
 import { DATE_FORMATS, DEFAULT_DATE_FORMAT } from "../lib/dateFormats.js";
 
@@ -27,8 +27,20 @@ export default async function settingsMeRoutes(app: FastifyInstance) {
 
   app.get("/api/settings/me", async (req) => {
     const userId = requireUser(req);
-    const [row] = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
-    return { mealWindows: row?.mealWindows ?? DEFAULT_MEAL_WINDOWS, waterButtonsMl: row?.waterButtonsMl ?? DEFAULT_WATER_BUTTONS_ML, weekStart: row?.weekStart ?? DEFAULT_WEEK_START, dateFormat: row?.dateFormat ?? DEFAULT_DATE_FORMAT };
+    const [[row], [glp1], [body]] = await Promise.all([
+      db.select().from(userSettings).where(eq(userSettings.userId, userId)),
+      db.select({ userId: glp1Settings.userId }).from(glp1Settings).where(eq(glp1Settings.userId, userId)),
+      db.select({ glp1: userBody.glp1 }).from(userBody).where(eq(userBody.userId, userId)),
+    ]);
+    return {
+      mealWindows: row?.mealWindows ?? DEFAULT_MEAL_WINDOWS,
+      waterButtonsMl: row?.waterButtonsMl ?? DEFAULT_WATER_BUTTONS_ML,
+      weekStart: row?.weekStart ?? DEFAULT_WEEK_START,
+      dateFormat: row?.dateFormat ?? DEFAULT_DATE_FORMAT,
+      // Tracking a GLP-1: set up, or the body profile says so (the Next shot widget's rule). The side rail's GLP-1
+      // item reads it here with the rest, instead of asking for GLP-1 and the body on every mount (§46)
+      glp1On: !!glp1 || !!body?.glp1,
+    };
   });
 
   app.put("/api/settings/me", async (req) => {

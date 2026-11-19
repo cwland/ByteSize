@@ -7,7 +7,7 @@
 import { and, asc, count, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db/index.js";
-import { activitySteps, goals, glp1Settings, glp1Shots, insights, logCombines, logEntries, targets, usageCounts, userBody, userFoods, userSettings, users, weighIns, workouts } from "../db/schema.js";
+import { activitySteps, badges, goals, glp1Settings, glp1Shots, insights, logCombines, logEntries, targets, usageCounts, userBody, userFoods, userSettings, users, weighIns, workouts } from "../db/schema.js";
 import { proteinFacts, weekNumbers, type ProteinFacts, type WeekNumbers } from "./insights.js";
 import { loadSummaryInput, weekBefore } from "./insightsRun.js";
 import { estimateCalories, type WorkoutType } from "./activity.js";
@@ -18,8 +18,8 @@ import { amountFactor, scaleNutrients, type Nutrients, type Serving, type Unit }
 import { createMeal, quickMealParts } from "./recipes.js";
 import { normalizeUsername } from "./users.js";
 import { KG_PER_LB } from "./weight.js";
-import { saveWeighIn } from "../routes/weight.js";
-import { addToGoalsPage, dropGoalWidgets, goalsWithProgress } from "../routes/goals.js";
+import { saveWeighIn } from "./weighIns.js";
+import { addToGoalsPage, dropGoalWidgets, goalsWithProgress } from "./goalsData.js";
 import { weekStartFor } from "./calorieDays.js";
 import { weekStartOf } from "./trends.js";
 import type { GoalSpec } from "./goals.js";
@@ -325,7 +325,7 @@ export const USAGE =
   "Fills an existing account (default: the first admin) with a few months of food, weight, water and GLP-1 tracking, steps and\n" +
   "workouts, and a few goals (some active, some ended). It never creates accounts.\n" +
   `Default --days ${DEFAULT_DAYS}. An account that already has tracking is left alone unless you add --replace, which deletes\n` +
-  "that account's entries, weigh-ins, water, shots, steps, workouts, goals and the foods this command made earlier, then fills it again.";
+  "that account's entries, weigh-ins, water, shots, steps, workouts, goals, badges and the foods this command made earlier, then fills it again.";
 
 export type SeedArgs = { username?: string; days: number; replace: boolean };
 
@@ -361,7 +361,7 @@ export type SeedResult = {
   username: string;
   replaced: boolean;
   /** what --replace removed */
-  deleted: { entries: number; weighIns: number; shots: number; foods: number; combines: number; steps: number; workouts: number; goals: number; insights: number };
+  deleted: { entries: number; weighIns: number; shots: number; foods: number; combines: number; steps: number; workouts: number; goals: number; insights: number; badges: number };
   /** set along the way, besides the tracking rows: said in the output */
   alsoSet: { bodyWeight: string; medication: string; usageCounts: number; madeProfile: boolean };
   timezone: string;
@@ -412,7 +412,7 @@ export async function seedDemo(db: Db, opts: SeedOptions): Promise<SeedResult> {
       throw new Error(`No account has that username (this command never creates one). Accounts: ${all.map((u) => u.username).join(", ") || "none yet"}`);
     }
     const username = user.username;
-    const deleted = { entries: 0, weighIns: 0, shots: 0, foods: 0, combines: 0, steps: 0, workouts: 0, goals: 0, insights: 0 };
+    const deleted = { entries: 0, weighIns: 0, shots: 0, foods: 0, combines: 0, steps: 0, workouts: 0, goals: 0, insights: 0, badges: 0 };
     const has = async (table: typeof logEntries | typeof weighIns | typeof glp1Shots | typeof activitySteps | typeof workouts | typeof goals) => (await dbx.select({ n: count() }).from(table).where(eq(table.userId, user.id)))[0].n > 0;
     let replaced = false;
     if ((await has(logEntries)) || (await has(weighIns)) || (await has(glp1Shots)) || (await has(activitySteps)) || (await has(workouts)) || (await has(goals))) {
@@ -429,6 +429,9 @@ export async function seedDemo(db: Db, opts: SeedOptions): Promise<SeedResult> {
       const gone = await dbx.delete(goals).where(eq(goals.userId, user.id)).returning({ id: goals.id });
       deleted.goals = gone.length;
       await dropGoalWidgets(dbx, user.id, gone.map((g) => g.id));
+      // Badges come from the tracking just deleted (and Goal met from its goals): cleared, so the refill earns them
+      // again once (its ended goals here, the rest on the next read of badges) instead of keeping ones it never earned (§46)
+      deleted.badges = (await dbx.delete(badges).where(eq(badges.userId, user.id)).returning({ badge: badges.badge })).length;
       replaced = true;
     }
     // Demo foods from an earlier run, whether or not the tracking is still there
@@ -644,7 +647,7 @@ export function describeSeed(r: SeedResult, days: number): string[] {
   const lines: string[] = [];
   const d = r.deleted;
   if (r.replaced || d.foods) {
-    lines.push(`Deleted from ${r.username}: ${d.entries} log entries (water included), ${d.weighIns} weigh-ins, ${d.shots} shots, ${d.steps} days of steps, ${d.workouts} workouts, ${d.goals} goals, ${d.foods} demo foods and quick meals, ${d.combines} undo records, ${d.insights} demo insights.`);
+    lines.push(`Deleted from ${r.username}: ${d.entries} log entries (water included), ${d.weighIns} weigh-ins, ${d.shots} shots, ${d.steps} days of steps, ${d.workouts} workouts, ${d.goals} goals, ${d.foods} demo foods and quick meals, ${d.combines} undo records, ${d.insights} demo insights, ${d.badges} badges.`);
   }
   lines.push(`Filled ${r.username} (${r.timezone}) from ${r.from} to ${r.to}:`);
   lines.push(`  ${r.foods} My foods and ${r.quickMeals} quick meals, ${r.entries} food log entries over ${days - r.emptyDays} days (${r.emptyDays} left empty), ${r.waterEntries} water entries,`);

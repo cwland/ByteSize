@@ -2,7 +2,7 @@ import { BookOpen, House, Lightbulb, Settings, Syringe, Target } from "lucide-re
 import { isGlp1, myFoodsHref, type Page } from "../routes";
 import { initialsOf, useSession } from "../session";
 import { Logo } from "./ui/Logo";
-import { useGlp1On } from "./glp1/useGlp1On";
+import { useSettingsMe } from "../day";
 import { IconLink } from "./ui/IconButton";
 
 // Wide screens: the side rail in place of the top bar and bottom tab bar. Logo (home), the pages (GLP-1 among
@@ -11,7 +11,7 @@ import { IconLink } from "./ui/IconButton";
 export default function Rail({ page }: { page: Page }) {
   const { user } = useSession();
   const glp1 = isGlp1(); // the GLP-1 page sits under the Dashboard; the shell redraws on every address change
-  const glp1On = useGlp1On(); // the GLP-1 item only for people tracking it
+  const glp1On = !!useSettingsMe().glp1On; // the GLP-1 item only for people tracking it (from the settings: no pop-in, §46)
   const item = (label: string, href: string, current: boolean, icon: JSX.Element) => (
     <a
       href={href}

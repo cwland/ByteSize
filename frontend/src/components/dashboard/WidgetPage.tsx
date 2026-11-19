@@ -164,11 +164,13 @@ export function EditLayout({
   // in the other column, and a button that turns disabled (the end of a column) can't keep focus. The same
   // button if it can still be used, else the opposite move, else any move, else the drag handle.
   const area = useRef<HTMLDivElement>(null);
-  const refocus = useRef<{ id: string; dir: Dir } | null>(null);
+  // Kept with the layout the move made: it applies to that layout only, so one that never shows up (a move that
+  // changed nothing) can't move focus on some later, unrelated change (§46)
+  const refocus = useRef<{ id: string; dir: Dir; next: Columns } | null>(null);
   useLayoutEffect(() => {
     const r = refocus.current;
     refocus.current = null;
-    if (!r) return;
+    if (!r || r.next !== cols) return;
     const w = widgetById(r.id);
     const cardEl = area.current?.querySelector<HTMLElement>(`[data-widget="${r.id}"]`);
     if (!w || !cardEl) return;
@@ -180,7 +182,8 @@ export function EditLayout({
     }
   }, [cols]);
   const moveWith = (id: string, dir: Dir, next: Columns) => {
-    refocus.current = { id, dir };
+    if (next === cols) return; // nothing moved
+    refocus.current = { id, dir, next };
     onChange(next);
   };
 

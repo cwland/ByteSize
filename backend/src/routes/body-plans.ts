@@ -8,7 +8,7 @@ import { requireUser } from "../lib/guards.js";
 import { todayFor } from "../lib/days.js";
 import { KG_PER_LB } from "../lib/weight.js";
 import { logEvent } from "../lib/appLog.js";
-import { saveWeighIn } from "./weight.js";
+import { saveWeighIn } from "../lib/weighIns.js";
 import { ACTIVITIES, age, buildPlans, planExplanation, type Body, type PlanId, type PlanResult, type PlanTargets } from "../lib/plans.js";
 
 export type Targets = PlanTargets & { plan: PlanId | null; effectiveFrom: string };

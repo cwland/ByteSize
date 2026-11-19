@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../../api";
-import { notifySettingsChanged } from "../../day";
+import { notifySettingsChanged, useSettingsMe } from "../../day";
 import { DATE_FORMATS, DEFAULT_DATE_FORMAT, formatDate } from "../../dateFormat";
 import { todayIn } from "../../selectedDay";
 import type { SettingsMe } from "../../types";
@@ -14,7 +14,6 @@ import { field, label, primaryButton } from "../ui/styles";
 import { TimezoneSelect } from "../ui/TimezoneSelect";
 import VacationMode from "./VacationMode";
 import { ChevronRight, Syringe } from "lucide-react";
-import { useGlp1On } from "../glp1/useGlp1On";
 
 export default function ProfileSettings() {
   return (
@@ -30,7 +29,7 @@ export default function ProfileSettings() {
 // With GLP-1 tracking on: a row to the GLP-1 page (shots, doses, how you feel), which comes back here (§40a: the
 // phones' way in, now the Goals button has gone; turned on or off in Goals › Edit my details or by setting GLP-1 up)
 function Glp1Shots() {
-  if (!useGlp1On()) return null;
+  if (!useSettingsMe().glp1On) return null; // from the settings, like the rail (§46)
   return (
     <Card title="GLP-1">
       <a href="#/glp1?from=/settings/profile" className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-pressed">

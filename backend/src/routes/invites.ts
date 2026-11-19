@@ -11,7 +11,7 @@ import { requireAdmin } from "../lib/guards.js";
 import { logSignIn, startSession } from "../lib/sessions.js";
 import { normalizeUsername, publicUser } from "../lib/users.js";
 import { USERNAME_TAKEN, adminRowFor, email, isUniqueViolation, password, usernameField } from "./admin-users.js";
-import { escapeHtml, originOf } from "../lib/mail.js";
+import { appBaseOf, escapeHtml, originOf } from "../lib/mail.js";
 
 // Invite by email (Settings › Users, admin, only with email set up). The invited person is a users row with
 // no password, so nothing signs them in until they open the emailed link (#/invite/<token>) and choose one.
@@ -35,7 +35,7 @@ export default async function inviteRoutes(app: FastifyInstance) {
   async function ready(req: FastifyRequest) {
     const active = await app.mail.active();
     if (!active) throw new HttpError(409, NO_EMAIL);
-    const base = originOf(active.config.appUrl) ?? app.appOrigins[0] ?? originOf(typeof req.headers.origin === "string" ? req.headers.origin : null);
+    const base = appBaseOf(active.config.appUrl) ?? app.appOrigins[0] ?? originOf(typeof req.headers.origin === "string" ? req.headers.origin : null);
     if (!base) throw new HttpError(409, NO_ADDRESS);
     return base;
   }

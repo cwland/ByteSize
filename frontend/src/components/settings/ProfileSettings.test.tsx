@@ -5,7 +5,6 @@ import ProfileSettings from "./ProfileSettings";
 import { fakeServer, userJson } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
 import { settingsMe } from "../../test/fixtures";
-import { glp1View, noGlp1 } from "../../test/glp1Fixtures";
 
 describe("ProfileSettings week start", () => {
   it("shows the saved week start and saves a new one with the profile", async () => {
@@ -100,16 +99,16 @@ describe("ProfileSettings vacation mode (§40a)", () => {
 
 describe("ProfileSettings GLP-1 shots (§40a)", () => {
   it("with GLP-1 tracking on: a GLP-1 shots row opens the GLP-1 page, coming back to Settings", async () => {
-    fakeServer({ "GET /api/settings/me": () => settingsMe, "GET /api/vacations": () => ({ vacations: [] }), "GET /api/glp1": () => glp1View(), "GET /api/body": () => ({ body: null }) });
+    fakeServer({ "GET /api/settings/me": () => ({ ...settingsMe, glp1On: true }), "GET /api/vacations": () => ({ vacations: [] }) });
     renderWithSession(<ProfileSettings />);
     const box = await screen.findByRole("region", { name: "GLP-1" });
     expect(within(box).getByRole("link", { name: /GLP-1 shots/ })).toHaveAttribute("href", "#/glp1?from=/settings/profile");
   });
 
   it("with GLP-1 tracking off: no row", async () => {
-    const server = fakeServer({ "GET /api/settings/me": () => settingsMe, "GET /api/vacations": () => ({ vacations: [] }), "GET /api/glp1": () => noGlp1, "GET /api/body": () => ({ body: { glp1: false } }) });
+    const server = fakeServer({ "GET /api/settings/me": () => ({ ...settingsMe, glp1On: false }), "GET /api/vacations": () => ({ vacations: [] }) });
     renderWithSession(<ProfileSettings />);
-    await waitFor(() => expect(server.sent.some((x) => x.path === "/api/body")).toBe(true));
+    await waitFor(() => expect(server.sent.some((x) => x.path === "/api/settings/me")).toBe(true));
     await screen.findByRole("region", { name: "Vacation mode" });
     expect(screen.queryByRole("region", { name: "GLP-1" })).not.toBeInTheDocument();
   });

@@ -299,6 +299,30 @@ describe("workout calories in the plan", () => {
     expect(week).toMatchObject({ caloriesInRange: 3, avg: { calories: 2300 }, status: { calories: "in" } });
   });
 
+  it("weekly trends in bank mode: the average is judged as the days are, what the bank paid off the maximum (§46)", async () => {
+    await plan("2026-11-01");
+    await mode({ mode: "bank", countPct: 100 }, "2026-11-15");
+    await workout({ day: "2026-11-15", calories: 900 });
+    for (const d of ["2026-11-15", "2026-11-16", "2026-11-17"]) await eat(d, 2250); // each over by 250: all covered
+    const [week] = (await t.api("GET", "/api/trends/weekly?weeks=1")).body.weeks;
+    expect(week).toMatchObject({ caloriesInRange: 3, avg: { calories: 2250 }, status: { calories: "in" } });
+  });
+
+  it("weekly trends in bank mode: a treat paid from the bank isn't held against the average either; over the bank is still above (§46)", async () => {
+    await plan("2026-11-01");
+    await mode({ mode: "bank", countPct: 100 }, "2026-11-15");
+    await workout({ day: "2026-11-15", calories: 300 });
+    await eat("2026-11-15", 1900);
+    await eat("2026-11-15", 300, true); // a treat: from the bank
+    await eat("2026-11-16", 2600); // over by 600, nothing left: above
+    const [week] = (await t.api("GET", "/api/trends/weekly?weeks=1")).body.weeks;
+    // (2200 + 2600) / 2 = 2400; the bank paid 300 of it: 2250 judged against 2,000 - still above, as day 2 is
+    expect(week).toMatchObject({ caloriesInRange: 1, avg: { calories: 2400 }, status: { calories: "above" } });
+    await workout({ day: "2026-11-16", calories: 600 }); // now Monday's overage is covered too
+    const [after] = (await t.api("GET", "/api/trends/weekly?weeks=1")).body.weeks;
+    expect(after).toMatchObject({ caloriesInRange: 2, status: { calories: "in" } });
+  });
+
   it("calorie days: each day's calories against its range, with bank-covered days in range (what streaks, badges and goals count)", async () => {
     await plan("2026-11-01");
     await mode({ mode: "bank", countPct: 100 }, "2026-11-15");

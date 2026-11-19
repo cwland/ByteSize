@@ -6,7 +6,7 @@ import { and, asc, count, countDistinct, desc, eq, gt, gte, inArray, isNotNull, 
 import type { Db } from "../db/index.js";
 import { activitySteps, glp1Settings, glp1Shots, insights, logEntries, targets, userBody, userSettings, users, weighIns, workouts } from "../db/schema.js";
 import { AiError, AiStopped, type AiProgress } from "./ai.js";
-import { originOf } from "./mail.js";
+import { appBaseOf, originOf } from "./mail.js";
 import { buildRecapEmail } from "./recapEmail.js";
 import { logEvent } from "./appLog.js";
 import { calorieDays } from "./calorieDays.js";
@@ -401,7 +401,7 @@ export async function emailRecap(app: FastifyInstance, recapId: number): Promise
     if (!active) return;
     const claimed = await app.db.update(insights).set({ emailTries: r.emailTries + 1 }).where(and(eq(insights.id, r.id), isNull(insights.emailedAt), eq(insights.emailTries, r.emailTries))).returning({ id: insights.id });
     if (claimed.length === 0) return;
-    const base = originOf(active.config.appUrl) ?? originOf(app.appOrigins[0]);
+    const base = appBaseOf(active.config.appUrl) ?? originOf(app.appOrigins[0]); // sub-path kept, as invites (§46)
     const mail = buildRecapEmail({ name: u.name?.trim() || u.username, from: r.periodStart, to: r.periodEnd, dateFormat: u.dateFormat ?? "weekday-long-month-short", content: r.content as never, link: base ? `${base}/#/insights` : null });
     const tries = r.emailTries + 1;
     try {

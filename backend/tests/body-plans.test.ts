@@ -183,14 +183,14 @@ describe("targets", () => {
 
 describe("personal settings", () => {
   it("settings me has meal windows and water buttons, and saves changes", async () => {
-    const defaults = { mealWindows: { breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" }, waterButtonsMl: [237, 473], weekStart: 0, dateFormat: "weekday-long-month-short" };
+    const defaults = { mealWindows: { breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" }, waterButtonsMl: [237, 473], weekStart: 0, dateFormat: "weekday-long-month-short", glp1On: false };
     expect((await t.api("GET", "/api/settings/me")).body).toEqual(defaults);
 
     const changed = { mealWindows: { breakfast: "09:00", lunch: "13:00", snacks: "16:30", dinner: "20:00" }, waterButtonsMl: [250, 500, 750], weekStart: 0 };
     const put = await t.api("PUT", "/api/settings/me", changed);
     expect(put.status).toBe(200);
     expect(put.body).toEqual({ ...changed, dateFormat: "weekday-long-month-short" });
-    expect((await t.api("GET", "/api/settings/me")).body).toEqual({ ...changed, dateFormat: "weekday-long-month-short" });
+    expect((await t.api("GET", "/api/settings/me")).body).toEqual({ ...changed, dateFormat: "weekday-long-month-short", glp1On: false });
 
     for (const bad of [
       { ...changed, mealWindows: { ...changed.mealWindows, dinner: "25:00" } },
@@ -201,7 +201,7 @@ describe("personal settings", () => {
     ]) {
       expect((await t.api("PUT", "/api/settings/me", bad)).status, JSON.stringify(bad)).toBe(400);
     }
-    expect((await t.api("GET", "/api/settings/me")).body).toEqual({ ...changed, dateFormat: "weekday-long-month-short" });
+    expect((await t.api("GET", "/api/settings/me")).body).toEqual({ ...changed, dateFormat: "weekday-long-month-short", glp1On: false });
   });
 
   it("stores body measurements exactly (no float4 rounding)", async () => {

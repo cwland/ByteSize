@@ -96,6 +96,12 @@ export const originOf = (u: string | null | undefined) => {
     return null;
   }
 };
+/** The app's address as saved, its sub-path kept (ByteSize behind a proxy at /bytesize), no trailing slash (§46). */
+export const appBaseOf = (u: string | null | undefined) => {
+  const origin = originOf(u);
+  if (!origin) return null;
+  return `${origin}${new URL(u!).pathname.replace(/\/+$/, "")}`;
+};
 export const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 // What decides whether email gets through: a test email proves these, so only a change to them needs a new test

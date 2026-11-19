@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import GoalsPage from "./GoalsPage";
+import { planPickerHref } from "../../plans";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
 import { bodyA, m3Routes, plansA, steadyTargets } from "../../test/fixtures";
@@ -209,6 +210,15 @@ describe("Goals", () => {
     renderWithSession(<GoalsPage />);
     await user.click(await screen.findByRole("button", { name: "Cancel" }));
     expect(window.location.hash).toBe("#/goals");
+    window.location.hash = "";
+  });
+
+  it("an encoded from comes back whole, its own ? and & included (§46)", async () => {
+    fakeServer({ ...m3Routes, "GET /api/targets": () => ({ targets: steadyTargets }), "GET /api/body": () => ({ body: bodyA }), "GET /api/plans": () => plansA });
+    window.location.hash = planPickerHref("/log/my-foods?from=/glp1&x=1");
+    renderWithSession(<GoalsPage />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Cancel" }));
+    expect(window.location.hash).toBe("#/log/my-foods?from=/glp1&x=1");
     window.location.hash = "";
   });
 

@@ -17,7 +17,7 @@ describe("week start setting", () => {
     const put = await t.api("PUT", "/api/settings/me", { mealWindows: windows, waterButtonsMl: [237], weekStart: 1 });
     expect(put.status).toBe(200);
     expect(put.body.weekStart).toBe(1);
-    expect((await t.api("GET", "/api/settings/me")).body).toEqual({ mealWindows: windows, waterButtonsMl: [237], weekStart: 1, dateFormat: "weekday-long-month-short" });
+    expect((await t.api("GET", "/api/settings/me")).body).toEqual({ mealWindows: windows, waterButtonsMl: [237], weekStart: 1, dateFormat: "weekday-long-month-short", glp1On: false });
     // leaving weekStart out keeps what was saved
     const again = await t.api("PUT", "/api/settings/me", { mealWindows: windows, waterButtonsMl: [300] });
     expect(again.body.weekStart).toBe(1);
@@ -56,5 +56,30 @@ describe("date format setting (§33)", () => {
     await put({ dateFormat: "iso" });
     for (const bad of ["", "ISO", "yyyy-mm-dd", "weekday-long", 5, null]) expect((await put({ dateFormat: bad })).status, String(bad)).toBe(400);
     expect((await t.api("GET", "/api/settings/me")).body.dateFormat).toBe("iso");
+  });
+});
+
+describe("glp1On (§46): whether the person tracks a GLP-1, so the side rail needn't ask twice", () => {
+  const glp1On = async () => (await t.api("GET", "/api/settings/me")).body.glp1On;
+  const body = { sex: "male", birthDate: "1986-01-01", heightCm: 177.8, weightKg: 100, goalWeightKg: 80, activity: "sitting" };
+
+  it("is off until GLP-1 is set up", async () => {
+    expect(await glp1On()).toBe(false);
+    expect((await t.api("PUT", "/api/glp1/settings", { medication: "Mounjaro", doseMg: 2.5, injectionWeekday: 5 })).status).toBe(200);
+    expect(await glp1On()).toBe(true);
+  });
+
+  it("is on when the body profile says they take one (the Next shot widget's rule)", async () => {
+    expect((await t.api("PUT", "/api/body", { ...body, glp1: false })).status).toBe(200);
+    expect(await glp1On()).toBe(false);
+    await t.api("PUT", "/api/body", { ...body, glp1: true });
+    expect(await glp1On()).toBe(true);
+  });
+
+  it("is each person's own", async () => {
+    await t.api("PUT", "/api/glp1/settings", { medication: "Mounjaro", doseMg: 2.5, injectionWeekday: 5 });
+    const sam = await t.createUser("sam");
+    const r = await t.app.inject({ method: "GET", url: "/api/settings/me", headers: { authorization: `Bearer ${sam.token}` } });
+    expect(r.json().glp1On).toBe(false);
   });
 });

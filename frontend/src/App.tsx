@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { applyMode, applyTheme } from "./themes";
 import { api, ApiError, getToken, setToken } from "./api";
 import AuthScreen from "./components/AuthScreen";
@@ -50,9 +50,15 @@ export default function App() {
     }
   }, []);
 
+  // Whoever is signed in now: a session that ends on its own (a 401) forgets their look like Sign out does (§46)
+  const signedInId = useRef<number | null>(null);
+  signedInId.current = auth.status === "in" ? auth.user.id : null;
   useEffect(() => {
     void check();
-    const onLogout = () => void check();
+    const onLogout = () => {
+      if (signedInId.current !== null) forgetSettings(signedInId.current);
+      void check();
+    };
     window.addEventListener("bytesize:logout", onLogout);
     return () => window.removeEventListener("bytesize:logout", onLogout);
   }, [check]);
@@ -62,6 +68,13 @@ export default function App() {
     setToken(token);
     if (window.location.hash !== "#/") window.location.hash = "#/";
     setAuth({ status: "in", user });
+  };
+
+  // The used invite token leaves the address bar and history: replaced in place, so Back can't return to it (§46)
+  const acceptedInvite = (token: string, user: User) => {
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}#/`);
+    window.dispatchEvent(new Event("hashchange")); // replaceState fires none; useHash reads the new address
+    signedIn(token, user);
   };
 
   if (auth.status === "loading") return <div className="min-h-screen bg-page" />;
@@ -76,7 +89,7 @@ export default function App() {
     );
   }
   if (auth.status === "setup") return <SetupWizard onAccount={signedIn} onDone={() => void check()} />;
-  if (inviteToken) return <InvitePage token={inviteToken} onDone={signedIn} />;
+  if (inviteToken) return <InvitePage token={inviteToken} onDone={acceptedInvite} />;
   if (auth.status === "login") return <AuthScreen onDone={signedIn} />;
 
   const setUser = (user: User) => setAuth({ status: "in", user });

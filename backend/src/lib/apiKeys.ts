@@ -146,3 +146,22 @@ export function keyLimiter(limit: KeyRateLimit) {
     return false;
   };
 }
+
+/**
+ * Wrong keys, per address (§46): like failed sign-ins (the same max per window). Only wrong keys count, every one of
+ * them (also those answered 429); a valid key is never blocked by this (it has its own per-key limit).
+ * failed(): records one and says whether the address is now over the limit (and whether it just went over).
+ */
+export function wrongKeyLimiter(limit: KeyRateLimit) {
+  const fails = new Map<string, number[]>();
+  return {
+    failed(ip: string, now: number): { over: boolean; justOver: boolean; waitMs: number } {
+      if (fails.size > 10_000) for (const [k, times] of fails) if (now - times[times.length - 1] >= limit.windowMs) fails.delete(k);
+      const before = (fails.get(ip) ?? []).filter((at) => now - at < limit.windowMs);
+      const times = [...before, now];
+      fails.set(ip, times);
+      const over = times.length > limit.max;
+      return { over, justOver: over && before.length === limit.max, waitMs: limit.windowMs - (now - times[times.length - 1 - limit.max]) };
+    },
+  };
+}

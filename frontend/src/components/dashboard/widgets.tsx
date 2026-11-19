@@ -219,7 +219,7 @@ export const WIDGETS: WidgetDef[] = [
 
 function DayTotalsWidget({ data, isToday }: { data: Day | null; isToday: boolean }) {
   const { user } = useSession();
-  return data ? <DayTotals day={data} units={user.units} earned={earnedText(data, isToday)} /> : null;
+  return data ? <DayTotals day={data} units={user.units} earned={earnedText(data, isToday)} isToday={isToday} /> : null;
 }
 
 // §40c: an active goal's widget, offered on every page (only in Add widget: the Goals page places new goals itself)

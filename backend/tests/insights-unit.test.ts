@@ -180,6 +180,8 @@ describe("active goals for the summary (§40c)", () => {
   });
 });
 
+const addDaysUtc = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
 describe("the summary's size", () => {
   // 26 weeks, 10 foods a day, every day logged, weighed and walked
   function halfYear(): SummaryInput {
@@ -221,6 +223,34 @@ describe("the summary's size", () => {
     expect(s.days[0].date).toBe("2026-08-17"); // the week (Monday start) holding the day 13 weeks back
     expect(s.weeks!.at(-1)!.to).toBe("2026-08-16");
     expect(s.summarised).toBe("Days before 2026-10-08 show day totals only (no food lists). Before 2026-08-17 there are only weekly totals.");
+  });
+
+  it("over the cap, food lists go oldest first: the newest days keep theirs, no day becomes a week while dropping lists is enough (§46)", () => {
+    // 6 weeks (all inside the food-list window), 12 long-named foods a day: well over 40 KB with every list
+    const to = "2026-11-18";
+    const entries = [];
+    for (let i = 0; i < 42; i++) {
+      const day = new Date(Date.parse(`${to}T00:00:00Z`) - i * 86_400_000).toISOString().slice(0, 10);
+      for (let f = 0; f < 12; f++) entries.push(entry(day, ["breakfast", "lunch", "dinner", "snacks"][f % 4], `Food ${f} on ${day} with a rather long descriptive name`, { calories: 100 + f, protein_g: 5 + f }));
+    }
+    const all = input({ from: "2026-10-08", to, entries, weighIns: [], steps: [], calorieDays: [] });
+    const s = buildSummary(all);
+    expect(JSON.stringify(s).length).toBeLessThanOrEqual(SUMMARY_MAX_CHARS);
+    expect(s.weeks).toBeUndefined(); // every day is still shown by itself
+    expect(s.days.map((d) => d.date)[0]).toBe("2026-10-08");
+    // Food lists kept: one unbroken run of the newest days; dropped: the oldest
+    const kept = s.days.map((d) => !!d.meals);
+    const firstKept = kept.indexOf(true);
+    expect(firstKept).toBeGreaterThan(0);
+    expect(kept.slice(0, firstKept).every((k) => !k)).toBe(true);
+    expect(kept.slice(firstKept).every((k) => k)).toBe(true);
+    expect(s.days.at(-1)!.date).toBe(to);
+    // dropped a week at a time, and no more than needed
+    const from = s.days[firstKept].date;
+    expect(s.summarised).toBe(`Days before ${from} show day totals only (no food lists).`);
+    // A week more of lists wouldn't have fitted: with only those days' foods it still drops that week
+    const weekMore = buildSummary({ ...all, entries: entries.filter((e) => e.day >= addDaysUtc(from, -7)) });
+    expect(weekMore.days.find((d) => d.meals)!.date).toBe(from);
   });
 
   it("a short period isn't summarised", () => {

@@ -13,7 +13,7 @@ import { averages, judge, trendOn, TREND_NUTRIENTS, weekStartOf, type DayLog, ty
 import { DEFAULT_WEEK_START } from "./settings-me.js";
 import { targetsOn } from "./body-plans.js";
 import { calorieDays } from "../lib/calorieDays.js";
-import { goalsMet, goalsWithProgress } from "./goals.js";
+import { goalsMet, goalsWithProgress } from "../lib/goalsData.js";
 
 // Weekly trends, badges and vacation mode. Who is asking comes only from the login.
 
@@ -57,10 +57,14 @@ async function weekly(db: Db, userId: number, today: string, weeks: number) {
     const targets = days.length ? await targetsOn(db, userId, days[days.length - 1][0]) : null;
     // Calories: the same day ranges calorieDays judges by (grown by workouts in "add" mode), so the mark agrees with
     // "N in range": the plan's range plus what the logged days' workouts added, on average
+    // In bank mode (§46) as each day is judged: the minimum against all the food, the maximum against what the bank
+    // didn't pay (treats and covered overage), on average over the logged days
     const logged = new Set(days.map(([d]) => d));
-    const added = calorie.filter((d) => logged.has(d.day)).map((d) => d.added);
-    const extra = added.length ? Math.round(added.reduce((a, b) => a + b, 0) / added.length) : 0;
-    const ranges = { ...targets, calories: targets ? { min: targets.calories.min + extra, max: targets.calories.max + extra } : undefined };
+    const judged = calorie.filter((d) => logged.has(d.day));
+    const mean = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
+    const extra = mean(judged.map((d) => d.added));
+    const paid = mean(judged.map((d) => d.treatSpent + d.covered));
+    const ranges = { ...targets, calories: targets ? { min: targets.calories.min + extra, max: targets.calories.max + extra + paid } : undefined };
     const status = Object.fromEntries(TREND_NUTRIENTS.map((k) => [k, judge(avg[k], targets ? ranges[k] : undefined)])) as Record<TrendNutrient, Status>;
     // That week's change in trend weight: from the trend before the week (or its first weigh-in) to its last weigh-in
     const inWeek = series.filter((p) => p.day >= start && p.day <= end);

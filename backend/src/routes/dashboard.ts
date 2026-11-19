@@ -5,7 +5,7 @@ import { dashboardLayouts, userSettings } from "../db/schema.js";
 import { requireUser } from "../lib/guards.js";
 import { GOAL_WIDGET, LAYOUT_PAGES, LAYOUT_VERSION, MAX_COLUMNS, PAGE_WIDGETS, withInsights, type LayoutPage } from "../lib/widgets.js";
 import { todayFor } from "../lib/days.js";
-import { activeGoalIds, keepGoals } from "./goals.js";
+import { activeGoalIds, keepGoals } from "../lib/goalsData.js";
 
 // The person's widget layout for a page (§28, §40a): GET (null until saved) and PUT { version: 1, columns: string[][] }
 // at /api/layouts/:page; /api/dashboard/layout is the Dashboard's under the name it had first. Goal widgets ("goal:<id>",

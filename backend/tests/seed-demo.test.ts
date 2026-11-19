@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { asUser } from "./isolation.js";
-import { activitySteps, goals, insights, logCombines, glp1Shots, glp1Settings, logEntries, recipeItems, targets, usageCounts, userBody, userFoods, users, weighIns, workouts } from "../src/db/schema.js";
+import { activitySteps, badges, goals, insights, logCombines, glp1Shots, glp1Settings, logEntries, recipeItems, targets, usageCounts, userBody, userFoods, users, weighIns, workouts } from "../src/db/schema.js";
 import {
   DEFAULT_DAYS, DEMO_FOODS, DEMO_NOTE, DEMO_QUICK_MEALS, HAS_DATA, INJECTION_WEEKDAY, START_LB, USAGE,
   describeSeed, instantAt, parseSeedArgs, planDemo, planDemoGoals, seedDemo, type PlannedDay,
@@ -211,7 +211,7 @@ describe("npm run seed-demo", () => {
 
   it("fills the account (GLP-1 on, goals set, setup untouched); the person's own sign-in is unchanged", async () => {
     const r = await seedDemo(t.db, args());
-    expect(r).toMatchObject({ username: "demo", replaced: false, deleted: { entries: 0, weighIns: 0, shots: 0, foods: 0, combines: 0, steps: 0, workouts: 0, goals: 0 }, timezone: TZ, from: "2026-08-21", to: TODAY, foods: DEMO_FOODS.length, quickMeals: 2 });
+    expect(r).toMatchObject({ username: "demo", replaced: false, deleted: { entries: 0, weighIns: 0, shots: 0, foods: 0, combines: 0, steps: 0, workouts: 0, goals: 0, badges: 0 }, timezone: TZ, from: "2026-08-21", to: TODAY, foods: DEMO_FOODS.length, quickMeals: 2 });
     const [u] = await t.db.select().from(users).where(eq(users.username, "demo"));
     expect(u).toMatchObject({ isAdmin: false, timezone: TZ });
     expect((await t.db.select().from(users)).length).toBe(2); // no account was made
@@ -487,7 +487,7 @@ describe("npm run seed-demo", () => {
     for (let i = 0; i < 2; i++) {
       const r = await seedDemo(t.db, args({ replace: true }));
       expect(r.replaced).toBe(true);
-      expect(r.deleted).toEqual({ entries: first.entries + first.waterEntries, weighIns: first.weighIns, shots: first.shots, foods: DEMO_FOODS.length + DEMO_QUICK_MEALS.length, combines: 0, steps: first.stepDays, workouts: first.workouts, insights: 2, goals: first.goals.active + first.goals.past });
+      expect(r.deleted).toEqual({ entries: first.entries + first.waterEntries, weighIns: first.weighIns, shots: first.shots, foods: DEMO_FOODS.length + DEMO_QUICK_MEALS.length, combines: 0, steps: first.stepDays, workouts: first.workouts, insights: 2, goals: first.goals.active + first.goals.past, badges: 1 });
       expect(r).toMatchObject({ entries: first.entries, waterEntries: first.waterEntries, weighIns: first.weighIns, shots: first.shots });
       expect(await counts(demoId)).toEqual(demoBefore); // refilled, foods not doubled, the hand-made one stays
     }
@@ -499,6 +499,26 @@ describe("npm run seed-demo", () => {
     const orphan = await t.db.execute(sql`select count(*)::int as n from recipe_items r left join user_foods u on u.id = r.recipe_id where u.id is null`);
     expect((orphan.rows[0] as any).n).toBe(0);
     expect((await t.db.select().from(recipeItems)).length).toBe(DEMO_QUICK_MEALS.reduce((s, q) => s + q.parts.length, 0));
+  });
+
+  it("--replace clears the account's badges (earned from the tracking it deletes); refilled ones come back once, others' stay (§46)", async () => {
+    const { id: samId } = await member("sam");
+    await t.db.insert(badges).values({ userId: samId, badge: "streak_7", earnedOn: "2026-10-01" });
+    const first = await seedDemo(t.db, args());
+    const id = await idOf("demo");
+    const as = await signIn();
+    const earned = (await as("GET", "/api/badges")).body.badges.filter((b: any) => b.earnedOn).map((b: any) => b.id);
+    expect(earned).toContain("goal_met");
+    // A badge the seeded data never earns (from tracking --replace will delete)
+    await t.db.insert(badges).values({ userId: id, badge: "streak_100", earnedOn: "2026-09-01" });
+    for (let i = 0; i < 2; i++) {
+      const r = await seedDemo(t.db, args({ replace: true }));
+      expect(r.deleted.badges).toBeGreaterThan(0);
+      const after = (await as("GET", "/api/badges")).body.badges;
+      expect(after.filter((b: any) => b.earnedOn).map((b: any) => b.id)).toEqual(earned); // streak_100 gone, the rest back
+      expect(after.find((b: any) => b.id === "goal_met").count).toBe(first.goals.met); // not doubled by the refill
+    }
+    expect((await t.db.select().from(badges).where(eq(badges.userId, samId))).map((b) => b.badge)).toEqual(["streak_7"]);
   });
 
   it("--replace deletes the account's Undo records for combined entries (log_combines), and no one else's", async () => {
@@ -528,7 +548,7 @@ describe("npm run seed-demo", () => {
     const again = await seedDemo(t.db, args({ replace: true }));
     const text2 = describeSeed(again, 90).join("\n");
     expect(text2).not.toContain("Made a starter profile"); // the profile exists now
-    expect(text2).toMatch(/Deleted from demo: \d+ log entries \(water included\), \d+ weigh-ins, 13 shots, 28 days of steps, \d+ workouts, \d+ goals, 28 demo foods and quick meals, 1 undo records, 2 demo insights\./);
+    expect(text2).toMatch(/Deleted from demo: \d+ log entries \(water included\), \d+ weigh-ins, 13 shots, 28 days of steps, \d+ workouts, \d+ goals, 28 demo foods and quick meals, 1 undo records, 2 demo insights, \d+ badges\./);
     expect((await t.db.select().from(logCombines).where(eq(logCombines.userId, id))).length).toBe(0);
   });
 
@@ -576,5 +596,13 @@ describe("npm run seed-demo", () => {
     await expect(seedDemo(t.db, args({ days: 6, replace: true }))).rejects.toThrow(/7 to 365/);
     await expect(seedDemo(t.db, args({ days: 366, replace: true }))).rejects.toThrow(/7 to 365/);
     expect((await counts(id)).weighIns).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("lib/demoData.ts (§46)", () => {
+  it("doesn't import from routes (the seeder uses lib code only)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../src/lib/demoData.ts", import.meta.url), "utf8");
+    expect(src).not.toMatch(/from "\.\.\/routes\//);
   });
 });

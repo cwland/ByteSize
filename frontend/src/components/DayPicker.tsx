@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { api } from "../api";
 import { onDayChanged, useSettingsMe } from "../day";
@@ -46,8 +46,19 @@ function useLoggedSpans() {
 }
 
 // children: what the trigger shows (the date). placement: "popover" right under it (wide), "bar" full width
-// under the header the trigger is in (phones; the header must be positioned).
-export default function DayPickerMenu({ children, placement, className = "" }: { children: ReactNode; placement: "popover" | "bar"; className?: string }) {
+// under the header the trigger is in (phones; the header must be positioned). wrap: puts the trigger in something
+// (the page's <h1>) while the calendar stays beside it, not inside it (§46).
+export default function DayPickerMenu({
+  children,
+  placement,
+  className = "",
+  wrap,
+}: {
+  children: ReactNode;
+  placement: "popover" | "bar";
+  className?: string;
+  wrap?: (trigger: ReactNode) => ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const { spans, need } = useLoggedSpans();
@@ -55,25 +66,49 @@ export default function DayPickerMenu({ children, placement, className = "" }: {
     setOpen(false);
     if (refocus) trigger.current?.focus();
   }, []);
+  const button = (
+    <button
+      ref={trigger}
+      type="button"
+      aria-label="Choose a day"
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      onClick={() => (open ? close(false) : setOpen(true))}
+      className={className}
+    >
+      {children}
+    </button>
+  );
+  const calendar = open && <Calendar placement={placement} spans={spans} need={need} trigger={trigger} onClose={close} />;
+  if (wrap) {
+    return (
+      <div className={placement === "popover" ? "relative" : ""}>
+        {wrap(button)}
+        {calendar}
+      </div>
+    );
+  }
   return (
     <span className={placement === "popover" ? "relative inline-block" : ""}>
-      <button
-        ref={trigger}
-        type="button"
-        aria-label="Choose a day"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => (open ? close(false) : setOpen(true))}
-        className={className}
-      >
-        {children}
-      </button>
-      {open && <Calendar placement={placement} spans={spans} need={need} onClose={close} />}
+      {button}
+      {calendar}
     </span>
   );
 }
 
-function Calendar({ placement, spans, need, onClose }: { placement: "popover" | "bar"; spans: Record<string, Set<string>>; need: (from: string) => void; onClose: (refocus?: boolean) => void }) {
+function Calendar({
+  placement,
+  spans,
+  need,
+  trigger,
+  onClose,
+}: {
+  placement: "popover" | "bar";
+  spans: Record<string, Set<string>>;
+  need: (from: string) => void;
+  trigger: RefObject<HTMLButtonElement | null>;
+  onClose: (refocus?: boolean) => void;
+}) {
   const { day, todayDay, select } = useSelectedDay();
   const { weekStart } = useSettingsMe();
   const titleId = useId();
@@ -86,11 +121,21 @@ function Calendar({ placement, spans, need, onClose }: { placement: "popover" | 
   const logged = spans[first];
   useEffect(() => need(first), [first, need, spans]);
 
+  // Escape closes it from inside it (or its date), unless something else already handled that Escape (§46); with
+  // focus on nothing in particular (the page itself) it closes too
+  const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const on = (e: globalThis.KeyboardEvent) => e.key === "Escape" && onClose();
+    const on = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const at = document.activeElement;
+      const inside = !at || at === document.body || !!root.current?.contains(at) || at === trigger.current;
+      if (!inside) return;
+      e.preventDefault();
+      onClose();
+    };
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
-  }, [onClose]);
+  }, [onClose, trigger]);
 
   useEffect(() => {
     if (!keyboard.current) return;
@@ -117,13 +162,15 @@ function Calendar({ placement, spans, need, onClose }: { placement: "popover" | 
   };
 
   const nextMonthOk = monthStart(addMonths(cursor, 1)) <= todayDay;
-  const arrow = "flex size-8 items-center justify-center rounded-full text-subtle hover:bg-pressed hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent";
+  const arrow =
+    "flex size-8 items-center justify-center rounded-full text-subtle hover:bg-pressed hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent";
   const choose = (d: string) => {
     select(d);
     onClose();
   };
   return (
     <div
+      ref={root}
       role="dialog"
       aria-label="Choose a day"
       data-placement={placement}
@@ -145,7 +192,11 @@ function Calendar({ placement, spans, need, onClose }: { placement: "popover" | 
           <button type="button" onClick={() => choose(todayDay)} className="rounded-full px-3 py-1 text-sm font-semibold text-link hover:bg-pressed">
             Today
           </button>
-          <IconButton label="Close" onClick={() => onClose()} className="flex size-8 items-center justify-center rounded-full text-subtle hover:bg-pressed hover:text-ink">
+          <IconButton
+            label="Close"
+            onClick={() => onClose()}
+            className="flex size-8 items-center justify-center rounded-full text-subtle hover:bg-pressed hover:text-ink"
+          >
             <X className="size-5" />
           </IconButton>
         </div>
@@ -177,7 +228,9 @@ function Calendar({ placement, spans, need, onClose }: { placement: "popover" | 
                     aria-current={isToday ? "date" : undefined}
                     onClick={() => choose(d)}
                     className={`mx-auto flex h-11 w-10 flex-col items-center justify-center rounded-full disabled:opacity-30 ${
-                      viewed ? "bg-action text-on-primary" : `enabled:hover:bg-pressed ${isToday ? "text-action ring-2 ring-action ring-inset" : inMonth ? "text-ink" : "text-subtle"}`
+                      viewed
+                        ? "bg-action text-on-primary"
+                        : `enabled:hover:bg-pressed ${isToday ? "text-action ring-2 ring-action ring-inset" : inMonth ? "text-ink" : "text-subtle"}`
                     }`}
                   >
                     <span aria-hidden="true" className="tabular text-base leading-5 font-bold">

@@ -71,7 +71,7 @@ describe("the chosen look from the first paint (§37)", () => {
     localStorage.setItem("bytesize-look:1", JSON.stringify({ dateFormat: "iso", weekStart: 1 }));
     paint({ "GET /api/settings/me": () => ({ ...settingsMe, dateFormat: "dmy-slash", weekStart: 6 }) });
     expect(await screen.findByRole("heading", { level: 1, name: "18/11/2026" })).toBeInTheDocument();
-    expect(JSON.parse(localStorage.getItem("bytesize-look:1")!)).toEqual({ dateFormat: "dmy-slash", weekStart: 6 });
+    expect(JSON.parse(localStorage.getItem("bytesize-look:1")!)).toEqual({ dateFormat: "dmy-slash", weekStart: 6, glp1On: false });
   });
 
   it("something unreadable remembered is ignored", () => {
@@ -112,7 +112,50 @@ describe("the chosen look from the first paint (§37)", () => {
   });
 });
 
+describe("the remembered look after signing out (§46)", () => {
+  function Look() {
+    const s = useSettingsMe();
+    return <output aria-label="Look">{`${s.dateFormat} ${s.weekStart}`}</output>;
+  }
+  const mount = (userId = 1) =>
+    renderWithSession(<Look />, { timezone: "America/Boise", id: userId });
+
+  it("settings still on their way when the person signs out aren't remembered when they arrive", async () => {
+    let answer!: (v: unknown) => void;
+    fakeServer({ "GET /api/settings/me": () => new Promise((res) => (answer = res)) });
+    mount();
+    await vi.waitFor(() => expect(answer).toBeTypeOf("function"));
+    forgetSettings(1); // signed out while the request was out
+    answer({ ...settingsMe, dateFormat: "iso", weekStart: 1 });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(localStorage.getItem("bytesize-look:1")).toBeNull();
+    cleanup();
+    fakeServer({ "GET /api/settings/me": () => new Promise(() => {}) });
+    mount();
+    expect(screen.getByLabelText("Look")).toHaveTextContent("weekday-long-month-short 0"); // nothing carried over in memory either
+  });
+
+  it("the old unkeyed bytesize-look is removed", () => {
+    localStorage.setItem("bytesize-look", JSON.stringify({ dateFormat: "iso", weekStart: 1 }));
+    fakeServer({ "GET /api/settings/me": () => new Promise(() => {}) });
+    mount();
+    expect(localStorage.getItem("bytesize-look")).toBeNull();
+    expect(screen.getByLabelText("Look")).toHaveTextContent("weekday-long-month-short 0"); // and never read
+  });
+});
+
 describe("tap the date for a calendar (§39)", () => {
+  it("the calendar is beside the page's <h1>, not inside it (§46)", async () => {
+    show();
+    const h1 = await screen.findByRole("heading", { level: 1, name: "Wednesday, Nov 18" });
+    await userEvent.click(screen.getByRole("button", { name: "Choose a day" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose a day" });
+    expect(h1.contains(dialog)).toBe(false);
+    expect(dialog.parentElement).toBe(h1.parentElement);
+    expect(within(h1).getByRole("button", { name: "Choose a day" })).toBeInTheDocument(); // the date itself stays the heading
+  });
+
   it("the centred date is a button that opens the calendar under it; choosing a day changes the day shown", async () => {
     show();
     expect(await screen.findByRole("heading", { level: 1, name: "Wednesday, Nov 18" })).toBeInTheDocument(); // still the heading

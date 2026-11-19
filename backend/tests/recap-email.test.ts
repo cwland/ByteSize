@@ -166,6 +166,14 @@ describe("sending", () => {
     expect(text).toContain(`Cheese <b>pizza</b> & "fries"`); // plain text isn't HTML: nothing to escape
   });
 
+  it("the link keeps a sub-path of the app address, like invites (§46)", async () => {
+    await ready();
+    await t.api("PUT", "/api/settings/email", { ...gmail, appUrl: "https://home.example.com/bytesize/" });
+    at(SUN_6AM);
+    await check();
+    expect(t.mail.sent[0].html).toContain(`href="https://home.example.com/bytesize/#/insights"`);
+  });
+
   it("the link uses the configured app address, else APP_URL / PASSKEY_ORIGINS, else there's no link (the email still goes)", async () => {
     await ready();
     await t.api("PUT", "/api/settings/email", { ...gmail, appUrl: `${APP}/` });

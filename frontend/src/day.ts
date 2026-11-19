@@ -53,21 +53,31 @@ export const DEFAULT_SETTINGS: SettingsMe = {
   waterButtonsMl: [237, 473],
   weekStart: 0,
   dateFormat: DEFAULT_DATE_FORMAT,
+  glp1On: false,
 };
 
 // The last settings the server gave (or that were saved): where a new mount starts, so the week
 // strip doesn't draw Sunday-first and re-layout every time it comes back. Before the server first answers on
-// a page load, the date format and week start remembered on this device (from the last answer) are used, so
-// the header shows the person's format from the first paint instead of the default flashing first.
+// a page load, the date format, week start and glp1On (whether the side rail shows GLP-1, §46) remembered on this
+// device (from the last answer) are used, so the header and rail are right from the first paint instead of the
+// defaults flashing first.
 // Kept per person (bytesize-look:<user id>): someone else signing in on this device never sees it, and signing
 // out forgets it (forgetSettings).
 const lookKey = (userId: number) => `bytesize-look:${userId}`;
+// Before looks were kept per person there was one for the device: never read, removed when seen (§46)
+const OLD_LOOK_KEY = "bytesize-look";
 function rememberedLook(userId: number | null): Partial<SettingsMe> {
+  try {
+    localStorage.removeItem(OLD_LOOK_KEY);
+  } catch {
+    // no storage
+  }
   if (userId === null) return {};
   try {
-    const v = JSON.parse(localStorage.getItem(lookKey(userId)) ?? "null") as { dateFormat?: unknown; weekStart?: unknown } | null;
+    const v = JSON.parse(localStorage.getItem(lookKey(userId)) ?? "null") as { dateFormat?: unknown; weekStart?: unknown; glp1On?: unknown } | null;
     const out: Partial<SettingsMe> = {};
     if (typeof v?.dateFormat === "string") out.dateFormat = v.dateFormat;
+    if (typeof v?.glp1On === "boolean") out.glp1On = v.glp1On; // the side rail's GLP-1 item from the first paint (§46)
     if (Number.isInteger(v?.weekStart) && (v!.weekStart as number) >= 0 && (v!.weekStart as number) <= 6) out.weekStart = v!.weekStart as number;
     return out;
   } catch {
@@ -77,13 +87,15 @@ function rememberedLook(userId: number | null): Partial<SettingsMe> {
 function rememberLook(userId: number | null, s: SettingsMe) {
   if (userId === null) return;
   try {
-    localStorage.setItem(lookKey(userId), JSON.stringify({ dateFormat: s.dateFormat, weekStart: s.weekStart }));
+    localStorage.setItem(lookKey(userId), JSON.stringify({ dateFormat: s.dateFormat, weekStart: s.weekStart, glp1On: s.glp1On }));
   } catch {
     // no storage (private mode): the default shows first, as before
   }
 }
 // The last settings the server gave, and whose they were (another person's are never a starting point)
 let lastKnown: { userId: number | null; settings: SettingsMe } | null = null;
+// Bumped by forgetSettings: an answer to a request sent before signing out is dropped, not remembered (§46)
+let signedOutTimes = 0;
 const known = (userId: number | null): SettingsMe =>
   lastKnown && lastKnown.userId === userId ? lastKnown.settings : (lastKnown = { userId, settings: { ...DEFAULT_SETTINGS, ...rememberedLook(userId) } }).settings;
 /** For tests: forget the remembered settings. */
@@ -93,6 +105,7 @@ export const resetSettingsCache = () => {
 /** Signing out: this person's settings are forgotten, here and on this device. */
 export function forgetSettings(userId: number) {
   lastKnown = null;
+  signedOutTimes++;
   try {
     localStorage.removeItem(lookKey(userId));
   } catch {
@@ -106,15 +119,18 @@ export function useSettingsMe() {
   const [s, setS] = useState<SettingsMe>(() => known(userId));
   useEffect(() => {
     let live = true;
-    const load = () =>
-      api<SettingsMe>("GET", "/api/settings/me")
+    const load = () => {
+      const sentAt = signedOutTimes;
+      return api<SettingsMe>("GET", "/api/settings/me")
         .then((r) => {
+          if (sentAt !== signedOutTimes) return; // signed out since it was sent
           const now: SettingsMe = { ...DEFAULT_SETTINGS, ...r };
           lastKnown = { userId, settings: now };
           rememberLook(userId, now);
           if (live) setS(now);
         })
         .catch(() => {});
+    };
     load();
     window.addEventListener(SETTINGS_EVENT, load);
     return () => {
