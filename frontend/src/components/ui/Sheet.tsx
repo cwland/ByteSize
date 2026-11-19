@@ -7,7 +7,8 @@ import { IconButton } from "./IconButton";
 // the dimmed backdrop doesn't (a slip while entering an item would lose it).
 // heading: a title (default: the label) or your own header content (e.g. a dropdown)
 // top: content pinned under the header (e.g. a search box); then only the children scroll, in a region named bodyLabel
-export function Sheet({ label, heading = label, onClose, onBack, tall = false, top, bodyLabel = "Content", children }: { label: string; heading?: ReactNode; onClose: () => void; onBack?: () => void; tall?: boolean; top?: ReactNode; bodyLabel?: string; children: ReactNode }) {
+// bottom: content pinned under the scrolling part (e.g. a chat's message box)
+export function Sheet({ label, heading = label, onClose, onBack, tall = false, top, bottom, bodyLabel = "Content", children }: { label: string; heading?: ReactNode; onClose: () => void; onBack?: () => void; tall?: boolean; top?: ReactNode; bottom?: ReactNode; bodyLabel?: string; children: ReactNode }) {
   const pinned = top !== undefined;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -38,6 +39,7 @@ export function Sheet({ label, heading = label, onClose, onBack, tall = false, t
         <div role={pinned ? "region" : undefined} aria-label={pinned ? bodyLabel : undefined} data-sheet-body="" className="-mx-5 min-h-0 flex-1 overflow-y-auto px-5">
           {children}
         </div>
+        {bottom !== undefined && <div className="shrink-0 pt-3">{bottom}</div>}
       </div>
     </div>
   );

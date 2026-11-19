@@ -18,6 +18,7 @@ import {
   goalsForSummary,
   proteinAsk,
   proteinFacts,
+  earlierFor,
   questionAsk,
   questionRange,
   readAnswer,
@@ -37,7 +38,7 @@ export const INSIGHTS_FAILED = "Couldn't write your insights right now. Try agai
 export const REFRESH_FAILED = "Couldn't write your insights right now. Try again in 10 minutes.";
 export const REFRESH_EVERY_MS = 10 * 60_000; // Refresh: once per 10 minutes per card per person
 export const QUESTIONS_PER_DAY = 20; // and questions: 20 a day (the person's day)
-export const KEEP_ANSWERS = 20;
+export const KEEP_ANSWERS = 25; // the chat (§47) keeps the last 25 exchanges: 50 messages
 export const KEEP_RECAPS = 27; // shown: this one and about half a year of past recaps
 export const PROTEIN_DAYS = 28;
 export const MIN_LOGGED_DAYS = 3; // the weekly recap is skipped for a week with fewer
@@ -58,6 +59,10 @@ const lockPerson = (tx: Tx, userId: number) => tx.execute(sql`select pg_advisory
 /** An answer still being written (a question asked, its answer not back yet): counted for the day, never shown. */
 const PENDING = { pending: true };
 const notPending = sql`(${insights.content} ->> 'pending') is null`;
+/** A question cleared with Clear chat (§47): its words are gone, the row stays so the day's 20 questions still count. */
+const CLEARED = { cleared: true };
+const notCleared = sql`(${insights.content} ->> 'cleared') is null`;
+const shown = and(notPending, notCleared);
 
 async function personOf(db: Db, userId: number): Promise<Person> {
   const [u] = await db
@@ -207,6 +212,8 @@ export async function claimQuestion(app: FastifyInstance, userId: number, questi
     await lockPerson(tx, userId);
     // A pending answer from a request that never finished (the server stopped): gone after an hour
     await tx.delete(insights).where(and(eq(insights.userId, userId), eq(insights.kind, "answer"), sql`not ${notPending}`, lt(insights.createdAt, new Date(now.getTime() - HOUR_MS))));
+    // Cleared questions no longer count after a day (their rows only held the day's count)
+    await tx.delete(insights).where(and(eq(insights.userId, userId), eq(insights.kind, "answer"), sql`not ${notCleared}`, lt(insights.createdAt, new Date(now.getTime() - 27 * HOUR_MS))));
     if ((await questionsLeft(app, userId, person.timezone, tx)) <= 0) throw new HttpError(429, TOO_MANY_QUESTIONS);
     const [row] = await tx.insert(insights).values({ userId, kind: "answer", source: "ask", periodStart: range.from, periodEnd: range.to, question, content: PENDING, createdAt: now }).returning({ id: insights.id });
     return { id: row.id, question, ...range, today };
@@ -218,12 +225,13 @@ export async function answerClaimed(app: FastifyInstance, userId: number, claim:
   try {
     const person = await personOf(app.db, userId);
     const input = await loadSummaryInput(app.db, userId, claim.from, claim.to, person, claim.today);
-    const json = await askAi(app, userId, questionAsk(buildSummary(input), claim.question), opts);
+    const summary = buildSummary(input);
+    const json = await askAi(app, userId, questionAsk(summary, claim.question, earlierFor(summary, await earlierExchanges(app.db, userId, claim.id))), opts);
     const content = readAnswer(json) ?? (await unusable(app, userId, "answer", json));
     const row = await app.db.transaction(async (tx) => {
       await lockPerson(tx, userId);
       const [made] = await tx.update(insights).set({ content }).where(and(eq(insights.id, claim.id), eq(insights.userId, userId))).returning();
-      const mine = and(eq(insights.userId, userId), eq(insights.kind, "answer"), notPending);
+      const mine = and(eq(insights.userId, userId), eq(insights.kind, "answer"), shown);
       const keep = (await tx.select({ id: insights.id }).from(insights).where(mine).orderBy(desc(insights.createdAt), desc(insights.id)).limit(KEEP_ANSWERS)).map((r) => r.id);
       await tx.delete(insights).where(and(mine, notInArray(insights.id, keep)));
       return made;
@@ -235,6 +243,26 @@ export async function answerClaimed(app: FastifyInstance, userId: number, claim:
     await app.db.delete(insights).where(and(eq(insights.id, claim.id), eq(insights.userId, userId), sql`not ${notPending}`));
     throw err;
   }
+}
+
+/** The exchanges before a question in this chat (§47), oldest first: what they asked and what they were told (not off-topic ones). */
+async function earlierExchanges(db: Db, userId: number, beforeId: number) {
+  const rows = await db
+    .select({ question: insights.question, content: insights.content })
+    .from(insights)
+    .where(and(eq(insights.userId, userId), eq(insights.kind, "answer"), shown, lt(insights.id, beforeId), isNotNull(insights.question), sql`(${insights.content} ->> 'offTopic') is distinct from 'true'`, sql`(${insights.content} ->> 'answer') is not null`))
+    .orderBy(desc(insights.createdAt), desc(insights.id))
+    .limit(4);
+  return rows.reverse().map((r) => ({ question: r.question!, answer: String((r.content as { answer: unknown }).answer) }));
+}
+
+/** Clear chat: the person's questions and answers are emptied (what was said is erased). The day's question count stays. */
+export async function clearChat(app: FastifyInstance, userId: number) {
+  return app.db.transaction(async (tx) => {
+    await lockPerson(tx, userId);
+    const cleared = await tx.update(insights).set({ question: null, content: CLEARED }).where(and(eq(insights.userId, userId), eq(insights.kind, "answer"), shown)).returning({ id: insights.id });
+    return { cleared: cleared.length };
+  });
 }
 
 /** Claim and answer in one (tests and callers that don't stream). */
@@ -297,7 +325,7 @@ export async function insightsView(app: FastifyInstance, userId: number) {
     loadSummaryInput(app.db, userId, week.from, week.to, person).then(weekNumbers),
     app.db.select().from(insights).where(mine("recap")).orderBy(desc(insights.periodStart), ...newest(insights.createdAt)).limit(KEEP_RECAPS),
     app.db.select().from(insights).where(mine("protein")).orderBy(...newest(insights.createdAt)).limit(1),
-    app.db.select().from(insights).where(and(mine("answer"), notPending)).orderBy(...newest(insights.createdAt)).limit(KEEP_ANSWERS),
+    app.db.select().from(insights).where(and(mine("answer"), shown)).orderBy(...newest(insights.createdAt)).limit(KEEP_ANSWERS),
     questionsLeft(app, userId, person.timezone),
     refreshWait(app, userId, "recap"),
     refreshWait(app, userId, "protein"),

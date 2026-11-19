@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { ChevronDown, Lightbulb, RefreshCw } from "lucide-react";
+import { ChevronDown, Lightbulb, MessagesSquare, RefreshCw } from "lucide-react";
 import { api } from "../../api";
 import { dayRange, shortDay } from "../../format";
 import { useSession } from "../../session";
@@ -11,10 +11,11 @@ import { AiWorking } from "../log/useEstimate";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Toggle } from "../ui/Toggle";
 import { field, primaryButton, secondaryButton } from "../ui/styles";
+import AskChat from "./AskChat";
 import { THINKING, useInsightAi } from "./useInsightAi";
 
 // Insights (§43, #/insights): what the AI coach noticed. The weekly recap (with the week's numbers, worked out by the
-// app, beside it), protein help and food swaps, and Ask a question. On wide screens from the rail; on phones from the
+// app, beside it), protein help and food swaps; asking is a chat sheet opened from the title area (AskChat.tsx, §47). On wide screens from the rail; on phones from the
 // Insights widget. The AI service is never named; while it works: "Thinking… asking AI".
 
 const plural = (n: number, one: string) => `${fmt(n)} ${one}${n === 1 ? "" : "s"}`;
@@ -26,6 +27,7 @@ export default function InsightsPage() {
   const wide = useWide();
   const [view, setView] = useState<InsightsView | null>(null);
   const [msg, setMsg] = useState<Msg>(null);
+  const [chatting, setChatting] = useState(false);
   const load = useCallback(
     () =>
       api<InsightsView>("GET", "/api/insights")
@@ -87,6 +89,11 @@ export default function InsightsPage() {
           {weekly}
         </div>
       )}
+      {/* Ask (§47): a sentence with an icon under the title opens the chat */}
+      <button type="button" onClick={() => setChatting(true)} className="flex items-center gap-2 self-start rounded-full px-1 py-1 text-left font-semibold text-link hover:underline">
+        <MessagesSquare aria-hidden="true" className="size-5 shrink-0" />
+        Ask about your eating, weight or habits
+      </button>
       <Notice msg={msg} />
       {view && !view.aiReady && <NoAi />}
       {view && (
@@ -94,10 +101,10 @@ export default function InsightsPage() {
           <RecapCard view={view} onChanged={load} />
           <div className={`flex flex-col ${wide ? "gap-5" : "gap-3"}`}>
             <ProteinCard view={view} onChanged={load} />
-            <AskCard view={view} onChanged={load} />
           </div>
         </div>
       )}
+      {chatting && view && <AskChat view={view} onChanged={load} onClose={() => setChatting(false)} />}
     </div>
   );
 }
@@ -341,63 +348,5 @@ function Suggestions({ title, items }: { title: string; items: [string, string][
         ))}
       </ul>
     </div>
-  );
-}
-
-function AskCard({ view, onChanged }: { view: InsightsView; onChanged: () => Promise<unknown> }) {
-  const ai = useInsightAi();
-  const [text, setText] = useState("");
-  const [msg, setMsg] = useState<Msg>(null);
-  const left = view.limits.questionsLeft;
-  const blocked = !view.aiReady || left <= 0;
-  const ask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!text.trim()) return;
-    setMsg(null);
-    try {
-      if (await ai.run<{ insight: AnswerInsight }>("/api/insights/ask", { question: text.trim() })) {
-        setText("");
-        await onChanged();
-      }
-    } catch (err) {
-      setMsg(errorMsg(err));
-    }
-  };
-  return (
-    <section aria-label="Ask a question" className="flex flex-col gap-3 rounded-2xl bg-container p-5">
-      <h2 className="text-lg font-bold">Ask a question</h2>
-      <form onSubmit={ask} className="flex flex-col gap-2">
-        <textarea
-          aria-label="Ask about your eating, weight or habits"
-          placeholder="Ask about your eating, weight or habits"
-          value={text}
-          maxLength={300}
-          rows={2}
-          disabled={blocked || !!ai.step}
-          onChange={(e) => setText(e.target.value)}
-          className={`${field} mt-0 resize-none`}
-        />
-        <div className="flex flex-wrap items-center gap-3">
-          <button type="submit" disabled={blocked || !!ai.step || !text.trim()} className={`${primaryButton} py-2`}>
-            Ask
-          </button>
-          <AiWorking step={ai.step} onCancel={ai.cancel} texts={THINKING} />
-          {view.aiReady && left > 0 && left <= 5 && !ai.step && <p className="text-sm text-muted">{`${plural(left, "question")} left today`}</p>}
-        </div>
-      </form>
-      {view.aiReady && left <= 0 && <p className="text-subtle">{`You've asked ${view.limits.questionsPerDay} questions today. You can ask more tomorrow.`}</p>}
-      <Notice msg={msg} />
-      {view.answers.length > 0 && (
-        <ul aria-label="Your questions" className="flex flex-col gap-3">
-          {view.answers.map((a) => (
-            <li key={a.id} className="rounded-xl bg-page px-3 py-2">
-              <p className="font-semibold">{a.question}</p>
-              <p className="mt-1 whitespace-pre-line">{a.content.answer}</p>
-              <p className="mt-1 text-xs text-muted">{`From ${dayRange(a.periodStart, a.periodEnd, true)}`}</p>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
   );
 }

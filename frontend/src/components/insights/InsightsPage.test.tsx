@@ -7,7 +7,7 @@ import { renderWithSession } from "../../test/renderWithSession";
 import { wideScreen } from "../../test/wide";
 import { answerRow, insightsJson, proteinRow, recapRow, streamed, weekNumbers } from "../../test/insightsFixtures";
 
-// Insights (§43): the weekly recap with the app's numbers, protein help and food swaps, ask a question
+// Insights (§43): the weekly recap with the app's numbers, protein help and food swaps; asking is a chat (AskChat.test.tsx)
 
 const stat = (card: HTMLElement, name: string) => within(card).getByRole("group", { name });
 
@@ -74,7 +74,6 @@ describe("Insights page", () => {
     const card = screen.getByRole("region", { name: "Weekly recap" });
     expect(stat(card, "Days logged")).toHaveTextContent("3 of 7");
     expect(within(card).queryByRole("button", { name: "Refresh weekly recap" })).not.toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Ask about your eating, weight or habits" })).toBeDisabled();
   });
 
   it("Refresh: 'Thinking… asking AI' with the turning wheel, then the new recap; another AI said plainly", async () => {
@@ -151,34 +150,6 @@ describe("Insights page", () => {
     renderWithSession(<InsightsPage />);
     const card = await screen.findByRole("region", { name: "Protein help and food swaps" });
     expect(within(card).getByText(/Refresh to get protein help/)).toBeInTheDocument();
-  });
-
-  it("ask a question: the answer comes from the person's data, newest first", async () => {
-    let page = insightsJson();
-    const server = fakeServer({ "GET /api/insights": () => page, "POST /api/insights/ask": (b: any) => {
-      const made = answerRow({ id: 7, question: b.question, content: { answer: "Mostly chicken.", offTopic: false } });
-      page = insightsJson({ answers: [made, answerRow()], limits: { ...insightsJson().limits, questionsLeft: 18 } });
-      return { insight: made };
-    } });
-    renderWithSession(<InsightsPage />);
-    const user = userEvent.setup();
-    const card = await screen.findByRole("region", { name: "Ask a question" });
-    const box = within(card).getByRole("textbox", { name: "Ask about your eating, weight or habits" });
-    await user.type(box, "Where does my protein come from?");
-    await user.click(within(card).getByRole("button", { name: "Ask" }));
-    expect(server.writes()[0]).toMatchObject({ path: "/api/insights/ask", body: { question: "Where does my protein come from?" } });
-    const answers = await within(card).findByRole("list", { name: "Your questions" });
-    await waitFor(() => expect(within(answers).getAllByRole("listitem")).toHaveLength(2));
-    expect(within(answers).getAllByRole("listitem")[0]).toHaveTextContent("Where does my protein come from?Mostly chicken.");
-    expect(box).toHaveValue("");
-  });
-
-  it("20 questions a day: a friendly message when they're used up", async () => {
-    fakeServer({ "GET /api/insights": () => insightsJson({ limits: { ...insightsJson().limits, questionsLeft: 0 } }) });
-    renderWithSession(<InsightsPage />);
-    const card = await screen.findByRole("region", { name: "Ask a question" });
-    expect(within(card).getByText("You've asked 20 questions today. You can ask more tomorrow.")).toBeInTheDocument();
-    expect(within(card).getByRole("button", { name: "Ask" })).toBeDisabled();
   });
 
   it("the weekly switch", async () => {

@@ -281,7 +281,7 @@ describe("Ask a question", () => {
     expect(OFF_TOPIC).toMatch(/I can only help with your ByteSize data/);
   });
 
-  it("20 questions a day (the person's day), and the last 20 are kept", async () => {
+  it("20 questions a day (the person's day), and the last 25 are kept (§47)", async () => {
     await aiServices();
     expect((await t.api("POST", "/api/insights/ask", { question: "" })).status).toBe(400);
     for (let i = 0; i < 20; i++) {
@@ -298,8 +298,8 @@ describe("Ask a question", () => {
     t.clock.date = new Date("2026-11-19T07:05:00Z");
     expect((await t.api("POST", "/api/insights/ask", { question: "Tomorrow?" })).status).toBe(200);
     const kept = await t.db.select().from(insights).where(eq(insights.kind, "answer"));
-    expect(kept).toHaveLength(20);
-    expect(kept.map((k) => k.question)).not.toContain("Question 0?");
+    expect(kept).toHaveLength(21); // 25 are kept: nothing has dropped off yet (that's in insights-chat.test.ts)
+    expect(kept.map((k) => k.question)).toContain("Question 0?");
     expect(kept.map((k) => k.question)).toContain("Tomorrow?");
   });
 });

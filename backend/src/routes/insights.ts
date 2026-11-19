@@ -9,6 +9,7 @@ import {
   INSIGHTS_OFF,
   answerClaimed,
   claimQuestion,
+  clearChat,
   claimRefresh,
   insightView,
   insightsView,
@@ -29,6 +30,9 @@ type Work = (o: { signal: AbortSignal; onProgress?: (p: AiProgress) => void }) =
 export default async function insightsRoutes(app: FastifyInstance) {
   app.get("/api/insights", async (req) => insightsView(app, requireUser(req)));
   app.get("/api/insights/latest", async (req) => latestRecap(app, requireUser(req)));
+
+  // Clear chat (§47): empties the person's questions and answers
+  app.delete("/api/insights/answers", async (req) => clearChat(app, requireSignedIn(req)));
 
   app.put("/api/insights/settings", async (req) => {
     const userId = requireSignedIn(req);
