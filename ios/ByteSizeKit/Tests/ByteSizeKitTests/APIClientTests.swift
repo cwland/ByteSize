@@ -86,6 +86,12 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(APIError.notByteSize(host: "h.test").message, "Can't reach ByteSize at h.test")
     }
 
+    func testNoContentIsFineForEmpty() async throws {
+        HTTPStub.handler = { _ in .raw(204, contentType: "", body: "") }
+        let reply = try await client().send(Endpoint<Empty>("DELETE", "/api/log/1"))
+        XCTAssertEqual(reply, Empty())
+    }
+
     func testProxyErrorPageIsNotByteSize() async {
         HTTPStub.handler = { _ in .raw(502, contentType: "text/html", body: "<html>Bad gateway</html>") }
         await assertThrows(.notByteSize(host: "h.test")) { try await self.client().send(Endpoint<OK>("GET", "/api/x")) }

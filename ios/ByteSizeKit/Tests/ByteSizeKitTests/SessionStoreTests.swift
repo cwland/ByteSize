@@ -100,6 +100,23 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertNil(tokens.read())
     }
 
+    func testOldLoginCannotSignOutNewOne() async throws {
+        let s = try await signedInStore()
+        let old = try XCTUnwrap(s.api)
+        await s.signOut()
+        try await s.signIn(server: server, username: "alex", password: "pw")
+        HTTPStub.routes(["/api/day/2026-11-19": .json(401, #"{"error":"Not logged in"}"#)])
+        _ = try? await old.send(Endpoint<Empty>("GET", "/api/day/2026-11-19"))
+        guard case .signedIn = s.state else { return XCTFail("a stale login's 401 signed out the new one") }
+        XCTAssertEqual(tokens.read(), "abc")
+    }
+
+    func testUserHasTimezone() async throws {
+        let s = try await signedInStore()
+        guard case .signedIn(let user) = s.state else { return XCTFail() }
+        XCTAssertEqual(user.timezone, "America/Denver")
+    }
+
     func testSignOutOffline() async throws {
         let s = try await signedInStore()
         HTTPStub.handler = { _ in .fail(.notConnectedToInternet) }
