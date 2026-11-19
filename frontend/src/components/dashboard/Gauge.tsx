@@ -24,7 +24,8 @@ export default function Gauge({ food: eaten, min, max, bankPaid = 0 }: { food: n
           <p className="mt-0.5 text-xs font-semibold text-subtle">{over ? "over" : covered ? "covered by bank" : "left"}</p>
         </div>
       </div>
-      {food < min && <p className="mt-2 text-center text-xs text-muted">{fmt(min - food)} to reach your range</p>}
+      {/* the minimum counts all the food eaten (a treat the bank paid for still fed you); the maximum counts food less what the bank paid */}
+      {eaten < min && <p className="mt-2 text-center text-xs text-muted">{fmt(min - eaten)} to reach your range</p>}
     </div>
   );
 }
