@@ -73,6 +73,18 @@ struct SignInView: View {
         .padding(.top, 32)
     }
 
+    /// A secure field normally; a plain one in UI-test runs, so iOS doesn't offer to save the stub's password.
+    @ViewBuilder
+    private var passwordInput: some View {
+        if Self.offerPasswordSaving {
+            SecureField("Password", text: $model.password)
+        } else {
+            TextField("Password", text: $model.password)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        }
+    }
+
     private var serverStep: some View {
         VStack(alignment: .leading, spacing: 16) {
             field("Server address") {
@@ -115,7 +127,7 @@ struct SignInView: View {
                         .accessibilityIdentifier("usernameField")
                 }
                 field("Password") {
-                    SecureField("Password", text: $model.password)
+                    passwordInput
                         .textContentType(Self.offerPasswordSaving ? .password : nil)
                         .focused($focus, equals: .password)
                         .submitLabel(.go)
