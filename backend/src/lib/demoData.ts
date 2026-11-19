@@ -7,7 +7,7 @@
 import { and, asc, count, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../db/index.js";
-import { activitySteps, glp1Settings, glp1Shots, logCombines, logEntries, targets, usageCounts, userBody, userFoods, users, weighIns, workouts } from "../db/schema.js";
+import { activitySteps, goals, glp1Settings, glp1Shots, logCombines, logEntries, targets, usageCounts, userBody, userFoods, users, weighIns, workouts } from "../db/schema.js";
 import { estimateCalories, type WorkoutType } from "./activity.js";
 import { addDays, localDay, weekdayOf, type Meal } from "./days.js";
 import { createMyFood, type FoodResult } from "./foods.js";
@@ -17,6 +17,10 @@ import { createMeal, quickMealParts } from "./recipes.js";
 import { normalizeUsername } from "./users.js";
 import { KG_PER_LB } from "./weight.js";
 import { saveWeighIn } from "../routes/weight.js";
+import { addToGoalsPage, dropGoalWidgets, goalsWithProgress } from "../routes/goals.js";
+import { weekStartFor } from "./calorieDays.js";
+import { weekStartOf } from "./trends.js";
+import type { GoalSpec } from "./goals.js";
 
 /** Put on every food and quick meal the seeder makes: how --replace finds them again. */
 export const DEMO_NOTE = "Demo data (npm run seed-demo)";
@@ -289,13 +293,37 @@ function planActivity(days: PlannedDay[], seed: number) {
   });
 }
 
+export type DemoGoal = GoalSpec & { name: string };
+
+/**
+ * Goals (§40c) on the seeded days: a few active (workouts and steps each week, a weight by a date 4 lb under today's
+ * trend) and a few that ended before today (logging and protein days each week, calorie days over four weeks), one
+ * of each type so none replaces another. Ended ones only where the seeded days reach back to their start.
+ */
+export function planDemoGoals(plan: DemoPlan, weekStart: number): DemoGoal[] {
+  const { today, from } = plan;
+  const week = weekStartOf(today, weekStart);
+  const latest = (d: string) => (d < from ? from : d);
+  const trendLb = plan.days.at(-1)!.trendLb;
+  const goals: DemoGoal[] = [
+    { name: "Work out 3 times a week", type: "workouts", target: 3, period: "week", measure: null, start: latest(addDays(week, -14)), end: null },
+    { name: "8,000 steps a day", type: "steps", target: 8000, period: "week", measure: "average", start: latest(addDays(week, -7)), end: null },
+    { name: "Down 4 more lb", type: "weight_by_date", target: (trendLb - 4) * KG_PER_LB, period: "stretch", measure: null, start: latest(addDays(today, -14)), end: addDays(today, 56) },
+    { name: "Log 5 days a week", type: "logging_days", target: 5, period: "week", measure: null, start: addDays(week, -56), end: addDays(week, -29) },
+    { name: "Protein 6 days a week", type: "protein_days", target: 6, period: "week", measure: null, start: addDays(week, -42), end: addDays(week, -29) },
+    { name: "20 calorie days in four weeks", type: "calorie_days", target: 20, period: "stretch", measure: null, start: addDays(today, -70), end: addDays(today, -43) },
+  ];
+  return goals.filter((g) => g.start >= from);
+}
+
 // ---------- command-line arguments ----------
 
 export const USAGE =
   "Usage: npm run seed-demo -- [--user <username>] [--days <7-365>] [--replace]\n" +
-  "Fills an existing account (default: the first admin) with a few months of food, weight, water and GLP-1 tracking. It never creates accounts.\n" +
+  "Fills an existing account (default: the first admin) with a few months of food, weight, water and GLP-1 tracking, steps and\n" +
+  "workouts, and a few goals (some active, some ended). It never creates accounts.\n" +
   `Default --days ${DEFAULT_DAYS}. An account that already has tracking is left alone unless you add --replace, which deletes\n` +
-  "that account's entries, weigh-ins, water, shots and the foods this command made earlier, then fills it again.";
+  "that account's entries, weigh-ins, water, shots, steps, workouts, goals and the foods this command made earlier, then fills it again.";
 
 export type SeedArgs = { username?: string; days: number; replace: boolean };
 
@@ -331,7 +359,7 @@ export type SeedResult = {
   username: string;
   replaced: boolean;
   /** what --replace removed */
-  deleted: { entries: number; weighIns: number; shots: number; foods: number; combines: number; steps: number; workouts: number };
+  deleted: { entries: number; weighIns: number; shots: number; foods: number; combines: number; steps: number; workouts: number; goals: number };
   /** set along the way, besides the tracking rows: said in the output */
   alsoSet: { bodyWeight: string; medication: string; usageCounts: number; madeProfile: boolean };
   timezone: string;
@@ -346,9 +374,11 @@ export type SeedResult = {
   emptyDays: number;
   stepDays: number;
   workouts: number;
+  /** §40c: goals made (ended ones kept with their result; met = completed) */
+  goals: { active: number; past: number; met: number };
 };
 
-export const HAS_DATA = "That account already has tracking (entries, weigh-ins, water, shots, steps or workouts). Add --replace to delete those, and the demo foods made earlier, and fill it again.";
+export const HAS_DATA = "That account already has tracking (entries, weigh-ins, water, shots, steps, workouts or goals). Add --replace to delete those, and the demo foods made earlier, and fill it again.";
 
 /** The instant a local time on a local day happens in `timeZone`. */
 export function instantAt(timeZone: string, day: string, minutes: number): Date {
@@ -378,10 +408,10 @@ export async function seedDemo(db: Db, opts: SeedOptions): Promise<SeedResult> {
       throw new Error(`No account has that username (this command never creates one). Accounts: ${all.map((u) => u.username).join(", ") || "none yet"}`);
     }
     const username = user.username;
-    const deleted = { entries: 0, weighIns: 0, shots: 0, foods: 0, combines: 0, steps: 0, workouts: 0 };
-    const has = async (table: typeof logEntries | typeof weighIns | typeof glp1Shots | typeof activitySteps | typeof workouts) => (await dbx.select({ n: count() }).from(table).where(eq(table.userId, user.id)))[0].n > 0;
+    const deleted = { entries: 0, weighIns: 0, shots: 0, foods: 0, combines: 0, steps: 0, workouts: 0, goals: 0 };
+    const has = async (table: typeof logEntries | typeof weighIns | typeof glp1Shots | typeof activitySteps | typeof workouts | typeof goals) => (await dbx.select({ n: count() }).from(table).where(eq(table.userId, user.id)))[0].n > 0;
     let replaced = false;
-    if ((await has(logEntries)) || (await has(weighIns)) || (await has(glp1Shots)) || (await has(activitySteps)) || (await has(workouts))) {
+    if ((await has(logEntries)) || (await has(weighIns)) || (await has(glp1Shots)) || (await has(activitySteps)) || (await has(workouts)) || (await has(goals))) {
       if (!opts.replace) throw new Error(HAS_DATA);
       // Only this account's tracking (recipe items go with their meal, below)
       deleted.entries = (await dbx.delete(logEntries).where(eq(logEntries.userId, user.id)).returning({ id: logEntries.id })).length;
@@ -391,6 +421,10 @@ export async function seedDemo(db: Db, opts: SeedOptions): Promise<SeedResult> {
       deleted.shots = (await dbx.delete(glp1Shots).where(eq(glp1Shots.userId, user.id)).returning({ id: glp1Shots.id })).length;
       deleted.steps = (await dbx.delete(activitySteps).where(eq(activitySteps.userId, user.id)).returning({ id: activitySteps.id })).length;
       deleted.workouts = (await dbx.delete(workouts).where(eq(workouts.userId, user.id)).returning({ id: workouts.id })).length;
+      // Goals, and their widgets on the person's pages
+      const gone = await dbx.delete(goals).where(eq(goals.userId, user.id)).returning({ id: goals.id });
+      deleted.goals = gone.length;
+      await dropGoalWidgets(dbx, user.id, gone.map((g) => g.id));
       replaced = true;
     }
     // Demo foods from an earlier run, whether or not the tracking is still there
@@ -504,6 +538,17 @@ export async function seedDemo(db: Db, opts: SeedOptions): Promise<SeedResult> {
     const workoutRows = plan.days.flatMap((d) => d.workouts.map((w) => ({ userId, day: d.day, type: w.type, minutes: w.minutes, calories: w.calories, source: "manual" as const, createdAt: stamp(d.day, 17 * 60), updatedAt: stamp(d.day, 17 * 60) })));
     if (workoutRows.length) await dbx.insert(workouts).values(workoutRows);
 
+    // --- goals (§40c): active ones join the Goals page; ended ones are worked out once and kept, as on a read ---
+    const demoGoals = planDemoGoals(plan, await weekStartFor(dbx, userId));
+    for (const g of demoGoals) {
+      const [row] = await dbx
+        .insert(goals)
+        .values({ userId, type: g.type, target: g.target, period: g.period, measure: g.measure, startDay: g.start, endDay: g.end, name: g.name, createdAt: stamp(g.start, 8 * 60) })
+        .returning({ id: goals.id });
+      if (g.end === null || g.end >= today) await addToGoalsPage(dbx, userId, row.id);
+    }
+    const kept = await goalsWithProgress(dbx, userId, today);
+
     // --- Settings › App info ---
     for (const [key, n] of Object.entries(plan.usage)) {
       await dbx.insert(usageCounts).values({ userId, key, count: n }).onConflictDoUpdate({ target: [usageCounts.userId, usageCounts.key], set: { count: sql`excluded.count` } });
@@ -529,6 +574,7 @@ export async function seedDemo(db: Db, opts: SeedOptions): Promise<SeedResult> {
       emptyDays: plan.days.filter((d) => d.empty).length,
       stepDays: stepRows.length,
       workouts: workoutRows.length,
+      goals: { active: kept.active.length, past: kept.past.length, met: kept.past.filter((g) => g.progress.state === "completed").length },
     };
   });
 }
@@ -553,11 +599,12 @@ export function describeSeed(r: SeedResult, days: number): string[] {
   const lines: string[] = [];
   const d = r.deleted;
   if (r.replaced || d.foods) {
-    lines.push(`Deleted from ${r.username}: ${d.entries} log entries (water included), ${d.weighIns} weigh-ins, ${d.shots} shots, ${d.steps} days of steps, ${d.workouts} workouts, ${d.foods} demo foods and quick meals, ${d.combines} undo records.`);
+    lines.push(`Deleted from ${r.username}: ${d.entries} log entries (water included), ${d.weighIns} weigh-ins, ${d.shots} shots, ${d.steps} days of steps, ${d.workouts} workouts, ${d.goals} goals, ${d.foods} demo foods and quick meals, ${d.combines} undo records.`);
   }
   lines.push(`Filled ${r.username} (${r.timezone}) from ${r.from} to ${r.to}:`);
   lines.push(`  ${r.foods} My foods and ${r.quickMeals} quick meals, ${r.entries} food log entries over ${days - r.emptyDays} days (${r.emptyDays} left empty), ${r.waterEntries} water entries,`);
-  lines.push(`  ${r.weighIns} weigh-ins, ${r.shots} GLP-1 shots, ${r.stepDays} days of steps, ${r.workouts} workouts.`);
+  lines.push(`  ${r.weighIns} weigh-ins, ${r.shots} GLP-1 shots, ${r.stepDays} days of steps, ${r.workouts} workouts,`);
+  lines.push(`  ${r.goals.active} active goals and ${r.goals.past} ended ones (${r.goals.met} met).`);
   lines.push(`Also set: body weight to ${r.alsoSet.bodyWeight} (latest weigh-in), GLP-1 settings (${r.alsoSet.medication}, ${WEEKDAYS[INJECTION_WEEKDAY]}), App info counts (${r.alsoSet.usageCounts}).`);
   if (r.alsoSet.madeProfile) lines.push("Made a starter profile (body details) because the account had none.");
   lines.push("Sign in as that account to see it. Run again with --replace to wipe and refill.");

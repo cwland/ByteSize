@@ -233,6 +233,28 @@ describe("using a key", () => {
     expect((await withKey(reader.key, "GET", "/api/workout-calories")).status).toBe(200);
   });
 
+  it("goals (§40c): any key reads them with their progress; no key makes, edits, ends or deletes one", async () => {
+    const reader = await newKey("reader", "read");
+    const logger = await newKey("phone", "log");
+    const g = (await t.api("POST", "/api/goals", { type: "workouts", target: 3, period: "week" })).body.goal;
+    for (const k of [reader, logger]) {
+      const all = await withKey(k.key, "GET", "/api/goals");
+      expect(all.status).toBe(200);
+      expect(all.body.active).toMatchObject([{ id: g.id, progress: { state: "active" } }]);
+      expect((await withKey(k.key, "GET", `/api/goals/${g.id}`)).body.goal.id).toBe(g.id);
+      for (const [m, url, body] of [
+        ["POST", "/api/goals", { type: "steps", target: 5000, period: "week" }],
+        ["PATCH", `/api/goals/${g.id}`, { target: 4 }],
+        ["POST", `/api/goals/${g.id}/end`, {}],
+        ["DELETE", `/api/goals/${g.id}`],
+      ] as const) {
+        const r = await withKey(k.key, m, url, body);
+        expect([m, url, r.status, r.body.error]).toEqual([m, url, 403, KEYS_CANT]);
+      }
+    }
+    expect((await t.api("GET", "/api/goals")).body.active).toMatchObject([{ id: g.id, target: 3 }]);
+  });
+
   it("a read-and-log key adds, edits and deletes log entries, water and weigh-ins for its owner", async () => {
     const made = await newKey("logger", "log");
     const water = await withKey(made.key, "POST", "/api/log", { day: DAY, water_ml: 250 });
@@ -330,6 +352,8 @@ describe("using a key", () => {
         "GET /api/activity",
         "GET /api/workouts/estimate",
         "GET /api/workout-calories",
+        "GET /api/goals",
+        "GET /api/goals/:id",
       ].sort()
     );
     expect([...KEY_LOG_ROUTES].sort()).toEqual(

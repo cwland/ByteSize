@@ -478,6 +478,30 @@ describe("per-user isolation", () => {
     expect((await a.as("GET", "/api/day/2026-11-18")).body.workoutCalories.bank).toMatchObject({ balance: 400 });
   });
 
+  it("a user can't see, change, end or delete another user's goals; progress and layouts use only their own data and goals", async () => {
+    t.clock.date = new Date("2026-11-18T19:00:00Z");
+    const { a, b } = await twoUsers(t);
+    const day = "2026-11-18";
+    // Anna has steps and a goal; Ben has a goal of the same type
+    expect((await a.as("PUT", `/api/steps/${day}`, { steps: 9000 })).status).toBe(200);
+    const annas = (await a.as("POST", "/api/goals", { type: "steps", target: 50000, period: "week", name: "Anna walks" })).body.goal;
+    expect(annas.progress.current.value).toBe(9000);
+    const bens = (await b.as("POST", "/api/goals", { type: "steps", target: 30000, period: "week" })).body;
+    expect(bens.replaced).toBeNull(); // Anna's goal isn't his to replace
+    expect(bens.goal.progress.current.value).toBe(0);
+    expect((await b.as("GET", "/api/goals")).body).toMatchObject({ active: [{ id: bens.goal.id }], past: [] });
+    expect((await b.as("GET", `/api/goals/${annas.id}`)).status).toBe(404);
+    expect((await b.as("PATCH", `/api/goals/${annas.id}`, { target: 1 })).status).toBe(404);
+    expect((await b.as("POST", `/api/goals/${annas.id}/end`)).status).toBe(404);
+    expect((await b.as("DELETE", `/api/goals/${annas.id}`)).status).toBe(404);
+    // Her goal's widget is no widget of his
+    const put = await b.as("PUT", "/api/layouts/dashboard", { version: 1, columns: [[`goal:${annas.id}`, `goal:${bens.goal.id}`], [], []] });
+    expect(put.body.layout.columns).toEqual([[`goal:${bens.goal.id}`], [], []]);
+    // ...and hers is unchanged
+    expect((await a.as("GET", "/api/goals")).body).toMatchObject({ active: [{ id: annas.id, name: "Anna walks", target: 50000, progress: { current: { value: 9000 } } }], past: [] });
+    expect((await a.as("GET", `/api/activity/${day}`)).body.stepGoal).toBeNull();
+  });
+
   it("a person's data download holds none of anyone else's rows, photos or Culury address", async () => {
     const { a, b } = await twoUsers(t);
     const food = (who: typeof a, name: string) => who.as("POST", "/api/my-foods", { name, servings: [{ label: "1", grams: 10 }], nutrients: { calories: 100 } }).then((r) => r.body.food);

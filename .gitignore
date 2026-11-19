@@ -5,3 +5,4 @@ data/
 .superpowers/
 Claude outputs/
 *.tsbuildinfo
+.worktrees/

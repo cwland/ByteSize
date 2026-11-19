@@ -38,6 +38,7 @@ const ALL_UNEARNED = [
   { id: "streak_30", earnedOn: null, seen: false },
   { id: "streak_100", earnedOn: null, seen: false },
   { id: "shots_on_time_4", earnedOn: null, seen: false },
+  { id: "goal_met", earnedOn: null, seen: false, count: 0 }, // §40c: goals completed
 ];
 
 describe("badges", () => {
@@ -54,7 +55,7 @@ describe("badges", () => {
     await weigh("2026-06-30", 89); // ~10.99 kg >= 20 lb (9.072 kg); trend <= 90: halfway
     const res = await getBadges();
     expect(earned(res.badges)).toEqual({ first_weigh_in: "2026-01-01", lost_5: "2026-03-02", lost_10: "2026-05-01", lost_20: "2026-06-30", halfway: "2026-06-30" });
-    expect(res.badges.map((b: any) => b.id)).toEqual(["first_weigh_in", "lost_5", "lost_10", "lost_20", "lost_30", "halfway", "goal_reached", "streak_7", "streak_30", "streak_100", "shots_on_time_4"]);
+    expect(res.badges.map((b: any) => b.id)).toEqual(["first_weigh_in", "lost_5", "lost_10", "lost_20", "lost_30", "halfway", "goal_reached", "streak_7", "streak_30", "streak_100", "shots_on_time_4", "goal_met"]);
     expect(res.new).toEqual(["first_weigh_in", "lost_5", "lost_10", "lost_20", "halfway"]);
   });
 
