@@ -7,10 +7,16 @@ public actor APIClient {
     private let session: URLSession
     private var onUnauthorized: (@Sendable () async -> Void)?
 
-    public init(base: ServerAddress, token: @escaping @Sendable () async -> String?, session: URLSession = .shared) {
+    public init(
+        base: ServerAddress,
+        token: @escaping @Sendable () async -> String?,
+        session: URLSession = .shared,
+        onUnauthorized: (@Sendable () async -> Void)? = nil
+    ) {
         self.base = base
         self.token = token
         self.session = session
+        self.onUnauthorized = onUnauthorized
     }
 
     /// Called once whenever the server says the login is no longer good.
