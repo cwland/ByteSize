@@ -13,7 +13,7 @@ import { averages, judge, trendOn, TREND_NUTRIENTS, weekStartOf, type DayLog, ty
 import { DEFAULT_WEEK_START } from "./settings-me.js";
 import { targetsOn } from "./body-plans.js";
 import { calorieDays } from "../lib/calorieDays.js";
-import { goalsMet, goalsWithProgress } from "./goals.js";
+import { goalsMet, goalsWithProgress } from "../lib/goalsData.js";
 
 // Weekly trends, badges and vacation mode. Who is asking comes only from the login.
 

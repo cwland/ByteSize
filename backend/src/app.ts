@@ -145,21 +145,23 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   const keyOverLimit = opts.keyRateLimit === false ? null : keyLimiter(opts.keyRateLimit ?? DEFAULT_KEY_RATE_LIMIT);
   const wrongKeys = opts.rateLimit === false ? null : wrongKeyLimiter(opts.rateLimit ?? DEFAULT_RATE_LIMIT);
   async function keyCaller(req: FastifyRequest, key: string) {
-    const at = app.now().getTime();
-    const wait = wrongKeys?.waitMs(req.ip, at) ?? 0;
-    if (wait > 0) throw new HttpError(429, `Too many tries. Wait ${Math.ceil(wait / 1000)} seconds and try again.`);
-    const wrong = () => {
-      wrongKeys?.failed(req.ip, at);
-      return new HttpError(401, BAD_KEY);
+    // A wrong key: 401, or 429 once this address has sent too many (a valid key is looked up first and never blocked)
+    const wrong = async () => {
+      const r = wrongKeys?.failed(req.ip, app.now().getTime());
+      if (!r?.over) return new HttpError(401, BAD_KEY);
+      if (r.justOver) {
+        await logEvent(opts.db, { category: "auth", level: "warning", source: "API keys", event: "Too many wrong API keys from one address", detail: `${req.ip}: wrong keys answered 429 for a while (valid keys still work)` });
+      }
+      return new HttpError(429, `Too many tries. Wait ${Math.ceil(r.waitMs / 1000)} seconds and try again.`);
     };
-    if (!KEY_SHAPE.test(key)) throw wrong();
+    if (!KEY_SHAPE.test(key)) throw await wrong();
     const hash = hashApiKey(key);
     const [row] = await opts.db
       .select({ id: apiKeys.id, userId: apiKeys.userId, keyHash: apiKeys.keyHash, access: apiKeys.access, prefix: apiKeys.prefix, lastUsedAt: apiKeys.lastUsedAt, disabled: users.disabled })
       .from(apiKeys)
       .innerJoin(users, eq(users.id, apiKeys.userId))
       .where(eq(apiKeys.keyHash, hash));
-    if (!row || !sameHash(row.keyHash, hash) || row.disabled) throw wrong();
+    if (!row || !sameHash(row.keyHash, hash) || row.disabled) throw await wrong();
     // No such route (or only the web app's catch-all): the 404 handler answers, as nobody
     if (!req.routeOptions.url || req.routeOptions.url === "/*") return;
     const denial = keyDenial(row.access, req.method, req.routeOptions.url);

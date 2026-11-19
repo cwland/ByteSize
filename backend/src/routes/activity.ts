@@ -9,8 +9,8 @@ import { addDays, DAY, todayFor } from "../lib/days.js";
 import { ACTIVITY_SOURCES, activityDays, daySteps, earnedOf, estimateCalories, MET, WORKOUT_TYPES } from "../lib/activity.js";
 import { COUNT_PCTS, inForce, MAX_WEEKLY_CAP, WORKOUT_MODES } from "../lib/workoutCalories.js";
 import { modeRows, settingsOf } from "../lib/calorieDays.js";
-import { latestWeighIn } from "./weight.js";
-import { stepGoalOn } from "./goals.js";
+import { latestWeighIn } from "../lib/weighIns.js";
+import { stepGoalOn } from "../lib/goalsData.js";
 
 // Activity (§40b): steps and workouts, typed or sent by the phone (source "health", which upserts: steps by day,
 // workouts by the phone's own id, so a phone can resend safely), and Goals › Your plan › Workout calories.

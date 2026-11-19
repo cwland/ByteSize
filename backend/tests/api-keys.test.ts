@@ -447,11 +447,34 @@ describe("using a key", () => {
       const over = await call(wrong, "198.51.100.7");
       expect(over.status).toBe(429);
       expect(over.body.error).toMatch(/^Too many tries\. Wait \d+ seconds and try again\.$/);
-      expect((await call(made.key, "198.51.100.7")).status).toBe(429); // that address waits, whatever it sends
+      expect((await call(made.key, "198.51.100.7")).status).toBe(200); // a valid key is never blocked (review fix 1)
       expect((await call(wrong, "198.51.100.8")).status).toBe(401); // another address has its own count
       expect((await call(made.key, "198.51.100.8")).status).toBe(200);
       // right keys never count toward it
       for (let i = 0; i < 5; i++) expect((await call(made.key, "198.51.100.9")).status).toBe(200);
+    } finally {
+      await app2.close();
+    }
+  });
+
+  it("an address over the wrong-key limit: a valid key still works, every wrong key gets 429 and still counts; one warning logged (§46 fix)", async () => {
+    const made = await newKey();
+    const app2 = buildApp({ db: t.db, jwtSecret: TEST_SECRET, rateLimit: { max: 2, windowMs: 60_000 }, keyRateLimit: false, dataDir: t.app.dataDir, backupSchedule: false, appOrigins: [] });
+    await app2.ready();
+    try {
+      const call = (key: string) =>
+        app2.inject({ method: "GET", url: "/api/weight", headers: { authorization: `Bearer ${key}` }, remoteAddress: "203.0.113.5" }).then((r) => r.statusCode);
+      const wrong = "bs_" + "B".repeat(43);
+      expect([await call(wrong), await call(wrong)]).toEqual([401, 401]);
+      expect(await call(wrong)).toBe(429);
+      expect(await call(made.key)).toBe(200);
+      expect(await call(wrong)).toBe(429);
+      expect(await call("bs_short")).toBe(429);
+      expect(await call(made.key)).toBe(200);
+      const warnings = (await t.db.select().from(appLog)).filter((l) => l.level === "warning" && /wrong API key/i.test(l.event));
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].detail).toContain("203.0.113.5");
+      expect(JSON.stringify(warnings)).not.toContain("BBBB");
     } finally {
       await app2.close();
     }

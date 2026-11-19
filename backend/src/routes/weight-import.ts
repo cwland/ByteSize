@@ -8,7 +8,7 @@ import { HttpError, badRequest } from "../lib/errors.js";
 import { todayFor } from "../lib/days.js";
 import { logEvent } from "../lib/appLog.js";
 import { CsvError, decodeCsv, readWeightCsv, type CsvWeighIn, type WeightCsv } from "../lib/weightCsv.js";
-import { latestWeighIn, syncBodyWeight, type DbOrTx } from "./weight.js";
+import { latestWeighIn, syncBodyWeight, type DbOrTx } from "../lib/weighIns.js";
 
 // Settings › Data › Import weight history (design §19): a CSV from another app, previewed, then added to the
 // caller's own weigh-ins in one transaction. Who is asking comes only from the login. The file is never kept.

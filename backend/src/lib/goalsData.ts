@@ -140,10 +140,17 @@ export async function goalsWithProgress(db: Db, userId: number, today: string, o
         .where(and(eq(goals.id, g.id), isNull(goals.result)))
         .returning();
       if (row && p.state === "completed") {
+        // the met goals now, this one included (its result was just kept in this transaction)
+        const [{ n: metNow }] = await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(goals)
+          .where(and(eq(goals.userId, userId), sql`${goals.result}->>'state' = 'completed'`));
         await tx
           .insert(badges)
-          .values({ userId, badge: "goal_met", earnedOn: g.endDay!, count: 1 })
-          .onConflictDoUpdate({ target: [badges.userId, badges.badge], set: { earnedOn: sql`greatest(${badges.earnedOn}, excluded.earned_on)`, seen: false, count: sql`${badges.count} + 1` } });
+          .values({ userId, badge: "goal_met", earnedOn: g.endDay!, count: metNow })
+          // one more than before, counting on from the met goals when the badge's count is behind them (a backup from
+          // before the count restored it as 0), so a later delete can't lower it
+          .onConflictDoUpdate({ target: [badges.userId, badges.badge], set: { earnedOn: sql`greatest(${badges.earnedOn}, excluded.earned_on)`, seen: false, count: sql`greatest(${badges.count} + 1, excluded.count)` } });
       }
       return row;
     });

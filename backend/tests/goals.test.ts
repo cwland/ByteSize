@@ -383,6 +383,24 @@ describe("freezing", () => {
     expect((await t.api("GET", "/api/badges")).body.badges.find((b: any) => b.id === "goal_met")).toMatchObject({ earnedOn: TODAY, count: 1 });
   });
 
+  it("after restoring a backup from before the count (count 0), the next met goal counts on from the met goals, and deleting one doesn't lower it (§46 fix)", async () => {
+    await eat(TODAY, { calories: 100 });
+    const a = (await create({ type: "logging_days", target: 1, period: "stretch", end: TODAY })).body.goal;
+    await create({ type: "weigh_ins", target: 1, period: "stretch", end: TODAY });
+    await t.api("PUT", `/api/weigh-ins/${TODAY}`, { weightKg: 90 });
+    at("2026-11-19");
+    await list(); // both frozen as met
+    // An older backup restored: the badge has no count
+    await t.db.update(badges).set({ count: 0 }).where(eq(badges.badge, "goal_met"));
+    expect((await t.api("GET", "/api/badges")).body.badges.find((b: any) => b.id === "goal_met").count).toBe(2);
+    await eat("2026-11-19", { calories: 100 });
+    await create({ type: "logging_days", target: 1, period: "stretch", end: "2026-11-19" });
+    at("2026-11-20");
+    expect((await t.api("GET", "/api/badges")).body.badges.find((b: any) => b.id === "goal_met").count).toBe(3);
+    await t.api("DELETE", `/api/goals/${a.id}`);
+    expect((await t.api("GET", "/api/badges")).body.badges.find((b: any) => b.id === "goal_met").count).toBe(3);
+  });
+
   it("a goal keeps the week start it was made with: changing it later doesn't turn a missed goal into Ended (§46)", async () => {
     // Sun Nov 15 – Wed Nov 18 with Sunday weeks: one 4-day week, judged
     const g = (await create({ type: "logging_days", target: 4, period: "week", start: "2026-11-15", end: TODAY })).body.goal;

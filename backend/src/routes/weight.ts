@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, asc, eq } from "drizzle-orm";
-import { isLatest, latestWeighIn, saveWeighIn, syncBodyWeight, type DbOrTx } from "../lib/weighIns.js";
+import { isLatest, saveWeighIn, syncBodyWeight } from "../lib/weighIns.js";
 import { userBody, weighIns } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
@@ -24,8 +24,6 @@ const weighInBody = z.object({
 const rangeQuery = z
   .object({ from: DAY.optional(), to: DAY.optional() })
   .refine((q) => !q.from || !q.to || q.from <= q.to, "The start day must not be after the end day");
-
-export { latestWeighIn, saveWeighIn, syncBodyWeight, type DbOrTx }; // (moved to lib/weighIns.ts; still reachable from here)
 
 export default async function weightRoutes(app: FastifyInstance) {
   const { db } = app;

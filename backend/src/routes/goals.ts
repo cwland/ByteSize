@@ -10,7 +10,6 @@ import { GOAL_NAMES, GOAL_PERIODS, GOAL_TYPES, MIN_JUDGED_DAYS, STEP_MEASURES, S
 import { addToGoalsPage, dropGoalWidgets, goalWeekStart, goalsWithProgress, isPast, specOf } from "../lib/goalsData.js";
 
 // goalsWithProgress and the goal widget helpers live in lib/goalsData.ts (the demo seeder uses them too)
-export { activeGoalIds, goalFacts, goalsMet, goalsWithProgress, keepGoals, stepGoalOn, type GoalView } from "../lib/goalsData.js";
 
 // Goals with a start and end (§40c). Progress is worked out from the person's data each time a goal is read; once its
 // end has passed (in their time zone) the result is worked out one last time and kept (goals.result), and a goal

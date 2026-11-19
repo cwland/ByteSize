@@ -58,8 +58,9 @@ export const DEFAULT_SETTINGS: SettingsMe = {
 
 // The last settings the server gave (or that were saved): where a new mount starts, so the week
 // strip doesn't draw Sunday-first and re-layout every time it comes back. Before the server first answers on
-// a page load, the date format and week start remembered on this device (from the last answer) are used, so
-// the header shows the person's format from the first paint instead of the default flashing first.
+// a page load, the date format, week start and glp1On (whether the side rail shows GLP-1, §46) remembered on this
+// device (from the last answer) are used, so the header and rail are right from the first paint instead of the
+// defaults flashing first.
 // Kept per person (bytesize-look:<user id>): someone else signing in on this device never sees it, and signing
 // out forgets it (forgetSettings).
 const lookKey = (userId: number) => `bytesize-look:${userId}`;
