@@ -547,9 +547,16 @@ export const usageCounts = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.key] })]
 );
 
-// The person's Dashboard: which widgets sit in which column, top to bottom (§28). No row: the default layout.
-export const dashboardLayouts = pgTable("dashboard_layouts", {
-  userId: userRef().primaryKey(),
-  columns: jsonb("columns").$type<string[][]>().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+// The person's widget pages (§28, §40a): which widgets sit in which column, top to bottom, one row per page
+// (lib/widgets.ts LAYOUT_PAGES). No row: that page's default layout. The table keeps its first name so older
+// backups restore into it (their rows, without a page, are the Dashboard's).
+export const dashboardLayouts = pgTable(
+  "dashboard_layouts",
+  {
+    userId: userRef(),
+    page: text("page").notNull().default("dashboard"),
+    columns: jsonb("columns").$type<string[][]>().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.page] })]
+);

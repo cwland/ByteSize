@@ -16,7 +16,7 @@ const layout = { version: 1, columns: [["food"], ["budget", "water"], ["day-tota
 
 describe("dashboard layout", () => {
   it("knows today's widgets", () => {
-    expect([...WIDGET_IDS].sort()).toEqual(["budget", "day-totals", "food", "next-shot", "streak", "water", "weight"]);
+    expect([...WIDGET_IDS].sort()).toEqual(["budget", "day-totals", "food", "goal-date", "next-shot", "streak", "water", "weight"]);
   });
 
   it("is null until saved, then comes back as saved", async () => {

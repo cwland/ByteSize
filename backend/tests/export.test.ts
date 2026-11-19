@@ -144,6 +144,16 @@ describe("GET /api/export", () => {
     expect(JSON.parse(text("bytesize-export.json")).tables.dashboard_layouts).toEqual([expect.objectContaining({ columns: layout.columns })]);
   });
 
+  it("includes the person's Goals layout beside the Dashboard's, each with its page", async () => {
+    const dash = { version: 1, columns: [["budget"], ["food"], ["streak"]] };
+    const goals = { version: 1, columns: [["goal-date"], ["badges"], []] };
+    expect((await t.api("PUT", "/api/layouts/dashboard", dash)).status).toBe(200);
+    expect((await t.api("PUT", "/api/layouts/goals", goals)).status).toBe(200);
+    const rows = JSON.parse((await download()).text("bytesize-export.json")).tables.dashboard_layouts;
+    expect(rows).toHaveLength(2);
+    expect(rows).toEqual(expect.arrayContaining([expect.objectContaining({ page: "dashboard", columns: dash.columns }), expect.objectContaining({ page: "goals", columns: goals.columns })]));
+  });
+
   it("the json carries the date format choice with the rest of the person's settings", async () => {
     await t.api("PUT", "/api/settings/me", { mealWindows: { breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" }, waterButtonsMl: [237], dateFormat: "dmy-dot" });
     const json = JSON.parse((await download()).text("bytesize-export.json"));

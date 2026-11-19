@@ -6,7 +6,7 @@ import { userBody, weighIns } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
 import { DAY, todayFor } from "../lib/days.js";
-import { projectionOf, replanHint, trendOf } from "../lib/weight.js";
+import { goalDateOf, projectionOf, replanHint, trendOf } from "../lib/weight.js";
 import { targetsOn } from "./body-plans.js";
 
 // Weigh-ins (one per day, in kg) and the weight trend toward the goal (design §13 A).
@@ -118,6 +118,7 @@ export default async function weightRoutes(app: FastifyInstance) {
       goalKg,
       lostKg: first && last ? first.weightKg - last.trendKg : null,
       projection: projectionOf(all, goalKg, today),
+      goalDate: goalDateOf(all, goalKg, today), // §40a: the Goal date widget
       replanHint: replanHint(last?.weightKg ?? null, basisKg),
     };
   });

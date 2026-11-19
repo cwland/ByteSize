@@ -1,6 +1,13 @@
-// The Dashboard widgets ByteSize has (§28). The app's widget registry (frontend/src/components/dashboard/widgets.tsx)
-// has the same ids; a frontend test checks the two lists match. A layout may only name these.
-export const WIDGET_IDS = ["food", "budget", "water", "day-totals", "weight", "next-shot", "streak"] as const;
-export type WidgetId = (typeof WIDGET_IDS)[number];
+// The widget pages and the widgets each takes (§28, §40a). The app's widget registry
+// (frontend/src/components/dashboard/widgets.tsx) has the same ids and pages; backend/tests/widgets-sync.test.ts
+// checks the two agree. A page's layout may only name its own widgets. A widget may be offered on more than one page.
+export const LAYOUT_PAGES = ["dashboard", "goals"] as const;
+export type LayoutPage = (typeof LAYOUT_PAGES)[number];
+export const PAGE_WIDGETS: Record<LayoutPage, readonly string[]> = {
+  dashboard: ["food", "budget", "water", "day-totals", "weight", "next-shot", "streak", "goal-date"],
+  goals: ["your-plan", "goal-date", "weight-chart", "weekly-trends", "badges"],
+};
+/** The Dashboard's widgets (the page §28 started with) */
+export const WIDGET_IDS = PAGE_WIDGETS.dashboard;
 export const LAYOUT_VERSION = 1;
 export const MAX_COLUMNS = 3;

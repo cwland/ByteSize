@@ -205,7 +205,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(foodRoutes);
   app.register(myFoodRoutes);
   app.register(foodLogRoutes);
-  app.register(dashboardRoutes); // the person's Dashboard widget layout
+  app.register(dashboardRoutes); // the person's widget layouts (Dashboard, Goals)
   app.register(photoRoutes); // registers multipart uploads for its own routes only
   app.register(weightRoutes);
   app.register(weightImportRoutes); // Settings › Data: weight history from a CSV (multipart for its own routes only)

@@ -248,8 +248,20 @@ describe("GET /api/weight", () => {
       goalKg: null,
       lostKg: null,
       projection: { status: "not_enough" },
+      goalDate: { status: "no_goal" },
       replanHint: false,
     });
+  });
+
+  it("gives the goal date (§40a) from the last 6 weeks' trend, whatever window is asked for", async () => {
+    await t.api("PUT", "/api/body", BODY); // goal 80 kg
+    for (let i = 0; i < 21; i++) await weigh(addDays(TODAY, -2 * (20 - i)), 100 - 0.2 * i); // every other day for 6 weeks
+    const w = (await t.api("GET", `/api/weight?from=${TODAY}&to=${TODAY}`)).body;
+    expect(w.goalDate).toMatchObject({ status: "ok", kgPerWeek: expect.any(Number), toGoKg: expect.any(Number), weeks: { min: expect.any(Number), max: expect.any(Number) } });
+    expect(w.goalDate.kgPerWeek).toBeGreaterThan(0);
+    expect(w.goalDate.toGoKg).toBeCloseTo(w.trendKg - 80, 9);
+    expect(w.goalDate.earliest <= w.goalDate.date && w.goalDate.date <= w.goalDate.latest).toBe(true);
+    expect(w.goalDate.earliest > TODAY).toBe(true);
   });
 
   it("gives start, latest, trend, goal, lost so far and a projection; trend is over all weigh-ins, then windowed", async () => {
