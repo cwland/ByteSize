@@ -9,6 +9,8 @@ final class HTTPStub: URLProtocol, @unchecked Sendable {
         case fail(URLError.Code)
         /// Never answers (a server that's out of reach without failing fast).
         case hang
+        /// Answers after a pause (to test answers arriving out of order).
+        indirect case delayed(TimeInterval, Reply)
     }
 
     struct Recorded {
@@ -38,7 +40,13 @@ final class HTTPStub: URLProtocol, @unchecked Sendable {
 
     override func startLoading() {
         HTTPStub.requests.append(Recorded(request: request, body: request.httpBody ?? readStream(request.httpBodyStream)))
-        switch HTTPStub.handler(request) {
+        reply(HTTPStub.handler(request))
+    }
+
+    private func reply(_ answer: Reply) {
+        switch answer {
+        case .delayed(let seconds, let later):
+            DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { self.reply(later) }
         case .fail(let code):
             client?.urlProtocol(self, didFailWithError: URLError(code))
         case .hang:
