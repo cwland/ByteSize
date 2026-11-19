@@ -51,11 +51,12 @@ describe("weekly trends", () => {
         start: "2026-11-15",
         end: "2026-11-21",
         daysLogged: 2,
+        caloriesInRange: 0, // no targets: no day is judged
         avg: { calories: 240, protein_g: 9, fiber_g: 6, water_ml: 1000 }, // water: over logged days with water logged
         status: NULLS, // no targets
         weightChangeKg: null,
       },
-      { start: "2026-11-08", end: "2026-11-14", daysLogged: 0, avg: NULLS, status: NULLS, weightChangeKg: null },
+      { start: "2026-11-08", end: "2026-11-14", daysLogged: 0, caloriesInRange: 0, avg: NULLS, status: NULLS, weightChangeKg: null },
     ]);
     expect(await weekly()).toHaveLength(12);
     expect((await t.api("GET", "/api/trends/weekly?weeks=0")).status).toBe(400);

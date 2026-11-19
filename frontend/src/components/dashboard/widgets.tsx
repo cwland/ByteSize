@@ -11,6 +11,7 @@ import WeightCard from "../weight/WeightCard";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { primaryButton, secondaryButton } from "../ui/styles";
 import FoodWidget from "./FoodWidget";
+import ActivityWidget from "../activity/ActivityWidget";
 import Gauge from "./Gauge";
 import Ring from "./Ring";
 import GoalDateWidget from "../goals/GoalDate";
@@ -29,7 +30,8 @@ import { planPickerHref } from "../../plans";
 
 // What every widget gets: the selected day (loaded once by the Dashboard; today on other pages, with no day data)
 // and the screen width
-export type WidgetProps = { day: string; data: Day | null; isToday: boolean; wide: boolean };
+// loadsDay: the page loads the day itself (the Dashboard), so data is coming: widgets wait for it instead of fetching
+export type WidgetProps = { day: string; data: Day | null; isToday: boolean; wide: boolean; loadsDay?: boolean };
 export type WidgetDef = {
   id: string;
   pages: Partial<Record<LayoutPage, number | null>>;
@@ -41,10 +43,13 @@ export type WidgetDef = {
   Component: (p: WidgetProps) => JSX.Element | null;
 };
 
-function Budget({ data }: WidgetProps) {
+function Budget({ data, isToday }: WidgetProps) {
   const { user } = useSession();
   const t = data?.targets ?? null;
   const food = data?.totals.calories ?? 0;
+  // §40b: what the weekly bank paid today (treats and a covered overage)
+  const paid = data?.workoutCalories?.mode === "bank" ? data.workoutCalories.bank?.thisDay : undefined;
+  const bankPaid = paid ? paid.treatSpent + paid.covered : 0;
   const water = (ml: number) => waterValue(ml, user.units);
   return (
     <section aria-label="Budget" className="rounded-2xl bg-container p-5">
@@ -57,12 +62,12 @@ function Budget({ data }: WidgetProps) {
             </p>
             <p className="text-xs text-muted">Food</p>
           </div>
-          <Gauge food={food} min={t.calories.min} max={t.calories.max} />
+          <Gauge food={food} min={t.calories.min} max={t.calories.max} bankPaid={bankPaid} />
           <div className="text-center">
             <p data-testid="exercise-calories" className="text-xl font-bold tabular">
               {fmt(data?.exercise.calories ?? 0)}
             </p>
-            <p className="text-xs text-muted">Exercise</p>
+            <p className="text-xs text-muted">Earned</p>
           </div>
         </div>
       ) : (
@@ -75,6 +80,7 @@ function Budget({ data }: WidgetProps) {
           </div>
         )
       )}
+      {data && <WorkoutCaloriesLine day={data} isToday={isToday} />}
       {data && (
         <div className="mt-6 grid grid-cols-3 gap-2">
           <Ring name="Protein" value={data.totals.protein_g ?? 0} min={t?.protein_g.min} max={t?.protein_g.max} unit="g" />
@@ -89,6 +95,55 @@ function Budget({ data }: WidgetProps) {
         </div>
       )}
     </section>
+  );
+}
+
+// "Earned today: 320" (and, adding to the day, how much the range grew)
+export function earnedText(day: Day, isToday: boolean): string | null {
+  const wc = day.workoutCalories;
+  const earned = wc?.earned ?? day.exercise.calories;
+  if (!(earned > 0)) return null;
+  const base = `${isToday ? "Earned today" : "Earned"}: ${fmt(earned)}`;
+  return wc?.mode === "add" && wc.added > 0 ? `${base} · ${fmt(wc.added)} added to your range` : base;
+}
+
+const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Under the budget gauge (§40b): what workouts earned; with the weekly bank, its balance, a small bar per day of the
+// week so far (filled: put in; marked: spent), and what it paid for this day
+function WorkoutCaloriesLine({ day, isToday }: { day: Day; isToday: boolean }) {
+  const text = earnedText(day, isToday);
+  const bank = day.workoutCalories?.mode === "bank" ? day.workoutCalories.bank : null;
+  if (!text && !bank) return null;
+  const tallest = Math.max(1, ...(bank?.days.map((d) => Math.max(d.deposit, d.spent)) ?? [1]));
+  const t = bank?.thisDay;
+  return (
+    <div className="mt-3 text-center text-sm">
+      {text && <p className="text-subtle">{text}</p>}
+      {bank && (
+        <div role="group" aria-label="Bank" className="mt-2 flex flex-col items-center gap-1">
+          <p className="font-semibold">{`Bank: ${fmt(bank.balance)} this week`}</p>
+          <div className="flex h-6 items-end gap-1">
+            {bank.days.map((d) => {
+              const name = WEEKDAY[new Date(`${d.day}T12:00:00Z`).getUTCDay()];
+              const said = `${name}: ${fmt(d.deposit)} in${d.spent > 0 ? `, ${fmt(d.spent)} spent` : ""}`;
+              return (
+                <span key={d.day} role="img" aria-label={said} title={said} className="relative flex h-6 w-3 items-end rounded-sm bg-pressed">
+                  <span className="w-full rounded-sm bg-action" style={{ height: `${(d.deposit / tallest) * 100}%` }} />
+                  {d.spent > 0 && <span className="absolute inset-x-0 bottom-0 border-t-2 border-ink" style={{ height: `${(d.spent / tallest) * 100}%` }} />}
+                </span>
+              );
+            })}
+          </div>
+          {t && t.treatSpent > 0 && <p className="text-subtle">{`Treats: ${fmt(t.treatSpent)} from your bank`}</p>}
+          {t && t.overBy > 0 && t.covered > 0 && (
+            <p className={t.covered === t.overBy ? "text-success" : "text-warning"}>
+              {t.covered === t.overBy ? `Over by ${fmt(t.overBy)} — covered by your bank` : `Over by ${fmt(t.overBy)} — your bank covered ${fmt(t.covered)}`}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -137,7 +192,7 @@ export const WIDGETS: WidgetDef[] = [
   { id: "food", pages: { dashboard: 0 }, fits: "narrow", title: "Food", description: "The day's meals: add, edit, move and copy food", Component: (p) => <FoodWidget day={p.day} data={p.data} isToday={p.isToday} /> },
   { id: "budget", pages: { dashboard: 1 }, fits: "narrow", title: "Budget", description: "Calories left in your range, with protein, fiber and water rings", Component: Budget },
   { id: "water", pages: { dashboard: 1 }, fits: "narrow", title: "Water", description: "Add a glass of water in one tap", Component: Water },
-  { id: "day-totals", pages: { dashboard: 2 }, fits: "narrow", title: "Day totals", description: "Calories, protein, carbs, fat and more against your targets", Component: ({ data }) => <DayTotalsWidget data={data} /> },
+  { id: "day-totals", pages: { dashboard: 2 }, fits: "narrow", title: "Day totals", description: "Calories, protein, carbs, fat and more against your targets", Component: ({ data, isToday }) => <DayTotalsWidget data={data} isToday={isToday} /> },
   { id: "weight", pages: { dashboard: 2 }, fits: "narrow", title: "Weight", description: "Your latest weigh-in and how it's trending", Component: ({ wide }) => <WeightCard trend={wide} /> },
   { id: "next-shot", pages: { dashboard: 2 }, fits: "narrow", title: "Next shot", description: "When your next GLP-1 shot is due", onlyWhen: "Shows when GLP-1 is on", Component: () => <Glp1Card /> },
   { id: "streak", pages: { dashboard: 2 }, fits: "narrow", title: "Streak", description: "Days in a row you've logged food", Component: Streak },
@@ -145,13 +200,15 @@ export const WIDGETS: WidgetDef[] = [
   { id: "your-plan", pages: { goals: 0 }, fits: "narrow", title: "Your plan", description: "Today's plan and targets: change plan, edit targets, edit my details", Component: () => <YourPlan /> },
   { id: "goal-date", pages: { goals: 0, dashboard: null }, fits: "narrow", title: "Goal date", description: "When you'll reach your goal weight at your current pace", Component: () => <GoalDateWidget /> },
   { id: "weight-chart", pages: { goals: 1 }, fits: "wide", title: "Weight", description: "Your weight chart with start, now and goal, and your weigh-ins", Component: () => <GoalsWeight /> },
+  // §40b: under Water on the Dashboard, under Weight on Goals (placed here so it sits between Weight and Weekly trends)
+  { id: "activity", pages: { dashboard: 1, goals: 1 }, fits: "narrow", title: "Activity", description: "Steps and workouts for the day: add, edit and delete them", Component: ({ day, data, loadsDay }) => <ActivityWidget day={day} data={data} loadsDay={loadsDay} /> },
   { id: "weekly-trends", pages: { goals: 1 }, fits: "wide", title: "Weekly trends", description: "Each week's averages against your targets", Component: () => <WeeklyTrends /> },
   { id: "badges", pages: { goals: 0 }, fits: "narrow", title: "Badges", description: "Badges you've earned and the ones still to get", Component: () => <Badges /> },
 ];
 
-function DayTotalsWidget({ data }: { data: Day | null }) {
+function DayTotalsWidget({ data, isToday }: { data: Day | null; isToday: boolean }) {
   const { user } = useSession();
-  return data ? <DayTotals day={data} units={user.units} /> : null;
+  return data ? <DayTotals day={data} units={user.units} earned={earnedText(data, isToday)} /> : null;
 }
 
 export const widgetById = (id: string) => WIDGETS.find((w) => w.id === id);

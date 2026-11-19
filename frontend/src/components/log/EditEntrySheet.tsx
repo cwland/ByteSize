@@ -19,7 +19,8 @@ function perServing(e: LogEntry): Nutrients {
 
 // Edit entry: change a logged food's portion (Save at the bottom). Move, Copy and Delete are icons in the
 // title row, left of the X (§28); Delete still asks before deleting.
-export default function EditEntrySheet({ entry, onClose, onMove, onDelete }: { entry: LogEntry; onClose: () => void; onMove: (copy: boolean) => void; onDelete: () => void }) {
+// bank: the weekly workout bank's balance when the day is on it (§40b: a Treat switch), else none
+export default function EditEntrySheet({ entry, onClose, onMove, onDelete, bank = null }: { entry: LogEntry; onClose: () => void; onMove: (copy: boolean) => void; onDelete: () => void; bank?: number | null }) {
   const icon = (label: string, el: JSX.Element, onClick: () => void, className = "text-subtle hover:text-ink") => (
     <button type="button" aria-label={label} title={label} onClick={onClick} className={`flex size-11 shrink-0 items-center justify-center rounded-full hover:bg-pressed ${className}`}>
       {el}
@@ -39,8 +40,9 @@ export default function EditEntrySheet({ entry, onClose, onMove, onDelete }: { e
         food={{ name: entry.name, brand: entry.brand, icon: entry.icon, imageUrl: entry.imageUrl, servings: entry.servings, nutrients: perServing(entry) }}
         initial={{ servingIndex: entry.servingIndex, unit: entry.unit, quantity: entry.quantity, fraction: entry.fraction }}
         submitLabel="Save"
-        onSubmit={async (p) => {
-          await api("PATCH", `/api/log/${entry.id}`, p);
+        treat={bank !== null || entry.treat ? { initial: !!entry.treat, bank: bank ?? 0 } : undefined}
+        onSubmit={async (p, treat) => {
+          await api("PATCH", `/api/log/${entry.id}`, bank !== null || entry.treat ? { ...p, treat } : p);
           notifyDayChanged();
           onClose();
         }}

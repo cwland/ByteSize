@@ -27,6 +27,8 @@ export default function FoodWidget({ day, data, isToday }: { day: string; data: 
   const [deletingSelected, setDeletingSelected] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  // §40b: the day is on the weekly workout bank: logging and editing offer Treat
+  const bank = data?.workoutCalories?.mode === "bank" ? (data.workoutCalories.bank?.balance ?? 0) : null;
   const [msg, setMsg] = useState<Msg>(null);
   const [savingMeal, setSavingMeal] = useState<Meal | null>(null);
 
@@ -119,10 +121,11 @@ export default function FoodWidget({ day, data, isToday }: { day: string; data: 
         ))}
 
       {savingMeal && <SaveAsMealSheet meal={savingMeal} ids={entries.filter((e) => e.meal === savingMeal).map((e) => e.id)} onClose={() => setSavingMeal(null)} />}
-      {adding && <AddFoodSheet day={day} meal={adding} onClose={() => setAdding(null)} />}
+      {adding && <AddFoodSheet day={day} meal={adding} bank={bank} onClose={() => setAdding(null)} />}
       {editing && (
         <EditEntrySheet
           entry={editing}
+          bank={bank}
           onClose={() => setEditing(null)}
           onMove={(copy) => {
             setMoving({ ids: [editing.id], copy, meal: editing.meal });

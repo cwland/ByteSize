@@ -151,4 +151,17 @@ describe("Settings › API keys", () => {
     await userEvent.click(within(help).getByRole("button", { name: "Copy the example for logging water" }));
     expect(clip.writeText).toHaveBeenLastCalledWith(water);
   });
+
+  it("How to use a key: a steps example a phone Shortcut can copy (safe to send again)", async () => {
+    const clip = stubClipboard({ writeText: async () => {} })!;
+    fakeServer({ "GET /api/keys": () => ({ keys: [] }) });
+    renderWithSession(<ApiKeysSettings />, { timezone: "America/Boise" });
+    const help = await screen.findByRole("region", { name: "How to use a key" });
+    const steps = `curl -X PUT -H "Authorization: Bearer <your key>" -H "Content-Type: application/json" -d '{"steps": 8000, "source": "health"}' ${window.location.origin}/api/steps/${todayIn("America/Boise")}`;
+    expect(within(help).getByText(steps)).toBeInTheDocument();
+    expect(within(help).getByText(/In an iPhone Shortcut/)).toHaveTextContent("Get Contents of URL");
+    expect(within(help).getByText(/In an iPhone Shortcut/)).toHaveTextContent("replaces that day's steps");
+    await userEvent.click(within(help).getByRole("button", { name: "Copy the example for sending steps" }));
+    expect(clip.writeText).toHaveBeenLastCalledWith(steps);
+  });
 });

@@ -32,7 +32,7 @@ export default function Dashboard() {
   const [photo, setPhoto] = useState<{ file: File; meal: Meal } | null>(null);
   const photoInput = usePhotoInput((file) => setPhoto({ file, meal: mealFor(user.timezone, new Date(), settings.mealWindows) }));
 
-  const props: WidgetProps = { day, data, isToday, wide };
+  const props: WidgetProps = { day, data, isToday, wide, loadsDay: true };
   const editButton = editing ? null : <EditLayoutButton layout={layout} />;
   const body = <WidgetColumns layout={layout} props={props} />;
 

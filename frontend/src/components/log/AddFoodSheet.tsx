@@ -176,7 +176,8 @@ function AddBarcodePhoto({ onBarcode }: { onBarcode: (code: string) => void }) {
 // One sheet for finding a food (same as yesterday, recently tracked for this meal, search, barcode,
 // photo, describe it, create) and tracking it. Quick add (+) logs as shown and keeps the sheet open.
 // photo: a photo already chosen (Dashboard's Photo button) opens straight on the photo step with it.
-export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }: { day: string; meal: Meal; photo?: File; onClose: () => void }) {
+// bank: the weekly workout bank's balance when the day is on it (§40b: Track food offers Treat), else none
+export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose, bank = null }: { day: string; meal: Meal; photo?: File; onClose: () => void; bank?: number | null }) {
   const { user } = useSession();
   const units = user?.units ?? "imperial";
   const sources = useSourceChoice(user.id);
@@ -318,9 +319,9 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
     notifyDayChanged();
   };
   // estimate: per-serving AI nutrients for a Culury recipe that has none
-  const log = async (food: FoodResult, p: Portion, estimate?: Nutrients) => {
+  const log = async (food: FoodResult, p: Portion, estimate?: Nutrients, treat = false) => {
     if (food.foodKind === "quick_meal") return logMeal(food);
-    announceCombined(await api<{ combined?: Combined }>("POST", "/api/log", { day, meal, food: { kind: food.kind, id: food.id }, servingIndex: p.servingIndex, unit: p.unit, quantity: p.quantity, fraction: p.fraction, ...(estimate ? { nutrients: estimate } : {}) }));
+    announceCombined(await api<{ combined?: Combined }>("POST", "/api/log", { day, meal, food: { kind: food.kind, id: food.id }, servingIndex: p.servingIndex, unit: p.unit, quantity: p.quantity, fraction: p.fraction, ...(estimate ? { nutrients: estimate } : {}), ...(treat ? { treat: true } : {}) }));
     notifyDayChanged();
   };
   const copyYesterday = async (entries: LogEntry[]) => {
@@ -353,8 +354,9 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose }:
           note={<SavedCopyNote food={view.food} onChecked={(food) => (setView({ ...view, food }), checked(food))} />}
           // recipes are changed in their own editor in My Foods
           onEditFood={view.food.foodKind === "recipe" ? undefined : () => edit(view.food, view.from)}
-          onSubmit={async (p) => {
-            await log(view.food, p);
+          treat={bank !== null && view.food.foodKind !== "quick_meal" ? { initial: false, bank } : undefined}
+          onSubmit={async (p, treat) => {
+            await log(view.food, p, undefined, treat);
             onClose();
           }}
         />

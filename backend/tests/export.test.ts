@@ -37,6 +37,10 @@ async function seed() {
   expect((await t.api("PUT", "/api/glp1/settings", { medication: "Mounjaro", doseMg: 2.5, injectionWeekday: 5 })).status).toBe(200);
   expect((await t.api("PUT", "/api/glp1/shots/2026-11-12", { site: "abdomen_left", note: "fine" })).status).toBe(200);
   expect((await t.api("PUT", `/api/side-effects/${DAY}`, { effects: { nausea: 2 }, note: "mild" })).status).toBe(200);
+  expect((await t.api("PUT", "/api/steps/2026-11-16", { steps: 6400 })).status).toBe(200);
+  expect((await t.api("PUT", "/api/steps/2026-11-16", { steps: 7012, source: "health" })).status).toBe(200);
+  expect((await t.api("POST", "/api/workouts", { day: DAY, type: "hiit", minutes: 20, calories: 210, note: "Class" })).status).toBe(200);
+  expect((await t.api("POST", "/api/workouts", { day: "2026-11-16", type: "walk", minutes: 35, source: "health", externalId: "HK-1" })).status).toBe(200);
   const me = (await t.api("GET", "/api/auth/me")).body;
   const photo = await storePhoto(t.app, me.id ?? me.user?.id, await plainPhoto(40, 30));
   return { photo, userId: (me.id ?? me.user?.id) as number };
@@ -71,24 +75,24 @@ describe("GET /api/export", () => {
     expect(res.headers["content-disposition"]).toBe('attachment; filename="bytesize-cory-2026-11-17.zip"');
   });
 
-  it("holds the seven kinds of files, with one food-log line per entry in day order", async () => {
+  it("holds the nine kinds of files, with one food-log line per entry in day order", async () => {
     const { photo } = await seed();
     const { files, text } = await download();
-    expect(Object.keys(files).sort()).toEqual(["bytesize-export.json", "food-log.csv", "my-foods.csv", "photos/" + path.basename(photo.path), "shots.csv", "side-effects.csv", "weigh-ins.csv"].sort());
+    expect(Object.keys(files).sort()).toEqual(["activity.csv", "bytesize-export.json", "food-log.csv", "my-foods.csv", "photos/" + path.basename(photo.path), "shots.csv", "side-effects.csv", "weigh-ins.csv", "workouts.csv"].sort());
     const lines = text("food-log.csv").split("\r\n");
     expect(lines.pop()).toBe("");
-    expect(lines[0]).toBe("Day,Meal,Food,Brand,Amount,Calories,Protein (g),Carbs (g),Fat (g),Fiber (g),Sugar (g),Sodium (mg),Saturated fat (g),Added sugar (g),Sugar alcohol (g),Potassium (mg),Magnesium (mg),Water (ml),AI estimated");
+    expect(lines[0]).toBe("Day,Meal,Food,Brand,Amount,Calories,Protein (g),Carbs (g),Fat (g),Fiber (g),Sugar (g),Sodium (mg),Saturated fat (g),Added sugar (g),Sugar alcohol (g),Potassium (mg),Magnesium (mg),Water (ml),AI estimated,Treat");
     expect(lines.length).toBe(1 + 4);
     expect(lines.slice(1).map((l) => l.slice(0, 10))).toEqual(["2026-11-16", DAY, DAY, DAY]);
-    expect(lines[1]).toBe("2026-11-16,breakfast,Toast,,1 × 2 slices,160,6,30,2,4,,,,,,,,,No");
+    expect(lines[1]).toBe("2026-11-16,breakfast,Toast,,1 × 2 slices,160,6,30,2,4,,,,,,,,,No,No");
   });
 
   it("leaves unknown nutrients blank, never 0, and defuses odd names", async () => {
     await seed();
     const { text } = await download();
     const row = text("food-log.csv").split("\r\n").find((l) => l.includes("Mystery"))!;
-    expect(row).toBe(`${DAY},lunch,"Mystery, ""bar""",'=Acme,1 × 1 bar,200,,,,,,,,,,,,,No`);
-    expect(row.split(",").length).toBe(20); // the comma in the name is quoted
+    expect(row).toBe(`${DAY},lunch,"Mystery, ""bar""",'=Acme,1 × 1 bar,200,,,,,,,,,,,,,No,No`);
+    expect(row.split(",").length).toBe(21); // the comma in the name is quoted
   });
 
   it("writes the other sheets", async () => {
@@ -97,6 +101,9 @@ describe("GET /api/export", () => {
     expect(text("weigh-ins.csv")).toBe(`Day,Weight (kg),Weight (lb),Note\r\n${DAY},90.5,199.5,after a walk\r\n`);
     expect(text("shots.csv")).toBe("Day,Medication,Dose,Site,Note\r\n2026-11-12,Mounjaro,2.5 mg,Abdomen left,fine\r\n");
     expect(text("side-effects.csv")).toBe(`Day,Effect,Severity,Note\r\n${DAY},Nausea,2,mild\r\n`);
+    // A day's steps: Health's number when the phone sent one, else the typed one; unknown calories stay blank
+    expect(text("activity.csv")).toBe(`Day,Steps,Steps from,Workouts,Active minutes,Workout calories\r\n2026-11-16,7012,Health,1,35,0\r\n${DAY},,,1,20,210\r\n`);
+    expect(text("workouts.csv")).toBe(`Day,Type,Minutes,Calories,From,Note\r\n2026-11-16,Walk,35,,Health,\r\n${DAY},HIIT,20,210,Typed,Class\r\n`);
     const foods = text("my-foods.csv").split("\r\n");
     expect(foods[0]).toBe("Name,Brand,Kind,Serving,Calories,Protein (g),Carbs (g),Fat (g),Fiber (g)");
     expect(foods).toContain("Toast,,custom,2 slices,160,6,30,2,4");

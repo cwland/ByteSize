@@ -105,6 +105,10 @@ async function seed() {
     await t.db.insert(sideEffects).values({ userId: u.id, day: "2026-11-13", effects: { nausea: 2 }, note: null });
     await t.db.insert(badges).values({ userId: u.id, badge: "first_log", earnedOn: "2026-11-10", seen: i === 1 });
     await t.db.insert(vacations).values({ userId: u.id, fromDay: "2026-12-20", toDay: "2026-12-27" });
+    // §40b: steps (typed and from Health), workouts (one from Health with its id), the workout-calorie setting
+    await t.db.insert(schema.activitySteps).values([{ userId: u.id, day: "2026-11-12", source: "manual", steps: 4000 + i }, { userId: u.id, day: "2026-11-12", source: "health", steps: 6100 }]);
+    await t.db.insert(schema.workouts).values([{ userId: u.id, day: "2026-11-12", type: "run", minutes: 30, calories: 300, note: i ? null : "hills" }, { userId: u.id, day: "2026-11-13", type: "walk", minutes: 20, calories: null, source: "health", externalId: `HK-${i}` }]);
+    await t.db.insert(schema.workoutCalorieModes).values({ userId: u.id, effectiveFrom: "2026-11-01", mode: i ? "bank" : "add", countPct: 75, weeklyCap: 1200 });
     await t.db.insert(usageCounts).values([{ userId: u.id, key: "barcodes_scanned", count: 3 + i }, { userId: u.id, key: "outside_off", count: 1 }]); // App info's numbers are the person's own data
     await t.db.insert(restaurantFavourites).values({ userId: u.id, cacheId: cache.id, chain: "Acme Diner" });
     await t.db.insert(dashboardLayouts).values({ userId: u.id, columns: i ? [["food"], [], ["budget"]] : [["budget", "water"], ["food"]] }); // the person's Dashboard
@@ -262,6 +266,11 @@ describe("backups", () => {
     await t.db.update(users).set({ displayName: "Changed" }).where(eq(users.id, a.id));
     await t.db.delete(weighIns).where(eq(weighIns.userId, b.id));
     await t.db.delete(userFoods).where(eq(userFoods.userId, a.id));
+    // §40b: activity changed after the backup too
+    await t.db.delete(schema.workouts).where(eq(schema.workouts.userId, a.id));
+    await t.db.update(schema.activitySteps).set({ steps: 1 });
+    await t.db.delete(schema.workoutCalorieModes);
+    await t.db.update(logEntries).set({ treat: true });
     await t.db.insert(logEntries).values({ userId: b.id, day: "2026-11-16", meal: "lunch", name: "New", icon: "🍎", source: "cache", unit: "g", quantity: 1, perServing: {}, servings: [], nutrients: {} });
     await t.db.update(appSettings).set({ value: { left: 3, day: "2026-11-17" } }).where(eq(appSettings.key, "restaurant_quota"));
     rmSync(path.join(uploadsDir(), photo.path));
@@ -273,6 +282,15 @@ describe("backups", () => {
     expect(r.body).toEqual({ restored: { schema: SCHEMA, users: 3, photos: 1 }, unreadableKeys: [] });
 
     sameData(await snapshot(), before);
+    // The new tables (§40b) came back exactly, Health ids and treats included
+    for (const name of ["activity_steps", "workouts", "workout_calorie_modes"]) expect(before[name].length, name).toBeGreaterThan(0);
+    expect((await t.db.select().from(schema.workouts).where(eq(schema.workouts.userId, a.id))).map((w) => [w.type, w.minutes, w.calories, w.source, w.externalId, w.note]).sort()).toEqual([
+      ["run", 30, 300, "manual", null, "hills"],
+      ["walk", 20, null, "health", "HK-0", null],
+    ]);
+    expect((await t.db.select().from(schema.activitySteps).where(eq(schema.activitySteps.userId, a.id))).map((r) => [r.source, r.steps]).sort()).toEqual([["health", 6100], ["manual", 4000]]);
+    expect((await t.db.select().from(schema.workoutCalorieModes)).map((r) => [r.mode, r.countPct, r.weeklyCap]).sort()).toEqual([["add", 75, 1200], ["bank", 75, 1200]]);
+    expect((await t.db.select().from(logEntries)).every((e) => e.treat === false)).toBe(true);
     // Nothing points at a cached food that isn't there
     const dangling = await t.db.execute<{ n: number }>(sql`select
       (select count(*) from log_entries where source = 'cache' and source_ref not in (select 'cache:' || id from food_cache))

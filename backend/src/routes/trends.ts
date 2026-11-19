@@ -12,6 +12,7 @@ import { trendOf } from "../lib/weight.js";
 import { averages, judge, trendOn, TREND_NUTRIENTS, weekStartOf, type DayLog, type Status, type TrendNutrient } from "../lib/trends.js";
 import { DEFAULT_WEEK_START } from "./settings-me.js";
 import { targetsOn } from "./body-plans.js";
+import { calorieDays } from "../lib/calorieDays.js";
 
 // Weekly trends, badges and vacation mode. Who is asking comes only from the login.
 
@@ -41,6 +42,8 @@ async function weekly(db: Db, userId: number, today: string, weeks: number) {
     else d.foods.push(r.nutrients as Nutrients);
     byDay.set(r.day, d);
   }
+  // Days whose calories were in range, worked out with workout calories (a bank-covered day counts, §40b)
+  const calorie = await calorieDays(db, userId, oldest, today, s?.weekStart ?? DEFAULT_WEEK_START);
   const series = trendOf(await db.select({ day: weighIns.day, weightKg: weighIns.weightKg }).from(weighIns).where(and(eq(weighIns.userId, userId), lte(weighIns.day, today))));
 
   const out = [];
@@ -51,12 +54,19 @@ async function weekly(db: Db, userId: number, today: string, weeks: number) {
     const avg = averages(days.map(([, log]) => log));
     // Judged against the targets in force on the week's last logged day
     const targets = days.length ? await targetsOn(db, userId, days[days.length - 1][0]) : null;
-    const status = Object.fromEntries(TREND_NUTRIENTS.map((k) => [k, judge(avg[k], targets?.[k])])) as Record<TrendNutrient, Status>;
+    // Calories: the same day ranges calorieDays judges by (grown by workouts in "add" mode), so the mark agrees with
+    // "N in range": the plan's range plus what the logged days' workouts added, on average
+    const logged = new Set(days.map(([d]) => d));
+    const added = calorie.filter((d) => logged.has(d.day)).map((d) => d.added);
+    const extra = added.length ? Math.round(added.reduce((a, b) => a + b, 0) / added.length) : 0;
+    const ranges = { ...targets, calories: targets ? { min: targets.calories.min + extra, max: targets.calories.max + extra } : undefined };
+    const status = Object.fromEntries(TREND_NUTRIENTS.map((k) => [k, judge(avg[k], targets ? ranges[k] : undefined)])) as Record<TrendNutrient, Status>;
     // That week's change in trend weight: from the trend before the week (or its first weigh-in) to its last weigh-in
     const inWeek = series.filter((p) => p.day >= start && p.day <= end);
     const before = trendOn(series, addDays(start, -1));
     const weightChangeKg = inWeek.length ? roundKg(inWeek[inWeek.length - 1].trendKg - (before ?? inWeek[0].trendKg)) : null;
-    out.push({ start, end, daysLogged: days.length, avg, status, weightChangeKg });
+    const caloriesInRange = calorie.filter((d) => d.day >= start && d.day <= end && d.status === "in").length;
+    out.push({ start, end, daysLogged: days.length, caloriesInRange, avg, status, weightChangeKg });
   }
   return out;
 }

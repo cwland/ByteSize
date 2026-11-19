@@ -450,6 +450,34 @@ describe("per-user isolation", () => {
     expect((await b.as("GET", "/api/layouts/goals")).body).toEqual({ layout: bens });
   });
 
+  it("a user can't see, change or delete another user's steps, workouts or workout-calorie setting, and their bank is their own", async () => {
+    t.clock.date = new Date("2026-11-18T19:00:00Z");
+    const { a, b } = await twoUsers(t);
+    const day = "2026-11-18"; // today, so the bank (set today) counts the run
+    expect((await a.as("PUT", `/api/steps/${day}`, { steps: 9100 })).status).toBe(200);
+    expect((await a.as("PUT", `/api/steps/${day}`, { steps: 9500, source: "health" })).status).toBe(200);
+    const run = (await a.as("POST", "/api/workouts", { day, type: "run", minutes: 30, calories: 400, note: "Anna's run", source: "health", externalId: "HK-shared" })).body.workout;
+    expect((await a.as("PUT", "/api/workout-calories", { mode: "bank", countPct: 100 })).status).toBe(200);
+    const annas = await a.as("GET", `/api/activity/${day}`);
+
+    // ben sees none of it
+    expect((await b.as("GET", `/api/activity/${day}`)).body).toMatchObject({ steps: null, workouts: [], earned: 0 });
+    expect((await b.as("GET", `/api/activity?from=${day}&to=${day}`)).body).toEqual({ days: [{ day, steps: null, stepsSource: null, workouts: 0, activeMinutes: 0, earned: 0 }], workouts: [] });
+    expect((await b.as("GET", "/api/workout-calories")).body.settings.mode).toBe("show");
+    expect((await b.as("GET", "/api/day/2026-11-18")).body.workoutCalories).toMatchObject({ mode: "show", earned: 0, bank: null });
+    // ...can't change or delete hers
+    expect((await b.as("PATCH", `/api/workouts/${run.id}`, { minutes: 1 })).status).toBe(404);
+    expect((await b.as("DELETE", `/api/workouts/${run.id}`)).status).toBe(404);
+    expect((await b.as("DELETE", `/api/steps/${day}`)).status).toBe(404);
+    // ...and his own sends with the same day and the same Health id are his own rows
+    expect((await b.as("PUT", `/api/steps/${day}`, { steps: 12, source: "health" })).status).toBe(200);
+    const bens = (await b.as("POST", "/api/workouts", { day, type: "walk", minutes: 5, source: "health", externalId: "HK-shared" })).body.workout;
+    expect(bens.id).not.toBe(run.id);
+    expect((await a.as("GET", `/api/activity/${day}`)).body).toEqual(annas.body);
+    expect(annas.body).toMatchObject({ steps: 9500, typedSteps: 9100, workouts: [{ id: run.id, minutes: 30, note: "Anna's run" }] });
+    expect((await a.as("GET", "/api/day/2026-11-18")).body.workoutCalories.bank).toMatchObject({ balance: 400 });
+  });
+
   it("a person's data download holds none of anyone else's rows, photos or Culury address", async () => {
     const { a, b } = await twoUsers(t);
     const food = (who: typeof a, name: string) => who.as("POST", "/api/my-foods", { name, servings: [{ label: "1", grams: 10 }], nutrients: { calories: 100 } }).then((r) => r.body.food);

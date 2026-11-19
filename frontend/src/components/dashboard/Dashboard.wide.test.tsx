@@ -76,13 +76,13 @@ describe("Dashboard on a wide screen", () => {
     expect(within(header).getByRole("button", { name: "Edit dashboard" })).toBeInTheDocument();
   });
 
-  it("lays out three columns: the Food widget; the budget with water under it; Day totals, weight, GLP-1 and streak", async () => {
+  it("lays out three columns: the Food widget; the budget with water and activity under it; Day totals, weight, GLP-1 and streak", async () => {
     show({ "GET /api/glp1": () => glp1View() });
     const columns = await screen.findAllByTestId("widget-column");
     expect(columns).toHaveLength(3);
     expect(within(columns[0]).getByRole("region", { name: "Today's food" })).toBeInTheDocument();
     const middle = [...columns[1].querySelectorAll("section")].map((s) => s.getAttribute("aria-label"));
-    expect(middle).toEqual(["Budget", "Water"]);
+    expect(middle).toEqual(["Budget", "Water", "Activity"]);
     const right = within(columns[2]);
     expect(await right.findByRole("region", { name: "Day totals" })).toBe(columns[2].firstElementChild);
     expect(right.getByRole("region", { name: "Weight" })).toBeInTheDocument();

@@ -24,6 +24,9 @@ describe("Goals", () => {
     expect(screen.getByText("25–38 g")).toBeInTheDocument();
     expect(screen.getByText("64–128 fl oz")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Change plan" })).toBeInTheDocument();
+    // §40b: how workout calories count sits in Your plan
+    const plan = screen.getByRole("region", { name: "Plan" });
+    expect(await within(plan).findByRole("group", { name: "Workout calories" })).toHaveTextContent("Just show them");
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Edit targets" }));
@@ -175,7 +178,7 @@ describe("Goals", () => {
     await user.click(screen.getByRole("button", { name: "Edit page" }));
     // Widgets are cards while editing (they don't load or work)
     expect(screen.queryByText("Steady plan")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("group").map((g) => g.getAttribute("aria-label"))).toEqual(["Your plan", "Goal date", "Badges", "Weight", "Weekly trends"]);
+    expect(screen.getAllByRole("group").map((g) => g.getAttribute("aria-label"))).toEqual(["Your plan", "Goal date", "Badges", "Weight", "Activity", "Weekly trends"]);
     await user.click(screen.getByRole("button", { name: "Move Goal date up" }));
     await user.click(screen.getByRole("button", { name: "Remove Badges" }));
     await user.click(screen.getByRole("button", { name: "Add widget" }));
@@ -187,7 +190,7 @@ describe("Goals", () => {
     expect(within(screen.getByRole("dialog", { name: "Add widget" })).getByText("Every widget is on this page")).toBeInTheDocument();
     await user.click(within(screen.getByRole("dialog", { name: "Add widget" })).getByRole("button", { name: "Close" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
-    expect(server.writes()).toEqual([expect.objectContaining({ method: "PUT", path: "/api/layouts/goals", body: { version: 1, columns: [["goal-date", "your-plan"], ["weight-chart", "weekly-trends"], ["badges"]] } })]); // added to the shortest column
+    expect(server.writes()).toEqual([expect.objectContaining({ method: "PUT", path: "/api/layouts/goals", body: { version: 1, columns: [["goal-date", "your-plan"], ["weight-chart", "activity", "weekly-trends"], ["badges"]] } })]); // added to the shortest column
     expect(await screen.findByText("Steady plan")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Goal date" }).compareDocumentPosition(screen.getByRole("region", { name: "Plan" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });

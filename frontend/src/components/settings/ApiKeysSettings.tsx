@@ -234,7 +234,7 @@ function KeyRow({ k, onChanged, onDeleted }: { k: ApiKey; onChanged: (k: ApiKey)
   );
 }
 
-// The header line and two curl examples with this server's address, each with a copy button
+// The header line and curl examples with this server's address (today's day, water, steps), each with a copy button
 function HowToUse() {
   const { user } = useSession();
   const origin = window.location.origin;
@@ -243,6 +243,7 @@ function HowToUse() {
     { what: "today's day", text: `curl ${auth} ${origin}/api/day/${todayIn(user.timezone)}` },
     { what: "logging water", text: `curl -X POST ${auth} -H "Content-Type: application/json" -d '{"water_ml": 250}' ${origin}/api/log` },
   ];
+  const steps = { what: "sending steps", text: `curl -X PUT ${auth} -H "Content-Type: application/json" -d '{"steps": 8000, "source": "health"}' ${origin}/api/steps/${todayIn(user.timezone)}` };
   return (
     <Card title="How to use a key" description="Send the key with every request, in this header:">
       <code className="block rounded-xl bg-page px-3 py-2 font-mono text-sm break-all">Authorization: Bearer &lt;your key&gt;</code>
@@ -250,6 +251,13 @@ function HowToUse() {
       {examples.map((ex) => (
         <Example key={ex.what} what={ex.what} text={ex.text} />
       ))}
+      <p className="mt-4 text-sm text-subtle">To send the day's steps from your phone (a key that can log):</p>
+      <Example what={steps.what} text={steps.text} />
+      <p className="mt-2 text-sm text-subtle">
+        In an iPhone Shortcut: get today's step count from Health, then use Get Contents of URL with the address above (ending in today's
+        date), method PUT, the Authorization header and a JSON body with steps and "source": "health". Sending it again just replaces that
+        day's steps, so the Shortcut can run as often as you like.
+      </p>
       <p className="mt-3 text-sm text-subtle">Replace &lt;your key&gt; with the key. A key gets 120 requests a minute.</p>
     </Card>
   );

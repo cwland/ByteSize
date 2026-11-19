@@ -90,15 +90,19 @@ export default function FoodDetail({
   onSubmit,
   onEditFood,
   note,
+  treat,
 }: {
   food: DetailFood;
   initial: Portion;
   submitLabel: string;
-  onSubmit: (p: Portion) => Promise<void>;
+  onSubmit: (p: Portion, treat: boolean) => Promise<void>;
   onEditFood?: () => void;
   note?: ReactNode; // under the name (a kept copy's "Saved copy from …" with Check for changes)
+  // §40b: with the weekly bank on, a Treat switch (paid from the bank on purpose); bank: its balance this week
+  treat?: { initial: boolean; bank: number };
 }) {
   const [portion, setPortion] = useState<Portion>(initial);
+  const [isTreat, setTreat] = useState(treat?.initial ?? false);
   const [picking, setPicking] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
@@ -112,7 +116,7 @@ export default function FoodDetail({
     setBusy(true);
     setMsg(null);
     try {
-      await onSubmit(portion);
+      await onSubmit(portion, isTreat);
     } catch (e) {
       setMsg(errorMsg(e));
       setBusy(false);
@@ -198,6 +202,16 @@ export default function FoodDetail({
           })}
         </div>
       </section>
+
+      {treat && editable && (
+        <label className={`${boxed} flex items-center gap-3 px-4 py-3`}>
+          <input type="checkbox" checked={isTreat} onChange={(e) => setTreat(e.target.checked)} className="size-5 accent-[var(--color-action)]" />
+          <span>
+            <span className="block font-semibold">Treat</span>
+            <span className="block text-sm text-subtle">{`Paid from your workout bank (${fmt(treat.bank)} this week)`}</span>
+          </span>
+        </label>
+      )}
 
       <Notice msg={msg} />
       {editable && (

@@ -52,13 +52,13 @@ describe("Dashboard widgets", () => {
     for (const w of WIDGETS) expect(w.title && w.description).toBeTruthy();
   });
 
-  it("default layout (Cory's order): Food; Budget, Water; Day totals, Weight, Next shot, Streak", async () => {
+  it("default layout (Cory's order): Food; Budget, Water, Activity; Day totals, Weight, Next shot, Streak", async () => {
     show();
     await screen.findByRole("region", { name: "Day totals" });
     await screen.findByRole("region", { name: "GLP-1" });
     const [left, middle, right] = columns();
     expect(within(left).getByRole("region", { name: "Today's food" })).toBeInTheDocument();
-    expect(names(middle)).toEqual(["Budget", "Water"]);
+    expect(names(middle)).toEqual(["Budget", "Water", "Activity"]);
     expect(names(right)).toEqual(["Day totals", "Weight", "GLP-1", "Streak"]);
   });
 
@@ -95,7 +95,7 @@ describe("Dashboard widgets", () => {
     expect(editCards(columns()[2])).toEqual(["day-totals", "weight", "streak", "next-shot"]);
     expect(server.sent.slice(before).filter((s) => s.method === "GET")).toEqual([]); // nothing fetched while editing
     await user.click(screen.getByRole("button", { name: "Save" }));
-    expect(server.writes()).toEqual([expect.objectContaining({ method: "PUT", path: "/api/layouts/dashboard", body: { version: 1, columns: [["budget", "food"], ["water"], ["day-totals", "weight", "streak", "next-shot"]] } })]);
+    expect(server.writes()).toEqual([expect.objectContaining({ method: "PUT", path: "/api/layouts/dashboard", body: { version: 1, columns: [["budget", "food"], ["water", "activity"], ["day-totals", "weight", "streak", "next-shot"]] } })]);
     // back to the live widgets, in the new places
     expect(names(columns()[0])).toEqual(["Budget", "Today's food"]);
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
@@ -110,9 +110,9 @@ describe("Dashboard widgets", () => {
     expect(names(columns()[0])).toEqual(["Streak"]);
     await user.click(screen.getByRole("button", { name: "Edit dashboard" }));
     await user.click(screen.getByRole("button", { name: "Reset to default" }));
-    expect(columns().map(editCards)).toEqual([["food"], ["budget", "water"], ["day-totals", "weight", "next-shot", "streak"]]);
+    expect(columns().map(editCards)).toEqual([["food"], ["budget", "water", "activity"], ["day-totals", "weight", "next-shot", "streak"]]);
     await user.click(screen.getByRole("button", { name: "Save" }));
-    expect(server.writes()[0].body.columns).toEqual([["food"], ["budget", "water"], ["day-totals", "weight", "next-shot", "streak"]]);
+    expect(server.writes()[0].body.columns).toEqual([["food"], ["budget", "water", "activity"], ["day-totals", "weight", "next-shot", "streak"]]);
   });
 
   it("remove a widget, then add it back from the Add widget list (to the bottom of the shortest column)", async () => {
@@ -121,12 +121,13 @@ describe("Dashboard widgets", () => {
     await user.click(await screen.findByRole("button", { name: "Edit dashboard" }));
     await user.click(screen.getByRole("button", { name: "Remove Water" }));
     await user.click(screen.getByRole("button", { name: "Remove Budget" }));
+    await user.click(screen.getByRole("button", { name: "Remove Activity" }));
     expect(screen.queryByRole("group", { name: "Water" })).not.toBeInTheDocument();
     expect(editCards(columns()[1])).toEqual([]); // an empty column stays, to drop into
     await user.click(screen.getByRole("button", { name: "Add widget" }));
     const list = screen.getByRole("dialog", { name: "Add widget" });
     expect(within(list).getByText("Add a glass of water in one tap")).toBeInTheDocument();
-    expect(within(list).getAllByRole("button", { name: /^Add / }).map((b) => b.getAttribute("aria-label"))).toEqual(["Add Budget", "Add Water", "Add Goal date"]);
+    expect(within(list).getAllByRole("button", { name: /^Add / }).map((b) => b.getAttribute("aria-label"))).toEqual(["Add Budget", "Add Water", "Add Goal date", "Add Activity"]);
     await user.click(within(list).getByRole("button", { name: "Add Water" }));
     expect(screen.queryByRole("dialog", { name: "Add widget" })).not.toBeInTheDocument();
     expect(editCards(columns()[1])).toEqual(["water"]);
@@ -136,6 +137,9 @@ describe("Dashboard widgets", () => {
     await user.click(screen.getByRole("button", { name: "Add widget" }));
     await user.click(within(screen.getByRole("dialog", { name: "Add widget" })).getByRole("button", { name: "Add Goal date" }));
     expect(screen.getByRole("group", { name: "Goal date" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add widget" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Add widget" })).getByRole("button", { name: "Add Activity" }));
+    expect(screen.getByRole("group", { name: "Activity" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Add widget" }));
     expect(within(screen.getByRole("dialog", { name: "Add widget" })).getByText("Every widget is on your dashboard")).toBeInTheDocument();
   });
@@ -157,7 +161,7 @@ describe("Dashboard widgets", () => {
     expect(within(columns()[1]).getByTestId("drop-line")).toBeInTheDocument();
     fireEvent.pointerUp(window, { clientX: 400, clientY: 60, pointerId: 1 });
     expect(screen.queryByTestId("drop-line")).not.toBeInTheDocument();
-    expect(editCards(columns()[1])).toEqual(["budget", "streak", "water"]);
+    expect(editCards(columns()[1])).toEqual(["budget", "streak", "water", "activity"]);
     expect(editCards(columns()[2])).toEqual(["day-totals", "weight", "next-shot"]);
   });
 
@@ -205,9 +209,9 @@ describe("Dashboard widgets", () => {
     expect(screen.getByRole("button", { name: "Move Food up" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Move Budget up" }));
     const order = [...document.querySelectorAll("[data-widget]")].map((s) => s.getAttribute("data-widget"));
-    expect(order).toEqual(["budget", "food", "water", "day-totals", "weight", "next-shot", "streak"]);
+    expect(order).toEqual(["budget", "food", "water", "activity", "day-totals", "weight", "next-shot", "streak"]);
     await user.click(screen.getByRole("button", { name: "Save" }));
-    expect(server.writes()[0].body.columns).toEqual([["budget", "food"], ["water"], ["day-totals", "weight", "next-shot", "streak"]]);
+    expect(server.writes()[0].body.columns).toEqual([["budget", "food"], ["water", "activity"], ["day-totals", "weight", "next-shot", "streak"]]);
   });
 
   it("Edit dashboard waits for the saved layout, so Save never writes an edit of the default over it", async () => {

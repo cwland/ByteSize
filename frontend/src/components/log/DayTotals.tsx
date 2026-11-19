@@ -22,7 +22,7 @@ const openPlanPicker = () => (window.location.hash = planPickerHref("/"));
 // "Day totals" (a Dashboard widget): the plan in force that day with Change plan (§41; Pick a plan without one), then
 // eaten vs the target range for the day ("—" where there is no target).
 // The server sums a nutrient a food doesn't say as 0, and that number shows (§31).
-export default function DayTotals({ day, units }: { day: Day; units: Units }) {
+export default function DayTotals({ day, units, earned = null }: { day: Day; units: Units; earned?: string | null /* "Earned today: 320" (§40b) */ }) {
   const targets: Targets | null = day.targets;
   const amount = (row: Row, v: number) => (row.key === "water_ml" ? `${fmt(waterValue(v, units))} ${waterUnit(units)}` : `${fmt(v)}${row.unit ? ` ${row.unit}` : ""}`);
   const range = (row: Row, r: Range) =>
@@ -44,6 +44,7 @@ export default function DayTotals({ day, units }: { day: Day; units: Units }) {
           Pick a plan
         </button>
       )}
+      {earned && <p className="mt-1 text-sm text-subtle">{earned}</p>}
       <table aria-labelledby="day-totals" className="mt-3 w-full text-sm tabular">
         <thead>
           <tr className="border-b border-line text-left text-xs font-semibold text-muted">

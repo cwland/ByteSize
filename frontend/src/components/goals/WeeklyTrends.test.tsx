@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import WeeklyTrends from "./WeeklyTrends";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
+import { wideScreen } from "../../test/wide";
 
 const empty = { calories: null, protein_g: null, fiber_g: null, water_ml: null };
 const week = (start: string, end: string, over: object = {}) => ({ start, end, daysLogged: 0, avg: empty, status: empty, weightChangeKg: null, ...over });
@@ -36,6 +37,23 @@ const rows = async () => within(await screen.findByRole("region", { name: "Weekl
 const cell = (row: HTMLElement, name: string) => within(row).getByRole("group", { name });
 
 describe("Weekly trends", () => {
+  it("says how many days' calories were in range (bank-covered days count, §40b)", async () => {
+    fakeServer({ "GET /api/trends/weekly": () => ({ weeks: [{ ...weeks[0], caloriesInRange: 4 }, { ...weeks[1], caloriesInRange: 0 }] }) });
+    renderWithSession(<WeeklyTrends />);
+    const [first, second] = await rows();
+    expect(first).toHaveTextContent("Nov 15–21 · 6 days logged · 4 in range");
+    expect(second).not.toHaveTextContent("in range");
+  });
+
+  it("wide: the Logged column says how many were in range too", async () => {
+    wideScreen();
+    fakeServer({ "GET /api/trends/weekly": () => ({ weeks: [{ ...weeks[0], caloriesInRange: 4 }] }) });
+    renderWithSession(<WeeklyTrends />);
+    const table = await screen.findByRole("table", { name: "Weekly trends" });
+    const [, first] = within(table).getAllByRole("row");
+    expect(within(first).getAllByRole("cell").at(-1)).toHaveTextContent("6 days · 4 in range");
+  });
+
   it("shows each week newest first with averages, range marks and weight change in pounds", async () => {
     const server = serve();
     renderWithSession(<WeeklyTrends />);
