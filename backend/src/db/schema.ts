@@ -359,6 +359,22 @@ export const logEntries = pgTable(
 );
 
 /**
+ * Deleted log entries wait here for 10 minutes so Undo (iOS app) can put them back exactly: the whole row as it
+ * was, keyed by the entry's id. A delete clears that person's older trash.
+ */
+export const logTrash = pgTable(
+  "log_trash",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    entryId: integer("entry_id").notNull(),
+    row: jsonb("row").$type<Record<string, unknown>>().notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("log_trash_user_entry_idx").on(t.userId, t.entryId)]
+);
+
+/**
  * What a combine did (§28), so Undo splits back exactly that: the entry's amount before and after, what was
  * added (its amount and the servings it was measured in, which can differ from the entry's own), and where the
  * addition goes back to. Kept a day; the entry gone → null (Undo is then impossible).
