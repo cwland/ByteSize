@@ -7,6 +7,8 @@ final class HTTPStub: URLProtocol, @unchecked Sendable {
         case json(Int, String)
         case raw(Int, contentType: String, body: String)
         case fail(URLError.Code)
+        /// Never answers (a server that's out of reach without failing fast).
+        case hang
     }
 
     struct Recorded {
@@ -39,6 +41,8 @@ final class HTTPStub: URLProtocol, @unchecked Sendable {
         switch HTTPStub.handler(request) {
         case .fail(let code):
             client?.urlProtocol(self, didFailWithError: URLError(code))
+        case .hang:
+            break
         case .json(let status, let body):
             send(status, "application/json; charset=utf-8", body)
         case .raw(let status, let type, let body):

@@ -60,6 +60,15 @@ final class SignInModelTests: XCTestCase {
         XCTAssertTrue(HTTPStub.requests.isEmpty)
     }
 
+    func testConnectRejectsPlainHTTP() async {
+        let (m, _) = model()
+        m.serverText = "http://192.168.50.191:4100"
+        await m.connect()
+        XCTAssertEqual(m.error, "ByteSize needs your secure address, starting with https://")
+        XCTAssertEqual(m.step, .server)
+        XCTAssertTrue(HTTPStub.requests.isEmpty)
+    }
+
     func testConnectUnreachable() async {
         HTTPStub.handler = { _ in .fail(.cannotFindHost) }
         let (m, _) = model()
