@@ -51,7 +51,8 @@ export default function GoalsPage() {
   const close = () => {
     setMode("view");
     if (!modeOf(window.location.hash)) return;
-    const from = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("from");
+    const hash = window.location.hash;
+    const from = hash.includes("?") ? new URLSearchParams(hash.slice(hash.indexOf("?") + 1)).get("from") : null; // decoded (§46)
     window.location.hash = from?.startsWith("/") ? `#${from}` : "#/goals";
   };
   const saved = (t: Targets) => {

@@ -137,7 +137,7 @@ describe("Dashboard", () => {
     show(dayJson({ totals, targets: null }));
     expect(await screen.findByText("Pick a plan to see your budget")).toBeInTheDocument();
     await userEvent.setup().click(within(screen.getByRole("region", { name: "Budget" })).getByRole("button", { name: "Pick a plan" }));
-    expect(window.location.hash).toBe("#/goals/plan?from=/");
+    expect(window.location.hash).toBe("#/goals/plan?from=%2F");
     // Day totals offers it too (§41)
     expect(within(screen.getByRole("region", { name: "Day totals" })).getByRole("button", { name: "Pick a plan" })).toBeInTheDocument();
   });

@@ -22,11 +22,25 @@ const openPlanPicker = () => (window.location.hash = planPickerHref("/"));
 // "Day totals" (a Dashboard widget): the plan in force that day with Change plan (§41; Pick a plan without one), then
 // eaten vs the target range for the day ("—" where there is no target).
 // The server sums a nutrient a food doesn't say as 0, and that number shows (§31).
-export default function DayTotals({ day, units, earned = null }: { day: Day; units: Units; earned?: string | null /* "Earned today: 320" (§40b) */ }) {
+// isToday: on a past day there's no change-plan button (plans only start today, §46)
+export default function DayTotals({
+  day,
+  units,
+  earned = null,
+  isToday = true,
+}: {
+  day: Day;
+  units: Units;
+  earned?: string | null /* "Earned today: 320" (§40b) */;
+  isToday?: boolean;
+}) {
   const targets: Targets | null = day.targets;
-  const amount = (row: Row, v: number) => (row.key === "water_ml" ? `${fmt(waterValue(v, units))} ${waterUnit(units)}` : `${fmt(v)}${row.unit ? ` ${row.unit}` : ""}`);
+  const amount = (row: Row, v: number) =>
+    row.key === "water_ml" ? `${fmt(waterValue(v, units))} ${waterUnit(units)}` : `${fmt(v)}${row.unit ? ` ${row.unit}` : ""}`;
   const range = (row: Row, r: Range) =>
-    row.key === "water_ml" ? `${fmt(waterValue(r.min, units))}–${fmt(waterValue(r.max, units))} ${waterUnit(units)}` : `${fmt(r.min)}–${fmt(r.max)}${row.unit ? ` ${row.unit}` : ""}`;
+    row.key === "water_ml"
+      ? `${fmt(waterValue(r.min, units))}–${fmt(waterValue(r.max, units))} ${waterUnit(units)}`
+      : `${fmt(r.min)}–${fmt(r.max)}${row.unit ? ` ${row.unit}` : ""}`;
   return (
     <section aria-labelledby="day-totals" className="rounded-2xl bg-container p-5">
       <h2 id="day-totals" className="text-lg font-bold">
@@ -35,9 +49,17 @@ export default function DayTotals({ day, units, earned = null }: { day: Day; uni
       {targets ? (
         <p className="mt-1 flex items-center gap-1 text-sm text-subtle">
           <span>{`Plan: ${planName(targets)}`}</span>
-          <button type="button" aria-label="Change plan" title="Change plan" onClick={openPlanPicker} className="flex size-9 items-center justify-center rounded-full text-link hover:bg-pressed">
-            <ArrowLeftRight aria-hidden="true" className="size-4" />
-          </button>
+          {isToday && (
+            <button
+              type="button"
+              aria-label="Change plan"
+              title="Change plan"
+              onClick={openPlanPicker}
+              className="flex size-9 items-center justify-center rounded-full text-link hover:bg-pressed"
+            >
+              <ArrowLeftRight aria-hidden="true" className="size-4" />
+            </button>
+          )}
         </p>
       ) : (
         <button type="button" onClick={openPlanPicker} className={`${linkButton} mt-1 text-sm`}>
@@ -67,9 +89,7 @@ export default function DayTotals({ day, units, earned = null }: { day: Day; uni
                 <th scope="row" className="py-2.5 text-left font-semibold">
                   {row.name}
                 </th>
-                <td className="py-2.5 text-right font-bold">
-                  {amount(row, day.totals[row.key] ?? 0)}
-                </td>
+                <td className="py-2.5 text-right font-bold">{amount(row, day.totals[row.key] ?? 0)}</td>
                 <td className="py-2.5 text-right text-subtle">{target}</td>
               </tr>
             );

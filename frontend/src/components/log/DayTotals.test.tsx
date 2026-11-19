@@ -55,8 +55,14 @@ describe("Day totals: the plan", () => {
     expect(change).toHaveAttribute("title", "Change plan");
     change.click();
     // The plan picker comes back to the Dashboard when done or cancelled
-    expect(window.location.hash).toBe("#/goals/plan?from=/");
+    expect(window.location.hash).toBe("#/goals/plan?from=%2F");
     window.location.hash = "";
+  });
+
+  it("on a past day the plan is named, but there's no change-plan button (plans only start today) (§46)", () => {
+    render(<DayTotals day={day} units="imperial" isToday={false} />);
+    expect(screen.getByText("Plan: Steady")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Change plan" })).not.toBeInTheDocument();
   });
 
   it("targets set by hand are 'Your own targets'", () => {
@@ -68,7 +74,7 @@ describe("Day totals: the plan", () => {
     show({ ...day, targets: null });
     expect(screen.queryByText(/^Plan:/)).not.toBeInTheDocument();
     screen.getByRole("button", { name: "Pick a plan" }).click();
-    expect(window.location.hash).toBe("#/goals/plan?from=/");
+    expect(window.location.hash).toBe("#/goals/plan?from=%2F");
     window.location.hash = "";
   });
 });
