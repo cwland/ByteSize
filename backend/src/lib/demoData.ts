@@ -18,8 +18,8 @@ import { amountFactor, scaleNutrients, type Nutrients, type Serving, type Unit }
 import { createMeal, quickMealParts } from "./recipes.js";
 import { normalizeUsername } from "./users.js";
 import { KG_PER_LB } from "./weight.js";
-import { saveWeighIn } from "../routes/weight.js";
-import { addToGoalsPage, dropGoalWidgets, goalsWithProgress } from "../routes/goals.js";
+import { saveWeighIn } from "./weighIns.js";
+import { addToGoalsPage, dropGoalWidgets, goalsWithProgress } from "./goalsData.js";
 import { weekStartFor } from "./calorieDays.js";
 import { weekStartOf } from "./trends.js";
 import type { GoalSpec } from "./goals.js";

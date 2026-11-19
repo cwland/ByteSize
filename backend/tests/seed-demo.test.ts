@@ -578,3 +578,11 @@ describe("npm run seed-demo", () => {
     expect((await counts(id)).weighIns).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe("lib/demoData.ts (§46)", () => {
+  it("doesn't import from routes (the seeder uses lib code only)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../src/lib/demoData.ts", import.meta.url), "utf8");
+    expect(src).not.toMatch(/from "\.\.\/routes\//);
+  });
+});

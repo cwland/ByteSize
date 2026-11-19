@@ -1,17 +1,16 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, asc, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
-import type { Db } from "../db/index.js";
-import { badges, dashboardLayouts, goals, workouts } from "../db/schema.js";
+import { and, eq, gte, isNull, or } from "drizzle-orm";
+import { goals } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
 import { addDays, DAY, daysBetween, todayFor } from "../lib/days.js";
 import { weekStartFor } from "../lib/calorieDays.js";
-import { GOAL_NAMES, GOAL_PERIODS, GOAL_TYPES, MIN_JUDGED_DAYS, STEP_MEASURES, STRETCH_ONLY, isDayCount, periodsOf, progressOf, type GoalProgress, type GoalSpec } from "../lib/goals.js";
-import { GOAL_WIDGET, goalWidgetId } from "../lib/widgets.js";
-import { goalFacts, specOf } from "../lib/goalsData.js";
+import { GOAL_NAMES, GOAL_PERIODS, GOAL_TYPES, MIN_JUDGED_DAYS, STEP_MEASURES, STRETCH_ONLY, isDayCount, periodsOf, type GoalSpec } from "../lib/goals.js";
+import { addToGoalsPage, dropGoalWidgets, goalsWithProgress, isPast, specOf } from "../lib/goalsData.js";
 
-export { goalFacts }; // (moved to lib/goalsData.ts; still reachable from here)
+// goalsWithProgress and the goal widget helpers live in lib/goalsData.ts (the demo seeder uses them too)
+export { activeGoalIds, goalFacts, goalsMet, goalsWithProgress, keepGoals, stepGoalOn, type GoalView } from "../lib/goalsData.js";
 
 // Goals with a start and end (§40c). Progress is worked out from the person's data each time a goal is read; once its
 // end has passed (in their time zone) the result is worked out one last time and kept (goals.result), and a goal
@@ -42,10 +41,6 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   if (!r.success) throw badRequest(r.error.issues[0].message);
   return r.data;
 }
-
-type GoalRow = typeof goals.$inferSelect;
-/** Ended early (End now, replaced) or its end has passed: in Past goals */
-const isPast = (g: GoalRow, today: string) => g.endedAt !== null || (g.endDay !== null && g.endDay < today);
 
 const fmt = (n: number) => n.toLocaleString("en-US");
 const PER = { week: "a week", month: "a month", stretch: "in the stretch" } as const;
@@ -88,156 +83,6 @@ function check(g: GoalSpec, today: string, isNew: boolean, weekStart: number) {
     case "weight_by_date":
       if (!(g.target >= 20 && g.target <= 400)) throw badRequest("Choose a weight between 20 and 400 kg");
   }
-}
-
-export type GoalView = ReturnType<typeof viewOf>;
-const viewOf = (g: GoalRow, progress: GoalProgress) => ({
-  id: g.id,
-  type: g.type,
-  name: g.name,
-  target: g.target,
-  period: g.period,
-  measure: g.measure ?? null,
-  start: g.startDay,
-  end: g.endDay,
-  createdAt: g.createdAt,
-  endedEarly: g.endedAt !== null,
-  frozen: g.result !== null,
-  progress,
-});
-
-/**
- * The person's goals with their progress: live, or kept once the end has passed. Goals whose end has passed are
- * worked out one last time and kept now (each once: a second reader finds it kept); a completed one earns Goal met.
- */
-export async function goalsWithProgress(db: Db, userId: number, today: string, only?: number) {
-  const rows = await db
-    .select()
-    .from(goals)
-    .where(and(eq(goals.userId, userId), only === undefined ? undefined : eq(goals.id, only)))
-    .orderBy(asc(goals.createdAt), asc(goals.id));
-  const live = rows.filter((g) => g.result === null);
-  const progress = new Map<number, GoalProgress>();
-  const started = live.filter((g) => g.startDay <= today);
-  const weekStart = live.length ? await weekStartFor(db, userId) : 0;
-  if (started.length) {
-    const from = started.map((g) => g.startDay).sort()[0];
-    const until = started.some((g) => g.endDay === null || g.endDay >= today) ? today : started.map((g) => g.endDay!).sort().at(-1)!;
-    const facts = await goalFacts(db, userId, from, until, weekStart);
-    for (const g of live) progress.set(g.id, progressOf(specOf(g), { ...facts, today, weekStart }));
-  } else {
-    for (const g of live) progress.set(g.id, progressOf(specOf(g), { days: [], trend: [], today, weekStart }));
-  }
-  for (const g of live) {
-    if (g.endDay === null || g.endDay >= today) continue;
-    // Over: keep this result (only if no one kept one first) and, in the same transaction, a completed goal earns Goal
-    // met: on its end day (the latest goal met's), new again so it's celebrated (the count comes from the goals)
-    const p = progress.get(g.id)!;
-    const kept = await db.transaction(async (tx) => {
-      const [row] = await tx
-        .update(goals)
-        .set({ result: p, frozenAt: new Date() })
-        .where(and(eq(goals.id, g.id), isNull(goals.result)))
-        .returning();
-      if (row && p.state === "completed") {
-        await tx
-          .insert(badges)
-          .values({ userId, badge: "goal_met", earnedOn: g.endDay! })
-          .onConflictDoUpdate({ target: [badges.userId, badges.badge], set: { earnedOn: sql`greatest(${badges.earnedOn}, excluded.earned_on)`, seen: false } });
-      }
-      return row;
-    });
-    if (kept) {
-      g.result = kept.result;
-      g.frozenAt = kept.frozenAt;
-    } else {
-      const [now] = await db.select().from(goals).where(eq(goals.id, g.id));
-      if (now) Object.assign(g, now);
-    }
-  }
-  const views = rows.map((g) => viewOf(g, (g.result as GoalProgress | null) ?? progress.get(g.id)!));
-  return {
-    active: views.filter((_, i) => !isPast(rows[i], today)),
-    past: views
-      .filter((_, i) => isPast(rows[i], today))
-      .sort((a, b) => (a.end! < b.end! ? 1 : a.end! > b.end! ? -1 : b.id - a.id)),
-  };
-}
-
-/** How many of the person's goals ended completed (the Goal met badge's count) */
-export async function goalsMet(db: Db, userId: number): Promise<number> {
-  const [r] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(goals)
-    .where(and(eq(goals.userId, userId), sql`${goals.result}->>'state' = 'completed'`));
-  return r?.n ?? 0;
-}
-
-/** The ids of the person's active goals (not ended, end not passed): the goal widgets their layouts may hold. */
-export async function activeGoalIds(db: Db, userId: number, today: string): Promise<Set<number>> {
-  const rows = await db
-    .select({ id: goals.id })
-    .from(goals)
-    .where(and(eq(goals.userId, userId), isNull(goals.endedAt), or(isNull(goals.endDay), gte(goals.endDay, today))));
-  return new Set(rows.map((r) => r.id));
-}
-
-/** Layout columns with only known widgets and active goals (§40c) */
-export function keepGoals(columns: string[][], active: Set<number>): string[][] {
-  return columns.map((c) => c.filter((id) => {
-    const m = GOAL_WIDGET.exec(id);
-    return !m || active.has(Number(m[1]));
-  }));
-}
-
-/** Takes these goals' widgets off the person's saved layouts. */
-export async function dropGoalWidgets(db: Db, userId: number, ids: number[]) {
-  if (!ids.length) return;
-  const gone = new Set(ids.map(goalWidgetId));
-  const rows = await db.select().from(dashboardLayouts).where(eq(dashboardLayouts.userId, userId));
-  for (const r of rows) {
-    if (!r.columns.flat().some((id) => gone.has(id))) continue;
-    await db
-      .update(dashboardLayouts)
-      .set({ columns: r.columns.map((c) => c.filter((id) => !gone.has(id))) })
-      .where(and(eq(dashboardLayouts.userId, userId), eq(dashboardLayouts.page, r.page)));
-  }
-}
-
-/**
- * A new goal joins the bottom of the shortest column in use of the saved Goals layout (the leftmost of equals; an empty
- * column stays empty; none saved: the app's default places it, the same way).
- */
-export async function addToGoalsPage(db: Db, userId: number, id: number) {
-  const [row] = await db.select().from(dashboardLayouts).where(and(eq(dashboardLayouts.userId, userId), eq(dashboardLayouts.page, "goals")));
-  if (!row) return;
-  const columns = row.columns.map((c) => [...c]);
-  while (columns.length < 3) columns.push([]);
-  const used = columns.map((_, i) => i).filter((i) => columns[i].length > 0);
-  const shortest = used.length ? used.reduce((best, i) => (columns[i].length < columns[best].length ? i : best), used[0]) : 0;
-  columns[shortest].push(goalWidgetId(id));
-  await db.update(dashboardLayouts).set({ columns }).where(and(eq(dashboardLayouts.userId, userId), eq(dashboardLayouts.page, "goals")));
-}
-
-/** The person's newest active (not ended, not kept) average-per-day steps goal that holds `day`: the Activity widget's step goal (§40b) */
-export async function stepGoalOn(db: Db, userId: number, day: string): Promise<number | null> {
-  const [row] = await db
-    .select({ target: goals.target })
-    .from(goals)
-    .where(
-      and(
-        eq(goals.userId, userId),
-        eq(goals.type, "steps"),
-        eq(goals.measure, "average"),
-        isNull(goals.result),
-        isNull(goals.endedAt),
-        lte(goals.startDay, day),
-        or(isNull(goals.endDay), gte(goals.endDay, day)),
-      ),
-    )
-    .orderBy(desc(goals.createdAt), desc(goals.id))
-    .limit(1);
-  return row?.target ?? null;
 }
 
 export default async function goalRoutes(app: FastifyInstance) {
