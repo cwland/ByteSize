@@ -136,8 +136,10 @@ describe("Dashboard", () => {
   it("no targets → pick a plan button", async () => {
     show(dayJson({ totals, targets: null }));
     expect(await screen.findByText("Pick a plan to see your budget")).toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole("button", { name: "Pick a plan" }));
+    await userEvent.setup().click(within(screen.getByRole("region", { name: "Budget" })).getByRole("button", { name: "Pick a plan" }));
     expect(window.location.hash).toBe("#/goals/plan");
+    // Day totals offers it too (§41)
+    expect(within(screen.getByRole("region", { name: "Day totals" })).getByRole("button", { name: "Pick a plan" })).toBeInTheDocument();
   });
 
   it("dashboard celebrates a new badge", async () => {

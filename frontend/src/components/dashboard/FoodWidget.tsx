@@ -2,7 +2,6 @@ import { useState } from "react";
 import { api } from "../../api";
 import { notifyDayChanged } from "../../day";
 import { MEALS } from "../../meals";
-import { myFoodsHref } from "../../routes";
 import { dayLabel } from "../../selectedDay";
 import { useSession } from "../../session";
 import type { Day, LogEntry, Meal } from "../../types";
@@ -73,9 +72,10 @@ export default function FoodWidget({ day, data, isToday }: { day: string; data: 
   const title = isToday || !data ? "Today's food" : `Food on ${dayLabel(data.day)}`;
   return (
     <section aria-label={title} className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2 px-1">
+      {/* The title and its controls in a card of their own at the top, as other widgets show their titles (§41) */}
+      <div data-testid="food-title" className="flex flex-wrap items-center gap-2 rounded-2xl bg-container px-4 py-3">
         <h2 className="mr-auto text-lg font-bold">{title}</h2>
-        {selecting ? (
+        {selecting && (
           <>
             <span className="text-sm text-subtle">{selected.size} selected</span>
             <button type="button" disabled={!selected.size} onClick={() => setMoving({ ids: [...selected], copy: false, meal: "breakfast" })} className={`${secondaryButton} px-4 py-1.5 text-sm`}>
@@ -88,10 +88,6 @@ export default function FoodWidget({ day, data, isToday }: { day: string; data: 
               Delete selected
             </button>
           </>
-        ) : (
-          <a href={myFoodsHref("/")} className="rounded-full px-3 py-1.5 text-sm font-semibold text-link hover:bg-pressed">
-            My foods
-          </a>
         )}
         {entries.length > 0 && (
           <button type="button" onClick={() => (selecting ? endSelect() : setSelecting(true))} className="rounded-full px-3 py-1.5 text-sm font-semibold text-link hover:bg-pressed">

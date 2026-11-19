@@ -1,4 +1,6 @@
+import { ArrowLeftRight } from "lucide-react";
 import type { Day, NutrientKey, Range, Targets, Units } from "../../types";
+import { linkButton } from "../ui/styles";
 import { fmt, waterUnit, waterValue } from "../../units";
 
 type Row = { name: string; key: NutrientKey; unit: string; target?: keyof Pick<Targets, "calories" | "protein_g" | "fiber_g" | "water_ml"> };
@@ -13,7 +15,12 @@ const ROWS: Row[] = [
   { name: "Water", key: "water_ml", unit: "", target: "water_ml" },
 ];
 
-// "Day totals" (a Dashboard widget): eaten vs the target range for the day ("—" where there is no target).
+// The plan picker, as Goals › Change plan opens it
+const openPlanPicker = () => (window.location.hash = "#/goals/plan");
+const planName = (t: Targets) => (t.plan ? `${t.plan[0].toUpperCase()}${t.plan.slice(1)}` : "Your own targets");
+
+// "Day totals" (a Dashboard widget): the plan in force that day with Change plan (§41; Pick a plan without one), then
+// eaten vs the target range for the day ("—" where there is no target).
 // The server sums a nutrient a food doesn't say as 0, and that number shows (§31).
 export default function DayTotals({ day, units }: { day: Day; units: Units }) {
   const targets: Targets | null = day.targets;
@@ -25,6 +32,18 @@ export default function DayTotals({ day, units }: { day: Day; units: Units }) {
       <h2 id="day-totals" className="text-lg font-bold">
         Day totals
       </h2>
+      {targets ? (
+        <p className="mt-1 flex items-center gap-1 text-sm text-subtle">
+          <span>{`Plan: ${planName(targets)}`}</span>
+          <button type="button" aria-label="Change plan" title="Change plan" onClick={openPlanPicker} className="flex size-9 items-center justify-center rounded-full text-link hover:bg-pressed">
+            <ArrowLeftRight aria-hidden="true" className="size-4" />
+          </button>
+        </p>
+      ) : (
+        <button type="button" onClick={openPlanPicker} className={`${linkButton} mt-1 text-sm`}>
+          Pick a plan
+        </button>
+      )}
       <table aria-labelledby="day-totals" className="mt-3 w-full text-sm tabular">
         <thead>
           <tr className="border-b border-line text-left text-xs font-semibold text-muted">
