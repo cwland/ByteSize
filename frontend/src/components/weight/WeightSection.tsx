@@ -59,6 +59,18 @@ export default function WeightSection({ onReplan, markers }: { onReplan: () => v
 
   const from = rangeFrom ?? data?.start?.day ?? today;
   const newestFirst = data ? [...data.weighIns].reverse() : [];
+  // The change since the weigh-in before each one, looked up in every weigh-in (not just this range), so the oldest
+  // row shown still compares with the one before it. Rounded the way weights are shown, so 0.04 reads "no change".
+  const changeOn = new Map<string, number>();
+  if (all) all.weighIns.forEach((p, i) => i > 0 && changeOn.set(p.day, p.weightKg - all.weighIns[i - 1].weightKg));
+  const changeOf = (day: string) => {
+    const kg = changeOn.get(day);
+    if (kg === undefined) return null;
+    const shown = weightValue(Math.abs(kg), user.units);
+    if (Math.round(shown * 10) === 0) return { text: "no change", spoken: "no change", tone: "text-muted" };
+    const amount = w(Math.abs(kg));
+    return kg < 0 ? { text: `↓ ${amount}`, spoken: `down ${amount}`, tone: "text-success" } : { text: `↑ ${amount}`, spoken: `up ${amount}`, tone: "text-error" };
+  };
   const listed = showAll ? newestFirst : newestFirst.slice(0, LIST_LIMIT);
   const lost = data?.lostKg ?? null;
 
@@ -127,20 +139,24 @@ export default function WeightSection({ onReplan, markers }: { onReplan: () => v
           </div>
           {data.weighIns.length > 0 && (
             <ul aria-label="Weigh-ins" className="mt-2 divide-y divide-line">
-              {listed.map((p) => (
+              {listed.map((p) => {
+                const change = changeOf(p.day);
+                return (
                 <li key={p.day}>
                   <button
                     type="button"
-                    aria-label={`Edit ${dayLabel(p.day)}, ${w(p.weightKg)}`}
+                    aria-label={`Edit ${dayLabel(p.day)}, ${w(p.weightKg)}${change ? `, ${change.spoken}` : ""}`}
                     onClick={() => setSheet({ edit: p })}
                     className="flex w-full items-center gap-3 py-2.5 text-left hover:bg-pressed"
                   >
                     <span className="flex-1 text-subtle">{dayLabel(p.day)}</span>
                     {p.note && <span className="max-w-[40%] truncate text-xs text-muted">{p.note}</span>}
+                    {change && <span data-testid="weigh-in-change" className={`text-sm font-semibold tabular ${change.tone}`}>{change.text}</span>}
                     <span className="font-semibold tabular">{w(p.weightKg)}</span>
                   </button>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
           {listed.length < newestFirst.length && (

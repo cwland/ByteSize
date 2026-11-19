@@ -96,7 +96,7 @@ describe("WeightSection (Goals)", () => {
     });
     renderWithSession(<WeightSection onReplan={() => {}} />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Edit Fri, Nov 13, 222.4 lb" }));
+    await user.click(await screen.findByRole("button", { name: /^Edit Fri, Nov 13, 222.4 lb/ }));
     const sheet = screen.getByRole("dialog", { name: "Edit weigh-in" });
     expect(within(sheet).getByLabelText("Date")).toHaveValue("2026-11-13");
     expect(within(sheet).getByLabelText("Date")).toBeDisabled();
@@ -119,7 +119,7 @@ describe("WeightSection (Goals)", () => {
     });
     renderWithSession(<WeightSection onReplan={() => {}} />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Edit Fri, Nov 13, 222.4 lb" }));
+    await user.click(await screen.findByRole("button", { name: /^Edit Fri, Nov 13, 222.4 lb/ }));
     await user.type(screen.getByLabelText("Note (optional)"), "late");
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(server.writes()[0].body).toEqual({ weightKg: sampleWeighIns[5].weightKg, note: "late" });
@@ -153,11 +153,44 @@ describe("WeightSection (Goals)", () => {
     const list = await screen.findByRole("list", { name: "Weigh-ins" });
     const rows = within(list).getAllByRole("button");
     expect(rows).toHaveLength(7);
-    expect(rows[0]).toHaveAccessibleName("Edit Tue, Nov 17, 221.4 lb");
+    expect(rows[0]).toHaveAccessibleName(/^Edit Tue, Nov 17, 221.4 lb/);
     await userEvent.setup().click(screen.getByRole("button", { name: "Show all (9)" }));
     expect(within(list).getAllByRole("button")).toHaveLength(9);
     expect(within(list).getByRole("button", { name: "Edit Sun, Oct 18, 227 lb" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Show all/ })).not.toBeInTheDocument();
+  });
+
+  it("each weigh-in shows the change since the one before it: green ↓ for a loss, red ↑ for a gain", async () => {
+    const days = [
+      { day: "2026-11-10", weightKg: 228 * KG, trendKg: 228 * KG, note: null },
+      { day: "2026-11-12", weightKg: 226.7 * KG, trendKg: 227.5 * KG, note: null }, // −1.3
+      { day: "2026-11-14", weightKg: 227.6 * KG, trendKg: 227.5 * KG, note: null }, // +0.9
+      { day: "2026-11-15", weightKg: 227.6 * KG, trendKg: 227.5 * KG, note: null }, // no change
+    ];
+    fakeServer({ "GET /api/weight": () => weightJson({ weighIns: days }) });
+    renderWithSession(<WeightSection onReplan={() => {}} />);
+    const list = await screen.findByRole("list", { name: "Weigh-ins" });
+    const change = (day: string) => within(within(list).getByRole("button", { name: new RegExp(`^Edit ${day},`) })).getByTestId("weigh-in-change");
+    expect(change("Thu, Nov 12")).toHaveTextContent("↓ 1.3 lb");
+    expect(change("Thu, Nov 12").className).toMatch(/text-success/);
+    expect(change("Sat, Nov 14")).toHaveTextContent("↑ 0.9 lb");
+    expect(change("Sat, Nov 14").className).toMatch(/text-error/);
+    expect(change("Sun, Nov 15")).toHaveTextContent("no change");
+    // The first weigh-in ever has nothing to compare with
+    expect(within(within(list).getByRole("button", { name: /^Edit Tue, Nov 10,/ })).queryByTestId("weigh-in-change")).not.toBeInTheDocument();
+    // Screen readers hear it too
+    expect(within(list).getByRole("button", { name: "Edit Thu, Nov 12, 226.7 lb, down 1.3 lb" })).toBeInTheDocument();
+  });
+
+  it("the oldest weigh-in shown in a short range still compares with the one before it, outside the range", async () => {
+    const days = [
+      { day: "2026-09-01", weightKg: 240 * KG, trendKg: 240 * KG, note: null },
+      { day: "2026-11-15", weightKg: 230 * KG, trendKg: 231 * KG, note: null },
+    ];
+    fakeServer({ "GET /api/weight": () => weightJson({ weighIns: days }) });
+    renderWithSession(<WeightSection onReplan={() => {}} />);
+    const list = await screen.findByRole("list", { name: "Weigh-ins" });
+    expect(within(list).getByTestId("weigh-in-change")).toHaveTextContent("↓ 10 lb");
   });
 
   it("no weigh-ins in the range shows a short empty state", async () => {
