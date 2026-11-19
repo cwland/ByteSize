@@ -79,10 +79,15 @@ public final class SessionStore {
         adopt(login, server: server, api: client(for: server))
     }
 
-    /// Signs out here even if the server can't be told (offline).
+    /// Signs out on this phone at once; the server is told in the background (and if it can't be reached,
+    /// the login simply expires there).
     public func signOut() async {
-        if let api { _ = try? await api.send(Auth.logout()) }
+        let token = tokens.read()
+        let server = self.server
         clear(notice: nil)
+        guard let token, let server else { return }
+        let tellServer = APIClient(base: server, token: { token }, session: session)
+        Task.detached { _ = try? await tellServer.send(Auth.logout()) }
     }
 
     func handleUnauthorized() {
