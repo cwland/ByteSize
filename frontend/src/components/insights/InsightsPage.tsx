@@ -271,14 +271,14 @@ function ProteinCard({ view, onChanged }: { view: InsightsView; onChanged: () =>
       ) : (
         <>
           {c.intro && <p>{c.intro}</p>}
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-4">
             <div>
               <h3 className="text-sm font-bold text-subtle">Top protein sources</h3>
               <ul aria-label="Top protein sources" className="mt-1 flex flex-col gap-1">
                 {c.facts.topSources.map((s) => (
                   <li key={s.food} className="flex justify-between gap-2">
-                    <span className="min-w-0 truncate">{s.food}</span>
-                    <span className="shrink-0 text-sm text-subtle tabular">{`${oneDecimal(s.protein_g)} g · ${plural(s.times, "time")}`}</span>
+                    <span className="min-w-0">{s.food}</span>
+                    <span className="shrink-0 text-sm text-subtle tabular">{`${fmt(Math.round(s.protein_g))} g · ${plural(s.times, "time")}`}</span>
                   </li>
                 ))}
               </ul>

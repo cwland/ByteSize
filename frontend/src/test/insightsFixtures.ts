@@ -53,7 +53,7 @@ export const proteinRow = (over: Record<string, unknown> = {}) => ({
       to: "2026-11-14",
       daysLogged: 3,
       topSources: [
-        { food: "Chicken breast", protein_g: 205, times: 2 },
+        { food: "Chicken breast", protein_g: 204.6, times: 2 },
         { food: "Cheese pizza", protein_g: 70, times: 1 },
       ],
       shortDays: [

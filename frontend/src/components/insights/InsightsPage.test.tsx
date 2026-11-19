@@ -136,7 +136,9 @@ describe("Insights page", () => {
     renderWithSession(<InsightsPage />);
     const card = await screen.findByRole("region", { name: "Protein help and food swaps" });
     expect(within(card).getByText("Protein fell short on 2 days.")).toBeInTheDocument();
-    expect(within(within(card).getByRole("list", { name: "Top protein sources" })).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Chicken breast205 g · 2 times", "Cheese pizza70 g · 1 time"]);
+    expect(within(within(card).getByRole("list", { name: "Top protein sources" })).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Chicken breast205 g · 2 times", "Cheese pizza70 g · 1 time"]); // whole grams (204.6 → 205)
+    // Names are never cut off: the two lists stack instead of sitting side by side
+    for (const name of within(within(card).getByRole("list", { name: "Top protein sources" })).getAllByText(/./, { selector: "li > span:first-child" })) expect(name.className).not.toMatch(/truncate/);
     expect(within(within(card).getByRole("list", { name: "Days protein fell short" })).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Nov 970 g · 50 g short", "Nov 1080 g · 40 g short"]);
     expect(within(card).getByRole("list", { name: "Try adding" })).toHaveTextContent("Greek yogurt at breakfastcloses the gap on 2 of 2 short days");
     expect(within(card).getByRole("list", { name: "Swaps" })).toHaveTextContent("Cheese pizza → Thin-crust chicken pizzaabout 300 calories");
