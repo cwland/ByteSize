@@ -68,7 +68,8 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(username.waitForExistence(timeout: 5))
         username.tap()
         username.typeText("cory")
-        let pass = app.secureTextFields["passwordField"]
+        // UI-test runs use a plain field for the password (no Save Password prompt)
+        let pass = app.textFields["passwordField"].exists ? app.textFields["passwordField"] : app.secureTextFields["passwordField"]
         pass.tap()
         pass.typeText(password)
         app.buttons["Sign in"].tap()
