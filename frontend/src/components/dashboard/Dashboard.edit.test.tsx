@@ -22,8 +22,8 @@ function show({ layout = null as Layout, wide = true, over = {} as Record<string
     "GET /api/settings/me": () => settingsMe,
     "GET /api/weight": () => weightJson(),
     "GET /api/glp1": () => glp1View(),
-    "GET /api/dashboard/layout": () => ({ layout }),
-    "PUT /api/dashboard/layout": (b) => ({ layout: b }),
+    "GET /api/layouts/dashboard": () => ({ layout }),
+    "PUT /api/layouts/dashboard": (b) => ({ layout: b }),
     ...over,
   });
   renderWithSession(
@@ -95,7 +95,7 @@ describe("Dashboard widgets", () => {
     expect(editCards(columns()[2])).toEqual(["day-totals", "weight", "streak", "next-shot"]);
     expect(server.sent.slice(before).filter((s) => s.method === "GET")).toEqual([]); // nothing fetched while editing
     await user.click(screen.getByRole("button", { name: "Save" }));
-    expect(server.writes()).toEqual([expect.objectContaining({ method: "PUT", path: "/api/dashboard/layout", body: { version: 1, columns: [["budget", "food"], ["water"], ["day-totals", "weight", "streak", "next-shot"]] } })]);
+    expect(server.writes()).toEqual([expect.objectContaining({ method: "PUT", path: "/api/layouts/dashboard", body: { version: 1, columns: [["budget", "food"], ["water"], ["day-totals", "weight", "streak", "next-shot"]] } })]);
     // back to the live widgets, in the new places
     expect(names(columns()[0])).toEqual(["Budget", "Today's food"]);
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
@@ -126,13 +126,16 @@ describe("Dashboard widgets", () => {
     await user.click(screen.getByRole("button", { name: "Add widget" }));
     const list = screen.getByRole("dialog", { name: "Add widget" });
     expect(within(list).getByText("Add a glass of water in one tap")).toBeInTheDocument();
-    expect(within(list).getAllByRole("button", { name: /^Add / }).map((b) => b.getAttribute("aria-label"))).toEqual(["Add Budget", "Add Water"]);
+    expect(within(list).getAllByRole("button", { name: /^Add / }).map((b) => b.getAttribute("aria-label"))).toEqual(["Add Budget", "Add Water", "Add Goal date"]);
     await user.click(within(list).getByRole("button", { name: "Add Water" }));
     expect(screen.queryByRole("dialog", { name: "Add widget" })).not.toBeInTheDocument();
     expect(editCards(columns()[1])).toEqual(["water"]);
     // every widget placed: the list says so
     await user.click(screen.getByRole("button", { name: "Add widget" }));
     await user.click(within(screen.getByRole("dialog", { name: "Add widget" })).getByRole("button", { name: "Add Budget" }));
+    await user.click(screen.getByRole("button", { name: "Add widget" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Add widget" })).getByRole("button", { name: "Add Goal date" }));
+    expect(screen.getByRole("group", { name: "Goal date" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Add widget" }));
     expect(within(screen.getByRole("dialog", { name: "Add widget" })).getByText("Every widget is on your dashboard")).toBeInTheDocument();
   });
@@ -209,7 +212,7 @@ describe("Dashboard widgets", () => {
 
   it("Edit dashboard waits for the saved layout, so Save never writes an edit of the default over it", async () => {
     let answer!: (v: unknown) => void;
-    const server = show({ over: { "GET /api/dashboard/layout": () => new Promise((r) => (answer = r)) } });
+    const server = show({ over: { "GET /api/layouts/dashboard": () => new Promise((r) => (answer = r)) } });
     const edit = await screen.findByRole("button", { name: "Edit dashboard" });
     expect(edit).toBeDisabled();
     answer({ layout: { version: 1, columns: [["streak"], ["food"], []] } });
@@ -222,12 +225,12 @@ describe("Dashboard widgets", () => {
   });
 
   it("if the saved layout can't be loaded, editing starts from the default", async () => {
-    show({ over: { "GET /api/dashboard/layout": () => ({ status: 500, json: { error: "down" } }) } });
+    show({ over: { "GET /api/layouts/dashboard": () => ({ status: 500, json: { error: "down" } }) } });
     await waitFor(() => expect(screen.getByRole("button", { name: "Edit dashboard" })).toBeEnabled());
   });
 
   it("a failed save says why and stays in edit mode", async () => {
-    show({ over: { "PUT /api/dashboard/layout": () => ({ status: 500, json: { error: "Couldn't save" } }) } });
+    show({ over: { "PUT /api/layouts/dashboard": () => ({ status: 500, json: { error: "Couldn't save" } }) } });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Edit dashboard" }));
     await user.click(screen.getByRole("button", { name: "Save" }));

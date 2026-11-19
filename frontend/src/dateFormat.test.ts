@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DATE_FORMATS, DEFAULT_DATE_FORMAT, formatDate } from "./dateFormat";
+import { DATE_FORMATS, DEFAULT_DATE_FORMAT, formatDate, formatDay } from "./dateFormat";
 
 // Wednesday, 18 November 2026
 const DAY = "2026-11-18";
@@ -35,5 +35,32 @@ describe("formatDate", () => {
   it("is the same in any browser time zone (a day is a calendar date, not a moment)", () => {
     expect(formatDate("2026-12-31", "weekday-short-day-month-short")).toBe("Thu 31 Dec");
     expect(formatDate("2027-01-01", "iso")).toBe("2027-01-01");
+  });
+});
+
+// A day without its weekday, in the person's format (§40a goal date): "Apr 5"; the year only when it's a year or more away
+const SHORT: Record<string, [string, string]> = {
+  "weekday-long-month-short": ["Apr 5", "Apr 5, 2028"],
+  "weekday-short-month-short": ["Apr 5", "Apr 5, 2028"],
+  "weekday-long-month-long": ["April 5", "April 5, 2028"],
+  "mdy-slash": ["04/05/2027", "04/05/2028"],
+  "weekday-long-day-month-short": ["5 Apr", "5 Apr 2028"],
+  "weekday-short-day-month-short": ["5 Apr", "5 Apr 2028"],
+  "weekday-long-day-month-long": ["5 April", "5 April 2028"],
+  "dmy-slash": ["05/04/2027", "05/04/2028"],
+  "dmy-dot": ["05.04.2027", "05.04.2028"],
+  iso: ["2027-04-05", "2028-04-05"],
+};
+
+describe("formatDay", () => {
+  it.each(Object.entries(SHORT))("%s", (key, [soon, later]) => {
+    expect(formatDay("2027-04-05", key, DAY)).toBe(soon);
+    expect(formatDay("2028-04-05", key, DAY)).toBe(later);
+  });
+
+  it("an unknown key is the default look; a date 364 days away has no year, 365 days away has one", () => {
+    expect(formatDay("2027-04-05", "nope", DAY)).toBe("Apr 5");
+    expect(formatDay("2027-11-17", undefined, DAY)).toBe("Nov 17");
+    expect(formatDay("2027-11-18", undefined, DAY)).toBe("Nov 18, 2027");
   });
 });

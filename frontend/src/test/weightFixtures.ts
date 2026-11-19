@@ -21,6 +21,7 @@ export function weightJson(over: Record<string, unknown> = {}) {
     goalKg: lb(180),
     lostKg: lb(3.9),
     projection: { status: "ok", date: "2027-06-29", kgPerWeek: lb(1.2) },
+    goalDate: { status: "not_enough" },
     replanHint: false,
     ...over,
   };
@@ -34,5 +35,6 @@ export const emptyWeightJson = {
   goalKg: lb(180),
   lostKg: null,
   projection: { status: "not_enough" },
+  goalDate: { status: "not_enough" },
   replanHint: false,
 };

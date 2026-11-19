@@ -1,13 +1,14 @@
-import { BookOpen, House, Settings, Target } from "lucide-react";
-import { myFoodsHref, type Page } from "../routes";
+import { BookOpen, House, Settings, Syringe, Target } from "lucide-react";
+import { isGlp1, myFoodsHref, type Page } from "../routes";
 import { initialsOf, useSession } from "../session";
 import { Logo } from "./ui/Logo";
 
-// Wide screens: the side rail in place of the top bar and bottom tab bar. Logo (home), the pages with My
-// foods, and Settings and the account at the bottom (no +: food is added from the Food widget; no Log page). Stays in view. It comes
+// Wide screens: the side rail in place of the top bar and bottom tab bar. Logo (home), the pages (GLP-1 among
+// them since it left Goals, §40a) with My foods, and Settings and the account at the bottom (no +: food is added from the Food widget; no Log page). Stays in view. It comes
 // after the page in the DOM (the shell keeps one tree for both layouts) and is drawn first with order-first.
 export default function Rail({ page }: { page: Page }) {
   const { user } = useSession();
+  const glp1 = isGlp1(); // the GLP-1 page sits under the Dashboard; the shell redraws on every address change
   const item = (label: string, href: string, current: boolean, icon: JSX.Element) => (
     <a
       href={href}
@@ -24,8 +25,9 @@ export default function Rail({ page }: { page: Page }) {
         <Logo className="size-11 rounded-xl" />
       </a>
       <div className="mt-3.5 flex flex-col gap-1.5">
-        {item("Dashboard", "#/", page === "dashboard", <House aria-hidden="true" className="size-[22px]" />)}
+        {item("Dashboard", "#/", page === "dashboard" && !glp1, <House aria-hidden="true" className="size-[22px]" />)}
         {item("Goals", "#/goals", page === "goals", <Target aria-hidden="true" className="size-[22px]" />)}
+        {item("GLP-1", "#/glp1", page === "dashboard" && glp1, <Syringe aria-hidden="true" className="size-[22px]" />)}
         {item("My foods", myFoodsHref(), page === "myfoods", <BookOpen aria-hidden="true" className="size-[22px]" />)}
       </div>
       <div className="mt-auto flex flex-col items-center gap-3">

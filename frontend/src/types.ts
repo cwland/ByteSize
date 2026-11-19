@@ -124,6 +124,11 @@ export type Units = "imperial" | "metric";
 // GET /api/weight: kg, unrounded. trendKg is the smoothed weight; projection.kgPerWeek > 0 means losing.
 export type WeighIn = { day: string; weightKg: number; trendKg: number; note: string | null };
 export type WeightProjection = { status: "ok" | "not_enough" | "not_losing" | "reached"; date?: string; kgPerWeek?: number };
+// The Goal date widget's numbers (§40a; backend/src/lib/weight.ts goalDateOf): kg, days as YYYY-MM-DD, all after today
+export type GoalDate =
+  | { status: "no_goal" | "reached" | "not_enough" }
+  | { status: "not_heading"; kgPerWeek: number }
+  | { status: "ok"; kgPerWeek: number; toGoKg: number; weeks: { min: number; max: number }; date: string; earliest: string; latest: string };
 export type Weight = {
   weighIns: WeighIn[];
   start: { day: string; weightKg: number } | null;
@@ -132,6 +137,7 @@ export type Weight = {
   goalKg: number | null;
   lostKg: number | null;
   projection: WeightProjection;
+  goalDate: GoalDate;
   replanHint: boolean;
 };
 // GLP-1 (M3 §13 B): weekly shots, injection sites in rotation order, side-effect levels 1 mild … 3 strong

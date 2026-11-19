@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import GoalsPage from "./GoalsPage";
 import { fakeServer } from "../../test/fakeServer";
@@ -88,18 +88,18 @@ describe("Goals", () => {
     expect(await screen.findByRole("heading", { name: "Choose your plan" })).toBeInTheDocument();
   });
 
-  it("Goals shows weekly trends, badges and vacation mode", async () => {
+  it("Goals shows weekly trends and badges; vacation mode and the GLP-1 shots button have gone", async () => {
     fakeServer({
       ...m3Routes,
       "GET /api/targets": () => ({ targets: steadyTargets }),
       "GET /api/trends/weekly": () => ({ weeks: [] }),
       "GET /api/badges": () => ({ badges: [{ id: "first_weigh_in", earnedOn: null, seen: false }], new: [] }),
-      "GET /api/vacations": () => ({ vacations: [] }),
     });
     renderWithSession(<GoalsPage />);
     expect(await screen.findByRole("region", { name: "Weekly trends" })).toBeInTheDocument();
     expect(await screen.findByRole("listitem", { name: "First weigh-in" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Vacation mode" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Vacation mode" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "GLP-1 shots" })).not.toBeInTheDocument();
   });
 
   it("marks each dose on the weight chart, the starting dose included, and says so in the chart's summary", async () => {
@@ -127,21 +127,74 @@ describe("Goals", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("orders Goals: plan, weight, weekly trends, badges, vacation mode, then the GLP-1 link; no error notices by default", async () => {
+  it("orders Goals by default: plan, goal date, weight, weekly trends, badges; no error notices by default", async () => {
     fakeServer({ ...m3Routes, "GET /api/targets": () => ({ targets: steadyTargets }) });
     renderWithSession(<GoalsPage />);
     await screen.findByText("Steady plan");
     await screen.findByRole("region", { name: "Badges" });
-    const order = [
-      screen.getByRole("region", { name: "Plan" }),
-      screen.getByRole("region", { name: "Weight" }),
-      screen.getByRole("region", { name: "Weekly trends" }),
-      screen.getByRole("region", { name: "Badges" }),
-      screen.getByRole("region", { name: "Vacation mode" }),
-      screen.getByRole("link", { name: "GLP-1 shots" }),
-    ];
+    const order = ["Plan", "Goal date", "Weight", "Weekly trends", "Badges"].map((name) => screen.getByRole("region", { name }));
     for (let i = 1; i < order.length; i++) expect(order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows the person's saved Goals layout", async () => {
+    const server = fakeServer({
+      ...m3Routes,
+      "GET /api/targets": () => ({ targets: steadyTargets }),
+      "GET /api/layouts/goals": () => ({ layout: { version: 1, columns: [["badges"], ["goal-date"], []] } }),
+    });
+    renderWithSession(<GoalsPage />);
+    const goalDate = await screen.findByRole("region", { name: "Goal date" });
+    const badges = screen.getByRole("region", { name: "Badges" });
+    expect(badges.compareDocumentPosition(goalDate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Plan" })).not.toBeInTheDocument();
+    expect(server.sent.some((s) => s.path === "/api/layouts/goals")).toBe(true);
+  });
+
+  it("Edit page: move, remove and add widgets back, then Save stores the Goals layout", async () => {
+    const server = fakeServer({
+      ...m3Routes,
+      "GET /api/targets": () => ({ targets: steadyTargets }),
+      "PUT /api/layouts/goals": (b) => ({ layout: b }),
+    });
+    renderWithSession(<GoalsPage />);
+    const user = userEvent.setup();
+    await screen.findByText("Steady plan");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Edit page" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Edit page" }));
+    // Widgets are cards while editing (they don't load or work)
+    expect(screen.queryByText("Steady plan")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("group").map((g) => g.getAttribute("aria-label"))).toEqual(["Your plan", "Goal date", "Weight", "Weekly trends", "Badges"]);
+    await user.click(screen.getByRole("button", { name: "Move Goal date up" }));
+    await user.click(screen.getByRole("button", { name: "Remove Badges" }));
+    await user.click(screen.getByRole("button", { name: "Add widget" }));
+    const list = screen.getByRole("dialog", { name: "Add widget" });
+    // Only Goals widgets are offered here
+    expect(within(list).getAllByRole("button", { name: /^Add / }).map((b) => b.getAttribute("aria-label"))).toEqual(["Add Badges"]);
+    await user.click(within(list).getByRole("button", { name: "Add Badges" }));
+    await user.click(screen.getByRole("button", { name: "Add widget" }));
+    expect(within(screen.getByRole("dialog", { name: "Add widget" })).getByText("Every widget is on this page")).toBeInTheDocument();
+    await user.click(within(screen.getByRole("dialog", { name: "Add widget" })).getByRole("button", { name: "Close" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(server.writes()).toEqual([expect.objectContaining({ method: "PUT", path: "/api/layouts/goals", body: { version: 1, columns: [["goal-date", "your-plan"], ["weight-chart", "weekly-trends"], ["badges"]] } })]); // added to the shortest column
+    expect(await screen.findByText("Steady plan")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Goal date" }).compareDocumentPosition(screen.getByRole("region", { name: "Plan" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("#/goals/details, and the goal date's Set a goal weight link, open Edit my details", async () => {
+    fakeServer({
+      ...m3Routes,
+      "GET /api/targets": () => ({ targets: steadyTargets }),
+      "GET /api/weight": () => weightJson({ goalKg: null, goalDate: { status: "no_goal" } }),
+      "GET /api/body": () => ({ body: bodyA }),
+      "GET /api/plans": () => plansA,
+    });
+    window.location.hash = "#/goals";
+    renderWithSession(<GoalsPage />);
+    const link = await within(await screen.findByRole("region", { name: "Goal date" })).findByRole("link", { name: "Set a goal weight" });
+    await userEvent.setup().click(link);
+    expect(await screen.findByRole("heading", { name: "Tell us about yourself" })).toBeInTheDocument();
+    window.location.hash = "";
   });
 
   it("when weekly trends fail to load, the other sections still render", async () => {
@@ -158,7 +211,6 @@ describe("Goals", () => {
     expect(screen.getByText("Steady plan")).toBeInTheDocument();
     expect(await screen.findByTestId("weight-now")).toHaveTextContent("221.4 lb");
     expect(await screen.findByRole("listitem", { name: "First weigh-in" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Vacation mode" })).toBeInTheDocument();
     expect(screen.getAllByRole("alert")).toHaveLength(1);
   });
 });

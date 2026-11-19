@@ -79,3 +79,20 @@ describe("ProfileSettings date format (§33)", () => {
     await waitFor(() => expect(screen.getByRole("combobox", { name: "Date format" })).toHaveValue("iso"));
   });
 });
+
+describe("ProfileSettings vacation mode (§40a)", () => {
+  it("Vacation mode lives here, after the profile and before the look of the app, and works as it did on Goals", async () => {
+    fakeServer({
+      "GET /api/settings/me": () => settingsMe,
+      "GET /api/vacations": () => ({ vacations: [{ id: 7, from: "2026-12-20", to: "2027-01-02" }] }),
+    });
+    renderWithSession(<ProfileSettings />);
+    const box = await screen.findByRole("region", { name: "Vacation mode" });
+    expect(within(box).getByText("Days off don't break your streak")).toBeInTheDocument();
+    expect(await within(box).findByText("Dec 20–Jan 2, 2027")).toBeInTheDocument();
+    const profile = screen.getByRole("form", { name: "Profile" });
+    const theme = screen.getByRole("radiogroup", { name: "Theme" });
+    expect(profile.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(box.compareDocumentPosition(theme) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});

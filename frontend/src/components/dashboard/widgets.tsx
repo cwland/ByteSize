@@ -13,16 +13,26 @@ import { primaryButton, secondaryButton } from "../ui/styles";
 import FoodWidget from "./FoodWidget";
 import Gauge from "./Gauge";
 import Ring from "./Ring";
-import type { LayoutWidget } from "./layout";
+import GoalDateWidget from "../goals/GoalDate";
+import WeeklyTrends from "../goals/WeeklyTrends";
+import Badges from "../goals/Badges";
+import { YourPlan } from "../goals/goalsContext";
+import GoalsWeight from "../goals/GoalsWeight";
+import type { LayoutPage, LayoutWidget } from "./layout";
 
-// The Dashboard's widget registry (§28): the one list the Dashboard, the Add widget list and the layout read.
-// Adding a widget later means adding one entry here (and its id to backend/src/lib/widgets.ts, which backend/tests/widgets-sync.test.ts
-// keeps in step). column: where it sits by default (0 left, 1 middle, 2 right; registry order within a column).
+// The widget registry (§28, §40a): the one list every widget page (Dashboard, Goals), the Add widget list and the
+// layout read. Adding a widget later means adding one entry here (and its id, per page, to backend/src/lib/widgets.ts,
+// which backend/tests/widgets-sync.test.ts keeps in step). pages: the pages it's offered on, each with where it sits
+// by default (0 left, 1 middle, 2 right; registry order within a column) or null (offered in Add widget only).
 // fits: a hint for the library (narrow cards suit any column; wide ones want room). onlyWhen: shown only then.
 
-// What every widget gets: the selected day (loaded once by the Dashboard) and the screen width
+// What every widget gets: the selected day (loaded once by the Dashboard; today on other pages, with no day data)
+// and the screen width
 export type WidgetProps = { day: string; data: Day | null; isToday: boolean; wide: boolean };
-export type WidgetDef = LayoutWidget & {
+export type WidgetDef = {
+  id: string;
+  pages: Partial<Record<LayoutPage, number | null>>;
+  newDefault?: number;
   title: string;
   description: string; // one line, for the Add widget list
   fits: "narrow" | "wide";
@@ -123,13 +133,19 @@ function Streak({ data }: WidgetProps) {
 }
 
 export const WIDGETS: WidgetDef[] = [
-  { id: "food", column: 0, fits: "narrow", title: "Food", description: "The day's meals: add, edit, move and copy food", Component: (p) => <FoodWidget day={p.day} data={p.data} isToday={p.isToday} /> },
-  { id: "budget", column: 1, fits: "narrow", title: "Budget", description: "Calories left in your range, with protein, fiber and water rings", Component: Budget },
-  { id: "water", column: 1, fits: "narrow", title: "Water", description: "Add a glass of water in one tap", Component: Water },
-  { id: "day-totals", column: 2, fits: "narrow", title: "Day totals", description: "Calories, protein, carbs, fat and more against your targets", Component: ({ data }) => <DayTotalsWidget data={data} /> },
-  { id: "weight", column: 2, fits: "narrow", title: "Weight", description: "Your latest weigh-in and how it's trending", Component: ({ wide }) => <WeightCard trend={wide} /> },
-  { id: "next-shot", column: 2, fits: "narrow", title: "Next shot", description: "When your next GLP-1 shot is due", onlyWhen: "Shows when GLP-1 is on", Component: () => <Glp1Card /> },
-  { id: "streak", column: 2, fits: "narrow", title: "Streak", description: "Days in a row you've logged food", Component: Streak },
+  { id: "food", pages: { dashboard: 0 }, fits: "narrow", title: "Food", description: "The day's meals: add, edit, move and copy food", Component: (p) => <FoodWidget day={p.day} data={p.data} isToday={p.isToday} /> },
+  { id: "budget", pages: { dashboard: 1 }, fits: "narrow", title: "Budget", description: "Calories left in your range, with protein, fiber and water rings", Component: Budget },
+  { id: "water", pages: { dashboard: 1 }, fits: "narrow", title: "Water", description: "Add a glass of water in one tap", Component: Water },
+  { id: "day-totals", pages: { dashboard: 2 }, fits: "narrow", title: "Day totals", description: "Calories, protein, carbs, fat and more against your targets", Component: ({ data }) => <DayTotalsWidget data={data} /> },
+  { id: "weight", pages: { dashboard: 2 }, fits: "narrow", title: "Weight", description: "Your latest weigh-in and how it's trending", Component: ({ wide }) => <WeightCard trend={wide} /> },
+  { id: "next-shot", pages: { dashboard: 2 }, fits: "narrow", title: "Next shot", description: "When your next GLP-1 shot is due", onlyWhen: "Shows when GLP-1 is on", Component: () => <Glp1Card /> },
+  { id: "streak", pages: { dashboard: 2 }, fits: "narrow", title: "Streak", description: "Days in a row you've logged food", Component: Streak },
+  // Goals (§40a)
+  { id: "your-plan", pages: { goals: 0 }, fits: "narrow", title: "Your plan", description: "Today's plan and targets: change plan, edit targets, edit my details", Component: () => <YourPlan /> },
+  { id: "goal-date", pages: { goals: 0, dashboard: null }, fits: "narrow", title: "Goal date", description: "When you'll reach your goal weight at your current pace", Component: () => <GoalDateWidget /> },
+  { id: "weight-chart", pages: { goals: 1 }, fits: "wide", title: "Weight", description: "Your weight chart with start, now and goal, and your weigh-ins", Component: () => <GoalsWeight /> },
+  { id: "weekly-trends", pages: { goals: 1 }, fits: "wide", title: "Weekly trends", description: "Each week's averages against your targets", Component: () => <WeeklyTrends /> },
+  { id: "badges", pages: { goals: 1 }, fits: "wide", title: "Badges", description: "Badges you've earned and the ones still to get", Component: () => <Badges /> },
 ];
 
 function DayTotalsWidget({ data }: { data: Day | null }) {
@@ -138,3 +154,7 @@ function DayTotalsWidget({ data }: { data: Day | null }) {
 }
 
 export const widgetById = (id: string) => WIDGETS.find((w) => w.id === id);
+
+// A page's registry: the widgets offered there, each with its default column on that page
+export const registryFor = (page: LayoutPage): (WidgetDef & LayoutWidget)[] =>
+  WIDGETS.filter((w) => page in w.pages).map((w) => ({ ...w, column: w.pages[page] ?? null }));

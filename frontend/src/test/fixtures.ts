@@ -135,7 +135,8 @@ export const m3Routes = {
   "GET /api/badges": () => ({ badges: [], new: [] }),
   "GET /api/trends/weekly": () => ({ weeks: [] }),
   "GET /api/vacations": () => ({ vacations: [] }),
-  "GET /api/dashboard/layout": () => ({ layout: null }), // the default layout
+  "GET /api/layouts/dashboard": () => ({ layout: null }), // each widget page's default layout (a test may replace one)
+  "GET /api/layouts/goals": () => ({ layout: null }),
 };
 
 // Culury (§14 A). Not linked is the default for any screen that opens Add food:

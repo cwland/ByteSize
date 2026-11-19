@@ -12,11 +12,13 @@ import { Field } from "../ui/Field";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { field, label, primaryButton } from "../ui/styles";
 import { TimezoneSelect } from "../ui/TimezoneSelect";
+import VacationMode from "./VacationMode";
 
 export default function ProfileSettings() {
   return (
     <>
       <AboutYou />
+      <VacationMode />
       <Appearance />
     </>
   );

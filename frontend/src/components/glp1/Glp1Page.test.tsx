@@ -253,12 +253,3 @@ describe("#/glp1 route", () => {
     await waitFor(() => expect(screen.queryByRole("heading", { level: 1, name: "GLP-1" })).not.toBeInTheDocument());
   });
 });
-
-describe("Goals link", () => {
-  it("Goals links to the GLP-1 page, coming back to Goals", async () => {
-    const { default: GoalsPage } = await import("../goals/GoalsPage");
-    fakeServer({ "GET /api/targets": () => ({ targets: steadyTargets }) });
-    renderWithSession(<GoalsPage />);
-    expect(await screen.findByRole("link", { name: "GLP-1 shots" })).toHaveAttribute("href", "#/glp1?from=/goals");
-  });
-});

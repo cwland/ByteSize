@@ -31,7 +31,7 @@ describe("AppShell on a wide screen", () => {
     const navs = screen.getAllByRole("navigation", { name: "Main" });
     expect(navs).toHaveLength(1);
     const rail = navs[0];
-    expect(within(rail).getAllByRole("link").map((a) => a.getAttribute("aria-label") ?? a.textContent)).toEqual(["ByteSize home", "Dashboard", "Goals", "My foods", "Settings", "Your profile"]);
+    expect(within(rail).getAllByRole("link").map((a) => a.getAttribute("aria-label") ?? a.textContent)).toEqual(["ByteSize home", "Dashboard", "Goals", "GLP-1", "My foods", "Settings", "Your profile"]);
     expect(within(rail).getByRole("link", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
     expect(within(rail).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "#/settings");
     // No + in the rail: food is added from the Food widget
@@ -46,6 +46,18 @@ describe("AppShell on a wide screen", () => {
     renderWithSession(<AppShell />, { timezone: "America/Boise" });
     await userEvent.setup().click(within(screen.getByRole("navigation", { name: "Main" })).getByRole("button", { name: "Log food" }));
     expect(await screen.findByRole("dialog", { name: "Add food to Lunch" })).toBeInTheDocument();
+  });
+
+  it("GLP-1 is a rail item (it left the Goals page, §40a), current on the GLP-1 page", async () => {
+    window.location.hash = "#/glp1";
+    wideScreen();
+    fakeServer(routes);
+    renderWithSession(<AppShell />, { timezone: "America/Boise" });
+    const rail = screen.getByRole("navigation", { name: "Main" });
+    expect(within(rail).getByRole("link", { name: "GLP-1" })).toHaveAttribute("href", "#/glp1");
+    expect(within(rail).getByRole("link", { name: "GLP-1" })).toHaveAttribute("aria-current", "page");
+    expect(within(rail).getByRole("link", { name: "Dashboard" })).not.toHaveAttribute("aria-current");
+    window.location.hash = "";
   });
 
   it("My foods is its own rail item, current on My foods", async () => {

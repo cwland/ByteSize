@@ -48,3 +48,32 @@ export function formatDate(day: string, key: string | undefined): string {
       return `${weekday}, ${short(month)} ${d}`;
   }
 }
+
+/**
+ * A day without its weekday, the way `key` writes dates (§40a: the goal date): "Apr 5", "5 April", "05/04/2027".
+ * The worded forms add the year only when the day is a year or more from `today`; the numeric ones always have it.
+ */
+export function formatDay(day: string, key: string | undefined, today: string): string {
+  const [y, m, d] = day.split("-").map(Number);
+  const month = MONTHS[m - 1];
+  const short = month.slice(0, 3);
+  const farOff = Math.abs(Date.parse(`${day}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) >= 365 * 86_400_000;
+  const monthFirst = (name: string) => (farOff ? `${name} ${d}, ${y}` : `${name} ${d}`);
+  const dayFirst = (name: string) => (farOff ? `${d} ${name} ${y}` : `${d} ${name}`);
+  switch (key) {
+    case "weekday-long-month-long":
+      return monthFirst(month);
+    case "weekday-long-day-month-short":
+    case "weekday-short-day-month-short":
+      return dayFirst(short);
+    case "weekday-long-day-month-long":
+      return dayFirst(month);
+    case "mdy-slash":
+    case "dmy-slash":
+    case "dmy-dot":
+    case "iso":
+      return formatDate(day, key);
+    default:
+      return monthFirst(short);
+  }
+}
