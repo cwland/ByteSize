@@ -1345,3 +1345,100 @@ logged".
 **Server.** `GET /api/log/days?from=YYYY-MM-DD&to=YYYY-MM-DD` → `{ days: ["YYYY-MM-DD", …] }`, the person's dates with
 at least one food entry in that range (inclusive; range at most 62 days, else 400; bad dates 400). Per-user isolation
 test. The calendar asks for the visible 6-week span and caches months it has seen until a log change.
+
+## 40. Goals page widgets, goal date, activity, and goals with a start and end (Cory, 2026-11-18)
+
+**Asked for** (Cory, in his words, condensed): get rid of the GLP-1 button on Goals; Vacation mode belongs under
+Settings › Profile; add fitness/habit goals by week or month with a start and end, progress charts, complete or not,
+and a "Past goals" list when a new one replaces it — steps (from Apple Health), workouts, tracking days ("track 7
+days this week"), and more; a widget for when you'll reach your goal weight at the current pace, as a range ("23–25
+weeks, near April 5"); the Goals page's widgets movable like the Dashboard's. Habits (logging, protein, water) and
+activity are all important; activity is entered by hand or comes from the phone when Health is on. Workout calories:
+a plan setting — add them back, or just note the "earned" calories, or a weekly bank to spend on a treat.
+**Why.** Cory is losing weight on a GLP-1 and wants the app to keep habits and activity visible week to week, and to
+see where he's headed.
+**Goals.** Habit and activity goals that run on the person's own data; honest progress (worked out from the data,
+not ticked by hand); a goal date that admits uncertainty. **Non-goals.** AI Insights (a later project); reading Apple
+Health from the web (the iPhone app, M5, will send it through the API); social/sharing. **Anti-goals.** Anything that
+rewards eating under the plan (food calories never go into the bank); a goal date presented as a promise.
+
+**Approaches considered.** (Chosen) reuse the §28 widget system with a layout per page; a separate Goals-only system
+was dropped (every fix twice). Activity before goals — goals first was dropped (half the goal types would have no
+data). Goal progress worked out live and frozen when the goal ends; storing daily progress was dropped (drifts from
+the data). Three parts, built in order; each ships on its own.
+
+### 40a. Goals page as widgets; goal-date widget; two moves
+
+- **Widgets per page.** The §28 layout API gains a page: `GET/PUT /api/layouts/:page` with `page` ∈ {dashboard,
+  goals} (the existing `/api/dashboard/layout` stays as an alias for dashboard). Each page has its own registry
+  default, its own saved layout, edit mode, Add widget, Save/Cancel/Reset, phones in reading order — exactly as §28.
+  A widget may be offered on both pages (registry entries list the pages they fit); each page's layout is separate.
+- **Goals page widgets** (default order): left — **Your plan** (today's plan card: change plan, edit targets, edit
+  my details), **Goal date**; right — **Weight** (the chart with start/now/goal), then full-width-ish **Weekly
+  trends** and **Badges** in the right column under Weight. (Builder may adjust columns so the default looks like
+  today's page.) Goal widgets from 40c are added here too.
+- **Removed from Goals:** the "GLP-1 shots" button (GLP-1 is reached from the side menu / its own page). **Vacation
+  mode** moves to Settings › Profile (same control and behaviour), not on Goals.
+- **Goal date widget** ("Goal date"; also offered on the Dashboard). Uses the trend weight (§13 A) over the last 6
+  weeks (at least 14 days and 6 weigh-ins, else "Keep weighing in — about two weeks of weigh-ins gives an estimate").
+  Pace = the slope of a least-squares line through those trend points; the range comes from the slopes of the
+  first and second halves of that window, or ±15% of the pace if that's wider, so a bumpy stretch widens it. Shows:
+  "At your pace: **23–25 weeks**, around **Apr 5**" with the earliest–latest dates under it ("Mar 22 – Apr 19"),
+  the pace ("−1.4 lb a week"), and how far to go ("39.4 lb to go"). Goal reached → "You've reached your goal 🎉";
+  gaining or flat → "At this pace you're not heading toward your goal yet" (no date); no goal weight → a link to set
+  one. Weeks rounded to whole weeks; dates in the person's date format (§33). Pure function with tests (steady,
+  bumpy, gaining, reached, too little data, metric).
+
+### 40b. Activity: steps and workouts, and workout calories in the plan
+
+- **Data.** `activity_steps` (user, day, source `manual`|`health`, steps; one row per user/day/source) — the day's
+  steps are the Health number when there is one, else the typed one. `workouts` (user, day, type, minutes,
+  calories (nullable), source `manual`|`health`, an external id for Health de-duplication (unique per user when
+  present), note). Types: walk, run, cycling, strength, swim, hike, yoga, HIIT, sport, other. Per-user isolation,
+  backed up, in "Download my data".
+- **Entering.** An **Activity** widget (Dashboard and Goals): the viewed day's steps (with a small bar toward the
+  person's step goal if they have one), workouts listed (type icon, minutes, calories), and **+ Steps** (set the
+  day's total) and **+ Workout** (type, minutes, calories optional with a "Estimate" helper from type × minutes ×
+  body weight using standard MET values, note). Tap to edit/delete. Typed entries for days in the past are allowed;
+  future days not.
+- **API.** Routes to read/write steps and workouts, added to the API key allow-list: reading for Read only keys,
+  writing for Read and log keys. Health-sourced writes (`source: "health"`) upsert by external id / by day, so a
+  phone can resend safely. Documented in the "How to use a key" box with a Shortcut-friendly example for steps.
+- **Workout calories in the plan** — a setting in Goals › Your plan ("Workout calories"), per person:
+  1. **Just show them** (default): "Earned today: 320" on the budget and Day totals widgets; ranges unchanged.
+  2. **Add to that day**: the day's calorie range (min and max) grows by earned × the *count* (25/50/75/100%,
+     default 50%).
+  3. **Weekly bank**: earned × count goes into a bank for the week (resets on the person's week start; unspent
+     calories don't carry over; cap 1,000 a week by default, adjustable 0–5,000). The budget widget shows "Bank: 640
+     this week" with a small per-day bar. A day that ends over its range takes the overage from the bank first and
+     shows "Over by 250 — covered by your bank"; a covered day counts as in range for streaks, badges and goals.
+     A **Treat** toggle when logging a food spends from the bank on purpose (the entry is marked as a treat and the
+     bank shows it). Only workout calories go in — never food calories left unused.
+  Changing the mode applies from that day forward (past days keep what they had, like plan changes).
+
+### 40c. Goals with a start and end
+
+- **A goal** = type, target number, period (**each week** — following the week start — **each month**, or **the
+  whole stretch**), start date, end date (or "ongoing" for each-week/each-month goals), name (defaulted from the
+  type). Types:
+  - Habits: **Logging days** (days with food logged), **Protein days** (protein min reached), **Calorie days**
+    (calories in range, bank-covered days count), **Water days** (water min reached), **Weigh-ins** (days weighed),
+    **Fiber days**, **Streak** (reach an N-day streak within the stretch).
+  - Activity: **Steps** (total per period, or average per day — pick), **Workouts** (count per period), **Active
+    minutes** (total per period).
+  - Weight: **Weight by a date** (trend weight at or under X by the end date).
+- **Progress** is worked out from the data each time it's shown. Each goal is a widget (on Goals by default; can be
+  added to the Dashboard): a ring for the current period ("4 of 6 days this week", "38,200 of 70,000 steps"), a small
+  chart of past periods (bars, hit periods filled), and the overall result so far ("3 of 4 weeks hit"). When the end
+  date passes, the result is **frozen** (✓ completed / ✗ missed, with the numbers) so later edits to old days can't
+  flip it.
+- **Managing.** + New goal (from the Goals page edit area and a "Goals" widget listing active goals with + New
+  goal). Edit (target, name, end date) and End now. A new goal of the same type replaces the active one (the old
+  one ends today and moves to Past goals). **Past goals**: a widget/list of finished goals newest first with ✓/✗,
+  the dates and the final numbers; delete from there.
+- **Data**: `goals` (user, type, target, period, start, end, name, created, ended, frozen result json). Isolation,
+  backup, export. API routes readable by Read only keys.
+- **Badges**: completing a goal earns a "Goal met" badge (the existing badge system).
+
+**Left to the builder.** Visual design within the app's existing style; chart details; exact copy beyond the above;
+how the registry marks which pages a widget fits.
