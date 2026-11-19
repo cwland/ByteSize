@@ -64,7 +64,9 @@ function averages(week: WeekTrend, units: Units) {
 
 function WeekRow({ week, units }: { week: WeekTrend; units: Units }) {
   const { status } = week;
-  const logged = week.daysLogged === 0 ? "Nothing logged" : `${week.daysLogged} ${week.daysLogged === 1 ? "day" : "days"} logged`;
+  // Days whose calories were in range (a day the workout bank covered counts, §40b)
+  const inRange = week.daysLogged > 0 && week.caloriesInRange !== undefined ? ` · ${week.caloriesInRange} in range` : "";
+  const logged = week.daysLogged === 0 ? "Nothing logged" : `${week.daysLogged} ${week.daysLogged === 1 ? "day" : "days"} logged${inRange}`;
   const a = averages(week, units);
   return (
     <li className="py-3">

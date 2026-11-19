@@ -86,6 +86,7 @@ export type LogEntry = {
   aiEstimated: boolean;
   source: string;
   sourceRef: string | null;
+  treat?: boolean; // §40b: paid from the weekly workout-calorie bank on purpose
 };
 export type Range = { min: number; max: number };
 export type PlanId = "maintenance" | "relaxed" | "steady" | "accelerated" | "vigorous";
@@ -115,9 +116,28 @@ export type Day = {
   totals: Nutrients & { unknownCount: Record<string, number> };
   meals: Record<Meal, MealTotals>;
   targets: Targets | null;
-  exercise: { calories: number };
+  exercise: { calories: number }; // workout calories earned that day
+  activity?: DayActivity;
+  workoutCalories?: DayWorkoutCalories;
   streak: number;
 };
+// Activity (§40b): GET /api/activity/:day (also in the day as activity). steps: Health's number, else the typed one.
+export type WorkoutType = "walk" | "run" | "cycling" | "strength" | "swim" | "hike" | "yoga" | "hiit" | "sport" | "other";
+export type Workout = { id: number; day: string; type: WorkoutType; minutes: number; calories: number | null; source: "manual" | "health"; externalId: string | null; note: string | null };
+export type DayActivity = { day: string; steps: number | null; stepsSource: "manual" | "health" | null; typedSteps: number | null; stepGoal: number | null; workouts: Workout[]; earned: number; activeMinutes: number };
+// Goals › Your plan › Workout calories: GET/PUT /api/workout-calories (a change applies from today on)
+export type WorkoutMode = "show" | "add" | "bank";
+export type WorkoutCalorieSettings = { mode: WorkoutMode; countPct: 25 | 50 | 75 | 100; weeklyCap: number };
+export type WorkoutBank = {
+  weekStart: string;
+  balance: number;
+  deposited: number;
+  spent: number;
+  weeklyCap: number;
+  days: { day: string; deposit: number; spent: number }[]; // the week so far, up to the day
+  thisDay: { overBy: number; covered: number; treatSpent: number };
+};
+export type DayWorkoutCalories = WorkoutCalorieSettings & { earned: number; added: number; planCalories: Range | null; status: "below" | "in" | "above" | null; bank: WorkoutBank | null };
 export type MealWindows = { breakfast: string; lunch: string; snacks: string; dinner: string };
 export type SettingsMe = { mealWindows: MealWindows; waterButtonsMl: number[]; weekStart: number /* 0 = Sunday … 6 = Saturday */; dateFormat?: string /* a key of dateFormat.ts */ };
 export type Units = "imperial" | "metric";
@@ -161,7 +181,7 @@ export type SideEffectDay = { day: string; effects: Partial<Record<SideEffect, 1
 export type AfterInjection = { enough: boolean; days: { offset: number; avgCalories: number | null; avgProtein: number | null; daysCounted: number }[] };
 // M3 weekly trends, badges, vacation mode (GET /api/trends/weekly, /api/badges, /api/vacations)
 export type TrendKey = "calories" | "protein_g" | "fiber_g" | "water_ml";
-export type WeekTrend = { start: string; end: string; daysLogged: number; avg: Record<TrendKey, number | null>; status: Record<TrendKey, "below" | "in" | "above" | null>; weightChangeKg: number | null };
+export type WeekTrend = { start: string; end: string; daysLogged: number; caloriesInRange?: number; avg: Record<TrendKey, number | null>; status: Record<TrendKey, "below" | "in" | "above" | null>; weightChangeKg: number | null };
 export type Badge = { id: string; earnedOn: string | null; seen: boolean };
 export type Vacation = { id: number; from: string; to: string };
 // Culury link (§14 A): GET/PUT/DELETE /api/settings/culury (the key never comes back), GET /api/culury/plan

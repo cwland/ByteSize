@@ -36,6 +36,14 @@ const rows = async () => within(await screen.findByRole("region", { name: "Weekl
 const cell = (row: HTMLElement, name: string) => within(row).getByRole("group", { name });
 
 describe("Weekly trends", () => {
+  it("says how many days' calories were in range (bank-covered days count, §40b)", async () => {
+    fakeServer({ "GET /api/trends/weekly": () => ({ weeks: [{ ...weeks[0], caloriesInRange: 4 }, { ...weeks[1], caloriesInRange: 0 }] }) });
+    renderWithSession(<WeeklyTrends />);
+    const [first, second] = await rows();
+    expect(first).toHaveTextContent("Nov 15–21 · 6 days logged · 4 in range");
+    expect(second).not.toHaveTextContent("in range");
+  });
+
   it("shows each week newest first with averages, range marks and weight change in pounds", async () => {
     const server = serve();
     renderWithSession(<WeeklyTrends />);

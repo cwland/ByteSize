@@ -7,6 +7,7 @@ import { formatAmount } from "../../amounts";
 import type { LogEntry, Meal, MealTotals, Units } from "../../types";
 import { fmt } from "../../units";
 import Pills from "./Pills";
+import { Tag } from "./FoodRow";
 import { Field } from "../ui/Field";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
@@ -45,7 +46,10 @@ function EntryRow({ entry, units, selecting, selected, onOpen, onLongPress }: { 
         )}
         <FoodPic icon={entry.icon} imageUrl={entry.imageUrl} size="size-9" />
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-semibold">{entry.name}</span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate font-semibold">{entry.name}</span>
+            {entry.treat && <Tag text="Treat" />}
+          </span>
           <span className="block truncate text-sm text-subtle">{formatAmount(entry.servings, entry.servingIndex, entry.unit, entry.quantity, entry.fraction, units)}</span>
           {!water && (
             <span className="mt-1 block">

@@ -5,6 +5,7 @@ import type { Targets } from "../../types";
 import { fmt, waterUnit, waterValue } from "../../units";
 import { planName } from "../../plans";
 import { linkButton, primaryButton, secondaryButton } from "../ui/styles";
+import WorkoutCaloriesSetting from "./WorkoutCaloriesSetting";
 
 // What the Goals page shares with its widgets (§40a): today's targets (undefined while loading, null: no plan) and
 // the page's modes (the plan picker, Edit my details, Edit targets take the whole page)
@@ -14,7 +15,7 @@ export const GoalsContext = createContext<GoalsShared | null>(null);
 export const useGoals = () => useContext(GoalsContext);
 
 
-// Your plan (Goals): today's plan and target ranges, Change plan, Edit targets, Edit my details
+// Your plan (Goals): today's plan and target ranges, Change plan, Edit targets, Edit my details, Workout calories (§40b)
 export function YourPlan() {
   const { user } = useSession();
   const goals = useGoals();
@@ -57,6 +58,7 @@ export function YourPlan() {
       <button type="button" onClick={() => setMode("details")} className={`${linkButton} mt-4`}>
         Edit my details
       </button>
+      <WorkoutCaloriesSetting />
     </section>
   );
 }

@@ -71,9 +71,22 @@ export function dayJson(over: Record<string, unknown> = {}) {
     meals: { breakfast: meal(), lunch: meal(), dinner: meal(), snacks: meal(), supplements: meal() },
     targets: steadyTargets,
     exercise: { calories: 0 },
+    activity: activityJson({ day: (over.day as string) ?? "2026-11-16" }),
+    workoutCalories: workoutCaloriesJson(),
     streak: 0,
     ...over,
   };
+}
+
+// §40b: a day's activity and its workout calories, as GET /api/day sends them
+export function activityJson(over: Record<string, unknown> = {}) {
+  return { day: "2026-11-16", steps: null, stepsSource: null, typedSteps: null, stepGoal: null, workouts: [], earned: 0, activeMinutes: 0, ...over };
+}
+export function workoutCaloriesJson(over: Record<string, unknown> = {}) {
+  return { mode: "show", countPct: 50, weeklyCap: 1000, earned: 0, added: 0, planCalories: steadyTargets.calories, status: null, bank: null, ...over };
+}
+export function workoutJson(over: Record<string, unknown> = {}) {
+  return { id: 1, day: "2026-11-16", type: "walk", minutes: 30, calories: 120, source: "manual", externalId: null, note: null, ...over };
 }
 export { meal as mealTotals };
 
@@ -137,6 +150,7 @@ export const m3Routes = {
   "GET /api/vacations": () => ({ vacations: [] }),
   "GET /api/layouts/dashboard": () => ({ layout: null }), // each widget page's default layout (a test may replace one)
   "GET /api/layouts/goals": () => ({ layout: null }),
+  "GET /api/workout-calories": () => ({ settings: { mode: "show", countPct: 50, weeklyCap: 1000 }, effectiveFrom: null }), // Goals › Your plan
 };
 
 // Culury (§14 A). Not linked is the default for any screen that opens Add food:

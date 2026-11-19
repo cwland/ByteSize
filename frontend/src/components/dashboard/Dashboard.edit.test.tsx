@@ -126,7 +126,7 @@ describe("Dashboard widgets", () => {
     await user.click(screen.getByRole("button", { name: "Add widget" }));
     const list = screen.getByRole("dialog", { name: "Add widget" });
     expect(within(list).getByText("Add a glass of water in one tap")).toBeInTheDocument();
-    expect(within(list).getAllByRole("button", { name: /^Add / }).map((b) => b.getAttribute("aria-label"))).toEqual(["Add Budget", "Add Water", "Add Goal date"]);
+    expect(within(list).getAllByRole("button", { name: /^Add / }).map((b) => b.getAttribute("aria-label"))).toEqual(["Add Budget", "Add Water", "Add Activity", "Add Goal date"]);
     await user.click(within(list).getByRole("button", { name: "Add Water" }));
     expect(screen.queryByRole("dialog", { name: "Add widget" })).not.toBeInTheDocument();
     expect(editCards(columns()[1])).toEqual(["water"]);
@@ -136,6 +136,9 @@ describe("Dashboard widgets", () => {
     await user.click(screen.getByRole("button", { name: "Add widget" }));
     await user.click(within(screen.getByRole("dialog", { name: "Add widget" })).getByRole("button", { name: "Add Goal date" }));
     expect(screen.getByRole("group", { name: "Goal date" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add widget" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Add widget" })).getByRole("button", { name: "Add Activity" }));
+    expect(screen.getByRole("group", { name: "Activity" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Add widget" }));
     expect(within(screen.getByRole("dialog", { name: "Add widget" })).getByText("Every widget is on your dashboard")).toBeInTheDocument();
   });
