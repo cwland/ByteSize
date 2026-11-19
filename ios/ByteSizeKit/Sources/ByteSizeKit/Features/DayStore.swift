@@ -49,7 +49,8 @@ public final class DayStore {
     public private(set) var loading = false
     public private(set) var error: String?
     public private(set) var loggedDays: Set<String> = []
-    public let weekStart: Int
+    /// 0 = Sunday … 6 = Saturday (the account's setting; the Dashboard fills it in once settings load)
+    public var weekStart: Int
 
     private let api: APIClient
     private let timeZone: TimeZone

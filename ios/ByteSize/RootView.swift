@@ -7,6 +7,7 @@ struct RootView: View {
     let profile: ProfileModel
     @State private var signIn: SignInModel
     @State private var shell = ShellModel()
+    @State private var today: TodayModels?
     @Environment(\.palette) private var palette
 
     init(session: SessionStore, profile: ProfileModel) {
@@ -28,17 +29,30 @@ struct RootView: View {
                 .background(palette.color("page").ignoresSafeArea())
             case .signedOut:
                 SignInView(model: signIn)
-            case .signedIn:
-                MainTabView(shell: shell, profile: profile)
+            case .signedIn(let user):
+                if let today {
+                    MainTabView(shell: shell, profile: profile, today: today)
+                } else {
+                    Color.clear.onAppear { startToday(user) }
+                }
             }
         }
         .onChange(of: session.state) { _, state in
             // A fresh form each time someone lands on sign-in (password cleared, remembered server kept)
             switch state {
-            case .signedOut: signIn = SignInModel(session: session)
-            case .signedIn: shell = ShellModel() // each sign-in starts on the Dashboard
+            case .signedOut:
+                signIn = SignInModel(session: session)
+                today = nil
+            case .signedIn(let user):
+                shell = ShellModel() // each sign-in starts on the Dashboard
+                startToday(user)
             case .restoring: break
             }
         }
+    }
+
+    private func startToday(_ user: User) {
+        guard let api = session.api else { return }
+        today = TodayModels(api: api, user: user)
     }
 }
