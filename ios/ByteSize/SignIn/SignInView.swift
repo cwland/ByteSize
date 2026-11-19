@@ -9,6 +9,15 @@ struct SignInView: View {
 
     private enum Field { case server, username, password }
 
+    /// Password autofill and "Save Password?" — off only in UI-test runs, where the prompt gets in the way of taps.
+    static var offerPasswordSaving: Bool {
+        #if DEBUG
+        return !StubServer.isOn
+        #else
+        return true
+        #endif
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -97,7 +106,7 @@ struct SignInView: View {
             if model.showsPasswordForm {
                 field("Username") {
                     TextField("Username", text: $model.username)
-                        .textContentType(.username)
+                        .textContentType(Self.offerPasswordSaving ? .username : nil)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .focused($focus, equals: .username)
@@ -107,7 +116,7 @@ struct SignInView: View {
                 }
                 field("Password") {
                     SecureField("Password", text: $model.password)
-                        .textContentType(.password)
+                        .textContentType(Self.offerPasswordSaving ? .password : nil)
                         .focused($focus, equals: .password)
                         .submitLabel(.go)
                         .onSubmit { Task { await model.signIn() } }
