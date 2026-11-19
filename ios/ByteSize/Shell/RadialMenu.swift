@@ -2,7 +2,8 @@ import ByteSizeKit
 import SwiftUI
 
 /// The (+) menu: the screen blurs and dims, and the quick actions spring out in an arc above the (+).
-/// Tapping the backdrop (or the ×) closes it.
+/// Tapping the backdrop (or the ×) closes it. While closed, the actions aren't in the view at all
+/// (so VoiceOver and taps can't reach invisible buttons).
 struct RadialMenu: View {
     let shell: ShellModel
     @Environment(\.palette) private var palette
@@ -21,17 +22,15 @@ struct RadialMenu: View {
                     .accessibilityLabel("Close quick add")
                     .accessibilityAddTraits(.isButton)
                     .transition(.opacity)
-            }
-            let offsets = radialOffsets(count: QuickAction.allCases.count, radius: radius, spreadDegrees: 130)
-            ForEach(Array(QuickAction.allCases.enumerated()), id: \.element) { index, action in
-                actionButton(action)
-                    .accessibilityHidden(!shell.menuOpen)
-                    .offset(x: shell.menuOpen ? offsets[index].x : 0, y: shell.menuOpen ? offsets[index].y : 0)
-                    .scaleEffect(shell.menuOpen ? 1 : 0.3)
-                    .opacity(shell.menuOpen ? 1 : 0)
-                    .animation(.spring(response: 0.35, dampingFraction: 0.7).delay(shell.menuOpen ? Double(index) * 0.03 : 0), value: shell.menuOpen)
-                    // center of the raised (+): half its size above the bar's middle
-                    .padding(.bottom, TabBar.height / 2 + 18 - buttonSize / 2 + 8)
+
+                let offsets = radialOffsets(count: QuickAction.allCases.count, radius: radius, spreadDegrees: 130)
+                ForEach(Array(QuickAction.allCases.enumerated()), id: \.element) { index, action in
+                    let point = CGSize(width: offsets[index].x, height: offsets[index].y)
+                    actionButton(action)
+                        .transition(.modifier(active: FanOut(offset: point, out: false), identity: FanOut(offset: point, out: true)))
+                        // center of the raised (+): half its size above the bar's middle
+                        .padding(.bottom, TabBar.height / 2 + 18 - buttonSize / 2 + 8)
+                }
             }
         }
         .allowsHitTesting(shell.menuOpen)
@@ -56,5 +55,18 @@ struct RadialMenu: View {
             }
         }
         .accessibilityLabel(action.title)
+    }
+}
+
+/// Moves a quick action from the (+) out to its spot on the arc (and back when closing).
+private struct FanOut: ViewModifier {
+    let offset: CGSize
+    let out: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .offset(out ? offset : .zero)
+            .scaleEffect(out ? 1 : 0.3)
+            .opacity(out ? 1 : 0)
     }
 }
