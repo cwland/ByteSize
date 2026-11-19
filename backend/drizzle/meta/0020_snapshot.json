@@ -1,5 +1,5 @@
 {
-  "id": "f6e3db58-e6f2-4873-9d79-93431d6fd7e3",
+  "id": "2d763fe8-c715-484f-bdbb-3c92d9cf74f9",
   "prevId": "6109f0de-cb34-4d59-92e4-a421f94f3ebd",
   "version": "7",
   "dialect": "postgresql",
@@ -852,8 +852,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.insights": {
-      "name": "insights",
+    "public.goals": {
+      "name": "goals",
       "schema": "",
       "columns": {
         "id": {
@@ -868,39 +868,45 @@
           "primaryKey": false,
           "notNull": true
         },
-        "kind": {
-          "name": "kind",
+        "type": {
+          "name": "type",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "source": {
-          "name": "source",
+        "target": {
+          "name": "target",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "period": {
+          "name": "period",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "period_start": {
-          "name": "period_start",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "period_end": {
-          "name": "period_end",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "question": {
-          "name": "question",
+        "measure": {
+          "name": "measure",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "content": {
-          "name": "content",
-          "type": "jsonb",
+        "start_day": {
+          "name": "start_day",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_day": {
+          "name": "end_day",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -910,11 +916,29 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "result": {
+          "name": "result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "frozen_at": {
+          "name": "frozen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
-        "insights_user_kind_created_idx": {
-          "name": "insights_user_kind_created_idx",
+        "goals_user_idx": {
+          "name": "goals_user_idx",
           "columns": [
             {
               "expression": "user_id",
@@ -923,13 +947,7 @@
               "nulls": "last"
             },
             {
-              "expression": "kind",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
+              "expression": "start_day",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -942,9 +960,9 @@
         }
       },
       "foreignKeys": {
-        "insights_user_id_users_id_fk": {
-          "name": "insights_user_id_users_id_fk",
-          "tableFrom": "insights",
+        "goals_user_id_users_id_fk": {
+          "name": "goals_user_id_users_id_fk",
+          "tableFrom": "goals",
           "tableTo": "users",
           "columnsFrom": [
             "user_id"
@@ -2927,13 +2945,6 @@
           "type": "boolean",
           "primaryKey": false,
           "notNull": false
-        },
-        "insights_weekly": {
-          "name": "insights_weekly",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
         }
       },
       "indexes": {},

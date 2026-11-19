@@ -1437,13 +1437,30 @@ the data). Three parts, built in order; each ships on its own.
   chart of past periods (bars, hit periods filled), and the overall result so far ("3 of 4 weeks hit"). When the end
   date passes, the result is **frozen** (✓ completed / ✗ missed, with the numbers) so later edits to old days can't
   flip it.
+- **Judging** (Cory, 2026-11-18, after review). Each-week / each-month goals are **completed** when at least 80% of
+  their judged periods were hit, rounded up (needed = min(periods, ⌈0.8 × periods⌉): 4 weeks → 4, 5 → 4, 12 → 10); the
+  widget says "10 of 12 weeks needed". Whole-stretch goals: their one period (weight: the trend on the end date at or
+  under the target). A **partial** first or last period is judged only with at least 4 days of a week (15 of a month),
+  against its share of the target (rounded, at least 1); a shorter one is shown ("A short week: shown, not counted")
+  but neither hit nor missed, so a weekly goal made on a Saturday doesn't start with a 1-day judged week. A goal with an
+  end must hold at least one judged period. Counts and totals are hit as soon as reached; an average or a weight waits
+  for the period's end. A steps average is over the days with steps ("Average on days with steps"). Water, protein and
+  fiber days need something logged (a minimum of 0 doesn't make an empty day a hit).
+- **Freezing** happens on the next read after the end date (the goals list, a goal, badges — the Dashboard reads badges
+  on every visit); no daily job, so data changed before that read (a late Health sync) still counts. The result and its
+  badge are written in one transaction. **End now** (and replacement) sets the end to today: the goal moves to Past
+  goals at once, stays live for the rest of the day, then is judged on the periods that went by (the partial rules
+  above). A whole-stretch goal ended early isn't judged, and nor is one with no judged period: it shows **Ended early**
+  (neither ✓ nor ✗) and earns nothing.
 - **Managing.** + New goal (from the Goals page edit area and a "Goals" widget listing active goals with + New
   goal). Edit (target, name, end date) and End now. A new goal of the same type replaces the active one (the old
   one ends today and moves to Past goals). **Past goals**: a widget/list of finished goals newest first with ✓/✗,
   the dates and the final numbers; delete from there.
 - **Data**: `goals` (user, type, target, period, start, end, name, created, ended, frozen result json). Isolation,
   backup, export. API routes readable by Read only keys.
-- **Badges**: completing a goal earns a "Goal met" badge (the existing badge system).
+- **Badges**: completing a goal earns a "Goal met" badge (the existing badge system). It is earned again with each
+  goal completed: the badge shows the latest one's day and how many ("Earned Nov 15 · 3 goals met") and is new again
+  (celebrated) each time.
 
 **Left to the builder.** Visual design within the app's existing style; chart details; exact copy beyond the above;
 how the registry marks which pages a widget fits.

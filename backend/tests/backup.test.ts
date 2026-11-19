@@ -117,7 +117,15 @@ async function seed() {
     await t.db.insert(usageCounts).values([{ userId: u.id, key: "barcodes_scanned", count: 3 + i }, { userId: u.id, key: "outside_off", count: 1 }]); // App info's numbers are the person's own data
     await t.db.insert(restaurantFavourites).values({ userId: u.id, cacheId: cache.id, chain: "Acme Diner" });
     await t.db.insert(dashboardLayouts).values({ userId: u.id, columns: i ? [["food"], [], ["budget"]] : [["budget", "water"], ["food"]] }); // the person's Dashboard
-    await t.db.insert(dashboardLayouts).values({ userId: u.id, page: "goals", columns: [["badges"], i ? [] : ["goal-date"]] }); // and their Goals page
+    // §40c: an active goal (its widget on the Goals page) and a finished one with its kept result
+    const [walk] = await t.db
+      .insert(schema.goals)
+      .values([
+        { userId: u.id, type: "steps", measure: "average", target: 8000 + i, period: "week", startDay: "2026-11-01", endDay: null, name: "Walk" },
+        { userId: u.id, type: "logging_days", target: 20, period: "month", startDay: "2026-10-01", endDay: "2026-10-20", name: "Log, often", endedAt: new Date("2026-10-20T18:00:00Z"), result: { state: "missed", hit: 0, done: 1, of: 1 }, frozenAt: new Date("2026-10-21T07:00:00Z") },
+      ])
+      .returning();
+    await t.db.insert(dashboardLayouts).values({ userId: u.id, page: "goals", columns: [["badges", `goal:${walk.id}`], i ? [] : ["goal-date"]] }); // and their Goals page
     await t.db.insert(passkeys).values({ userId: u.id, credentialId: `cred-${u.id}`, publicKey: "pk", transports: ["internal"], rpId: "localhost", name: "Phone" });
   }
   const apiKey = (await a.as("POST", "/api/keys", { name: "Anna's HA", access: "log" })).body.key as string; // backed up (encrypted)
@@ -275,6 +283,8 @@ describe("backups", () => {
     await t.db.delete(schema.workouts).where(eq(schema.workouts.userId, a.id));
     await t.db.update(schema.activitySteps).set({ steps: 1 });
     await t.db.delete(schema.workoutCalorieModes);
+    await t.db.delete(schema.goals).where(eq(schema.goals.userId, b.id));
+    await t.db.update(schema.goals).set({ target: 1, result: null });
     await t.db.update(logEntries).set({ treat: true });
     await t.db.delete(schema.insights).where(eq(schema.insights.userId, a.id)); // §43
     await t.db.insert(logEntries).values({ userId: b.id, day: "2026-11-16", meal: "lunch", name: "New", icon: "🍎", source: "cache", unit: "g", quantity: 1, perServing: {}, servings: [], nutrients: {} });
@@ -297,6 +307,12 @@ describe("backups", () => {
     expect((await t.db.select().from(schema.activitySteps).where(eq(schema.activitySteps.userId, a.id))).map((r) => [r.source, r.steps]).sort()).toEqual([["health", 6100], ["manual", 4000]]);
     expect((await t.db.select().from(schema.workoutCalorieModes)).map((r) => [r.mode, r.countPct, r.weeklyCap]).sort()).toEqual([["add", 75, 1200], ["bank", 75, 1200]]);
     expect((await t.db.select().from(logEntries)).every((e) => e.treat === false)).toBe(true);
+    // Goals (§40c) came back with their kept results
+    expect(before.goals.length).toBe(4);
+    expect((await t.db.select().from(schema.goals).where(eq(schema.goals.userId, a.id))).map((g) => [g.name, g.type, g.measure, g.target, g.period, g.startDay, g.endDay, g.result, g.endedAt?.toISOString() ?? null]).sort()).toEqual([
+      ["Log, often", "logging_days", null, 20, "month", "2026-10-01", "2026-10-20", { state: "missed", hit: 0, done: 1, of: 1 }, "2026-10-20T18:00:00.000Z"],
+      ["Walk", "steps", "average", 8000, "week", "2026-11-01", null, null, null],
+    ]);
     // Nothing points at a cached food that isn't there
     const dangling = await t.db.execute<{ n: number }>(sql`select
       (select count(*) from log_entries where source = 'cache' and source_ref not in (select 'cache:' || id from food_cache))

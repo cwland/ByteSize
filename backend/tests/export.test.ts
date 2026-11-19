@@ -41,7 +41,12 @@ async function seed() {
   expect((await t.api("PUT", "/api/steps/2026-11-16", { steps: 7012, source: "health" })).status).toBe(200);
   expect((await t.api("POST", "/api/workouts", { day: DAY, type: "hiit", minutes: 20, calories: 210, note: "Class" })).status).toBe(200);
   expect((await t.api("POST", "/api/workouts", { day: "2026-11-16", type: "walk", minutes: 35, source: "health", externalId: "HK-1" })).status).toBe(200);
+  // §40c: an active goal, and a finished one kept with its result
+  expect((await t.api("POST", "/api/goals", { type: "workouts", target: 3, period: "week", name: 'Move, "often"' })).status).toBe(200);
   const me = (await t.api("GET", "/api/auth/me")).body;
+  await t.db.insert(schema.goals).values({ userId: me.id ?? me.user?.id, type: "steps", measure: "average", target: 8000, period: "week", startDay: "2026-10-01", endDay: "2026-10-31", name: "October walks", result: { state: "missed", hit: 3, done: 5, of: 5, periods: [], current: null, startKg: null, asOf: "2026-10-31" }, frozenAt: new Date() });
+  // ...and one ended early with nothing to judge
+  await t.db.insert(schema.goals).values({ userId: me.id ?? me.user?.id, type: "workouts", target: 3, period: "week", startDay: "2026-10-31", endDay: "2026-10-31", name: "Gym", endedAt: new Date(), result: { state: "ended", hit: 0, done: 0, of: 0, periods: [], current: null, startKg: null, asOf: "2026-10-31" }, frozenAt: new Date() });
   const photo = await storePhoto(t.app, me.id ?? me.user?.id, await plainPhoto(40, 30));
   return { photo, userId: (me.id ?? me.user?.id) as number };
 }
@@ -75,10 +80,10 @@ describe("GET /api/export", () => {
     expect(res.headers["content-disposition"]).toBe('attachment; filename="bytesize-cory-2026-11-17.zip"');
   });
 
-  it("holds the nine kinds of files, with one food-log line per entry in day order", async () => {
+  it("holds the ten kinds of files, with one food-log line per entry in day order", async () => {
     const { photo } = await seed();
     const { files, text } = await download();
-    expect(Object.keys(files).sort()).toEqual(["activity.csv", "bytesize-export.json", "food-log.csv", "my-foods.csv", "photos/" + path.basename(photo.path), "shots.csv", "side-effects.csv", "weigh-ins.csv", "workouts.csv"].sort());
+    expect(Object.keys(files).sort()).toEqual(["activity.csv", "bytesize-export.json", "food-log.csv", "goals.csv", "my-foods.csv", "photos/" + path.basename(photo.path), "shots.csv", "side-effects.csv", "weigh-ins.csv", "workouts.csv"].sort());
     const lines = text("food-log.csv").split("\r\n");
     expect(lines.pop()).toBe("");
     expect(lines[0]).toBe("Day,Meal,Food,Brand,Amount,Calories,Protein (g),Carbs (g),Fat (g),Fiber (g),Sugar (g),Sodium (mg),Saturated fat (g),Added sugar (g),Sugar alcohol (g),Potassium (mg),Magnesium (mg),Water (ml),AI estimated,Treat");
@@ -104,6 +109,10 @@ describe("GET /api/export", () => {
     // A day's steps: Health's number when the phone sent one, else the typed one; unknown calories stay blank
     expect(text("activity.csv")).toBe(`Day,Steps,Steps from,Workouts,Active minutes,Workout calories\r\n2026-11-16,7012,Health,1,35,0\r\n${DAY},,,1,20,210\r\n`);
     expect(text("workouts.csv")).toBe(`Day,Type,Minutes,Calories,From,Note\r\n2026-11-16,Walk,35,,Health,\r\n${DAY},HIIT,20,210,Typed,Class\r\n`);
+    // Goals: oldest start first; a kept result says how it ended
+    expect(text("goals.csv")).toBe(
+      `Name,Kind,Target,Period,Start,End,Result,Periods hit\r\nOctober walks,Steps (average per day),8000,Each week,2026-10-01,2026-10-31,Missed,3 of 5\r\nGym,Workouts,3,Each week,2026-10-31,2026-10-31,Ended early,\r\n"Move, ""often""",Workouts,3,Each week,${DAY},,In progress,\r\n`,
+    );
     const foods = text("my-foods.csv").split("\r\n");
     expect(foods[0]).toBe("Name,Brand,Kind,Serving,Calories,Protein (g),Carbs (g),Fat (g),Fiber (g)");
     expect(foods).toContain("Toast,,custom,2 slices,160,6,30,2,4");

@@ -10,6 +10,7 @@ import { ACTIVITY_SOURCES, activityDays, daySteps, earnedOf, estimateCalories, M
 import { COUNT_PCTS, inForce, MAX_WEEKLY_CAP, WORKOUT_MODES } from "../lib/workoutCalories.js";
 import { modeRows, settingsOf } from "../lib/calorieDays.js";
 import { latestWeighIn } from "./weight.js";
+import { stepGoalOn } from "./goals.js";
 
 // Activity (§40b): steps and workouts, typed or sent by the phone (source "health", which upserts: steps by day,
 // workouts by the phone's own id, so a phone can resend safely), and Goals › Your plan › Workout calories.
@@ -57,9 +58,10 @@ export const toWorkout = (r: WorkoutRow) => ({ id: r.id, day: r.day, type: r.typ
 
 /** What the Activity widget shows for a day: its steps (Health's, else typed), the typed number, workouts, calories earned. */
 export async function activityOn(db: Db, userId: number, day: string) {
-  const [stepRows, rows] = await Promise.all([
+  const [stepRows, rows, stepGoal] = await Promise.all([
     db.select({ source: activitySteps.source, steps: activitySteps.steps }).from(activitySteps).where(and(eq(activitySteps.userId, userId), eq(activitySteps.day, day))),
     db.select().from(workouts).where(and(eq(workouts.userId, userId), eq(workouts.day, day))).orderBy(asc(workouts.createdAt), asc(workouts.id)),
+    stepGoalOn(db, userId, day),
   ]);
   const s = daySteps(stepRows);
   return {
@@ -67,8 +69,8 @@ export async function activityOn(db: Db, userId: number, day: string) {
     steps: s.steps,
     stepsSource: s.source,
     typedSteps: stepRows.find((r) => r.source === "manual")?.steps ?? null,
-    // A daily step goal comes with goals (§40c); until then there is none
-    stepGoal: null as number | null,
+    // An average-per-day Steps goal holding the day (§40c)
+    stepGoal,
     workouts: rows.map(toWorkout),
     earned: earnedOf(rows),
     activeMinutes: rows.reduce((n, r) => n + r.minutes, 0),

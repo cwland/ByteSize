@@ -3,6 +3,7 @@ import {
   INSIGHTS_SYSTEM,
   OFF_TOPIC,
   buildSummary,
+  goalsForSummary,
   proteinFacts,
   questionRange,
   readAnswer,
@@ -158,6 +159,21 @@ describe("the summary the AI sees", () => {
     expect(s.plan).toBeNull();
     expect(s.days[0].plan).toBeNull();
     expect(s.days[0].inRange).toBeNull();
+  });
+});
+
+describe("active goals for the summary (§40c)", () => {
+  const goal = (over: Record<string, unknown> = {}) => ({
+    name: "Work out 3 times a week", type: "workouts", target: 3, period: "week", end: null,
+    progress: { state: "active", current: { value: 2, target: 3 }, hit: 1, done: 2 }, ...over,
+  });
+  it("only active ones: name, target and progress, weights in the person's units", () => {
+    expect(goalsForSummary([goal(), goal({ name: "Old", progress: { state: "completed", current: null, hit: 4, done: 4 } })], "imperial")).toEqual([
+      { name: "Work out 3 times a week", target: "3 a week", progress: "2 of 3 this week; 1 of 2 weeks hit" },
+    ]);
+    expect(goalsForSummary([goal({ name: "Reach 90 kg", type: "weight_by_date", target: 90, period: "stretch", end: "2027-03-01", progress: { state: "active", current: { value: 95, target: 90 }, hit: 0, done: 0 } })], "imperial")).toEqual([
+      { name: "Reach 90 kg", target: "198.4 lb by 2027-03-01" },
+    ]);
   });
 });
 

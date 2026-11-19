@@ -1,11 +1,15 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, GripVertical, Pencil, Plus, X } from "lucide-react";
 import { api } from "../../api";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
 import { primaryButton, secondaryButton } from "../ui/styles";
-import { LAYOUT_VERSION, addWidget, defaultLayout, dropIndex, fromSaved, moveSideways, moveTo, moveVertical, readingOrder, removeWidget, type Columns, type LayoutPage, type SavedLayout } from "./layout";
-import { registryFor, widgetById, type WidgetProps } from "./widgets";
+import { LAYOUT_VERSION, addWidget, defaultLayout, dropIndex, fromSaved, goalIdOf, moveSideways, moveTo, moveVertical, placeGoals, readingOrder, removeWidget, type Columns, type LayoutPage, type LayoutWidget, type SavedLayout } from "./layout";
+import { registryFor, type WidgetDef, type WidgetProps } from "./widgets";
+import { onDayChanged } from "../../day";
+import { GoalsDataContext, NO_GOALS, onGoalsChanged } from "../../goals";
+import type { Goal, GoalsList } from "../../types";
+import { GoalWidget } from "../goals/GoalWidgets";
 
 // What every widget page (§28, §40a: the Dashboard, Goals) shares: its saved layout (GET/PUT /api/layouts/:page,
 // the default until loaded), the columns of widgets, the edit button and edit mode (drag, move buttons, remove,
@@ -16,26 +20,55 @@ const PAGE_COPY: Record<LayoutPage, { edit: string; allPlaced: string }> = {
   goals: { edit: "Edit page", allPlaced: "Every widget is on this page" },
 };
 
-// The page's layout: the default until the saved one has loaded (or failed to: the default stays). Editing waits for
-// it, so Save can never write an edit of the default over the saved layout.
+// What a page shows from its saved layout (none: its default) and the person's active goals (§40c): a goal's widget
+// "goal:<id>" is known while the goal is active; with nothing saved, the Goals page puts each active goal in its
+// shortest column (the server does the same to a saved Goals layout when a goal is made).
+export function layoutFor(page: LayoutPage, saved: SavedLayout | null, active: Goal[]): Columns {
+  const cols = fromSaved(saved, registryFor(page, active));
+  return !saved && page === "goals" ? placeGoals(cols, active.map((g) => g.id)) : cols;
+}
+
+// The page's layout: the default until the saved one has loaded (or failed to: the default stays), with the person's
+// goals (§40c), loaded together and again when a goal changes (or, for the progress, when the log does). Editing waits
+// for it, so Save can never write an edit of the default over the saved layout.
 export function useWidgetLayout(page: LayoutPage) {
   const [cols, setCols] = useState<Columns>(() => defaultLayout(registryFor(page)));
   const [editing, setEditing] = useState<Columns | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [goals, setGoals] = useState<GoalsList>(NO_GOALS);
+  const [goalsLoaded, setGoalsLoaded] = useState(false);
   useEffect(() => {
     let live = true;
-    api<{ layout: SavedLayout | null }>("GET", `/api/layouts/${page}`)
-      .then((r) => live && setCols(fromSaved(r.layout, registryFor(page))))
-      .catch(() => {}) // the default layout stays
-      .finally(() => live && setLoaded(true));
-    return () => void (live = false);
+    const loadGoals = () => api<GoalsList>("GET", "/api/goals").catch(() => null);
+    const load = () =>
+      Promise.all([api<{ layout: SavedLayout | null }>("GET", `/api/layouts/${page}`).then((r) => r, () => undefined), loadGoals()]).then(([saved, list]) => {
+        if (!live) return;
+        const g = list ?? NO_GOALS;
+        setGoals(g);
+        setGoalsLoaded(true);
+        if (saved) setCols(layoutFor(page, saved.layout, g.active)); // a failed load keeps what's shown
+        setLoaded(true);
+      });
+    void load();
+    const offGoals = onGoalsChanged(() => void load());
+    const offDay = onDayChanged(() => void loadGoals().then((g) => live && g && setGoals(g)));
+    return () => {
+      live = false;
+      offGoals();
+      offDay();
+    };
   }, [page]);
+  const registry = useMemo(() => registryFor(page, goals.active), [page, goals.active]);
+  const defaults = useCallback(() => layoutFor(page, null, goals.active), [page, goals.active]);
   return {
     page,
     cols,
     editing,
     setEditing,
     loaded,
+    goals: { ...goals, loaded: goalsLoaded },
+    registry,
+    defaults,
     startEditing: () => setEditing(cols),
     saved: (c: Columns) => {
       setCols(c);
@@ -61,22 +94,36 @@ const autoFit = "grid grid-cols-[repeat(auto-fit,minmax(min(100%,19rem),1fr))] i
 // the columns side by side on wide screens, stacked on phones — which is the reading order. An empty column takes no
 // room. wideGrid: the page's grid for a number of non-empty columns (default: as many equal columns as fit).
 export function WidgetColumns({ layout, props, wideGrid }: { layout: WidgetLayout; props: WidgetProps; wideGrid?: (shown: number) => string | undefined }) {
-  const { page, cols, editing, setEditing, saved } = layout;
+  const { page, cols, editing, setEditing, saved, registry, goals } = layout;
   const wide = props.wide;
-  if (editing) return <EditLayout page={page} cols={editing} wide={wide} onChange={setEditing} onCancel={() => setEditing(null)} onSaved={saved} />;
+  if (editing) {
+    return (
+      <GoalsDataContext.Provider value={goals}>
+        <EditLayout page={page} registry={registry} defaults={layout.defaults} cols={editing} wide={wide} onChange={setEditing} onCancel={() => setEditing(null)} onSaved={saved} />
+      </GoalsDataContext.Provider>
+    );
+  }
   const widget = (id: string) => {
-    const w = widgetById(id);
+    const gid = goalIdOf(id);
+    if (gid !== null) {
+      const g = goals.active.find((x) => x.id === gid);
+      return g ? <GoalWidget key={id} goal={g} /> : null;
+    }
+    const w = registry.find((x) => x.id === id);
     return w ? <w.Component key={id} {...props} /> : null;
   };
-  const shown = cols.filter((c) => c.length).length;
+  const visible = cols.map((c) => c.filter((id) => goalIdOf(id) === null || goals.active.some((g) => g.id === goalIdOf(id))));
+  const shown = visible.filter((c) => c.length).length;
   return (
-    <div data-testid={`${page}-columns`} className={wide ? (wideGrid?.(shown) ?? autoFit) : "flex flex-col gap-3"}>
-      {cols.map((c, i) => (
-        <div key={i} data-testid={c.length ? "widget-column" : undefined} hidden={!c.length} className={wide ? "flex min-w-0 flex-col gap-4" : "flex flex-col gap-3"}>
-          {c.map(widget)}
-        </div>
-      ))}
-    </div>
+    <GoalsDataContext.Provider value={goals}>
+      <div data-testid={`${page}-columns`} className={wide ? (wideGrid?.(shown) ?? autoFit) : "flex flex-col gap-3"}>
+        {visible.map((c, i) => (
+          <div key={i} data-testid={c.length ? "widget-column" : undefined} hidden={!c.length} className={wide ? "flex min-w-0 flex-col gap-4" : "flex flex-col gap-3"}>
+            {c.map(widget)}
+          </div>
+        ))}
+      </div>
+    </GoalsDataContext.Provider>
   );
 }
 
@@ -88,8 +135,26 @@ const OPPOSITE: Record<Dir, Dir> = { up: "down", down: "up", left: "right", righ
 // Edit mode (any widget page). Widgets are cards (their title and one line; they don't load or work here). Wide screens: three
 // columns (empty ones stay as drop targets), a drag handle (mouse and touch) and Move up/down/left/right on each.
 // Phones: one column in reading order with Move up/down. Every move can be made without dragging.
-export function EditLayout({ page, cols, wide, onChange, onCancel, onSaved }: { page: LayoutPage; cols: Columns; wide: boolean; onChange: (c: Columns) => void; onCancel: () => void; onSaved: (c: Columns) => void }) {
-  const registry = registryFor(page);
+export function EditLayout({
+  page,
+  registry,
+  defaults,
+  cols,
+  wide,
+  onChange,
+  onCancel,
+  onSaved,
+}: {
+  page: LayoutPage;
+  registry: (WidgetDef & LayoutWidget)[];
+  defaults: () => Columns;
+  cols: Columns;
+  wide: boolean;
+  onChange: (c: Columns) => void;
+  onCancel: () => void;
+  onSaved: (c: Columns) => void;
+}) {
+  const widgetById = (id: string) => registry.find((w) => w.id === id);
   const [adding, setAdding] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
@@ -215,7 +280,7 @@ export function EditLayout({ page, cols, wide, onChange, onCancel, onSaved }: { 
         <button type="button" onClick={() => setAdding(true)} className={`${secondaryButton} inline-flex items-center gap-1.5 px-4 py-1.5 text-sm`}>
           <Plus aria-hidden="true" className="size-4" /> Add widget
         </button>
-        <button type="button" onClick={() => onChange(defaultLayout(registry))} className="rounded-full px-3 py-1.5 text-sm font-semibold text-link hover:bg-pressed">
+        <button type="button" onClick={() => onChange(defaults())} className="rounded-full px-3 py-1.5 text-sm font-semibold text-link hover:bg-pressed">
           Reset to default
         </button>
         <button type="button" onClick={onCancel} className={`${secondaryButton} px-4 py-1.5 text-sm`}>

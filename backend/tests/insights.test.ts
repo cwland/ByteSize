@@ -127,6 +127,14 @@ describe("Refresh", () => {
     expect((await t.api("GET", "/api/app-info")).body.you.aiInsights).toBe(1);
   });
 
+  it("the person's active goals (§40c) are in the summary", async () => {
+    await seed();
+    await aiServices();
+    expect((await t.api("POST", "/api/goals", { type: "workouts", target: 3, period: "week" })).status).toBe(200);
+    await t.api("POST", "/api/insights/refresh", { kind: "recap" });
+    expect(summaryOf(t.ai.calls[0]).goals).toEqual([expect.objectContaining({ target: "3 a week" })]);
+  });
+
   it("protein help: top sources and short days from the app; swaps only of foods in the data", async () => {
     await seed();
     await aiServices();

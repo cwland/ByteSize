@@ -131,6 +131,25 @@ function dayRows(input: SummaryInput): (SummaryDay & { waterMl: number; waterMin
   return out;
 }
 
+/** A goal as GET /api/goals gives it (routes/goals.ts), the parts the summary uses. */
+export type GoalLike = { name: string; type: string; target: number; period: string; end: string | null; progress: { state: string; current: { value: number | null; target: number } | null; hit: number; done: number } };
+
+/** The person's active goals (§40c) for the summary: name, target, and how it's going (weights in their units). */
+export function goalsForSummary(goals: readonly GoalLike[], units: SummaryInput["units"]): SummaryInput["goals"] {
+  return goals
+    .filter((g) => g.progress.state === "active")
+    .map((g) => {
+      const weight = g.type === "weight_by_date";
+      const amount = weight ? `${weightIn(g.target, units)} ${units === "metric" ? "kg" : "lb"}` : `${r1(g.target)}`;
+      const target = weight || g.period === "stretch" ? `${amount}${g.end ? ` by ${g.end}` : ""}` : `${amount} a ${g.period}`;
+      const parts: string[] = [];
+      const cur = g.progress.current;
+      if (!weight && cur && cur.value !== null) parts.push(`${r1(cur.value)} of ${r1(cur.target)} this ${g.period}`);
+      if (g.progress.done) parts.push(`${g.progress.hit} of ${g.progress.done} ${g.period}s hit`);
+      return { name: g.name, target, ...(parts.length ? { progress: parts.join("; ") } : {}) };
+    });
+}
+
 /** What the AI is told: built only from the fields named here. */
 export function buildSummary(input: SummaryInput): Summary {
   const u = input.units;

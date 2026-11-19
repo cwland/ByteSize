@@ -13,6 +13,28 @@ export type LayoutWidget = { id: string; column: number | null; newDefault?: num
 export type SavedLayout = { version: number; columns: string[][] };
 export const LAYOUT_VERSION = 1;
 
+// §40c: each active goal is a widget of its own, "goal:<id>", offered on these pages (backend/src/lib/widgets.ts has
+// the same). The server keeps only the person's active goals in a layout, and adds a new goal to a saved Goals page.
+export const GOAL_WIDGET_PREFIX = "goal:";
+export const GOAL_WIDGET_PAGES: readonly LayoutPage[] = ["dashboard", "goals"];
+export const goalWidgetId = (id: number) => `${GOAL_WIDGET_PREFIX}${id}`;
+export const goalIdOf = (widget: string): number | null => (/^goal:[1-9]\d*$/.test(widget) ? Number(widget.slice(GOAL_WIDGET_PREFIX.length)) : null);
+/**
+ * The Goals page's default (nothing saved): each active goal not yet placed joins the bottom of the shortest column in
+ * use (the leftmost of equals; an empty column stays empty, as the Goals default uses two of three; none in use: the first)
+ */
+export function placeGoals(cols: Columns, ids: number[]): Columns {
+  const next = copy(cols);
+  for (const id of ids) {
+    const wid = goalWidgetId(id);
+    if (next.some((c) => c.includes(wid))) continue;
+    const used = next.map((c, i) => i).filter((i) => next[i].length > 0);
+    const at = used.length ? used.reduce((best, i) => (next[i].length < next[best].length ? i : best), used[0]) : 0;
+    next[at].push(wid);
+  }
+  return next;
+}
+
 const copy = (cols: Columns): Columns => cols.map((c) => [...c]);
 const find = (cols: Columns, id: string) => {
   const col = cols.findIndex((c) => c.includes(id));

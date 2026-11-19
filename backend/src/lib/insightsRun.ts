@@ -13,6 +13,7 @@ import { HttpError } from "./errors.js";
 import {
   INSIGHTS_SYSTEM,
   buildSummary,
+  goalsForSummary,
   proteinAsk,
   proteinFacts,
   questionAsk,
@@ -27,6 +28,7 @@ import {
 import { waitOnClose } from "./schedule.js";
 import { weekStartOf } from "./trends.js";
 import { countUsage } from "./usage.js";
+import { goalsWithProgress } from "../routes/goals.js";
 
 export const INSIGHTS_OFF = "Insights need an AI service. An admin can set one up in Settings › Integrations.";
 export const INSIGHTS_FAILED = "Couldn't write your insights right now. Try again in a little while.";
@@ -60,8 +62,11 @@ export const weekBefore = (today: string, weekStart: number) => {
   return { from: start, to: addDays(start, 6) };
 };
 
-/** Everything the summary is built from, for `from`..`to` (weigh-ins from the first, for the trend). */
-export async function loadSummaryInput(db: Db, userId: number, from: string, to: string, person: Person): Promise<SummaryInput> {
+/**
+ * Everything the summary is built from, for `from`..`to` (weigh-ins from the first, for the trend). today: the person's
+ * today, to add their active goals (§40c); left out where only the numbers are wanted.
+ */
+export async function loadSummaryInput(db: Db, userId: number, from: string, to: string, person: Person, today?: string): Promise<SummaryInput> {
   const inRange = <T extends typeof logEntries | typeof glp1Shots | typeof activitySteps | typeof workouts>(tbl: T) => and(eq(tbl.userId, userId), gte(tbl.day, from), lte(tbl.day, to));
   const [entries, targetRows, days, weigh, shots, steps, done, body, glp] = await Promise.all([
     db.select().from(logEntries).where(inRange(logEntries)).orderBy(asc(logEntries.day), asc(logEntries.id)),
@@ -88,7 +93,7 @@ export async function loadSummaryInput(db: Db, userId: number, from: string, to:
     workouts: done,
     goalWeightKg: body[0]?.goalWeightKg ?? null,
     glp1: body[0]?.glp1 && glp[0] ? glp[0] : null,
-    goals: [], // §40c goals join here once the app has them
+    goals: today ? goalsForSummary((await goalsWithProgress(db, userId, today)).active, person.units) : [],
   };
 }
 
@@ -128,7 +133,7 @@ export const insightView = (r: InsightRow) => ({
  */
 export async function writeRecap(app: FastifyInstance, userId: number, source: "weekly" | "refresh", period: { from: string; to: string }, opts: Opts = {}) {
   const person = await personOf(app.db, userId);
-  const input = await loadSummaryInput(app.db, userId, period.from, period.to, person);
+  const input = await loadSummaryInput(app.db, userId, period.from, period.to, person, localDay(person.timezone, app.now()));
   const json = await askAi(app, userId, recapAsk(buildSummary(input), source === "refresh"), opts);
   const recap = readRecap(json) ?? (await unusable(app, userId, "weekly recap", json));
   const row = await app.db.transaction(async (tx) => {
@@ -147,7 +152,7 @@ export async function writeRecap(app: FastifyInstance, userId: number, source: "
 export async function writeProtein(app: FastifyInstance, userId: number, source: "weekly" | "refresh", to: string, opts: Opts = {}) {
   const person = await personOf(app.db, userId);
   const from = addDays(to, -(PROTEIN_DAYS - 1));
-  const input = await loadSummaryInput(app.db, userId, from, to, person);
+  const input = await loadSummaryInput(app.db, userId, from, to, person, localDay(person.timezone, app.now()));
   const summary = buildSummary(input);
   const facts = proteinFacts(input);
   const json = await askAi(app, userId, proteinAsk(summary, facts), opts);
@@ -166,7 +171,7 @@ export async function answerQuestion(app: FastifyInstance, userId: number, quest
   const person = await personOf(app.db, userId);
   const today = localDay(person.timezone, app.now());
   const range = questionRange(question, today, person.weekStart);
-  const input = await loadSummaryInput(app.db, userId, range.from, range.to, person);
+  const input = await loadSummaryInput(app.db, userId, range.from, range.to, person, today);
   const json = await askAi(app, userId, questionAsk(buildSummary(input), question), opts);
   const content = readAnswer(json) ?? (await unusable(app, userId, "answer", json));
   const row = await app.db.transaction(async (tx) => {

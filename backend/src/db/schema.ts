@@ -640,3 +640,30 @@ export const insights = pgTable(
   },
   (t) => [index("insights_user_kind_created_idx").on(t.userId, t.kind, t.createdAt)]
 );
+
+// ---- §40c: goals with a start and end ----
+
+// A goal (lib/goals.ts): its type, target (a count, steps, minutes, or kg for weight), period (week — by the person's
+// week start — month, or the whole stretch), measure (steps only: total per period or average per day), start and end
+// (null: ongoing, week/month goals only). Progress is worked out from the data each time; once the end has passed
+// (in the person's time zone) it is worked out one last time and kept in `result`, so later edits to old days can't
+// flip it. ended_at: ended early (End now, or replaced by a new goal of the same type), its end then that day.
+export const goals = pgTable(
+  "goals",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    type: text("type").notNull(),
+    target: doublePrecision("target").notNull(),
+    period: text("period").$type<"week" | "month" | "stretch">().notNull(),
+    measure: text("measure").$type<"total" | "average">(),
+    startDay: date("start_day", { mode: "string" }).notNull(),
+    endDay: date("end_day", { mode: "string" }),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    result: jsonb("result"),
+    frozenAt: timestamp("frozen_at", { withTimezone: true }),
+  },
+  (t) => [index("goals_user_idx").on(t.userId, t.startDay)]
+);

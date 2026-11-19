@@ -178,7 +178,7 @@ describe("Goals", () => {
     await user.click(screen.getByRole("button", { name: "Edit page" }));
     // Widgets are cards while editing (they don't load or work)
     expect(screen.queryByText("Steady plan")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("group").map((g) => g.getAttribute("aria-label"))).toEqual(["Your plan", "Goal date", "Badges", "Weight", "Activity", "Weekly trends"]);
+    expect(screen.getAllByRole("group").map((g) => g.getAttribute("aria-label"))).toEqual(["Your plan", "Goal date", "Goals", "Badges", "Weight", "Activity", "Weekly trends", "Past goals"]);
     await user.click(screen.getByRole("button", { name: "Move Goal date up" }));
     await user.click(screen.getByRole("button", { name: "Remove Badges" }));
     await user.click(screen.getByRole("button", { name: "Add widget" }));
@@ -191,7 +191,7 @@ describe("Goals", () => {
     expect(within(screen.getByRole("dialog", { name: "Add widget" })).getAllByRole("button", { name: /^Add / }).map((b) => b.getAttribute("aria-label"))).toEqual(["Add Insights"]);
     await user.click(within(screen.getByRole("dialog", { name: "Add widget" })).getByRole("button", { name: "Close" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
-    expect(server.writes()).toEqual([expect.objectContaining({ method: "PUT", path: "/api/layouts/goals", body: { version: 1, columns: [["goal-date", "your-plan"], ["weight-chart", "activity", "weekly-trends"], ["badges"]] } })]); // added to the shortest column
+    expect(server.writes()).toEqual([expect.objectContaining({ method: "PUT", path: "/api/layouts/goals", body: { version: 1, columns: [["goal-date", "your-plan", "goals"], ["weight-chart", "activity", "weekly-trends", "past-goals"], ["badges"]] } })]); // added to the shortest column
     expect(await screen.findByText("Steady plan")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Goal date" }).compareDocumentPosition(screen.getByRole("region", { name: "Plan" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });

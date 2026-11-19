@@ -106,6 +106,6 @@ describe("workout calories on the Budget and Day totals", () => {
   it("Activity is in both default layouts: the Dashboard's middle column under Water, Goals' right column under Weight", () => {
     const ids = (page: "dashboard" | "goals", col: number) => registryFor(page).filter((w) => w.column === col).map((w) => w.id);
     expect(ids("dashboard", 1)).toEqual(["budget", "water", "activity"]);
-    expect(ids("goals", 1)).toEqual(["weight-chart", "activity", "weekly-trends"]);
+    expect(ids("goals", 1)).toEqual(["weight-chart", "activity", "weekly-trends", "past-goals"]);
   });
 });
