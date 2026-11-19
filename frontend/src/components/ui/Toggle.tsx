@@ -1,5 +1,5 @@
 // An on/off switch with its label
-export function Toggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
+export function Toggle({ label, checked, disabled, describedBy, onChange }: { label: string; checked: boolean; disabled?: boolean; describedBy?: string; onChange: (v: boolean) => void }) {
   return (
     <button
       type="button"
@@ -7,6 +7,7 @@ export function Toggle({ label, checked, disabled, onChange }: { label: string; 
       aria-label={label}
       title={label}
       aria-checked={checked}
+      aria-describedby={describedBy}
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={`relative h-7 w-12 shrink-0 rounded-full transition disabled:opacity-50 ${checked ? "bg-action" : "bg-strong"}`}

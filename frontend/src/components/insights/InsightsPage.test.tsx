@@ -73,7 +73,63 @@ describe("Insights page", () => {
     expect(within(note).getByRole("link", { name: "Settings › Integrations" })).toHaveAttribute("href", "#/settings/integrations");
     const card = screen.getByRole("region", { name: "Weekly recap" });
     expect(stat(card, "Days logged")).toHaveTextContent("3 of 7");
-    expect(within(card).queryByRole("button", { name: "Refresh weekly recap" })).not.toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Refresh weekly recap" })).toBeDisabled();
+  });
+
+  describe("no AI service set up (or all switched off)", () => {
+    const noAi = (over: Record<string, unknown> = {}) => fakeServer({ "GET /api/insights": () => insightsJson({ aiReady: false, weeklyOn: true, email: { on: true, available: true, hasAddress: true }, ...over }) });
+
+    it("the Weekly recap and Email switches show off and disabled, described by the note", async () => {
+      noAi();
+      renderWithSession(<InsightsPage />);
+      const note = await screen.findByText(/no AI service is set up/i);
+      for (const name of ["Weekly recap", "Email me my weekly recap"]) {
+        const toggle = screen.getByRole("switch", { name });
+        expect(toggle).toBeDisabled();
+        expect(toggle).toHaveAttribute("aria-checked", "false");
+        expect(toggle).toHaveAccessibleDescription(note.textContent!);
+      }
+    });
+
+    it("both Refresh buttons are there but disabled, described by the note", async () => {
+      noAi();
+      renderWithSession(<InsightsPage />);
+      const note = await screen.findByText(/no AI service is set up/i);
+      for (const [region, name] of [["Weekly recap", "Refresh weekly recap"], ["Protein help and food swaps", "Refresh protein help"]]) {
+        const button = within(screen.getByRole("region", { name: region })).getByRole("button", { name });
+        expect(button).toBeDisabled();
+        expect(button).toHaveAccessibleDescription(note.textContent!);
+      }
+    });
+
+    it("what was stored stays visible, and the chat opens read-only with its history", async () => {
+      noAi();
+      renderWithSession(<InsightsPage />);
+      expect(await screen.findByText("A solid week: you logged 3 days and hit your range on 2.")).toBeInTheDocument();
+      await userEvent.setup().click(screen.getByRole("button", { name: "Ask about your eating, weight or habits" }));
+      const chat = await screen.findByRole("dialog", { name: "Ask ByteSize" });
+      expect(within(chat).getAllByTestId("bubble")).toHaveLength(2);
+      expect(within(chat).getByRole("textbox", { name: "Your question" })).toBeDisabled();
+      expect(within(chat).getByRole("button", { name: "Send" })).toBeDisabled();
+    });
+
+    it("a switch isn't saved when clicked (nothing is sent)", async () => {
+      const server = noAi();
+      renderWithSession(<InsightsPage />);
+      await screen.findByText(/no AI service is set up/i);
+      await userEvent.setup().click(screen.getByRole("switch", { name: "Weekly recap" }));
+      expect(server.writes()).toHaveLength(0);
+    });
+
+    it("with a service set up again (next page load) everything is enabled", async () => {
+      fakeServer({ "GET /api/insights": () => insightsJson({ aiReady: true, email: { on: false, available: true, hasAddress: true } }) });
+      renderWithSession(<InsightsPage />);
+      await screen.findByRole("region", { name: "Weekly recap" });
+      expect(screen.getByRole("switch", { name: "Weekly recap" })).toBeEnabled();
+      expect(screen.getByRole("switch", { name: "Email me my weekly recap" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Refresh weekly recap" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Refresh protein help" })).toBeEnabled();
+    });
   });
 
   it("Refresh: 'Thinking… asking AI' with the turning wheel, then the new recap; another AI said plainly", async () => {

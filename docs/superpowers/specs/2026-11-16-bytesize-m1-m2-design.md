@@ -1551,6 +1551,16 @@ content json, created). Per-user isolation, backed up, in "Download my data". Re
 keys; Refresh/ask and the switch are not allowed for keys. seed-demo adds one recap and one protein card (static,
 no AI call) so the page isn't empty; --replace clears them.
 
+**No AI set up (Cory, 2026-11-19; applies to §43, §45 and §47).** When no AI service is set up, or all are switched
+off, the Insights controls can't be used: the Weekly recap and Email me my weekly recap switches show off and disabled
+(the server refuses turning either on with 409 and the same "Set one up in Settings › Integrations" message; turning
+off is always allowed, and what a person chose is kept for when AI is back); Refresh on the recap and on Protein help
+is disabled; Ask can't send (the chat still opens, read-only, with its history, text box and Send disabled; the server
+refuses ask and refresh with 503). The disabled controls point at the page's "Set one up in Settings › Integrations"
+note (hover and screen-reader description). The weekly run and the recap emails (including retries) don't run for
+anyone. Stored recaps, protein help and the chat history stay visible. Once a service is set up again everything
+enables on the next page load; no restart.
+
 ## 44. Hover text on every icon button (Cory, 2026-11-18)
 
 **Asked for.** "Any icons used in the app should have hover text to describe what they do, like move, copy, etc."

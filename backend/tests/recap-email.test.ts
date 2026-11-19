@@ -64,6 +64,8 @@ async function ready({ on = true } = {}) {
 }
 
 describe("the switch", () => {
+  beforeEach(async () => void (await aiServices())); // the switches need an AI service (see insights-no-ai.test.ts)
+
   it("is off by default, and the page says whether it can be turned on", async () => {
     const off = (await t.api("GET", "/api/insights")).body;
     expect(off.email).toEqual({ on: false, available: false, hasAddress: true });
@@ -315,13 +317,17 @@ describe("a failed send", () => {
     await check();
     expect(t.mail.sent).toHaveLength(0);
   });
-  it("a retry still happens while no AI service is set up (the AI being down doesn't pause email)", async () => {
+  it("while no AI service is set up nothing runs, retries included; they carry on when one is back", async () => {
     await ready();
     t.mail.failNext = "SMTP down";
     at(SUN_6AM);
     await check();
     await t.api("PUT", "/api/settings/ai", { enabled: false, mode: "auto", maxPerRun: 50, timeoutSec: 5, services: [] });
     at("2026-11-15T14:10:00Z");
+    await check();
+    expect(t.mail.sent).toHaveLength(0);
+    await aiServices();
+    at("2026-11-15T15:10:00Z");
     await check();
     expect(t.mail.sent).toHaveLength(1);
   });
@@ -363,6 +369,7 @@ describe("a failed send", () => {
   });
 
   it("an admin removing someone's email turns their switch off too", async () => {
+    await aiServices();
     await setUpEmail();
     const sam = await t.createUser("sam");
     const as = asUser(t, sam.token);

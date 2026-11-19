@@ -60,13 +60,13 @@ export default function InsightsPage() {
     <div className="flex flex-col gap-2 sm:items-end">
       <div className="flex items-center gap-3">
         <span className="text-sm font-semibold text-subtle">Weekly recap</span>
-        <Toggle label="Weekly recap" checked={view.weeklyOn} onChange={setWeekly} />
+        <Toggle label="Weekly recap" checked={view.aiReady && view.weeklyOn} disabled={!view.aiReady} describedBy={view.aiReady ? undefined : NO_AI_ID} onChange={setWeekly} />
       </div>
       {view.email.available && (
         <div className="flex flex-col gap-1 sm:items-end">
           <div className="flex items-center gap-3">
             <span className="text-sm font-semibold text-subtle">Email me my weekly recap</span>
-            <Toggle label="Email me my weekly recap" checked={view.email.on && view.email.hasAddress} disabled={!view.email.hasAddress} onChange={setEmail} />
+            <Toggle label="Email me my weekly recap" checked={view.aiReady && view.email.on && view.email.hasAddress} disabled={!view.aiReady || !view.email.hasAddress} describedBy={view.aiReady ? undefined : NO_AI_ID} onChange={setEmail} />
           </div>
           {!view.email.hasAddress && <span className="text-xs text-subtle">Add an email address in Settings › Profile</span>}
         </div>
@@ -109,10 +109,13 @@ export default function InsightsPage() {
   );
 }
 
+// The note's id: the controls that can't be used without an AI service point at it
+const NO_AI_ID = "insights-no-ai";
+
 function NoAi() {
   const { user } = useSession();
   return (
-    <p className="flex items-start gap-2 rounded-2xl bg-container px-4 py-3 text-subtle">
+    <p id={NO_AI_ID} className="flex items-start gap-2 rounded-2xl bg-container px-4 py-3 text-subtle">
       <Lightbulb aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-action" />
       <span>
         Insights are written by AI, and no AI service is set up yet. {user.isAdmin ? "Set one up in " : "Ask your admin to set one up in "}
@@ -138,9 +141,9 @@ function CardHead({ title, period, refresh }: { title: string; period?: ReactNod
   );
 }
 
-function RefreshButton({ label, busy, wait, onClick }: { label: string; busy: boolean; wait: number; onClick: () => void }) {
+function RefreshButton({ label, busy, wait, noAi = false, onClick }: { label: string; busy: boolean; wait: number; noAi?: boolean; onClick: () => void }) {
   return (
-    <button type="button" aria-label={label} title={label} disabled={busy || wait > 0} onClick={onClick} className={`${secondaryButton} flex shrink-0 items-center gap-1.5 px-3.5 py-1.5 text-sm`}>
+    <button type="button" aria-label={label} title={noAi ? "No AI service is set up" : label} aria-describedby={noAi ? NO_AI_ID : undefined} disabled={noAi || busy || wait > 0} onClick={onClick} className={`${secondaryButton} flex shrink-0 items-center gap-1.5 px-3.5 py-1.5 text-sm`}>
       <RefreshCw aria-hidden="true" className="size-4" />
       Refresh
     </button>
@@ -190,7 +193,7 @@ function RecapCard({ view, onChanged }: { view: InsightsView; onChanged: () => P
   const past = view.recaps.slice(1);
   return (
     <section aria-label="Weekly recap" className="flex flex-col gap-4 rounded-2xl bg-container p-5">
-      <CardHead title="Weekly recap" period={period} refresh={view.aiReady && <RefreshButton label="Refresh weekly recap" busy={!!ai.step} wait={wait} onClick={refresh} />} />
+      <CardHead title="Weekly recap" period={period} refresh={<RefreshButton label="Refresh weekly recap" busy={!!ai.step} wait={wait} noAi={!view.aiReady} onClick={refresh} />} />
       {view.aiReady && wait > 0 && !ai.step && <p className="-mt-2 text-sm text-muted">{minutesLeft(wait)}</p>}
       <AiWorking step={ai.step} onCancel={ai.cancel} texts={THINKING} />
       <Notice msg={msg} />
@@ -289,7 +292,7 @@ function ProteinCard({ view, onChanged }: { view: InsightsView; onChanged: () =>
       <CardHead
         title="Protein help and food swaps"
         period={p ? dayRange(p.periodStart, p.periodEnd) : undefined}
-        refresh={view.aiReady && <RefreshButton label="Refresh protein help" busy={!!ai.step} wait={wait} onClick={refresh} />}
+        refresh={<RefreshButton label="Refresh protein help" busy={!!ai.step} wait={wait} noAi={!view.aiReady} onClick={refresh} />}
       />
       {view.aiReady && wait > 0 && !ai.step && <p className="-mt-2 text-sm text-muted">{minutesLeft(wait)}</p>}
       <AiWorking step={ai.step} onCancel={ai.cancel} texts={THINKING} />

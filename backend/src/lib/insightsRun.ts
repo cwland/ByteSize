@@ -361,6 +361,8 @@ export const NO_ACCOUNT_EMAIL = "Add an email address in Settings › Profile";
 
 /** The switches on the Insights page: the weekly recap, and (§45) emailing it. Emailing needs server email and an address on the account. */
 export async function setInsightsSwitches(app: FastifyInstance, userId: number, change: { weeklyOn?: boolean; emailOn?: boolean }) {
+  // Without an AI service nothing can be turned on (turning off is always fine; what was chosen is kept for when one is set up)
+  if ((change.weeklyOn || change.emailOn) && !(await app.ai.active("insights"))) throw new HttpError(409, INSIGHTS_OFF);
   if (change.emailOn) {
     const person = await personOf(app.db, userId);
     if (!(await app.mail.active())) throw new HttpError(409, NO_MAIL_SERVER);
@@ -457,8 +459,8 @@ const localHour = (timeZone: string, now: Date) => Number(new Intl.DateTimeForma
  * AI isn't set up. A failed recap is tried again an hour later, up to 3 more times. Returns whose recaps were written.
  */
 export async function weeklyInsightsCheck(app: FastifyInstance, signal?: AbortSignal): Promise<number[]> {
-  await retryRecapEmails(app); // (§45) not held up by the AI being off: it only needs the mail server
-  if (!(await app.ai.active("insights"))) return [];
+  if (!(await app.ai.active("insights"))) return []; // no AI: no recaps, and no recap emails either (§43 "No AI set up")
+  await retryRecapEmails(app);
   const people = await app.db
     .select({ id: users.id, timezone: users.timezone, weekStart: userSettings.weekStart, weeklyOn: userSettings.insightsWeekly })
     .from(users)

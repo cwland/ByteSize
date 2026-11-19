@@ -87,6 +87,7 @@ describe("the Insights page's data", () => {
   });
 
   it("the weekly switch: on by default, the person's own", async () => {
+    await aiServices(); // (turning it on needs an AI service: insights-no-ai.test.ts)
     expect((await t.api("PUT", "/api/insights/settings", { weeklyOn: false })).body).toEqual({ weeklyOn: false, emailOn: false });
     expect((await t.api("GET", "/api/insights")).body.weeklyOn).toBe(false);
     expect((await t.api("PUT", "/api/insights/settings", { weeklyOn: true })).body).toEqual({ weeklyOn: true, emailOn: false });
