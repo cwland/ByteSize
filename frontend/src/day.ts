@@ -62,7 +62,14 @@ export const DEFAULT_SETTINGS: SettingsMe = {
 // Kept per person (bytesize-look:<user id>): someone else signing in on this device never sees it, and signing
 // out forgets it (forgetSettings).
 const lookKey = (userId: number) => `bytesize-look:${userId}`;
+// Before looks were kept per person there was one for the device: never read, removed when seen (§46)
+const OLD_LOOK_KEY = "bytesize-look";
 function rememberedLook(userId: number | null): Partial<SettingsMe> {
+  try {
+    localStorage.removeItem(OLD_LOOK_KEY);
+  } catch {
+    // no storage
+  }
   if (userId === null) return {};
   try {
     const v = JSON.parse(localStorage.getItem(lookKey(userId)) ?? "null") as { dateFormat?: unknown; weekStart?: unknown } | null;
@@ -84,6 +91,8 @@ function rememberLook(userId: number | null, s: SettingsMe) {
 }
 // The last settings the server gave, and whose they were (another person's are never a starting point)
 let lastKnown: { userId: number | null; settings: SettingsMe } | null = null;
+// Bumped by forgetSettings: an answer to a request sent before signing out is dropped, not remembered (§46)
+let signedOutTimes = 0;
 const known = (userId: number | null): SettingsMe =>
   lastKnown && lastKnown.userId === userId ? lastKnown.settings : (lastKnown = { userId, settings: { ...DEFAULT_SETTINGS, ...rememberedLook(userId) } }).settings;
 /** For tests: forget the remembered settings. */
@@ -93,6 +102,7 @@ export const resetSettingsCache = () => {
 /** Signing out: this person's settings are forgotten, here and on this device. */
 export function forgetSettings(userId: number) {
   lastKnown = null;
+  signedOutTimes++;
   try {
     localStorage.removeItem(lookKey(userId));
   } catch {
@@ -106,15 +116,18 @@ export function useSettingsMe() {
   const [s, setS] = useState<SettingsMe>(() => known(userId));
   useEffect(() => {
     let live = true;
-    const load = () =>
-      api<SettingsMe>("GET", "/api/settings/me")
+    const load = () => {
+      const sentAt = signedOutTimes;
+      return api<SettingsMe>("GET", "/api/settings/me")
         .then((r) => {
+          if (sentAt !== signedOutTimes) return; // signed out since it was sent
           const now: SettingsMe = { ...DEFAULT_SETTINGS, ...r };
           lastKnown = { userId, settings: now };
           rememberLook(userId, now);
           if (live) setS(now);
         })
         .catch(() => {});
+    };
     load();
     window.addEventListener(SETTINGS_EVENT, load);
     return () => {

@@ -58,6 +58,20 @@ describe("App", () => {
     expect(window.location.href).not.toContain("abcDEF123_-");
   });
 
+  it("a session that expires (401) forgets the remembered date look like signing out (§46)", async () => {
+    setToken("t0k");
+    localStorage.setItem("bytesize-look:1", JSON.stringify({ dateFormat: "iso", weekStart: 1 }));
+    fakeServer({
+      "GET /api/auth/status": () => ({ setupRequired: false, passwords: true }),
+      "GET /api/auth/me": () => ({ user: userJson() }),
+      "GET /api/settings/me": () => ({ status: 401, json: { error: "Not logged in" } }),
+    });
+    window.location.hash = "#/settings";
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "Sign in" })).toBeInTheDocument();
+    expect(localStorage.getItem("bytesize-look:1")).toBeNull();
+  });
+
   it("signing out forgets the person's remembered date look on this device", async () => {
     setToken("t0k");
     localStorage.setItem("bytesize-look:1", JSON.stringify({ dateFormat: "iso", weekStart: 1 }));

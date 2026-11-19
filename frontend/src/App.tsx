@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { applyMode, applyTheme } from "./themes";
 import { api, ApiError, getToken, setToken } from "./api";
 import AuthScreen from "./components/AuthScreen";
@@ -50,9 +50,15 @@ export default function App() {
     }
   }, []);
 
+  // Whoever is signed in now: a session that ends on its own (a 401) forgets their look like Sign out does (§46)
+  const signedInId = useRef<number | null>(null);
+  signedInId.current = auth.status === "in" ? auth.user.id : null;
   useEffect(() => {
     void check();
-    const onLogout = () => void check();
+    const onLogout = () => {
+      if (signedInId.current !== null) forgetSettings(signedInId.current);
+      void check();
+    };
     window.addEventListener("bytesize:logout", onLogout);
     return () => window.removeEventListener("bytesize:logout", onLogout);
   }, [check]);
