@@ -1247,3 +1247,37 @@ like a newly added person. Used, cancelled, superseded or expired (7 days) links
 was already used. Ask <admin> for a new one." Tokens: 32 random bytes, only a hash stored, single use, compared in
 constant time; the accept route is rate-limited. An invited person can't sign in until they accept (no password).
 Pending invites are skipped by backups like other short-lived tokens (the invited person row itself is kept).
+
+## 38. Demo data for testing (Cory, 2026-11-18)
+
+**Asked for.** "Is there a way to populate the version I'm testing on my Mac with a few months' worth of tracking and
+weight loss?"
+Calls made for Cory (to confirm): a command-line tool like reset-password, not a button in the app; by default it
+makes a separate **demo** account so real data is never touched.
+
+**Command.** `cd backend && npm run seed-demo` (Docker: `docker compose exec -u node bytesize npm run seed-demo`).
+Options: `--user <username>` (default `demo`), `--password <pw>` (default `demo-password`; only used when it creates
+the account), `--days <n>` (default 90, 7–365), `--replace`.
+- Creates the account if missing (not admin; first-run setup marked done; GLP-1 tracking on; goals set: calories
+  1500–2000, protein 110–130 g, plus the app's usual other targets) and prints how to sign in.
+- An existing account is filled only if it has no log entries, weigh-ins, water or shots; otherwise it stops with a
+  message naming `--replace`, which first deletes that one account's entries, weigh-ins, water, shots and the demo
+  foods it made earlier (nothing else, no other account). It never fills an admin account ("Use a non-admin
+  account").
+- Same output every run for the same options and day (seeded random), ending today in the server's time zone.
+
+**What it makes** (all through the same tables/rules the app uses, so totals, rings, streaks, trends, badges and
+App info read it normally):
+- ~25 **My foods** with full nutrition (e.g. oatmeal, eggs, Greek yogurt, berries, banana, apple, almonds, protein
+  shake, chicken breast, salmon, turkey sandwich, salad, rice, sweet potato, broccoli, cottage cheese, string
+  cheese, granola bar, coffee with milk, a burrito bowl, pizza slice, a few with a barcode) and two quick meals.
+- **Food log**: breakfast, lunch, dinner most days and snacks on many; daily calories mostly inside 1500–2000 with
+  some over/under days, protein mostly 100–135 g; appetite a bit lower in the two days after each shot; about 1 day
+  in 20 left empty (so streaks have breaks); today has breakfast only. Some entries combined amounts (e.g. 2 eggs).
+- **Weigh-ins** most mornings (skips ~1 in 5): starts at 245 lb and trends down ~1.5–2 lb a week with day-to-day
+  noise of about ±1.5 lb and one small plateau; stored in the person's units.
+- **GLP-1 shots** weekly on the same weekday: 2.5 mg for 4 weeks, then 5 mg, then 7.5 mg; sites rotate.
+- **Water** most days (4–9 glasses); supplements if the app tracks them.
+- A few **App info** counts (barcodes scanned, lookups saved, AI estimates) so that tab isn't empty.
+- Tested: the account and its data are created; a second run without --replace changes nothing; --replace touches
+  only that account; an admin account is refused; totals for a sample day are within the ranges above.
