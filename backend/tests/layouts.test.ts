@@ -16,9 +16,10 @@ afterAll(async () => t.close());
 const goals = { version: 1, columns: [["your-plan", "goal-date"], ["weight-chart", "weekly-trends", "badges"], []] };
 
 describe("layouts per page", () => {
-  it("knows the pages and each page's widgets; Goal date is offered on both", () => {
+  it("knows the pages and each page's widgets; Goal date and Activity are offered on both", () => {
     expect([...LAYOUT_PAGES]).toEqual(["dashboard", "goals"]);
-    expect([...PAGE_WIDGETS.goals].sort()).toEqual(["badges", "goal-date", "weekly-trends", "weight-chart", "your-plan"]);
+    expect([...PAGE_WIDGETS.goals].sort()).toEqual(["activity", "badges", "goal-date", "weekly-trends", "weight-chart", "your-plan"]);
+    expect(PAGE_WIDGETS.dashboard).toContain("activity");
     expect(PAGE_WIDGETS.dashboard).toContain("goal-date");
     expect(PAGE_WIDGETS.dashboard).not.toContain("your-plan");
   });
