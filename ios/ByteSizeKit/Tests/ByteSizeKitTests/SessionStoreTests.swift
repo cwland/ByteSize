@@ -113,7 +113,18 @@ final class SessionStoreTests: XCTestCase {
         let s = try await signedInStore()
         HTTPStub.routes(["/api/auth/logout": .json(200, #"{"ok":true}"#)])
         await s.signOut()
+        for _ in 0..<50 where HTTPStub.requests.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertEqual(HTTPStub.requests.first?.request.url?.path(), "/api/auth/logout")
         XCTAssertEqual(HTTPStub.requests.first?.request.value(forHTTPHeaderField: "Authorization"), "Bearer abc")
+    }
+
+    func testSignOutDoesNotWaitForTheServer() async throws {
+        let s = try await signedInStore()
+        HTTPStub.handler = { _ in .hang }
+        let started = Date()
+        await s.signOut()
+        XCTAssertLessThan(Date().timeIntervalSince(started), 1, "sign-out waited on the network")
+        XCTAssertEqual(s.state, .signedOut(notice: nil))
+        XCTAssertNil(tokens.read())
     }
 }
