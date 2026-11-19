@@ -100,6 +100,16 @@ final class SmokeUITests: XCTestCase {
 
     // MARK: - Round 2: Dashboard and Food Log (stub day: 1138 cal of 1500–2000, 500 ml water)
 
+    /// Polls `condition` for up to `timeout` seconds.
+    private func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return true }
+            usleep(200_000)
+        }
+        return condition()
+    }
+
     private func signedIn() {
         signIn(password: "pw")
         XCTAssertTrue(app.buttons["Dashboard"].waitForExistence(timeout: 5))
@@ -114,9 +124,7 @@ final class SmokeUITests: XCTestCase {
         XCTAssertEqual(water.label, "17 fl oz")
         shot("5-dashboard")
         app.buttons["Add 8 fl oz of water"].tap()
-        let more = NSPredicate(format: "label == %@", "25 fl oz")
-        expectation(for: more, evaluatedWith: water)
-        waitForExpectations(timeout: 5)
+        XCTAssertTrue(waitUntil { water.label == "25 fl oz" }, "water went up by 8 fl oz")
         app.swipeUp()
         shot("6-dashboard-lower")
     }
