@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "../api";
 import { onDayChanged, useSettingsMe } from "../day";
 import { addDays, useSelectedDay, weekOf } from "../selectedDay";
+import { IconButton } from "./ui/IconButton";
 
 // The week strip under the top bar (Dashboard and Log): seven days a page, the selected day filled,
 // today outlined, a dot under each day with food logged. Pages scroll sideways (swipe, trackpad,
@@ -179,9 +180,9 @@ function Weeks({ weekStart, onVisibleWeek, compact }: { weekStart: number; onVis
   const arrow = "flex size-8 shrink-0 items-center justify-center rounded-full text-subtle hover:bg-pressed hover:text-ink";
   return (
     <div role="group" aria-label="Days" data-visible-week={visible} className="flex items-center gap-0.5">
-      <button type="button" aria-label="Previous week" onClick={() => step(-1)} className={arrow}>
+      <IconButton label="Previous week" onClick={() => step(-1)} className={arrow}>
         <ChevronLeft className="size-5" />
-      </button>
+      </IconButton>
       <div
         ref={scroller}
         onScroll={onScroll}
@@ -220,9 +221,9 @@ function Weeks({ weekStart, onVisibleWeek, compact }: { weekStart: number; onVis
           </div>
         ))}
       </div>
-      <button type="button" aria-label="Next week" onClick={() => step(1)} className={arrow}>
+      <IconButton label="Next week" onClick={() => step(1)} className={arrow}>
         <ChevronRight className="size-5" />
-      </button>
+      </IconButton>
     </div>
   );
 }

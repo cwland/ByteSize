@@ -6,6 +6,7 @@ import { dayRange } from "../../format";
 import type { Vacation } from "../../types";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { field, label, noAutofill, secondaryButton } from "../ui/styles";
+import { IconButton } from "../ui/IconButton";
 
 const newestFirst = (a: Vacation, b: Vacation) => (a.from === b.from ? b.id - a.id : a.from < b.from ? 1 : -1);
 
@@ -62,9 +63,9 @@ export default function VacationMode() {
             return (
               <li key={v.id} className="flex items-center justify-between rounded-xl bg-page px-3 py-2">
                 <span className="font-semibold">{text}</span>
-                <button type="button" aria-label={`Remove vacation ${text}`} onClick={() => remove(v)} className="rounded-full p-1.5 text-subtle hover:bg-pressed">
+                <IconButton label={`Remove vacation ${text}`} onClick={() => remove(v)} className="rounded-full p-1.5 text-subtle hover:bg-pressed">
                   <X className="size-4" aria-hidden="true" />
-                </button>
+                </IconButton>
               </li>
             );
           })}

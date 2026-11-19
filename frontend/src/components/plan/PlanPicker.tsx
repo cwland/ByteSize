@@ -5,6 +5,7 @@ import type { Plan, PlansResponse, Range, Targets } from "../../types";
 import { KG_PER_LB, fmt } from "../../units";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { primaryButton, secondaryButton } from "../ui/styles";
+import { IconButton } from "../ui/IconButton";
 
 // 0.5 -> "½", 1.5 -> "1½"
 const halves = (n: number) => (Number.isInteger(n) ? String(n) : `${Math.floor(n) || ""}½`);
@@ -138,9 +139,9 @@ export default function PlanPicker({ data, onSelected, onOwnTargets }: { data: P
       </div>
       <div className="-mt-2 flex justify-center md:hidden">
         {data.plans.map((p, i) => (
-          <button key={p.id} type="button" aria-label={`Show ${p.name}`} aria-current={i === current ? "true" : undefined} onClick={() => show(i)} className="p-1.5">
+          <IconButton key={p.id} label={`Show ${p.name}`} aria-current={i === current ? "true" : undefined} onClick={() => show(i)} className="p-1.5">
             <span className={`block size-2.5 rounded-full transition-colors ${i === current ? "bg-primary" : "bg-strong"}`} />
-          </button>
+          </IconButton>
         ))}
       </div>
       <Notice msg={msg} />

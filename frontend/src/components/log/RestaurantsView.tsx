@@ -6,6 +6,7 @@ import FoodPic from "./FoodPic";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
 import { field, noAutofill, secondaryButton } from "../ui/styles";
+import { IconButton } from "../ui/IconButton";
 
 // What the Restaurants view keeps while the person opens an item and comes back (owned by Add Food):
 // the words, the last answer, and every item already fetched, so nothing is looked up twice.
@@ -43,15 +44,14 @@ function MenuRow({ name, calories, sourceLabel, imageUrl, starred, onOpen, onSta
           </span>
         </span>
       </button>
-      <button
-        type="button"
-        aria-label={`${starred ? "Unstar" : "Star"} ${name}`}
+      <IconButton
+        label={`${starred ? "Unstar" : "Star"} ${name}`}
         aria-pressed={starred}
         onClick={onStar}
         className={`flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-strong ${starred ? "text-primary" : "text-subtle"}`}
       >
         <Star aria-hidden="true" className="size-5" fill={starred ? "currentColor" : "none"} />
-      </button>
+      </IconButton>
     </li>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { IconButton } from "./IconButton";
 
 // A bottom sheet on phones, a centered panel from 640 px; on wide screens (lg) a centred window about
 // 640 px wide and 85% of the screen tall (tall sheets fill it). Only the X and Escape close it: a click on
@@ -28,9 +29,9 @@ export function Sheet({ label, heading = label, onClose, onBack, tall = false, t
             </button>
           )}
           {typeof heading === "string" ? <h2 className="flex-1 truncate text-lg font-bold">{heading}</h2> : <div className="min-w-0 flex-1">{heading}</div>}
-          <button type="button" aria-label="Close" onClick={onClose} className="flex size-9 items-center justify-center rounded-full text-subtle hover:bg-pressed hover:text-ink">
+          <IconButton label="Close" onClick={onClose} className="flex size-9 items-center justify-center rounded-full text-subtle hover:bg-pressed hover:text-ink">
             <X className="size-5" />
-          </button>
+          </IconButton>
         </div>
         {pinned && <div className="shrink-0">{top}</div>}
         {/* Scrolling happens inside, so the panel's rounded corners stay rounded */}

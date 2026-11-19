@@ -5,6 +5,7 @@ import { NUTRIENT_KEYS, type FoodResult, type NutrientKey, type Nutrients, type 
 import { Field } from "../ui/Field";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { field, label as labelClass, noAutofill, primaryButton, secondaryButton } from "../ui/styles";
+import { IconButton } from "../ui/IconButton";
 
 export type FoodDraft = {
   name: string;
@@ -142,9 +143,9 @@ export default function FoodForm({
             <input {...noAutofill} aria-label={i === 0 ? "Grams" : `Serving ${i + 1} grams`} placeholder="g" type="number" step="any" value={r.grams} onChange={(e) => setServing(i, { grams: e.target.value })} className={field} />
             <input {...noAutofill} aria-label={i === 0 ? "Milliliters" : `Serving ${i + 1} ml`} placeholder="ml" type="number" step="any" value={r.ml} onChange={(e) => setServing(i, { ml: e.target.value })} className={field} />
             {i > 0 ? (
-              <button type="button" aria-label={`Remove serving ${i + 1}`} onClick={() => setServings((rows) => rows.filter((_, j) => j !== i))} className="mb-2 text-subtle hover:text-error">
+              <IconButton label={`Remove serving ${i + 1}`} onClick={() => setServings((rows) => rows.filter((_, j) => j !== i))} className="mb-2 text-subtle hover:text-error">
                 <Trash2 className="size-5" />
-              </button>
+              </IconButton>
             ) : (
               <span className="w-5" />
             )}

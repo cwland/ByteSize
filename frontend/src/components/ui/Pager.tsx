@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { IconButton } from "./IconButton";
 
 /** The page numbers to show: the first, the last and the ones beside the current, with … where pages are left out. */
 export function pageList(page: number, pages: number): (number | "…")[] {
@@ -20,9 +21,9 @@ const btn = "inline-flex min-h-11 min-w-11 items-center justify-center rounded-f
 export function Pager({ page, pages, onPage }: { page: number; pages: number; onPage: (page: number) => void }) {
   return (
     <nav aria-label="Pages" className="flex flex-wrap items-center gap-1">
-      <button type="button" aria-label="Previous page" className={`${btn} hover:bg-pressed`} disabled={page <= 1} onClick={() => onPage(page - 1)}>
+      <IconButton label="Previous page" className={`${btn} hover:bg-pressed`} disabled={page <= 1} onClick={() => onPage(page - 1)}>
         <ChevronLeft className="size-5" aria-hidden="true" />
-      </button>
+      </IconButton>
       {pageList(page, pages).map((n, i) =>
         n === "…" ? (
           <span key={`gap${i}`} aria-hidden="true" className="px-1 text-muted">
@@ -34,9 +35,9 @@ export function Pager({ page, pages, onPage }: { page: number; pages: number; on
           </button>
         ),
       )}
-      <button type="button" aria-label="Next page" className={`${btn} hover:bg-pressed`} disabled={page >= pages} onClick={() => onPage(page + 1)}>
+      <IconButton label="Next page" className={`${btn} hover:bg-pressed`} disabled={page >= pages} onClick={() => onPage(page + 1)}>
         <ChevronRight className="size-5" aria-hidden="true" />
-      </button>
+      </IconButton>
     </nav>
   );
 }
