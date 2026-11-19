@@ -10,6 +10,7 @@ public final class SignInModel {
     public enum ResetStep: Equatable, Sendable { case email, code }
 
     public static let badAddress = "Enter your ByteSize address, like bytesize.example.com"
+    public static let needsHTTPS = "ByteSize needs your secure address, starting with https://"
     public static let notSetUp = "This ByteSize server isn't set up yet. Finish setup in the web app first."
 
     public var serverText = ""
@@ -58,6 +59,11 @@ public final class SignInModel {
     public func connect() async {
         guard let typed = ServerAddress(serverText) else {
             error = Self.badAddress
+            return
+        }
+        // iPhones refuse plain http (and it would send the login unencrypted)
+        guard typed.url.scheme == "https" else {
+            error = Self.needsHTTPS
             return
         }
         await check(typed)
