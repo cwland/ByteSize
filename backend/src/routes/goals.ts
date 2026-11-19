@@ -7,7 +7,7 @@ import { requireUser } from "../lib/guards.js";
 import { addDays, DAY, daysBetween, todayFor } from "../lib/days.js";
 import { weekStartFor } from "../lib/calorieDays.js";
 import { GOAL_NAMES, GOAL_PERIODS, GOAL_TYPES, MIN_JUDGED_DAYS, STEP_MEASURES, STRETCH_ONLY, isDayCount, periodsOf, type GoalSpec } from "../lib/goals.js";
-import { addToGoalsPage, dropGoalWidgets, goalsWithProgress, isPast, specOf } from "../lib/goalsData.js";
+import { addToGoalsPage, dropGoalWidgets, goalWeekStart, goalsWithProgress, isPast, specOf } from "../lib/goalsData.js";
 
 // goalsWithProgress and the goal widget helpers live in lib/goalsData.ts (the demo seeder uses them too)
 export { activeGoalIds, goalFacts, goalsMet, goalsWithProgress, keepGoals, stepGoalOn, type GoalView } from "../lib/goalsData.js";
@@ -119,7 +119,8 @@ export default async function goalRoutes(app: FastifyInstance) {
     const b = parse(goalBody, req.body);
     const today = await todayFor(app, userId);
     const spec: GoalSpec = { type: b.type, target: b.target, period: b.period, measure: b.type === "steps" ? (b.measure ?? "total") : null, start: b.start ?? today, end: b.end ?? null };
-    check(spec, today, true, await weekStartFor(db, userId));
+    const weekStart = await weekStartFor(db, userId); // kept on the goal: its weeks don't move if this changes later
+    check(spec, today, true, weekStart);
     if (b.name && b.name.length > MAX_NAME) throw badRequest(`Keep the name to ${MAX_NAME} characters`);
     const now = app.now();
     const { id, replaced } = await db.transaction(async (tx) => {
@@ -133,7 +134,7 @@ export default async function goalRoutes(app: FastifyInstance) {
       }
       const [row] = await tx
         .insert(goals)
-        .values({ userId, type: spec.type, target: spec.target, period: spec.period, measure: spec.measure, startDay: spec.start, endDay: spec.end, name: b.name || GOAL_NAMES[spec.type], createdAt: now })
+        .values({ userId, type: spec.type, target: spec.target, period: spec.period, measure: spec.measure, startDay: spec.start, endDay: spec.end, name: b.name || GOAL_NAMES[spec.type], createdAt: now, weekStart })
         .returning({ id: goals.id });
       return { id: row.id, replaced: same.map((g) => g.id) };
     });
@@ -150,7 +151,7 @@ export default async function goalRoutes(app: FastifyInstance) {
     const today = await todayFor(app, userId);
     const row = await activeRow(userId, id, today);
     const spec = { ...specOf(row), ...(p.target !== undefined ? { target: p.target } : {}), ...(p.end !== undefined ? { end: p.end } : {}) };
-    check(spec, today, false, await weekStartFor(db, userId));
+    check(spec, today, false, goalWeekStart(row, await weekStartFor(db, userId)));
     if (p.name && p.name.length > MAX_NAME) throw badRequest(`Keep the name to ${MAX_NAME} characters`);
     await db
       .update(goals)

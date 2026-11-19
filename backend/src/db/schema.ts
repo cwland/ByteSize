@@ -476,6 +476,8 @@ export const badges = pgTable(
     badge: text("badge").notNull(),
     earnedOn: date("earned_on", { mode: "string" }).notNull(),
     seen: boolean("seen").notNull().default(false),
+    // Goal met (§40c): how many goals were met, kept on the badge so deleting a met goal doesn't lower it (§46)
+    count: integer("count").notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.userId, t.badge] })]
 );
@@ -669,6 +671,9 @@ export const goals = pgTable(
     endedAt: timestamp("ended_at", { withTimezone: true }),
     result: jsonb("result"),
     frozenAt: timestamp("frozen_at", { withTimezone: true }),
+    // The person's week start when the goal was made (0 = Sunday): its weeks stay put if they change it later (§46).
+    // Null (a goal from an older backup): their week start now.
+    weekStart: integer("week_start"),
   },
   (t) => [index("goals_user_idx").on(t.userId, t.startDay)]
 );

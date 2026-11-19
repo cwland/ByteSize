@@ -79,8 +79,11 @@ export async function activeGoals(db: Db, userId: number, today: string): Promis
   if (!rows.length) return [];
   const weekStart = await weekStartFor(db, userId);
   const facts = await goalFacts(db, userId, rows.map((g) => g.startDay).sort()[0], today, weekStart);
-  return rows.map((g) => ({ name: g.name, type: g.type, target: g.target, period: g.period, end: g.endDay, progress: progressOf(specOf(g), { ...facts, today, weekStart }) }));
+  return rows.map((g) => ({ name: g.name, type: g.type, target: g.target, period: g.period, end: g.endDay, progress: progressOf(specOf(g), { ...facts, today, weekStart: goalWeekStart(g, weekStart) }) }));
 }
+
+/** The week start a goal's weeks follow: the one in force when it was made (§46); a goal without one, the person's now. */
+export const goalWeekStart = (g: Pick<GoalRow, "weekStart">, now: number) => g.weekStart ?? now;
 
 /** Ended early (End now, replaced) or its end has passed: in Past goals */
 export const isPast = (g: GoalRow, today: string) => g.endedAt !== null || (g.endDay !== null && g.endDay < today);
@@ -120,14 +123,15 @@ export async function goalsWithProgress(db: Db, userId: number, today: string, o
     const from = started.map((g) => g.startDay).sort()[0];
     const until = started.some((g) => g.endDay === null || g.endDay >= today) ? today : started.map((g) => g.endDay!).sort().at(-1)!;
     const facts = await goalFacts(db, userId, from, until, weekStart);
-    for (const g of live) progress.set(g.id, progressOf(specOf(g), { ...facts, today, weekStart }));
+    for (const g of live) progress.set(g.id, progressOf(specOf(g), { ...facts, today, weekStart: goalWeekStart(g, weekStart) }));
   } else {
-    for (const g of live) progress.set(g.id, progressOf(specOf(g), { days: [], trend: [], today, weekStart }));
+    for (const g of live) progress.set(g.id, progressOf(specOf(g), { days: [], trend: [], today, weekStart: goalWeekStart(g, weekStart) }));
   }
   for (const g of live) {
     if (g.endDay === null || g.endDay >= today) continue;
     // Over: keep this result (only if no one kept one first) and, in the same transaction, a completed goal earns Goal
-    // met: on its end day (the latest goal met's), new again so it's celebrated (the count comes from the goals)
+    // met: on its end day (the latest goal met's), new again so it's celebrated, its count one more (kept on the badge,
+    // so deleting a met goal later doesn't lower it)
     const p = progress.get(g.id)!;
     const kept = await db.transaction(async (tx) => {
       const [row] = await tx
@@ -138,8 +142,8 @@ export async function goalsWithProgress(db: Db, userId: number, today: string, o
       if (row && p.state === "completed") {
         await tx
           .insert(badges)
-          .values({ userId, badge: "goal_met", earnedOn: g.endDay! })
-          .onConflictDoUpdate({ target: [badges.userId, badges.badge], set: { earnedOn: sql`greatest(${badges.earnedOn}, excluded.earned_on)`, seen: false } });
+          .values({ userId, badge: "goal_met", earnedOn: g.endDay!, count: 1 })
+          .onConflictDoUpdate({ target: [badges.userId, badges.badge], set: { earnedOn: sql`greatest(${badges.earnedOn}, excluded.earned_on)`, seen: false, count: sql`${badges.count} + 1` } });
       }
       return row;
     });
@@ -160,13 +164,19 @@ export async function goalsWithProgress(db: Db, userId: number, today: string, o
   };
 }
 
-/** How many of the person's goals ended completed (the Goal met badge's count) */
+/**
+ * How many goals the person has met (the Goal met badge's count): kept on the badge, so a deleted met goal still
+ * counts (§46); never fewer than the met goals still there (a badge restored from a backup made before the count).
+ */
 export async function goalsMet(db: Db, userId: number): Promise<number> {
-  const [r] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(goals)
-    .where(and(eq(goals.userId, userId), sql`${goals.result}->>'state' = 'completed'`));
-  return r?.n ?? 0;
+  const [[badge], [kept]] = await Promise.all([
+    db.select({ count: badges.count }).from(badges).where(and(eq(badges.userId, userId), eq(badges.badge, "goal_met"))),
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(goals)
+      .where(and(eq(goals.userId, userId), sql`${goals.result}->>'state' = 'completed'`)),
+  ]);
+  return Math.max(badge?.count ?? 0, kept?.n ?? 0);
 }
 
 /** The ids of the person's active goals (not ended, end not passed): the goal widgets their layouts may hold. */

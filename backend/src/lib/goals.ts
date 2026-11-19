@@ -198,7 +198,12 @@ export function progressOf(g: GoalSpec, input: { days: readonly DayFacts[]; tren
   const { today, weekStart, trend } = input;
   const over = g.end !== null && g.end < today;
   const asOf = over ? g.end! : today;
-  const of = g.end === null ? null : periodsOf(g, weekStart, g.end).filter((p) => judged(g, p)).length;
+  // Ended early with only partial weeks (months) to judge, e.g. started Sunday and ended Wednesday: nothing is judged,
+  // so End now can't turn a short stretch into Goal met (§46)
+  const all = g.end === null ? null : periodsOf(g, weekStart, g.end);
+  const cutShort = !!g.endedEarly && all !== null && all.filter((p) => judged(g, p)).every((p) => span(p) < p.length);
+  const counts = (p: Period) => !cutShort && judged(g, p);
+  const of = all === null ? null : all.filter(counts).length;
   const needed = of === null ? null : neededOf(g.period, of);
   const startKg = g.type === "weight_by_date" ? (trendOn(trend, g.start) ?? trend.find((p) => p.day >= g.start && p.day <= asOf)?.trendKg ?? null) : null;
   if (today < g.start) return { state: "upcoming", periods: [], current: null, hit: 0, done: 0, of, needed, startKg, asOf: today };
@@ -212,7 +217,7 @@ export function progressOf(g: GoalSpec, input: { days: readonly DayFacts[]; tren
     const target = targetFor(g, p);
     const closed = p.end < today;
     const reached = value !== null && (g.type === "weight_by_date" ? value <= target + EPS : value >= target - EPS);
-    const status: PeriodStatus = !judged(g, p) ? "unjudged" : reached && (closed || growsOnly(g)) ? "hit" : closed ? "missed" : "open";
+    const status: PeriodStatus = !counts(p) ? "unjudged" : reached && (closed || growsOnly(g)) ? "hit" : closed ? "missed" : "open";
     return { start: p.start, end: p.end, value, target, status };
   });
   const hit = periods.filter((p) => p.status === "hit").length;
