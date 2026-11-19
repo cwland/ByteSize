@@ -1,4 +1,4 @@
-import { BookOpen, House, Settings, Syringe, Target } from "lucide-react";
+import { BookOpen, House, Lightbulb, Settings, Syringe, Target } from "lucide-react";
 import { isGlp1, myFoodsHref, type Page } from "../routes";
 import { initialsOf, useSession } from "../session";
 import { Logo } from "./ui/Logo";
@@ -29,6 +29,7 @@ export default function Rail({ page }: { page: Page }) {
       <div className="mt-3.5 flex flex-col gap-1.5">
         {item("Dashboard", "#/", page === "dashboard" && !glp1, <House aria-hidden="true" className="size-[22px]" />)}
         {item("Goals", "#/goals", page === "goals", <Target aria-hidden="true" className="size-[22px]" />)}
+        {item("Insights", "#/insights", page === "insights", <Lightbulb aria-hidden="true" className="size-[22px]" />)}
         {glp1On && item("GLP-1", "#/glp1", page === "dashboard" && glp1, <Syringe aria-hidden="true" className="size-[22px]" />)}
         {item("My foods", myFoodsHref(), page === "myfoods", <BookOpen aria-hidden="true" className="size-[22px]" />)}
       </div>

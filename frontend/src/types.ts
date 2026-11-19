@@ -229,9 +229,48 @@ export type AppInfo = {
     daysLogged: number; foodsLogged: number; differentFoods: number; myFoods: number; weighIns: number;
     weightLost: { amount: number; unit: "lb" | "kg" } | null;
     shots: number | null; longestStreak: number; memberSince: string;
-    barcodesScanned: number; photosRead: number; aiEstimates: number; lookupsSaved: number; outsideLookups: OutsideLookups;
+    barcodesScanned: number; photosRead: number; aiEstimates: number; aiInsights?: number; lookupsSaved: number; outsideLookups: OutsideLookups;
   };
   everyone?: { people: number; daysLogged: number; foodsLogged: number; barcodesScanned: number; outsideLookups: number; lookupsSaved: number };
   countingSince: string;
   version: string;
 };
+
+// ---- Insights (§43): GET /api/insights ----
+export type WeekNumbers = {
+  from: string;
+  to: string;
+  daysLogged: number;
+  daysInRange: number;
+  avgCalories: number | null;
+  avgProtein: number | null;
+  plan: { calories: { min: number; max: number }; proteinMin: number } | null;
+  waterDays: number;
+  steps: { days: number; average: number | null };
+  workouts: { count: number; minutes: number };
+  trendChange: number | null; // in weightUnit; negative: down
+  weightUnit: "lb" | "kg";
+};
+export type RecapContent = { summary: string; wentWell: string[]; slipped: string[]; tryNext: string; numbers: WeekNumbers };
+export type ProteinContent = {
+  intro: string | null;
+  additions: { suggestion: string; why: string }[];
+  swaps: { food: string; swap: string; saving: string }[];
+  facts: { from: string; to: string; daysLogged: number; topSources: { food: string; protein_g: number; times: number }[]; shortDays: { date: string; protein_g: number; min: number; shortBy: number }[] };
+};
+export type AnswerContent = { answer: string; offTopic: boolean };
+type InsightBase = { id: number; source: "weekly" | "refresh" | "ask" | "demo"; soFar: boolean; periodStart: string; periodEnd: string; question: string | null; createdAt: string };
+export type RecapInsight = InsightBase & { kind: "recap"; content: RecapContent };
+export type ProteinInsight = InsightBase & { kind: "protein"; content: ProteinContent };
+export type AnswerInsight = InsightBase & { kind: "answer"; content: AnswerContent };
+export type Insight = RecapInsight | ProteinInsight | AnswerInsight;
+export type InsightsView = {
+  aiReady: boolean;
+  weeklyOn: boolean;
+  week: { from: string; to: string; numbers: WeekNumbers };
+  recaps: RecapInsight[];
+  protein: ProteinInsight | null;
+  answers: AnswerInsight[];
+  limits: { questionsLeft: number; questionsPerDay: number; recapRefreshIn: number; proteinRefreshIn: number };
+};
+export type LatestInsight = { aiReady: boolean; recap: { periodStart: string; periodEnd: string; soFar: boolean; summary: string; createdAt: string } | null };

@@ -50,14 +50,16 @@ export function useEstimate() {
 // it's doing (never which AI service), and Cancel. The status region is always there (empty when idle), so
 // screen readers announce the text when it appears; while idle it is taken out of the layout (no size, out of
 // the flow), so it leaves no gap beside or under the button.
-export function AiWorking({ step, onCancel }: { step: EstimateStep | null; onCancel: () => void }) {
+// texts: what it says (Insights: "Thinking… asking AI"); the default is Describe it's
+const ESTIMATING = { asking: "Estimating… asking AI", another: "Still estimating… trying another AI" };
+export function AiWorking({ step, onCancel, texts = ESTIMATING }: { step: EstimateStep | null; onCancel: () => void; texts?: { asking: string; another: string } }) {
   return (
     <div className={step ? "flex flex-wrap items-center gap-2" : "absolute size-0 overflow-hidden"}>
       <p role="status" className="flex items-center gap-2 text-sm font-semibold text-subtle">
         {step && (
           <>
             <Loader2 aria-hidden="true" className="size-5 shrink-0 animate-spin text-action motion-reduce:animate-pulse" />
-            {step === "another" ? "Still estimating… trying another AI" : "Estimating… asking AI"}
+            {step === "another" ? texts.another : texts.asking}
           </>
         )}
       </p>

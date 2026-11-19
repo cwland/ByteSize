@@ -7,7 +7,7 @@ import { renderWithSession } from "../../test/renderWithSession";
 
 const you = {
   daysLogged: 1234, foodsLogged: 5678, differentFoods: 321, myFoods: 42, weighIns: 17, weightLost: { amount: 12.5, unit: "lb" }, shots: null, longestStreak: 21, memberSince: "2026-03-04",
-  barcodesScanned: 88, photosRead: 9, aiEstimates: 14, lookupsSaved: 1500,
+  barcodesScanned: 88, photosRead: 9, aiEstimates: 14, aiInsights: 6, lookupsSaved: 1500,
   outsideLookups: { total: 100, off: 60, usda: 25, fatsecret: 10, spoonacular: 3, culury: 2 },
 };
 const info = (over: Record<string, unknown> = {}) => ({ you, countingSince: "2026-11-18", version: "1.2.3", ...over });
@@ -33,7 +33,7 @@ describe("Settings › App info", () => {
     expect(s.sent[0].path).toBe("/api/app-info");
     const expected: [string, string][] = [
       ["Days logged", "1,234"], ["Foods logged", "5,678"], ["Different foods", "321"], ["My foods", "42"], ["Weigh-ins", "17"], ["Pounds lost", "12.5"], ["Longest streak", "21"],
-      ["Barcodes scanned", "88"], ["Photos read", "9"], ["AI estimates", "14"], ["Lookups saved", "1,500"], ["Outside lookups", "100"],
+      ["Barcodes scanned", "88"], ["Photos read", "9"], ["AI estimates", "14"], ["AI insights", "6"], ["Lookups saved", "1,500"], ["Outside lookups", "100"],
     ];
     for (const [name, n] of expected) expect(value(name), name).toBe(n);
   });

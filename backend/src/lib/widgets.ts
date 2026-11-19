@@ -4,8 +4,8 @@
 export const LAYOUT_PAGES = ["dashboard", "goals"] as const;
 export type LayoutPage = (typeof LAYOUT_PAGES)[number];
 export const PAGE_WIDGETS: Record<LayoutPage, readonly string[]> = {
-  dashboard: ["food", "budget", "water", "activity", "day-totals", "weight", "next-shot", "streak", "goal-date"],
-  goals: ["your-plan", "goal-date", "weight-chart", "weekly-trends", "badges", "activity"],
+  dashboard: ["food", "budget", "water", "activity", "day-totals", "insights", "weight", "next-shot", "streak", "goal-date"],
+  goals: ["your-plan", "goal-date", "weight-chart", "weekly-trends", "badges", "activity", "insights"],
 };
 /** The Dashboard's widgets (the page §28 started with) */
 export const WIDGET_IDS = PAGE_WIDGETS.dashboard;
