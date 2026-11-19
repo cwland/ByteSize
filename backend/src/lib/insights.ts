@@ -131,7 +131,7 @@ function dayRows(input: SummaryInput): (SummaryDay & { waterMl: number; waterMin
   return out;
 }
 
-/** A goal as GET /api/goals gives it (routes/goals.ts), the parts the summary uses. */
+/** A goal with its progress (lib/goalsData.ts activeGoals), the parts the summary uses. */
 export type GoalLike = { name: string; type: string; target: number; period: string; end: string | null; progress: { state: string; current: { value: number | null; target: number } | null; hit: number; done: number } };
 
 /** The person's active goals (§40c) for the summary: name, target, and how it's going (weights in their units). */
@@ -270,7 +270,7 @@ export function questionRange(question: string, today: string, weekStart: number
   const cap = (from: string, to: string) => ({ from: daysBetween(from, to) >= MAX_QUESTION_DAYS ? addDays(to, -(MAX_QUESTION_DAYS - 1)) : from, to });
   const n = /\b(?:last|past|previous)\s+(\d+|a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|couple(?: of)?|few)\s+(day|week|month|year)s?\b/.exec(q);
   if (n) {
-    const count = /^\d+$/.test(n[1]) ? Number(n[1]) : NUMBER_WORDS[n[1].replace(" of", "")];
+    const count = Math.max(1, /^\d+$/.test(n[1]) ? Number(n[1]) : NUMBER_WORDS[n[1].replace(" of", "")]); // "last 0 days": today
     if (n[2] === "day") return cap(addDays(today, -(count - 1)), today);
     if (n[2] === "week") return cap(addDays(today, -(count * 7 - 1)), today);
     if (n[2] === "month") return cap(addDays(monthsBack(today, count), 1), today);

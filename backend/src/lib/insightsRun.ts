@@ -28,7 +28,7 @@ import {
 import { waitOnClose } from "./schedule.js";
 import { weekStartOf } from "./trends.js";
 import { countUsage } from "./usage.js";
-import { goalsWithProgress } from "../routes/goals.js";
+import { activeGoals } from "./goalsData.js";
 
 export const INSIGHTS_OFF = "Insights need an AI service. An admin can set one up in Settings › Integrations.";
 export const INSIGHTS_FAILED = "Couldn't write your insights right now. Try again in a little while.";
@@ -40,6 +40,8 @@ export const PROTEIN_DAYS = 28;
 export const MIN_LOGGED_DAYS = 3; // the weekly recap is skipped for a week with fewer
 export const WEEKLY_HOUR = 6; // about 6 am in the person's time zone, the day after their week ends
 export const WEEKLY_TRIES = 4; // the first and 3 more, an hour apart
+// A retry is due 55 minutes after the last try: the hourly check reaches a person a little earlier or later each time
+export const RETRY_AFTER_MS = 55 * 60_000;
 const HOUR_MS = 60 * 60_000;
 const MAX_TOKENS = 3000;
 
@@ -93,7 +95,7 @@ export async function loadSummaryInput(db: Db, userId: number, from: string, to:
     workouts: done,
     goalWeightKg: body[0]?.goalWeightKg ?? null,
     glp1: body[0]?.glp1 && glp[0] ? glp[0] : null,
-    goals: today ? goalsForSummary((await goalsWithProgress(db, userId, today)).active, person.units) : [],
+    goals: today ? goalsForSummary(await activeGoals(db, userId, today), person.units) : [],
   };
 }
 
@@ -129,7 +131,7 @@ export const insightView = (r: InsightRow) => ({
 
 /**
  * The recap for `period`: weekly (a week that ended) or refresh (this week so far). Written by the AI, with the app's
- * own numbers beside it. Replaces that week's "so far" recap.
+ * own numbers beside it. Replaces that week's "so far" recap (and the weekly one, a seed-demo recap of that week).
  */
 export async function writeRecap(app: FastifyInstance, userId: number, source: "weekly" | "refresh", period: { from: string; to: string }, opts: Opts = {}) {
   const person = await personOf(app.db, userId);
@@ -137,7 +139,8 @@ export async function writeRecap(app: FastifyInstance, userId: number, source: "
   const json = await askAi(app, userId, recapAsk(buildSummary(input), source === "refresh"), opts);
   const recap = readRecap(json) ?? (await unusable(app, userId, "weekly recap", json));
   const row = await app.db.transaction(async (tx) => {
-    await tx.delete(insights).where(and(eq(insights.userId, userId), eq(insights.kind, "recap"), eq(insights.source, "refresh"), eq(insights.periodStart, period.from)));
+    // The week's "so far" recap (and, for the final one, seed-demo's) gives way to this one
+    await tx.delete(insights).where(and(eq(insights.userId, userId), eq(insights.kind, "recap"), inArray(insights.source, source === "weekly" ? ["refresh", "demo"] : ["refresh"]), eq(insights.periodStart, period.from)));
     const [made] = await tx
       .insert(insights)
       .values({ userId, kind: "recap", source, periodStart: period.from, periodEnd: period.to, content: { ...recap, numbers: weekNumbers(input) }, createdAt: app.now() })
@@ -265,7 +268,8 @@ export async function setWeekly(app: FastifyInstance, userId: number, weeklyOn: 
 
 // ---------- the weekly run ----------
 
-// Failed weekly recaps, per person and week: how many tries and when the last was (in memory: a restart allows more)
+// Failed weekly recaps, per person and week: how many tries and when the last was. In memory: a restart starts the count
+// again (at most 4 more tries per start; a server crashing over and over would try again on each start)
 const runs = new WeakMap<FastifyInstance, Map<string, { tries: number; at: number }>>();
 const runsOf = (app: FastifyInstance) => runs.get(app) ?? runs.set(app, new Map()).get(app)!;
 /** Tests: forget earlier failures. */
@@ -290,7 +294,6 @@ export async function weeklyInsightsCheck(app: FastifyInstance, signal?: AbortSi
   const tries = runsOf(app);
   for (const p of people) {
     if (signal?.aborted) break;
-    if (p.weeklyOn === false) continue;
     const now = app.now();
     const today = localDay(p.timezone, now);
     const week = weekBefore(today, p.weekStart ?? 0);
@@ -298,16 +301,20 @@ export async function weeklyInsightsCheck(app: FastifyInstance, signal?: AbortSi
     const [{ done }] = await app.db
       .select({ done: count() })
       .from(insights)
-      .where(and(eq(insights.userId, p.id), eq(insights.kind, "recap"), inArray(insights.source, ["weekly", "demo"]), eq(insights.periodStart, week.from)));
+      .where(and(eq(insights.userId, p.id), eq(insights.kind, "recap"), eq(insights.source, "weekly"), eq(insights.periodStart, week.from)));
     if (done > 0) continue;
     const [{ days }] = await app.db
       .select({ days: countDistinct(logEntries.day) })
       .from(logEntries)
       .where(and(eq(logEntries.userId, p.id), ne(logEntries.source, "water"), gte(logEntries.day, week.from), lte(logEntries.day, week.to)));
-    if (days < MIN_LOGGED_DAYS) continue;
+    if (p.weeklyOn === false || days < MIN_LOGGED_DAYS) {
+      // A week with no recap keeps no "so far" one either
+      await app.db.delete(insights).where(and(eq(insights.userId, p.id), eq(insights.kind, "recap"), eq(insights.source, "refresh"), eq(insights.periodStart, week.from)));
+      continue;
+    }
     const key = `${p.id}:${week.from}`;
     const before = tries.get(key);
-    if (before && (before.tries >= WEEKLY_TRIES || now.getTime() - before.at < HOUR_MS)) continue;
+    if (before && (before.tries >= WEEKLY_TRIES || now.getTime() - before.at < RETRY_AFTER_MS)) continue;
     try {
       await writeRecap(app, p.id, "weekly", week, { signal });
       tries.delete(key);

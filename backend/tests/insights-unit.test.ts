@@ -232,6 +232,7 @@ describe("the range a question implies", () => {
     ["How was last month?", "2026-10-01", "2026-10-31"],
     ["since I started", "2026-05-21", today],
     ["over the last 52 weeks", "2026-05-21", today], // at most 26 weeks
+    ["the last 0 days", today, today], // at least a day
   ])("%s", (q, from, to) => {
     expect(questionRange(q, today, 1)).toEqual({ from, to });
   });

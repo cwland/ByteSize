@@ -439,11 +439,14 @@ describe("npm run seed-demo", () => {
     expect(page.protein.content.facts.topSources.length).toBeGreaterThan(0);
     expect(page.protein.content.additions.length).toBeGreaterThan(0);
     expect(describeSeed(r, 90).join("\n")).toContain("Insights: one weekly recap and one protein help card");
-    // Refilled, not doubled; a recap the person's own AI wrote is left alone
-    await t.db.insert(insights).values({ userId: id, kind: "answer", source: "ask", periodStart: TODAY, periodEnd: TODAY, question: "Mine?", content: { answer: "Yes", offTopic: false } });
+    // Refilled, not doubled; what the person's own AI wrote (a recap, an answer) is left alone
+    await t.db.insert(insights).values([
+      { userId: id, kind: "recap", source: "weekly", periodStart: "2026-11-01", periodEnd: "2026-11-07", content: { summary: "Mine" } },
+      { userId: id, kind: "answer", source: "ask", periodStart: TODAY, periodEnd: TODAY, question: "Mine?", content: { answer: "Yes", offTopic: false } },
+    ]);
     const again = await seedDemo(t.db, args({ replace: true }));
     expect(again.deleted.insights).toBe(2);
-    expect((await t.db.select().from(insights).where(eq(insights.userId, id))).map((x) => x.source).sort()).toEqual(["ask", "demo", "demo"]);
+    expect((await t.db.select().from(insights).where(eq(insights.userId, id))).map((x) => x.source).sort()).toEqual(["ask", "demo", "demo", "weekly"]);
   });
 
   it("writes the goals: active ones on the Goals page, ended ones kept with a result, at least one met and one missed", async () => {

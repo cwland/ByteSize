@@ -2,17 +2,16 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, asc, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
-import { activitySteps, badges, dashboardLayouts, goals, logEntries, targets, weighIns, workouts } from "../db/schema.js";
+import { badges, dashboardLayouts, goals, workouts } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
-import { addDays, DAY, daysBetween, todayFor, vacationCheck } from "../lib/days.js";
-import { activityDays } from "../lib/activity.js";
-import { calorieDays, weekStartFor } from "../lib/calorieDays.js";
-import { sumNutrients, type Nutrients } from "../lib/nutrients.js";
-import { inForce } from "../lib/workoutCalories.js";
-import { trendOf } from "../lib/weight.js";
-import { GOAL_NAMES, GOAL_PERIODS, GOAL_TYPES, MIN_JUDGED_DAYS, STEP_MEASURES, STRETCH_ONLY, isDayCount, periodsOf, progressOf, type DayFacts, type GoalProgress, type GoalSpec } from "../lib/goals.js";
+import { addDays, DAY, daysBetween, todayFor } from "../lib/days.js";
+import { weekStartFor } from "../lib/calorieDays.js";
+import { GOAL_NAMES, GOAL_PERIODS, GOAL_TYPES, MIN_JUDGED_DAYS, STEP_MEASURES, STRETCH_ONLY, isDayCount, periodsOf, progressOf, type GoalProgress, type GoalSpec } from "../lib/goals.js";
 import { GOAL_WIDGET, goalWidgetId } from "../lib/widgets.js";
+import { goalFacts, specOf } from "../lib/goalsData.js";
+
+export { goalFacts }; // (moved to lib/goalsData.ts; still reachable from here)
 
 // Goals with a start and end (§40c). Progress is worked out from the person's data each time a goal is read; once its
 // end has passed (in their time zone) the result is worked out one last time and kept (goals.result), and a goal
@@ -45,7 +44,6 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
 }
 
 type GoalRow = typeof goals.$inferSelect;
-const specOf = (g: GoalRow): GoalSpec => ({ type: g.type as GoalSpec["type"], target: g.target, period: g.period, measure: g.measure ?? null, start: g.startDay, end: g.endDay, endedEarly: g.endedAt !== null });
 /** Ended early (End now, replaced) or its end has passed: in Past goals */
 const isPast = (g: GoalRow, today: string) => g.endedAt !== null || (g.endDay !== null && g.endDay < today);
 
@@ -90,56 +88,6 @@ function check(g: GoalSpec, today: string, isNew: boolean, weekStart: number) {
     case "weight_by_date":
       if (!(g.target >= 20 && g.target <= 400)) throw badRequest("Choose a weight between 20 and 400 kg");
   }
-}
-
-/** What each day from `from` to `to` held, as goals count it, and the weight trend up to `to`. */
-export async function goalFacts(db: Db, userId: number, from: string, to: string, weekStart: number): Promise<{ days: DayFacts[]; trend: { day: string; trendKg: number }[] }> {
-  const [entries, targetRows, calorie, weights, onVacation, stepRows, workoutRows] = await Promise.all([
-    db
-      .select({ day: logEntries.day, source: logEntries.source, nutrients: logEntries.nutrients })
-      .from(logEntries)
-      .where(and(eq(logEntries.userId, userId), gte(logEntries.day, from), lte(logEntries.day, to))),
-    db.select().from(targets).where(and(eq(targets.userId, userId), lte(targets.effectiveFrom, to))),
-    calorieDays(db, userId, from, to, weekStart),
-    db.select({ day: weighIns.day, weightKg: weighIns.weightKg }).from(weighIns).where(and(eq(weighIns.userId, userId), lte(weighIns.day, to))),
-    vacationCheck(db, userId),
-    db.select({ day: activitySteps.day, source: activitySteps.source, steps: activitySteps.steps }).from(activitySteps).where(and(eq(activitySteps.userId, userId), gte(activitySteps.day, from), lte(activitySteps.day, to))),
-    db.select({ day: workouts.day, minutes: workouts.minutes, calories: workouts.calories }).from(workouts).where(and(eq(workouts.userId, userId), gte(workouts.day, from), lte(workouts.day, to))),
-  ]);
-  const byDay = new Map<string, { foods: Nutrients[]; all: Nutrients[] }>();
-  for (const e of entries) {
-    const d = byDay.get(e.day) ?? { foods: [], all: [] };
-    d.all.push(e.nutrients as Nutrients);
-    if (e.source !== "water") d.foods.push(e.nutrients as Nutrients);
-    byDay.set(e.day, d);
-  }
-  const inRange = new Set(calorie.filter((d) => d.status === "in").map((d) => d.day));
-  const weighed = new Set(weights.map((w) => w.day));
-  const active = new Map(activityDays(stepRows, workoutRows, from, to).map((a) => [a.day, a]));
-  const days: DayFacts[] = [];
-  for (let d = from; d <= to; d = addDays(d, 1)) {
-    const log = byDay.get(d);
-    // The day's totals as the Day totals show them (unknown counted as 0); the minimums in force that day
-    const foods = sumNutrients(log?.foods ?? []);
-    const water = sumNutrients(log?.all ?? []).water_ml ?? 0;
-    const t = inForce(targetRows, d);
-    const a = active.get(d)!;
-    days.push({
-      day: d,
-      logged: (log?.foods.length ?? 0) > 0,
-      // Something must be logged: a minimum of 0 doesn't make an empty day a hit
-      protein: !!t && (log?.foods.length ?? 0) > 0 && (foods.protein_g ?? 0) >= t.proteinMin,
-      fiber: !!t && (log?.foods.length ?? 0) > 0 && (foods.fiber_g ?? 0) >= t.fiberMin,
-      water: !!t && water > 0 && water >= t.waterMin,
-      calories: inRange.has(d),
-      weighed: weighed.has(d),
-      steps: a.steps,
-      workouts: a.workouts,
-      activeMinutes: a.activeMinutes,
-      vacation: onVacation(d),
-    });
-  }
-  return { days, trend: trendOf(weights) };
 }
 
 export type GoalView = ReturnType<typeof viewOf>;

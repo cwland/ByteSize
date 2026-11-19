@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { glp1Shots, insights, logEntries, targets, userBody, userSettings, users, weighIns } from "../src/db/schema.js";
+import { glp1Shots, goals, insights, logEntries, targets, userBody, userSettings, users, weighIns } from "../src/db/schema.js";
 import { INSIGHTS_SYSTEM, OFF_TOPIC } from "../src/lib/insights.js";
 import { resetInsightRuns, weeklyInsightsCheck } from "../src/lib/insightsRun.js";
 import { usageSettled } from "../src/lib/usage.js";
@@ -133,6 +133,16 @@ describe("Refresh", () => {
     expect((await t.api("POST", "/api/goals", { type: "workouts", target: 3, period: "week" })).status).toBe(200);
     await t.api("POST", "/api/insights/refresh", { kind: "recap" });
     expect(summaryOf(t.ai.calls[0]).goals).toEqual([expect.objectContaining({ target: "3 a week" })]);
+  });
+
+  it("reading goals for the AI changes nothing: a goal whose end has passed isn't kept (frozen) by an insight", async () => {
+    await seed();
+    await aiServices();
+    await t.db.insert(goals).values({ userId: 1, type: "workouts", target: 2, period: "week", startDay: "2026-10-01", endDay: "2026-11-10", name: "Ended" });
+    await t.api("POST", "/api/insights/refresh", { kind: "recap" });
+    expect(summaryOf(t.ai.calls[0]).goals).toEqual([]);
+    const [g] = await t.db.select().from(goals);
+    expect([g.result, g.frozenAt]).toEqual([null, null]);
   });
 
   it("protein help: top sources and short days from the app; swaps only of foods in the data", async () => {
@@ -320,7 +330,7 @@ describe("the weekly run", () => {
     expect(t.ai.calls).toHaveLength(0);
   });
 
-  it("a failure is tried again hourly, up to 3 more times", async () => {
+  it("a failure is tried again hourly (a run a minute early still counts), up to 3 more times", async () => {
     await seed();
     await aiServices();
     replies.recap = "not json";
@@ -330,7 +340,7 @@ describe("the weekly run", () => {
     at("2026-11-15T13:35:00Z"); // under an hour: not yet
     await weeklyInsightsCheck(t.app);
     expect(t.ai.calls).toHaveLength(1);
-    for (const hour of ["14:06", "15:07", "16:08"]) {
+    for (const hour of ["14:04", "15:03", "16:02"]) { // 59 minutes apart: hourly runs never land exactly on the hour
       at(`2026-11-15T${hour}:00Z`);
       await weeklyInsightsCheck(t.app);
     }
@@ -341,6 +351,37 @@ describe("the weekly run", () => {
     expect(await t.db.select().from(insights)).toHaveLength(0);
     const logs = (await t.api("GET", "/api/logs?category=schedule")).body;
     expect(JSON.stringify(logs)).toMatch(/weekly recap/i);
+  });
+
+  it("a demo recap (seed-demo) doesn't block the real one: the weekly recap is written and replaces it", async () => {
+    await seed();
+    await aiServices();
+    await t.db.insert(insights).values({ userId: 1, kind: "recap", source: "demo", periodStart: "2026-11-08", periodEnd: "2026-11-14", content: { summary: "Demo" } });
+    at("2026-11-15T13:05:00Z");
+    expect(await weeklyInsightsCheck(t.app)).toEqual([1]);
+    const recaps = await t.db.select().from(insights).where(eq(insights.kind, "recap"));
+    expect(recaps.map((r) => [r.source, r.periodStart])).toEqual([["weekly", "2026-11-08"]]);
+  });
+
+  it("a skipped week (under 3 days, or the switch off) loses its \"so far\" recap", async () => {
+    await seed();
+    await aiServices();
+    at("2026-11-14T19:00:00Z");
+    await t.api("POST", "/api/insights/refresh", { kind: "recap" });
+    await t.db.delete(logEntries).where(eq(logEntries.day, "2026-11-11"));
+    at("2026-11-15T12:30:00Z"); // before 6 am: not yet decided, kept
+    await weeklyInsightsCheck(t.app);
+    expect(await t.db.select().from(insights).where(eq(insights.kind, "recap"))).toHaveLength(1);
+    at("2026-11-15T13:05:00Z");
+    expect(await weeklyInsightsCheck(t.app)).toEqual([]);
+    expect(await t.db.select().from(insights).where(eq(insights.kind, "recap"))).toHaveLength(0);
+    // The switch off: the same
+    at("2026-11-21T19:00:00Z");
+    await t.api("POST", "/api/insights/refresh", { kind: "recap" });
+    await t.api("PUT", "/api/insights/settings", { weeklyOn: false });
+    at("2026-11-22T13:05:00Z");
+    await weeklyInsightsCheck(t.app);
+    expect(await t.db.select().from(insights).where(eq(insights.kind, "recap"))).toHaveLength(0);
   });
 
   it("a weekly recap replaces that week's \"so far\" one", async () => {
