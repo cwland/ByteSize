@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { DayHeader } from "./PageHeader";
 import { SelectedDayProvider } from "../selectedDay";
 import { fakeServer } from "../test/fakeServer";
@@ -16,7 +17,7 @@ afterEach(() => void vi.useRealTimers());
 
 function show(dateFormat?: string) {
   wideScreen();
-  fakeServer({ "GET /api/settings/me": () => (dateFormat ? { ...settingsMe, dateFormat } : settingsMe) });
+  fakeServer({ "GET /api/settings/me": () => (dateFormat ? { ...settingsMe, dateFormat } : settingsMe), "GET /api/days/logged": () => ({ days: ["2026-11-10"] }) });
   renderWithSession(
     <SelectedDayProvider timeZone="America/Boise">
       <DayHeader />
@@ -108,5 +109,20 @@ describe("the chosen look from the first paint (§37)", () => {
     cleanup();
     paint({ "GET /api/settings/me": () => new Promise(() => {}) }, 1);
     expect(screen.getByRole("heading", { level: 1, name: "Wednesday, Nov 18" })).toBeInTheDocument();
+  });
+});
+
+describe("tap the date for a calendar (§39)", () => {
+  it("the centred date is a button that opens the calendar under it; choosing a day changes the day shown", async () => {
+    show();
+    expect(await screen.findByRole("heading", { level: 1, name: "Wednesday, Nov 18" })).toBeInTheDocument(); // still the heading
+    const button = screen.getByRole("button", { name: "Choose a day" });
+    expect(button).toHaveTextContent("Wednesday, Nov 18");
+    await userEvent.click(button);
+    const cal = await screen.findByRole("dialog", { name: "Choose a day" });
+    expect(cal).toHaveAttribute("data-placement", "popover");
+    await userEvent.click(within(cal).getByRole("button", { name: "Tuesday, November 10, logged" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Tuesday, Nov 10" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Choose a day" })).toBeNull();
   });
 });

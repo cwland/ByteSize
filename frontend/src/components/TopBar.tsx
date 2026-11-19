@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Logo } from "./ui/Logo";
 import { initialsOf, useSession } from "../session";
+import DayPickerMenu from "./DayPicker";
 import WeekStrip, { monthsOf } from "./WeekStrip";
 
 // Logo (home) · month of the week shown · avatar (Settings), and under it the week strip
@@ -14,7 +15,13 @@ export default function TopBar({ days = true }: { days?: boolean }) {
         <a href="#/" aria-label="ByteSize home" className="shrink-0 rounded-full">
           <Logo className="size-9 rounded-full" />
         </a>
-        <p className="flex-1 text-center font-bold">{days && week ? monthsOf(week) : ""}</p>
+        <p className="flex-1 text-center font-bold">
+          {days && week && (
+            <DayPickerMenu placement="bar" className="rounded-full px-3 py-1 hover:bg-pressed">
+              {monthsOf(week)}
+            </DayPickerMenu>
+          )}
+        </p>
         <a
           href="#/settings"
           aria-label="Open settings"

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useSettingsMe } from "../day";
 import { formatDate } from "../dateFormat";
 import { useSelectedDay } from "../selectedDay";
+import DayPickerMenu from "./DayPicker";
 import WeekStrip from "./WeekStrip";
 
 // Wide screens: the page's title (with a note beside it and a line under it), and links or buttons at
@@ -28,7 +29,12 @@ export function DayHeader({ children }: { children?: ReactNode }) {
   const date = formatDate(day, useSettingsMe().dateFormat); // the way this person chose (Settings › Profile)
   return (
     <header aria-label="Day" className="relative flex flex-col items-center gap-1 text-center">
-      <h1 className="text-lg leading-6 font-bold">{date}</h1>
+      {/* The heading keeps the date as its name; the button inside opens the calendar (§39) */}
+      <h1 aria-label={date} className="text-lg leading-6 font-bold">
+        <DayPickerMenu placement="popover" className="rounded-full px-3 hover:bg-pressed">
+          {date}
+        </DayPickerMenu>
+      </h1>
       <div className="w-[23rem] max-w-full">
         <WeekStrip compact />
       </div>
