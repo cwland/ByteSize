@@ -39,10 +39,11 @@ final class LogAPITests: XCTestCase {
     }
 
     func testDeleteRestoreMove() async throws {
+        let entryJSON = self.entryJSON
         HTTPStub.handler = { req in
             switch (req.httpMethod, req.url?.path()) {
             case ("DELETE", "/api/log/13"): return .raw(204, contentType: "", body: "")
-            case ("POST", "/api/log/13/restore"): return .json(200, self.entryJSON)
+            case ("POST", "/api/log/13/restore"): return .json(200, entryJSON)
             case ("POST", "/api/log/move"): return .json(200, #"{"entries":[],"combined":[]}"#)
             default: return .json(404, #"{"error":"Not found"}"#)
             }
