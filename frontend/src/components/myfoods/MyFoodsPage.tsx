@@ -1,16 +1,17 @@
-import { useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, Plus, Search, Trash2, X } from "lucide-react";
 import { api } from "../../api";
 import { myFoodsFrom, useHash } from "../../routes";
 import type { FoodResult } from "../../types";
 import FoodForm, { draftOf, emptyDraft } from "../log/FoodForm";
 import FoodPic from "../log/FoodPic";
 import { Tag, tagOf } from "../log/FoodRow";
+import { pillClass } from "../log/SourcePills";
+import { useSession } from "../../session";
 import Pills from "../log/Pills";
-import { Choice } from "../ui/Choice";
 import { Confirm } from "../ui/Confirm";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { field, noAutofill } from "../ui/styles";
+import { noAutofill } from "../ui/styles";
 import { EditorHeader, addButton } from "./items";
 import QuickMealEditor from "./QuickMealEditor";
 import RecipeEditor from "./RecipeEditor";
@@ -31,13 +32,50 @@ const SORTS: { value: Sort; label: string }[] = [
   { value: "az", label: "A–Z" },
 ];
 
+const kindOf = (f: FoodResult): Exclude<Kind, "all"> => (f.foodKind === "recipe" ? "recipes" : f.foodKind === "quick_meal" ? "meals" : "foods");
+
+// The type and sort choices are remembered per person on this device. Junk or blocked storage means the defaults.
+const keyFor = (userId: number) => `bytesize.myFoods.${userId}`;
+function load(userId: number): { kind: Kind; sort: Sort | null } {
+  try {
+    const saved = JSON.parse(localStorage.getItem(keyFor(userId)) ?? "null");
+    if (saved && typeof saved === "object") {
+      return {
+        kind: KINDS.some((k) => k.value === saved.kind) ? saved.kind : "all",
+        sort: SORTS.some((o) => o.value === saved.sort) ? saved.sort : null,
+      };
+    }
+  } catch {
+    // unreadable
+  }
+  return { kind: "all", sort: null };
+}
+function save(userId: number, choice: { kind: Kind; sort: Sort | null }) {
+  try {
+    localStorage.setItem(keyFor(userId), JSON.stringify(choice));
+  } catch {
+    // storage blocked or full: the choice lasts until the page closes
+  }
+}
+
 // My Foods (#/log/my-foods): the person's own foods, corrections, recipes and quick meals in one list.
 // Tap one to edit it; New food / New recipe / New quick meal; Back returns to where it was opened from.
 export default function MyFoodsPage() {
   const from = myFoodsFrom(useHash());
   const [view, setView] = useState<View>({ k: "list" });
-  const [kind, setKind] = useState<Kind>("all");
-  const [sort, setSort] = useState<Sort | null>(null); // null: not picked (Recent, or best match while searching)
+  const { user } = useSession();
+  const [chosen] = useState(() => load(user.id));
+  const [kind, setKind] = useState<Kind>(chosen.kind);
+  const [sort, setSort] = useState<Sort | null>(chosen.sort); // null: not picked (Recent, or best match while searching)
+  const searchRef = useRef<HTMLInputElement>(null);
+  const changed = useRef(false);
+  useEffect(() => {
+    if (changed.current) save(user.id, { kind, sort });
+  }, [user.id, kind, sort]);
+  const pick = <T,>(set: (v: T) => void) => (v: T) => {
+    changed.current = true;
+    set(v);
+  };
   const [query, setQuery] = useState("");
   const [foods, setFoods] = useState<FoodResult[] | null>(null);
   const [reload, setReload] = useState(0);
@@ -50,10 +88,10 @@ export default function MyFoodsPage() {
     // A search is in best-match order (no sort sent) unless the person picked a sort
     const order = sort ?? (q ? null : "recent");
     let live = true;
-    // typing waits a moment (one request per pause); chips and sort ask straight away
+    // typing waits a moment (one request per pause); sort asks straight away. Every type comes back at once so the pills can count them.
     const t = setTimeout(
       () =>
-        api<{ foods: FoodResult[] }>("GET", `/api/my-foods?kind=${kind}${order ? `&sort=${order}` : ""}${q ? `&q=${encodeURIComponent(q)}` : ""}`).then(
+        api<{ foods: FoodResult[] }>("GET", `/api/my-foods?kind=all${order ? `&sort=${order}` : ""}${q ? `&q=${encodeURIComponent(q)}` : ""}`).then(
           (r) => live && setFoods(r.foods),
           (e) => live && setMsg(errorMsg(e)),
         ),
@@ -63,7 +101,12 @@ export default function MyFoodsPage() {
       live = false;
       clearTimeout(t);
     };
-  }, [view.k, kind, sort, query, reload]);
+  }, [view.k, sort, query, reload]);
+
+  const counts = { all: foods?.length ?? 0, foods: 0, recipes: 0, meals: 0 };
+  for (const f of foods ?? []) counts[kindOf(f)]++;
+  const shown = foods && (kind === "all" ? foods : foods.filter((f) => kindOf(f) === kind));
+  const sortValue = sort ?? (query.trim() ? "match" : "recent");
 
   const toList = (text?: string) => {
     setView({ k: "list" });
@@ -120,18 +163,66 @@ export default function MyFoodsPage() {
         </button>
       </div>
 
-      <div className="mt-3 flex flex-col gap-2">
-        <input {...noAutofill} type="search" aria-label="Search my foods" placeholder="Search my foods" value={query} onChange={(e) => setQuery(e.target.value)} className={`${field} mt-0 rounded-full`} />
-        <Choice label="Show" value={kind} options={KINDS} onChange={setKind} />
-        <Choice label="Sort" value={sort ?? (query.trim() ? null : "recent")} options={SORTS} onChange={setSort} />
+      <div className="relative mt-3">
+        <Search aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 size-5 -translate-y-1/2 text-subtle" />
+        <input
+          {...noAutofill}
+          ref={searchRef}
+          type="search"
+          aria-label="Search my foods"
+          placeholder="Search my foods"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="h-11 w-full rounded-full border border-line bg-page pl-11 pr-11 text-ink outline-none placeholder:text-inactive focus:border-action focus:ring-2 focus:ring-action/25 [&::-webkit-search-cancel-button]:appearance-none"
+        />
+        {query && (
+          <button
+            type="button"
+            aria-label="Clear search"
+            onClick={() => {
+              setQuery("");
+              searchRef.current?.focus();
+            }}
+            className="absolute right-0.5 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full text-subtle hover:bg-pressed hover:text-ink"
+          >
+            <X className="size-5" />
+          </button>
+        )}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
+          {KINDS.map((k) => (
+            <button key={k.value} type="button" aria-pressed={kind === k.value} onClick={() => pick(setKind)(k.value)} className={pillClass(kind === k.value)}>
+              {k.label} {counts[k.value]}
+            </button>
+          ))}
+        </div>
+        <label className="relative ml-auto inline-flex h-9 items-center gap-1 rounded-full border border-line bg-page pl-3 pr-8 text-sm text-subtle">
+          Sort:
+          <select
+            aria-label="Sort"
+            value={sortValue}
+            onChange={(e) => pick(setSort)(e.target.value as Sort)}
+            className="cursor-pointer appearance-none bg-transparent font-semibold text-ink outline-none"
+          >
+            {sortValue === "match" && <option value="match">Best match</option>}
+            {SORTS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown aria-hidden className="pointer-events-none absolute right-2.5 size-4 text-ink" />
+        </label>
       </div>
 
       <Notice msg={msg} />
 
-      {foods && foods.length === 0 && <p className="mt-6 px-2 text-center text-subtle">{query.trim() ? "Nothing here matches." : "Nothing here yet. Foods, recipes and meals you make show up here."}</p>}
-      {foods && foods.length > 0 && (
+      {shown && shown.length === 0 && <p className="mt-6 px-2 text-center text-subtle">{query.trim() ? "Nothing here matches." : "Nothing here yet. Foods, recipes and meals you make show up here."}</p>}
+      {shown && shown.length > 0 && (
         <ul aria-label="My foods" className="mt-3 flex flex-col gap-2">
-          {foods.map((f) => {
+          {shown.map((f) => {
             const tag = tagOf(f.foodKind);
             return (
               <li key={f.id} className="flex items-center gap-1 rounded-2xl bg-container p-2">
