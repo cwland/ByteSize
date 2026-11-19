@@ -3,28 +3,29 @@ import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { dashboardLayouts, userSettings } from "../db/schema.js";
 import { requireUser } from "../lib/guards.js";
-import { GOAL_WIDGET, LAYOUT_PAGES, LAYOUT_VERSION, MAX_COLUMNS, PAGE_WIDGETS, withInsights, type LayoutPage } from "../lib/widgets.js";
+import { ALL_LAYOUT_PAGES, GOAL_WIDGET, GOAL_WIDGET_PAGES, LAYOUT_VERSION, MAX_COLUMNS, PAGE_WIDGETS, withInsights, type LayoutPage } from "../lib/widgets.js";
 import { todayFor } from "../lib/days.js";
 import { activeGoalIds, keepGoals } from "../lib/goalsData.js";
 
 // The person's widget layout for a page (§28, §40a): GET (null until saved) and PUT { version: 1, columns: string[][] }
 // at /api/layouts/:page; /api/dashboard/layout is the Dashboard's under the name it had first. Goal widgets ("goal:<id>",
 // §40c) may be on any page: only the person's active goals are kept (others are dropped on read and on save).
-const pageParam = z.object({ page: z.enum(LAYOUT_PAGES, { error: "There's no such page" }) });
+const pageParam = z.object({ page: z.enum(ALL_LAYOUT_PAGES, { error: "There's no such page" }) });
 
 const MAX_GOAL_WIDGETS = 100;
 const layoutBody = (page: LayoutPage) => {
   const known = new Set(PAGE_WIDGETS[page]);
+  const goalsHere = GOAL_WIDGET_PAGES.includes(page);
   const where = page === "dashboard" ? "the dashboard" : "the page";
   return z.object({
     version: z.literal(LAYOUT_VERSION),
     columns: z
-      .array(z.array(z.string().refine((id) => known.has(id) || GOAL_WIDGET.test(id), "That widget doesn't exist")).max(known.size + MAX_GOAL_WIDGETS), { error: "Columns must be lists of widgets" })
+      .array(z.array(z.string().refine((id) => known.has(id) || (goalsHere && GOAL_WIDGET.test(id)), "That widget doesn't exist")).max(known.size + MAX_GOAL_WIDGETS), { error: "Columns must be lists of widgets" })
       .max(MAX_COLUMNS, `At most ${MAX_COLUMNS} columns`)
       .refine((cols) => new Set(cols.flat()).size === cols.flat().length, `A widget can only be on ${where} once`),
   });
 };
-const BODIES = Object.fromEntries(LAYOUT_PAGES.map((p) => [p, layoutBody(p)])) as Record<LayoutPage, ReturnType<typeof layoutBody>>;
+const BODIES = Object.fromEntries(ALL_LAYOUT_PAGES.map((p) => [p, layoutBody(p)])) as Record<LayoutPage, ReturnType<typeof layoutBody>>;
 
 export default async function layoutRoutes(app: FastifyInstance) {
   const { db } = app;
