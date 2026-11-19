@@ -135,6 +135,20 @@ docker compose exec -u node bytesize npm run reset-password -- <username>
 cd backend && npm run reset-password -- <username>
 ```
 
+### Try it with a few months of data
+
+Fill an existing account (the first admin unless you name one) with about 90 days of food, water, weigh-ins (245 lb
+trending down) and weekly GLP-1 shots. It never creates an account. If the account already has tracking it stops;
+`--replace` deletes that account's entries, weigh-ins, water, shots and the foods this command made, then fills it
+again, so you can run it over and over. Nothing else is touched. Options: `--user <username>`, `--days <7-365>`, `--replace`.
+
+```
+# Docker
+docker compose exec -u node bytesize npm run seed-demo -- --replace
+# Mac (or any machine running from the source)
+cd backend && npm run seed-demo -- --replace
+```
+
 Locked out by OAuth (OAuth only, and the provider is down)? Turn OAuth only and OAuth sign-in off:
 
 ```
