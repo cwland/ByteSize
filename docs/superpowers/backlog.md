@@ -9,8 +9,6 @@ _(add as they come in)_
 
 ## Features
 
-- **Insights** — AI looks at logging and trends: weekly recap, patterns (weekends, dinners out, days before a shot),
-  shot-day effects, protein help, food swaps, plateau check, ask a question about your data. (Cory, 2026-11-18)
 - **iPhone app (M5)** — live barcode scanning, Apple Health (steps, workouts, weight) via the API, scan a nutrition
   label when a barcode isn't found.
 - More widget library items: weekly trend chart, protein ring on its own.
@@ -27,6 +25,3 @@ _(add as they come in)_
 
 ## From Insights planning (Cory, 2026-11-18)
 
-- **Email the weekly recap** (and maybe other insights) as a notification, using the email setup.
-- **Insights: patterns + shot-day effects** — weekend/dinner-out patterns, appetite and calories by days since shot.
-- **Insights: plateau check** — when the trend flattens, what changed.

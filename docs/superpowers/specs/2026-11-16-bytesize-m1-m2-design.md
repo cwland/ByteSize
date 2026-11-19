@@ -1562,3 +1562,48 @@ no AI call) so the page isn't empty; --replace clears them.
 - A test walks every rendered screen the test suite already renders (or a list of the main screens) and fails if any
   button/link with no visible text lacks an accessible name and a title.
 - Hover text appears on desktop hover and on long-press where the browser supports it; on touch it's harmless.
+
+## 45. Email me my weekly recap (Cory, 2026-11-19)
+
+**Asked for.** Email the weekly recap (backlog item from §43 planning). Patterns, shot-day effects and a plateau check
+were dropped from the backlog by Cory.
+Calls made for Cory (to confirm): each person opts in; off by default; it goes to the email on their account.
+- **Switch** on the Insights page under the Weekly recap switch: **Email me my weekly recap**. Shown only when the
+  server's email is set up (§20); disabled with "Add an email address in Settings › Profile" when the account has none.
+  Off by default.
+- **When**: right after the weekly run writes that person's recap (§43 Running) — once per recap, never for "so far"
+  or seed-demo cards; not resent when the recap is rewritten the same week. A failed send is logged and retried with
+  the next hourly check up to 3 times; it never blocks or fails the recap.
+- **The email**: subject "Your ByteSize week: <Nov 8–14>"; HTML and plain-text parts; the recap (summary, what went
+  well, what slipped, one thing to try) and the app-computed numbers (days logged, in range, average calories and
+  protein vs plan, water days, steps/workouts, trend weight change), in the person's units and date format; a button
+  "Open Insights" linking to the configured app address `#/insights`; footer "You're getting this because you turned on
+  weekly recap emails in ByteSize. Turn them off in Insights." Every value HTML-escaped; no AI service names.
+- **Data**: a per-user setting (user_settings) and a "sent for week" marker on the recap so it's sent once; backed up;
+  in Download my data. Sent through lib/mail.ts. Tests with the mail transport faked.
+
+## 46. Cleanup round 2 (Cory, 2026-11-19)
+
+**Asked for.** "Let's do … 3": the small items deferred from reviews of §38–44. Each is a fix with a test.
+- **Dashboard edit**: a pending refocus from a no-op move never fires on a later, unrelated layout change.
+- **App info**: make the count-up test deterministic (it failed once under load).
+- **Date look** (§33/§37): an in-flight settings fetch can't re-save the look after sign-out; a session that expires
+  (401) clears it like sign-out; the old unkeyed `bytesize-look` key is removed.
+- **Calendar** (§39): Escape closes it only when focus is inside it (or the event wasn't already handled); the dialog
+  renders as a sibling of the page `<h1>`, not inside it.
+- **GLP-1 rail item**: no pop-in — the rail knows GLP-1 is on from the session/settings it already has (one request,
+  not two per mount).
+- **Plan picker** (§41): `from` is URL-encoded; on a past day, Day totals' change-plan icon is hidden (plans only start
+  today) or says "Change today's plan".
+- **Weekly trends in bank mode** (§40b): the average calories mark is judged the same way as the in-range count.
+- **Invites** (§36): the link keeps any sub-path of the app address; after accepting, the token is removed from the
+  browser address/history (replaceState); expired/used invite rows are cleaned up by the daily cleanup.
+- **API keys** (§35): last-used is updated at most once a minute without a write when nothing changes; wrong-key 401s
+  are rate-limited per IP like failed sign-ins.
+- **Seed-demo** (§38): --replace also clears badges earned only from the seeded data (or recalculates badges after the
+  refill); lib/demoData.ts no longer imports from routes.
+- **Goals** (§40c): a concurrent-freeze test; deleting a completed goal keeps the Goal met count (count comes from the
+  frozen results, including deleted ones, or the badge keeps its count); End now on a goal whose only judged period is
+  a 4–6 day partial week can't earn Goal met; a later change of week start doesn't turn a missed goal into "ended"
+  (judge by the week start in force when the goal was made — store it on the goal).
+- **Insights** (§43): a test that the size cap drops food lists oldest-first.
