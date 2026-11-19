@@ -15,13 +15,14 @@ _(add as they come in)_
 
 ## Deferred minors (from reviews)
 
-- Dashboard: a pending refocus from a no-op move could fire on a later layout change.
-- App info count-up test failed once under load (not reproduced).
-- Remembered date look: an in-flight settings fetch can re-save it just after sign-out; session expiry doesn't clear it.
-- Calendar: Escape listener is window-wide; the calendar dialog renders inside the page <h1>.
-- Invites: link breaks under a sub-path deployment; spent token stays in browser history; expired invites never cleaned.
-- API keys: last-used UPDATE on every request; wrong-key 401s not rate-limited.
-- Seed-demo: earned badges are left as they were after --replace.
+- Security: with the default TRUST_PROXY (private ranges trusted), a client on the LAN can fake X-Forwarded-For to dodge
+  the sign-in and wrong-key limits. Set TRUST_PROXY to the proxy's address to close it.
+- Goals: results freeze on the next read after the end date, not by a daily job; ongoing goals compute every period;
+  two same-type goals made at once in two tabs can both survive; goals.csv export has no week start.
+- Insights: an answer still in flight from another tab can appear after Clear chat; if the database is down at the
+  moment an email is marked sent, a second email is possible; when questions are used up, focus can't return to the
+  chat box.
+- Seed-demo: --replace clears all of the account's badges (real ones on a test account too).
 
 ## From Insights planning (Cory, 2026-11-18)
 
