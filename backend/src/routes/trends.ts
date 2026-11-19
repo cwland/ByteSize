@@ -13,7 +13,7 @@ import { averages, judge, trendOn, TREND_NUTRIENTS, weekStartOf, type DayLog, ty
 import { DEFAULT_WEEK_START } from "./settings-me.js";
 import { targetsOn } from "./body-plans.js";
 import { calorieDays } from "../lib/calorieDays.js";
-import { goalsWithProgress } from "./goals.js";
+import { goalsMet, goalsWithProgress } from "./goals.js";
 
 // Weekly trends, badges and vacation mode. Who is asking comes only from the login.
 
@@ -89,7 +89,7 @@ async function refreshBadges(db: Db, userId: number, today: string) {
       .onConflictDoNothing();
   }
   const stored = await db.select({ badge: badges.badge, earnedOn: badges.earnedOn, seen: badges.seen }).from(badges).where(eq(badges.userId, userId)).orderBy(asc(badges.badge));
-  const list = badgeList(stored);
+  const list = badgeList(stored, await goalsMet(db, userId));
   return { badges: list, new: list.filter((b) => b.earnedOn && !b.seen).map((b) => b.id) };
 }
 

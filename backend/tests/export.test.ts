@@ -45,6 +45,8 @@ async function seed() {
   expect((await t.api("POST", "/api/goals", { type: "workouts", target: 3, period: "week", name: 'Move, "often"' })).status).toBe(200);
   const me = (await t.api("GET", "/api/auth/me")).body;
   await t.db.insert(schema.goals).values({ userId: me.id ?? me.user?.id, type: "steps", measure: "average", target: 8000, period: "week", startDay: "2026-10-01", endDay: "2026-10-31", name: "October walks", result: { state: "missed", hit: 3, done: 5, of: 5, periods: [], current: null, startKg: null, asOf: "2026-10-31" }, frozenAt: new Date() });
+  // ...and one ended early with nothing to judge
+  await t.db.insert(schema.goals).values({ userId: me.id ?? me.user?.id, type: "workouts", target: 3, period: "week", startDay: "2026-10-31", endDay: "2026-10-31", name: "Gym", endedAt: new Date(), result: { state: "ended", hit: 0, done: 0, of: 0, periods: [], current: null, startKg: null, asOf: "2026-10-31" }, frozenAt: new Date() });
   const photo = await storePhoto(t.app, me.id ?? me.user?.id, await plainPhoto(40, 30));
   return { photo, userId: (me.id ?? me.user?.id) as number };
 }
@@ -109,7 +111,7 @@ describe("GET /api/export", () => {
     expect(text("workouts.csv")).toBe(`Day,Type,Minutes,Calories,From,Note\r\n2026-11-16,Walk,35,,Health,\r\n${DAY},HIIT,20,210,Typed,Class\r\n`);
     // Goals: oldest start first; a kept result says how it ended
     expect(text("goals.csv")).toBe(
-      `Name,Kind,Target,Period,Start,End,Result,Periods hit\r\nOctober walks,Steps (average per day),8000,Each week,2026-10-01,2026-10-31,Missed,3 of 5\r\n"Move, ""often""",Workouts,3,Each week,${DAY},,In progress,\r\n`,
+      `Name,Kind,Target,Period,Start,End,Result,Periods hit\r\nOctober walks,Steps (average per day),8000,Each week,2026-10-01,2026-10-31,Missed,3 of 5\r\nGym,Workouts,3,Each week,2026-10-31,2026-10-31,Ended early,\r\n"Move, ""often""",Workouts,3,Each week,${DAY},,In progress,\r\n`,
     );
     const foods = text("my-foods.csv").split("\r\n");
     expect(foods[0]).toBe("Name,Brand,Kind,Serving,Calories,Protein (g),Carbs (g),Fat (g),Fiber (g)");

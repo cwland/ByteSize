@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, asc, eq, gte, isNull, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { activitySteps, badges, dashboardLayouts, goals, logEntries, targets, weighIns, workouts } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
@@ -11,7 +11,7 @@ import { calorieDays, weekStartFor } from "../lib/calorieDays.js";
 import { sumNutrients, type Nutrients } from "../lib/nutrients.js";
 import { inForce } from "../lib/workoutCalories.js";
 import { trendOf } from "../lib/weight.js";
-import { GOAL_NAMES, GOAL_PERIODS, GOAL_TYPES, STEP_MEASURES, STRETCH_ONLY, isDayCount, progressOf, type DayFacts, type GoalProgress, type GoalSpec } from "../lib/goals.js";
+import { GOAL_NAMES, GOAL_PERIODS, GOAL_TYPES, MIN_JUDGED_DAYS, STEP_MEASURES, STRETCH_ONLY, isDayCount, periodsOf, progressOf, type DayFacts, type GoalProgress, type GoalSpec } from "../lib/goals.js";
 import { GOAL_WIDGET, goalWidgetId } from "../lib/widgets.js";
 
 // Goals with a start and end (§40c). Progress is worked out from the person's data each time a goal is read; once its
@@ -45,7 +45,7 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
 }
 
 type GoalRow = typeof goals.$inferSelect;
-const specOf = (g: GoalRow): GoalSpec => ({ type: g.type as GoalSpec["type"], target: g.target, period: g.period, measure: g.measure ?? null, start: g.startDay, end: g.endDay });
+const specOf = (g: GoalRow): GoalSpec => ({ type: g.type as GoalSpec["type"], target: g.target, period: g.period, measure: g.measure ?? null, start: g.startDay, end: g.endDay, endedEarly: g.endedAt !== null });
 /** Ended early (End now, replaced) or its end has passed: in Past goals */
 const isPast = (g: GoalRow, today: string) => g.endedAt !== null || (g.endDay !== null && g.endDay < today);
 
@@ -53,7 +53,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
 const PER = { week: "a week", month: "a month", stretch: "in the stretch" } as const;
 
 /** The goal's rules: the period its type allows, an end where needed, dates in range, a target that fits. */
-function check(g: GoalSpec, today: string, isNew: boolean) {
+function check(g: GoalSpec, today: string, isNew: boolean, weekStart: number) {
   const label = GOAL_NAMES[g.type];
   if (STRETCH_ONLY.includes(g.type) && g.period !== "stretch") throw badRequest(`A ${label} goal runs over the whole stretch`);
   if (g.end === null && g.period === "stretch") throw badRequest("Choose an end date");
@@ -63,6 +63,12 @@ function check(g: GoalSpec, today: string, isNew: boolean) {
     if (g.end < today) throw badRequest("Choose an end date from today on");
     if (g.end < g.start) throw badRequest("The end can't be before the start");
     if (daysBetween(g.start, g.end) + 1 > MAX_DAYS) throw badRequest("A goal can run for up to 3 years");
+  }
+  // Each week / each month with an end: at least one period it can be judged on (a partial one needs 4 days / 15)
+  if (g.end !== null && g.period !== "stretch") {
+    const min = MIN_JUDGED_DAYS[g.period];
+    const ok = periodsOf(g, weekStart, g.end).some((p) => daysBetween(p.start, p.end) + 1 >= Math.min(min, p.length));
+    if (!ok) throw badRequest(`Choose dates with at least ${min} days in one ${g.period}`);
   }
   const days = g.end === null ? 0 : daysBetween(g.start, g.end) + 1;
   const whole = (min: number, max: number, msg: string) => {
@@ -121,9 +127,10 @@ export async function goalFacts(db: Db, userId: number, from: string, to: string
     days.push({
       day: d,
       logged: (log?.foods.length ?? 0) > 0,
-      protein: !!t && (foods.protein_g ?? 0) >= t.proteinMin,
-      fiber: !!t && (foods.fiber_g ?? 0) >= t.fiberMin,
-      water: !!t && water >= t.waterMin,
+      // Something must be logged: a minimum of 0 doesn't make an empty day a hit
+      protein: !!t && (log?.foods.length ?? 0) > 0 && (foods.protein_g ?? 0) >= t.proteinMin,
+      fiber: !!t && (log?.foods.length ?? 0) > 0 && (foods.fiber_g ?? 0) >= t.fiberMin,
+      water: !!t && water > 0 && water >= t.waterMin,
       calories: inRange.has(d),
       weighed: weighed.has(d),
       steps: a.steps,
@@ -164,28 +171,37 @@ export async function goalsWithProgress(db: Db, userId: number, today: string, o
   const live = rows.filter((g) => g.result === null);
   const progress = new Map<number, GoalProgress>();
   const started = live.filter((g) => g.startDay <= today);
+  const weekStart = live.length ? await weekStartFor(db, userId) : 0;
   if (started.length) {
-    const weekStart = await weekStartFor(db, userId);
     const from = started.map((g) => g.startDay).sort()[0];
     const until = started.some((g) => g.endDay === null || g.endDay >= today) ? today : started.map((g) => g.endDay!).sort().at(-1)!;
     const facts = await goalFacts(db, userId, from, until, weekStart);
     for (const g of live) progress.set(g.id, progressOf(specOf(g), { ...facts, today, weekStart }));
   } else {
-    for (const g of live) progress.set(g.id, progressOf(specOf(g), { days: [], trend: [], today, weekStart: 0 }));
+    for (const g of live) progress.set(g.id, progressOf(specOf(g), { days: [], trend: [], today, weekStart }));
   }
   for (const g of live) {
     if (g.endDay === null || g.endDay >= today) continue;
-    // Over: keep this result (only if no one kept one first), and a completed goal earns Goal met on its end day
+    // Over: keep this result (only if no one kept one first) and, in the same transaction, a completed goal earns Goal
+    // met: on its end day (the latest goal met's), new again so it's celebrated (the count comes from the goals)
     const p = progress.get(g.id)!;
-    const [kept] = await db
-      .update(goals)
-      .set({ result: p, frozenAt: new Date() })
-      .where(and(eq(goals.id, g.id), isNull(goals.result)))
-      .returning();
+    const kept = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(goals)
+        .set({ result: p, frozenAt: new Date() })
+        .where(and(eq(goals.id, g.id), isNull(goals.result)))
+        .returning();
+      if (row && p.state === "completed") {
+        await tx
+          .insert(badges)
+          .values({ userId, badge: "goal_met", earnedOn: g.endDay! })
+          .onConflictDoUpdate({ target: [badges.userId, badges.badge], set: { earnedOn: sql`greatest(${badges.earnedOn}, excluded.earned_on)`, seen: false } });
+      }
+      return row;
+    });
     if (kept) {
       g.result = kept.result;
       g.frozenAt = kept.frozenAt;
-      if (p.state === "completed") await db.insert(badges).values({ userId, badge: "goal_met", earnedOn: g.endDay }).onConflictDoNothing();
     } else {
       const [now] = await db.select().from(goals).where(eq(goals.id, g.id));
       if (now) Object.assign(g, now);
@@ -198,6 +214,15 @@ export async function goalsWithProgress(db: Db, userId: number, today: string, o
       .filter((_, i) => isPast(rows[i], today))
       .sort((a, b) => (a.end! < b.end! ? 1 : a.end! > b.end! ? -1 : b.id - a.id)),
   };
+}
+
+/** How many of the person's goals ended completed (the Goal met badge's count) */
+export async function goalsMet(db: Db, userId: number): Promise<number> {
+  const [r] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(goals)
+    .where(and(eq(goals.userId, userId), sql`${goals.result}->>'state' = 'completed'`));
+  return r?.n ?? 0;
 }
 
 /** The ids of the person's active goals (not ended, end not passed): the goal widgets their layouts may hold. */
@@ -246,7 +271,7 @@ export async function addToGoalsPage(db: Db, userId: number, id: number) {
   await db.update(dashboardLayouts).set({ columns }).where(and(eq(dashboardLayouts.userId, userId), eq(dashboardLayouts.page, "goals")));
 }
 
-/** The person's live average-per-day steps goal that holds `day`: the Activity widget's step goal (§40b) */
+/** The person's newest active (not ended, not kept) average-per-day steps goal that holds `day`: the Activity widget's step goal (§40b) */
 export async function stepGoalOn(db: Db, userId: number, day: string): Promise<number | null> {
   const [row] = await db
     .select({ target: goals.target })
@@ -257,11 +282,12 @@ export async function stepGoalOn(db: Db, userId: number, day: string): Promise<n
         eq(goals.type, "steps"),
         eq(goals.measure, "average"),
         isNull(goals.result),
+        isNull(goals.endedAt),
         lte(goals.startDay, day),
         or(isNull(goals.endDay), gte(goals.endDay, day)),
       ),
     )
-    .orderBy(asc(goals.createdAt))
+    .orderBy(desc(goals.createdAt), desc(goals.id))
     .limit(1);
   return row?.target ?? null;
 }
@@ -300,7 +326,7 @@ export default async function goalRoutes(app: FastifyInstance) {
     const b = parse(goalBody, req.body);
     const today = await todayFor(app, userId);
     const spec: GoalSpec = { type: b.type, target: b.target, period: b.period, measure: b.type === "steps" ? (b.measure ?? "total") : null, start: b.start ?? today, end: b.end ?? null };
-    check(spec, today, true);
+    check(spec, today, true, await weekStartFor(db, userId));
     if (b.name && b.name.length > MAX_NAME) throw badRequest(`Keep the name to ${MAX_NAME} characters`);
     const now = app.now();
     const { id, replaced } = await db.transaction(async (tx) => {
@@ -331,7 +357,7 @@ export default async function goalRoutes(app: FastifyInstance) {
     const today = await todayFor(app, userId);
     const row = await activeRow(userId, id, today);
     const spec = { ...specOf(row), ...(p.target !== undefined ? { target: p.target } : {}), ...(p.end !== undefined ? { end: p.end } : {}) };
-    check(spec, today, false);
+    check(spec, today, false, await weekStartFor(db, userId));
     if (p.name && p.name.length > MAX_NAME) throw badRequest(`Keep the name to ${MAX_NAME} characters`);
     await db
       .update(goals)

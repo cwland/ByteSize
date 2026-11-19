@@ -148,8 +148,8 @@ export async function buildExport(app: FastifyInstance, userId: number): Promise
           PERIODS[g.period] ?? g.period,
           g.startDay,
           g.endDay,
-          r ? (r.state === "completed" ? "Completed" : "Missed") : g.endedAt ? "Ended" : "In progress",
-          r ? `${r.hit} of ${r.of}` : null,
+          r ? (r.state === "completed" ? "Completed" : r.state === "ended" ? "Ended early" : "Missed") : g.endedAt ? "Ended" : "In progress",
+          r && r.state !== "ended" ? `${r.hit} of ${r.of}` : null,
         ];
       }),
   ]);

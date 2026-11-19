@@ -56,13 +56,13 @@ describe("day-count goals by week", () => {
   // Week 1 (Nov 1–7): logged 5 days; week 2 (Nov 8–14): logged 4
   const logged = days("2026-11-01", "2026-11-14", (_, i) => ({ logged: i < 5 || (i >= 7 && i < 11) }));
 
-  it("each week is hit or missed; the goal is completed only when every week was hit", () => {
+  it("each week is hit or missed; two weeks need both hit (80%, rounded up)", () => {
     const p = run({}, logged, "2026-11-20");
     expect(p.periods.map((x) => [x.start, x.value, x.target, x.status])).toEqual([
       ["2026-11-01", 5, 5, "hit"],
       ["2026-11-08", 4, 5, "missed"],
     ]);
-    expect(p).toMatchObject({ state: "missed", hit: 1, done: 2, of: 2, current: null });
+    expect(p).toMatchObject({ state: "missed", hit: 1, done: 2, of: 2, needed: 2, current: null });
     const all = days("2026-11-01", "2026-11-14", (_, i) => ({ logged: i % 7 < 5 }));
     expect(run({}, all, "2026-11-15")).toMatchObject({ state: "completed", hit: 2, done: 2, of: 2 });
   });
@@ -81,17 +81,49 @@ describe("day-count goals by week", () => {
     expect(run({ start: "2026-11-15", end: "2026-11-21" }, facts, "2026-11-17").current).toMatchObject({ value: 3, status: "open" });
   });
 
-  it("a partial first or last week asks for its share of the target (rounded up), never more than its days", () => {
-    // Thu Nov 5 – Wed Nov 11, 6 days a week: Nov 5–7 (3 of 7 days) → 3; Nov 8–11 (4 of 7) → 4
-    const facts = days("2026-11-05", "2026-11-11", () => ({ logged: true }));
+  it("a partial week of 4 days or more is judged against its share of the target (rounded, at least 1); a shorter one is shown, not judged", () => {
+    // Thu Nov 5 – Wed Nov 11, 6 days a week: Nov 5–7 (3 days: not judged; share 2.57 → 3); Nov 8–11 (4 days: 3.43 → 3)
+    const facts = days("2026-11-05", "2026-11-11", (d) => ({ logged: d !== "2026-11-06" }));
     const p = run({ target: 6, start: "2026-11-05", end: "2026-11-11" }, facts, "2026-11-12");
     expect(p.periods.map((x) => [x.start, x.end, x.value, x.target, x.status])).toEqual([
-      ["2026-11-05", "2026-11-07", 3, 3, "hit"],
-      ["2026-11-08", "2026-11-11", 4, 4, "hit"],
+      ["2026-11-05", "2026-11-07", 2, 3, "unjudged"],
+      ["2026-11-08", "2026-11-11", 4, 3, "hit"],
     ]);
-    expect(p.state).toBe("completed");
-    // 2 days a week, a 1-day last week: ceil(2/7) = 1
-    expect(run({ target: 2, start: "2026-11-01", end: "2026-11-08" }, [], "2026-11-09").periods.map((x) => x.target)).toEqual([2, 1]);
+    expect(p).toMatchObject({ state: "completed", hit: 1, done: 1, of: 1, needed: 1 });
+    // 2 days a week, a 1-day last week: round(2/7) = 0 → at least 1, and not judged
+    expect(run({ target: 2, start: "2026-11-01", end: "2026-11-08" }, [], "2026-11-09").periods.map((x) => [x.target, x.status])).toEqual([
+      [2, "missed"],
+      [1, "unjudged"],
+    ]);
+  });
+
+  it("a weekly goal made on a Saturday doesn't start with a 1-day judged week", () => {
+    // Sat Nov 7 (weeks start Sunday): nothing that day, then three full weeks of workouts Monday, Wednesday, Friday
+    const facts = days("2026-11-07", "2026-11-28", (_, i) => ({ workouts: [2, 4, 6].includes(i % 7) ? 1 : 0 }));
+    const g = { type: "workouts" as const, target: 3, start: "2026-11-07", end: "2026-11-28" };
+    const first = run(g, facts, "2026-11-07");
+    expect(first.current).toMatchObject({ start: "2026-11-07", end: "2026-11-07", value: 0, target: 1, status: "unjudged" });
+    expect(first).toMatchObject({ state: "active", hit: 0, done: 0, of: 3, needed: 3 });
+    // The next day it isn't "missed"
+    expect(run(g, facts, "2026-11-08").periods[0].status).toBe("unjudged");
+    expect(run(g, facts, "2026-11-29")).toMatchObject({ state: "completed", hit: 3, of: 3 });
+  });
+
+  it("each week / each month: completed when at least 80% of the judged periods were hit (rounded up)", () => {
+    // 12 weeks from Sun Sep 6; `hit` of them with 1 logged day (target 1)
+    const twelve = (hit: number) => days("2026-09-06", "2026-11-28", (d, i) => ({ logged: i % 7 === 0 && i / 7 < hit }));
+    const g = { target: 1, start: "2026-09-06", end: "2026-11-28" };
+    expect(run(g, twelve(10), "2026-12-01")).toMatchObject({ state: "completed", hit: 10, of: 12, needed: 10 });
+    expect(run(g, twelve(9), "2026-12-01")).toMatchObject({ state: "missed", hit: 9, of: 12, needed: 10 });
+    // 4 weeks: all 4; 5 weeks: one miss allowed
+    const four = days("2026-11-01", "2026-11-28", (_, i) => ({ logged: i % 7 === 0 && i < 21 }));
+    expect(run({ target: 1, start: "2026-11-01", end: "2026-11-28" }, four, "2026-12-01")).toMatchObject({ state: "missed", hit: 3, needed: 4 });
+    const five = days("2026-11-01", "2026-12-05", (_, i) => ({ logged: i % 7 === 0 && i < 28 }));
+    expect(run({ target: 1, start: "2026-11-01", end: "2026-12-05" }, five, "2026-12-06")).toMatchObject({ state: "completed", hit: 4, of: 5, needed: 4 });
+    // While it runs: how many are needed
+    expect(run(g, twelve(2), "2026-09-20")).toMatchObject({ state: "active", needed: 10, of: 12 });
+    // Ongoing: no total, nothing needed
+    expect(run({ ...g, end: null }, twelve(2), "2026-09-20")).toMatchObject({ of: null, needed: null });
   });
 
   it("other day kinds: protein, calories, water, fiber, weigh-ins", () => {
@@ -102,15 +134,16 @@ describe("day-count goals by week", () => {
 });
 
 describe("day-count goals by month and over the whole stretch", () => {
-  it("a month counts its days; a partial month asks for its share", () => {
-    // From Nov 20: 11 of November's 30 days → 20 × 11/30 = 7.33 → 8
-    const facts = days("2026-11-20", "2026-12-31", (d) => ({ weighed: d.endsWith("0") || d.endsWith("5") || d >= "2026-12-01" }));
-    const p = run({ type: "weigh_ins", target: 20, period: "month", start: "2026-11-20", end: "2026-12-31" }, facts, "2027-01-02");
+  it("a month counts its days; a partial month of 15 days or more asks for its share, a shorter one isn't judged", () => {
+    // From Nov 10: 21 of November's 30 days → 20 × 21/30 = 14
+    const facts = days("2026-11-10", "2027-01-14", (d) => ({ weighed: d.endsWith("0") || d.endsWith("5") || d >= "2026-12-01" }));
+    const p = run({ type: "weigh_ins", target: 20, period: "month", start: "2026-11-10", end: "2027-01-14" }, facts, "2027-01-20");
     expect(p.periods.map((x) => [x.start, x.value, x.target, x.status])).toEqual([
-      ["2026-11-20", 3, 8, "missed"],
+      ["2026-11-10", 5, 14, "missed"],
       ["2026-12-01", 31, 20, "hit"],
+      ["2027-01-01", 14, 9, "unjudged"], // 14 days: 20 × 14/31 = 9.03 → 9
     ]);
-    expect(p).toMatchObject({ state: "missed", hit: 1, of: 2 });
+    expect(p).toMatchObject({ state: "missed", hit: 1, of: 2, needed: 2 });
   });
 
   it("a target above a month's days asks for every day of a shorter month", () => {
@@ -143,8 +176,8 @@ describe("activity goals", () => {
     expect(run(g, steps, "2026-11-08").periods[0]).toMatchObject({ value: 7000, target: 7000, status: "hit" });
     // Mid-week: an average can still fall, so it stays open even above the target
     expect(run(g, steps, "2026-11-02").current).toMatchObject({ value: 8000, status: "open" });
-    // A partial week doesn't change a per-day average target
-    expect(run({ ...g, start: "2026-11-05" }, steps, "2026-11-08").periods[0]).toMatchObject({ value: 6000, target: 7000, status: "missed" });
+    // A partial week doesn't change a per-day average target (Nov 4–7: 8,000 × 3 + 2,000 over 4 days)
+    expect(run({ ...g, start: "2026-11-04" }, steps, "2026-11-08").periods[0]).toMatchObject({ value: 6500, target: 7000, status: "missed" });
     // No steps at all: unknown, and missed once it's over
     expect(run(g, [], "2026-11-08").periods[0]).toMatchObject({ value: null, status: "missed" });
   });
@@ -152,15 +185,15 @@ describe("activity goals", () => {
   it("workouts counted and active minutes totalled, a partial period asking for its share", () => {
     const facts = days("2026-11-05", "2026-11-14", (_, i) => ({ workouts: i % 2, activeMinutes: (i % 2) * 30 }));
     const w = run({ type: "workouts", target: 3, start: "2026-11-05", end: "2026-11-14" }, facts, "2026-11-15");
-    // Nov 5–7: 3 × 3/7 → 2; Nov 8–14: 3
+    // Nov 5–7 (3 days, not judged): 3 × 3/7 = 1.29 → 1; Nov 8–14: 3
     expect(w.periods.map((x) => [x.value, x.target, x.status])).toEqual([
-      [1, 2, "missed"],
+      [1, 1, "unjudged"],
       [4, 3, "hit"],
     ]);
     const m = run({ type: "active_minutes", target: 150, start: "2026-11-05", end: "2026-11-14" }, facts, "2026-11-15");
-    // 150 × 3/7 = 64.3 → 65
+    // 150 × 3/7 = 64.3 → 64
     expect(m.periods.map((x) => [x.value, x.target])).toEqual([
-      [30, 65],
+      [30, 64],
       [120, 150],
     ]);
   });
@@ -208,7 +241,7 @@ describe("weight by a date", () => {
 
 describe("goal state", () => {
   it("a goal that hasn't started yet is upcoming, with no periods", () => {
-    expect(run({ start: "2026-11-22", end: "2026-12-05" }, [], "2026-11-18")).toEqual({ state: "upcoming", periods: [], current: null, hit: 0, done: 0, of: 2, startKg: null, asOf: "2026-11-18" });
+    expect(run({ start: "2026-11-22", end: "2026-12-05" }, [], "2026-11-18")).toEqual({ state: "upcoming", periods: [], current: null, hit: 0, done: 0, of: 2, needed: 2, startKg: null, asOf: "2026-11-18" });
   });
 
   it("an ongoing goal stays active, counting the weeks so far", () => {
@@ -221,5 +254,29 @@ describe("goal state", () => {
   it("asOf is the last day counted: today, or the end once it has passed", () => {
     expect(run({}, [], "2026-11-10").asOf).toBe("2026-11-10");
     expect(run({}, [], "2026-12-10").asOf).toBe("2026-11-14");
+  });
+});
+
+describe("ended early (End now, or replaced)", () => {
+  const ended = (g: Partial<GoalSpec>, facts: DayFacts[], today: string) => progressOf({ ...goal(g), endedEarly: true }, { days: facts, trend: [], today, weekStart: SUN });
+
+  it("a whole-stretch goal ended early isn't judged: Ended, never completed", () => {
+    const facts = days("2026-11-18", "2026-11-18", () => ({ logged: true }));
+    const p = ended({ type: "logging_days", target: 20, period: "stretch", start: "2026-11-18", end: "2026-11-18" }, facts, "2026-11-19");
+    expect(p).toMatchObject({ state: "ended", hit: 0, done: 0, of: 0, periods: [{ value: 1, status: "unjudged" }] });
+    expect(ended({ type: "weight_by_date", target: 80, period: "stretch", start: "2026-11-01", end: "2026-11-18" }, [], "2026-11-19").state).toBe("ended");
+  });
+
+  it("a weekly goal ended on its first day has nothing to judge: Ended", () => {
+    const facts = days("2026-11-18", "2026-11-18", () => ({ logged: true }));
+    expect(ended({ target: 1, start: "2026-11-18", end: "2026-11-18" }, facts, "2026-11-19")).toMatchObject({ state: "ended", of: 0 });
+  });
+
+  it("a weekly goal ended later is judged on the weeks that went by (a last week of 4+ days included)", () => {
+    const facts = days("2026-11-01", "2026-11-11", () => ({ logged: true }));
+    // Nov 1–7 hit; Nov 8–11 (4 days, share of 5 = 2.86 → 3): hit
+    expect(ended({ target: 5, start: "2026-11-01", end: "2026-11-11" }, facts, "2026-11-12")).toMatchObject({ state: "completed", hit: 2, of: 2, needed: 2 });
+    // Ended on Tue Nov 10: the 3-day last week isn't judged
+    expect(ended({ target: 5, start: "2026-11-01", end: "2026-11-10" }, facts, "2026-11-12")).toMatchObject({ state: "completed", hit: 1, of: 1 });
   });
 });

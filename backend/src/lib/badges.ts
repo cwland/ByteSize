@@ -1,6 +1,7 @@
 // Badges (pure): which badges a person's history earns, and on which day each was first earned.
 // Stored on first earn and never removed (routes/trends.ts); this only works out what the history shows.
-// "goal_met" (§40c) is stored by routes/goals.ts when a goal ends completed.
+// "goal_met" (§40c) is stored by routes/goals.ts each time a goal ends completed (its day: the latest; seen again: false),
+// and carries how many goals were met.
 
 import { addDays, daysBetween } from "./days.js";
 import { KG_PER_LB, trendOf, type WeighInPoint } from "./weight.js";
@@ -74,13 +75,14 @@ export function earnedBadges(h: BadgeHistory): Map<string, string> {
   return earned;
 }
 
-export type Badge = { id: string; earnedOn: string | null; seen: boolean };
+/** count: Goal met only — how many goals were completed (earnedOn is the latest one's day) */
+export type Badge = { id: string; earnedOn: string | null; seen: boolean; count?: number };
 
 /**
  * The badge list: every fixed badge, each earned lost_N plus the next one still to earn, in a fixed order.
  * Unearned ones have earnedOn null.
  */
-export function badgeList(stored: { badge: string; earnedOn: string; seen: boolean }[]): Badge[] {
+export function badgeList(stored: { badge: string; earnedOn: string; seen: boolean }[], goalsMet = 0): Badge[] {
   const byId = new Map(stored.map((s) => [s.badge, s]));
   const item = (id: string): Badge => {
     const s = byId.get(id);
@@ -92,5 +94,5 @@ export function badgeList(stored: { badge: string; earnedOn: string; seen: boole
     lost.push(id);
     if (!byId.has(id)) break;
   }
-  return [item("first_weigh_in"), ...lost.map(item), item("halfway"), item("goal_reached"), ...STREAKS.map((n) => item(`streak_${n}`)), item("shots_on_time_4"), item("goal_met")];
+  return [item("first_weigh_in"), ...lost.map(item), item("halfway"), item("goal_reached"), ...STREAKS.map((n) => item(`streak_${n}`)), item("shots_on_time_4"), { ...item("goal_met"), count: goalsMet }];
 }

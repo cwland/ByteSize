@@ -38,7 +38,7 @@ const ALL_UNEARNED = [
   { id: "streak_30", earnedOn: null, seen: false },
   { id: "streak_100", earnedOn: null, seen: false },
   { id: "shots_on_time_4", earnedOn: null, seen: false },
-  { id: "goal_met", earnedOn: null, seen: false }, // §40c: a goal completed
+  { id: "goal_met", earnedOn: null, seen: false, count: 0 }, // §40c: goals completed
 ];
 
 describe("badges", () => {

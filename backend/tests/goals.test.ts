@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
-import { badges, dashboardLayouts, goals } from "../src/db/schema.js";
+import { badges, dashboardLayouts, goals, targets } from "../src/db/schema.js";
 
 // §40c: goals with a start and end — progress from the person's own data, frozen once the end has passed.
 let t: TestApp;
@@ -65,6 +65,14 @@ describe("making a goal", () => {
     }
     const s = await create({ type: "streak", target: 7, period: "week", end: "2026-12-31" });
     expect([s.status, s.body.error]).toEqual([400, "A Streak goal runs over the whole stretch"]);
+  });
+
+  it("an each-week or each-month goal with an end must hold a period it can be judged on (4 days of a week, 15 of a month)", async () => {
+    const w = await create({ type: "workouts", target: 3, period: "week", end: "2026-11-20" }); // Wed–Fri
+    expect([w.status, w.body.error]).toEqual([400, "Choose dates with at least 4 days in one week"]);
+    const m = await create({ type: "workouts", target: 3, period: "month", end: "2026-11-30" }); // 13 days
+    expect([m.status, m.body.error]).toEqual([400, "Choose dates with at least 15 days in one month"]);
+    expect((await create({ type: "workouts", target: 3, period: "week", end: "2026-11-21" })).status).toBe(200);
   });
 
   it("checks the target for the type and period, and the dates", async () => {
@@ -167,6 +175,27 @@ describe("progress from the data", () => {
     await create({ type: "steps", measure: "average", target: 9000, period: "week" });
     expect((await t.api("GET", `/api/activity/${TODAY}`)).body.stepGoal).toBe(9000);
     expect((await t.api("GET", "/api/activity/2026-11-17")).body.stepGoal).toBeNull(); // before it started
+    // Replaced the same day: the new target at once (the old one ended today)
+    await create({ type: "steps", measure: "average", target: 10000, period: "week" });
+    expect((await t.api("GET", `/api/activity/${TODAY}`)).body.stepGoal).toBe(10000);
+  });
+
+  it("Water, Protein and Fiber days need something logged, even with a minimum of 0", async () => {
+    const me = (await t.api("GET", "/api/auth/me")).body;
+    const userId = me.id ?? me.user?.id;
+    await t.db.insert(targets).values({ userId, effectiveFrom: "2026-11-01", caloriesMin: 1500, caloriesMax: 2000, proteinMin: 0, proteinMax: 100, fiberMin: 0, fiberMax: 30, waterMin: 0, waterMax: 3000 });
+    await eat("2026-11-16", { calories: 500 });
+    await t.api("POST", "/api/log", { day: "2026-11-17", meal: "supplements", water_ml: 250 });
+    const value = async (type: string) => (await create({ type, target: 5, period: "week", start: "2026-11-15", end: "2026-11-21" })).body.goal.progress.current.value;
+    expect([await value("protein_days"), await value("fiber_days"), await value("water_days")]).toEqual([1, 1, 1]);
+  });
+
+  it("an upcoming goal's weeks follow the person's week start", async () => {
+    const me = (await t.api("GET", "/api/settings/me")).body;
+    expect((await t.api("PUT", "/api/settings/me", { mealWindows: me.mealWindows, waterButtonsMl: me.waterButtonsMl, weekStart: 1 })).status).toBe(200);
+    // Sun Dec 6 – Wed Dec 16 with Monday weeks: Dec 6 (1 day) and Dec 14–16 (3 days) aren't judged; Dec 7–13 is
+    const g = (await create({ type: "workouts", target: 3, period: "week", start: "2026-12-06", end: "2026-12-16" })).body.goal;
+    expect(g.progress).toMatchObject({ state: "upcoming", of: 1, needed: 1 });
   });
 });
 
@@ -249,12 +278,54 @@ describe("freezing", () => {
   it("completing a goal earns the Goal met badge (on its end day), once", async () => {
     for (const d of ["2026-11-18", "2026-11-19"]) await eat(d, { calories: 100 });
     await create({ type: "logging_days", target: 2, period: "stretch", end: "2026-11-19" });
-    expect((await t.api("GET", "/api/badges")).body.badges.find((b: any) => b.id === "goal_met")).toEqual({ id: "goal_met", earnedOn: null, seen: false });
+    expect((await t.api("GET", "/api/badges")).body.badges.find((b: any) => b.id === "goal_met")).toEqual({ id: "goal_met", earnedOn: null, seen: false, count: 0 });
     at("2026-11-25");
     const b = (await t.api("GET", "/api/badges")).body;
-    expect(b.badges.find((x: any) => x.id === "goal_met")).toEqual({ id: "goal_met", earnedOn: "2026-11-19", seen: false });
+    expect(b.badges.find((x: any) => x.id === "goal_met")).toEqual({ id: "goal_met", earnedOn: "2026-11-19", seen: false, count: 1 });
     expect(b.new).toContain("goal_met");
     expect((await t.db.select().from(badges)).filter((x) => x.badge === "goal_met")).toHaveLength(1);
+  });
+
+  it("Goal met counts every completed goal: the latest one's day, and new again for each", async () => {
+    for (const d of ["2026-11-18", "2026-11-19", "2026-11-20"]) await eat(d, { calories: 100 });
+    await create({ type: "logging_days", target: 1, period: "stretch", end: "2026-11-18" });
+    at("2026-11-19");
+    let met = (await t.api("GET", "/api/badges")).body.badges.find((b: any) => b.id === "goal_met");
+    expect(met).toEqual({ id: "goal_met", earnedOn: "2026-11-18", seen: false, count: 1 });
+    await t.api("POST", "/api/badges/seen", { ids: ["goal_met"] });
+    await create({ type: "weigh_ins", target: 1, period: "stretch", end: "2026-11-20" });
+    at("2026-11-20");
+    expect((await t.api("PUT", "/api/weigh-ins/2026-11-20", { weightKg: 90 })).status).toBe(200);
+    at("2026-11-21");
+    const b = (await t.api("GET", "/api/badges")).body;
+    met = b.badges.find((x: any) => x.id === "goal_met");
+    expect(met).toEqual({ id: "goal_met", earnedOn: "2026-11-20", seen: false, count: 2 });
+    expect(b.new).toContain("goal_met");
+  });
+
+  it("ending early: a stretch isn't judged (Ended, no badge); a week goal is judged on the weeks that went by", async () => {
+    await eat(TODAY, { calories: 100 });
+    const stretch = (await create({ type: "logging_days", target: 1, period: "stretch", end: "2026-12-31" })).body.goal;
+    const week = (await create({ type: "weigh_ins", target: 1, period: "week", start: "2026-11-15", end: null })).body.goal;
+    await t.api("PUT", `/api/weigh-ins/${TODAY}`, { weightKg: 90 });
+    await t.api("POST", `/api/goals/${stretch.id}/end`);
+    await t.api("POST", `/api/goals/${week.id}/end`);
+    at("2026-11-19");
+    const past = (await list()).past;
+    expect(past.find((g) => g.id === stretch.id).progress).toMatchObject({ state: "ended", of: 0 });
+    // Nov 15–18: 4 days, judged
+    expect(past.find((g) => g.id === week.id).progress).toMatchObject({ state: "completed", hit: 1, of: 1 });
+    expect((await t.api("GET", "/api/badges")).body.badges.find((b: any) => b.id === "goal_met").count).toBe(1);
+  });
+
+  it("ending a weekly goal on its first day earns nothing", async () => {
+    await eat("2026-11-21", { calories: 100 });
+    at("2026-11-21"); // a Saturday
+    const g = (await create({ type: "logging_days", target: 1, period: "week", end: null })).body.goal;
+    await t.api("POST", `/api/goals/${g.id}/end`);
+    at("2026-11-22");
+    expect((await list()).past[0].progress).toMatchObject({ state: "ended", hit: 0, of: 0 });
+    expect((await t.db.select().from(badges)).filter((x) => x.badge === "goal_met")).toEqual([]);
   });
 
   it("a missed goal earns no badge", async () => {

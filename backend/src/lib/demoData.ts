@@ -320,9 +320,10 @@ export function planDemoGoals(plan: DemoPlan, weekStart: number): DemoGoal[] {
 
 export const USAGE =
   "Usage: npm run seed-demo -- [--user <username>] [--days <7-365>] [--replace]\n" +
-  "Fills an existing account (default: the first admin) with a few months of food, weight, water and GLP-1 tracking. It never creates accounts.\n" +
+  "Fills an existing account (default: the first admin) with a few months of food, weight, water and GLP-1 tracking, steps and\n" +
+  "workouts, and a few goals (some active, some ended). It never creates accounts.\n" +
   `Default --days ${DEFAULT_DAYS}. An account that already has tracking is left alone unless you add --replace, which deletes\n` +
-  "that account's entries, weigh-ins, water, shots and the foods this command made earlier, then fills it again.";
+  "that account's entries, weigh-ins, water, shots, steps, workouts, goals and the foods this command made earlier, then fills it again.";
 
 export type SeedArgs = { username?: string; days: number; replace: boolean };
 

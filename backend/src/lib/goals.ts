@@ -54,14 +54,15 @@ export const isDayCount = (t: GoalType): t is keyof typeof DAY_KIND => t in DAY_
 /** Goals over the whole stretch only (a streak within it; the trend by its end date) */
 export const STRETCH_ONLY: readonly GoalType[] = ["streak", "weight_by_date"];
 
-export type GoalSpec = { type: GoalType; target: number; period: GoalPeriod; measure: StepMeasure | null; start: string; end: string | null };
+/** endedEarly: ended by End now or by a new goal of its type (its end is then that day) */
+export type GoalSpec = { type: GoalType; target: number; period: GoalPeriod; measure: StepMeasure | null; start: string; end: string | null; endedEarly?: boolean };
 
 /** What one day held, as goals count it */
 export type DayFacts = {
   day: string;
   /** food logged (water doesn't count) */
   logged: boolean;
-  /** protein / fiber / water at or above the day's minimum (the targets in force that day) */
+  /** protein / fiber / water at or above the day's minimum (the targets in force that day), with something logged */
   protein: boolean;
   fiber: boolean;
   water: boolean;
@@ -78,20 +79,24 @@ export type DayFacts = {
 export const emptyDay = (day: string): DayFacts => ({ day, logged: false, protein: false, fiber: false, water: false, calories: false, weighed: false, steps: null, workouts: 0, activeMinutes: 0, vacation: false });
 
 export type Period = { start: string; end: string; /** days in the whole calendar period (a week 7, a month 28–31, the stretch its own) */ length: number };
-export type PeriodStatus = "hit" | "missed" | "open";
+/** unjudged: shown, never hit or missed — a partial week under 4 days (month: 15), or the stretch of a goal ended early */
+export type PeriodStatus = "hit" | "missed" | "open" | "unjudged";
 export type PeriodProgress = { start: string; end: string; value: number | null; target: number; status: PeriodStatus };
-export type GoalState = "upcoming" | "active" | "completed" | "missed";
+/** ended: ended early with no period to judge (neither completed nor missed) */
+export type GoalState = "upcoming" | "active" | "completed" | "missed" | "ended";
 export type GoalProgress = {
   state: GoalState;
   /** the periods that have started, oldest first */
   periods: PeriodProgress[];
   /** the period holding today; null before the start and after the end */
   current: PeriodProgress | null;
-  /** periods hit, and periods decided (hit or missed) */
+  /** judged periods hit, and judged periods decided (hit or missed) */
   hit: number;
   done: number;
-  /** every period of the goal (null: ongoing) */
+  /** every judged period of the goal (null: ongoing) */
   of: number | null;
+  /** how many of them must be hit to complete it: 80% rounded up for each week / each month, the one for a stretch (null: ongoing) */
+  needed: number | null;
   /** weight by a date: the trend at the start (null for other goals, or no weigh-in yet) */
   startKg: number | null;
   /** the last day counted: today, or the end once it has passed */
@@ -120,12 +125,25 @@ export function periodsOf(g: Pick<GoalSpec, "period" | "start" | "end">, weekSta
 
 const EPS = 1e-9;
 const span = (p: { start: string; end: string }) => daysBetween(p.start, p.end) + 1;
+/** A partial week counts with at least 4 of its days, a partial month with at least 15 */
+export const MIN_JUDGED_DAYS: Record<GoalPeriod, number> = { week: 4, month: 15, stretch: 1 };
+/** Each week / each month: the share of judged periods to hit (rounded up) */
+export const NEEDED_SHARE = 0.8;
 
-/** A period's target: a per-day average or a weight as set; a count or total its share for a partial period (rounded up), a day count never more than its days. */
+/** Whether a period is judged (hit or missed): a whole one, or a partial one long enough; never the stretch of a goal ended early */
+function judged(g: GoalSpec, p: Period): boolean {
+  if (g.period === "stretch") return !g.endedEarly;
+  return span(p) === p.length || span(p) >= MIN_JUDGED_DAYS[g.period];
+}
+
+/** How many judged periods must be hit */
+export const neededOf = (period: GoalPeriod, of: number) => (period === "stretch" ? of : Math.min(of, Math.ceil(NEEDED_SHARE * of - EPS)));
+
+/** A period's target: a per-day average or a weight as set; a count or total its share for a partial period (rounded, at least 1), a day count never more than its days. */
 function targetFor(g: GoalSpec, p: Period): number {
   if (g.type === "weight_by_date" || g.type === "streak" || (g.type === "steps" && g.measure === "average")) return g.target;
   const days = span(p);
-  const share = Math.ceil((g.target * days) / p.length - EPS);
+  const share = days === p.length ? g.target : Math.max(1, Math.round((g.target * days) / p.length));
   return isDayCount(g.type) ? Math.min(share, days) : share;
 }
 
@@ -171,17 +189,19 @@ function valueOf(g: GoalSpec, facts: DayFacts[], trend: readonly TrendPoint[], a
 const growsOnly = (g: GoalSpec) => g.type !== "weight_by_date" && !(g.type === "steps" && g.measure === "average");
 
 /**
- * The goal's progress as of `today`: each period that has started (value, target, hit / missed / open), how many
- * were hit, and the goal's state. Completed: its end has passed and every period was hit (weight by a date: the
- * trend on the end date at or under the target).
+ * The goal's progress as of `today`: each period that has started (value, target, hit / missed / open / unjudged), how
+ * many were hit, and the goal's state. Completed: its end has passed and at least 80% (rounded up) of its judged weeks
+ * or months were hit; a stretch, its one period (weight by a date: the trend on the end date at or under the target).
+ * Partial weeks under 4 days (months under 15) are shown but not judged; a stretch ended early isn't judged.
  */
 export function progressOf(g: GoalSpec, input: { days: readonly DayFacts[]; trend: readonly TrendPoint[]; today: string; weekStart: number }): GoalProgress {
   const { today, weekStart, trend } = input;
   const over = g.end !== null && g.end < today;
   const asOf = over ? g.end! : today;
-  const of = g.end === null ? null : periodsOf(g, weekStart, g.end).length;
+  const of = g.end === null ? null : periodsOf(g, weekStart, g.end).filter((p) => judged(g, p)).length;
+  const needed = of === null ? null : neededOf(g.period, of);
   const startKg = g.type === "weight_by_date" ? (trendOn(trend, g.start) ?? trend.find((p) => p.day >= g.start && p.day <= asOf)?.trendKg ?? null) : null;
-  if (today < g.start) return { state: "upcoming", periods: [], current: null, hit: 0, done: 0, of, startKg, asOf: today };
+  if (today < g.start) return { state: "upcoming", periods: [], current: null, hit: 0, done: 0, of, needed, startKg, asOf: today };
 
   const byDay = new Map(input.days.map((f) => [f.day, f]));
   const periods = periodsOf(g, weekStart, asOf).map((p): PeriodProgress => {
@@ -192,12 +212,13 @@ export function progressOf(g: GoalSpec, input: { days: readonly DayFacts[]; tren
     const target = targetFor(g, p);
     const closed = p.end < today;
     const reached = value !== null && (g.type === "weight_by_date" ? value <= target + EPS : value >= target - EPS);
-    const status: PeriodStatus = reached && (closed || growsOnly(g)) ? "hit" : closed ? "missed" : "open";
+    const status: PeriodStatus = !judged(g, p) ? "unjudged" : reached && (closed || growsOnly(g)) ? "hit" : closed ? "missed" : "open";
     return { start: p.start, end: p.end, value, target, status };
   });
   const hit = periods.filter((p) => p.status === "hit").length;
-  const done = periods.filter((p) => p.status !== "open").length;
+  const done = periods.filter((p) => p.status === "hit" || p.status === "missed").length;
   const current = over ? null : (periods.find((p) => p.start <= today && today <= p.end) ?? null);
-  const state: GoalState = over ? (hit === of ? "completed" : "missed") : "active";
-  return { state, periods, current, hit, done, of, startKg, asOf };
+  // Over: completed when enough judged periods were hit; with none to judge (ended early) just "ended"
+  const state: GoalState = !over ? "active" : !of ? "ended" : hit >= needed! ? "completed" : "missed";
+  return { state, periods, current, hit, done, of, needed, startKg, asOf };
 }

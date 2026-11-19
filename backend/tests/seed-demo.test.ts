@@ -190,6 +190,8 @@ describe("parseSeedArgs", () => {
       message = (e as Error).message;
     }
     expect(message).toBe(USAGE);
+    // It says what --replace deletes, the newer kinds (§40b, §40c) included
+    expect(USAGE).toContain("steps, workouts, goals");
     expect(message).not.toContain("secret-value-1");
   });
 });
