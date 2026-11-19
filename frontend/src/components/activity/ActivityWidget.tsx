@@ -29,16 +29,17 @@ export const WORKOUT_TYPES: { id: WorkoutType; name: string; Icon: LucideIcon }[
 ];
 const typeOf = (id: string) => WORKOUT_TYPES.find((t) => t.id === id) ?? WORKOUT_TYPES[WORKOUT_TYPES.length - 1];
 
-// The day's activity: from the day the Dashboard loaded, else (Goals) loaded here and again when anything changes
-function useActivity(day: string, data: Day | null) {
+// The day's activity: from the day the Dashboard loaded (waiting for it while it loads), else (Goals) loaded here
+// and again when anything changes
+function useActivity(day: string, data: Day | null, loadsDay: boolean) {
   const [own, setOwn] = useState<DayActivity | null>(null);
   const fromDay = data?.activity ?? null;
   const load = useCallback(() => {
-    if (fromDay) return;
+    if (fromDay || loadsDay) return;
     api<DayActivity>("GET", `/api/activity/${day}`)
       .then(setOwn)
       .catch(() => setOwn(null));
-  }, [day, fromDay]);
+  }, [day, fromDay, loadsDay]);
   useEffect(() => {
     load();
     return onDayChanged(load);
@@ -48,9 +49,9 @@ function useActivity(day: string, data: Day | null) {
 
 type Editing = { k: "steps" } | { k: "workout"; workout: Workout | null } | null;
 
-export default function ActivityWidget({ day, data }: { day: string; data: Day | null }) {
+export default function ActivityWidget({ day, data, loadsDay = false }: { day: string; data: Day | null; loadsDay?: boolean }) {
   const { user } = useSession();
-  const activity = useActivity(day, data);
+  const activity = useActivity(day, data, loadsDay);
   const [editing, setEditing] = useState<Editing>(null);
   const future = day > todayIn(user.timezone);
   if (!activity) return null;

@@ -30,7 +30,8 @@ import { planPickerHref } from "../../plans";
 
 // What every widget gets: the selected day (loaded once by the Dashboard; today on other pages, with no day data)
 // and the screen width
-export type WidgetProps = { day: string; data: Day | null; isToday: boolean; wide: boolean };
+// loadsDay: the page loads the day itself (the Dashboard), so data is coming: widgets wait for it instead of fetching
+export type WidgetProps = { day: string; data: Day | null; isToday: boolean; wide: boolean; loadsDay?: boolean };
 export type WidgetDef = {
   id: string;
   pages: Partial<Record<LayoutPage, number | null>>;
@@ -46,6 +47,9 @@ function Budget({ data, isToday }: WidgetProps) {
   const { user } = useSession();
   const t = data?.targets ?? null;
   const food = data?.totals.calories ?? 0;
+  // §40b: what the weekly bank paid today (treats and a covered overage)
+  const paid = data?.workoutCalories?.mode === "bank" ? data.workoutCalories.bank?.thisDay : undefined;
+  const bankPaid = paid ? paid.treatSpent + paid.covered : 0;
   const water = (ml: number) => waterValue(ml, user.units);
   return (
     <section aria-label="Budget" className="rounded-2xl bg-container p-5">
@@ -58,7 +62,7 @@ function Budget({ data, isToday }: WidgetProps) {
             </p>
             <p className="text-xs text-muted">Food</p>
           </div>
-          <Gauge food={food} min={t.calories.min} max={t.calories.max} />
+          <Gauge food={food} min={t.calories.min} max={t.calories.max} bankPaid={bankPaid} />
           <div className="text-center">
             <p data-testid="exercise-calories" className="text-xl font-bold tabular">
               {fmt(data?.exercise.calories ?? 0)}
@@ -188,7 +192,6 @@ export const WIDGETS: WidgetDef[] = [
   { id: "food", pages: { dashboard: 0 }, fits: "narrow", title: "Food", description: "The day's meals: add, edit, move and copy food", Component: (p) => <FoodWidget day={p.day} data={p.data} isToday={p.isToday} /> },
   { id: "budget", pages: { dashboard: 1 }, fits: "narrow", title: "Budget", description: "Calories left in your range, with protein, fiber and water rings", Component: Budget },
   { id: "water", pages: { dashboard: 1 }, fits: "narrow", title: "Water", description: "Add a glass of water in one tap", Component: Water },
-  { id: "activity", pages: { dashboard: null, goals: null }, fits: "narrow", title: "Activity", description: "Steps and workouts for the day: add, edit and delete them", Component: ({ day, data }) => <ActivityWidget day={day} data={data} /> },
   { id: "day-totals", pages: { dashboard: 2 }, fits: "narrow", title: "Day totals", description: "Calories, protein, carbs, fat and more against your targets", Component: ({ data, isToday }) => <DayTotalsWidget data={data} isToday={isToday} /> },
   { id: "weight", pages: { dashboard: 2 }, fits: "narrow", title: "Weight", description: "Your latest weigh-in and how it's trending", Component: ({ wide }) => <WeightCard trend={wide} /> },
   { id: "next-shot", pages: { dashboard: 2 }, fits: "narrow", title: "Next shot", description: "When your next GLP-1 shot is due", onlyWhen: "Shows when GLP-1 is on", Component: () => <Glp1Card /> },
@@ -197,6 +200,8 @@ export const WIDGETS: WidgetDef[] = [
   { id: "your-plan", pages: { goals: 0 }, fits: "narrow", title: "Your plan", description: "Today's plan and targets: change plan, edit targets, edit my details", Component: () => <YourPlan /> },
   { id: "goal-date", pages: { goals: 0, dashboard: null }, fits: "narrow", title: "Goal date", description: "When you'll reach your goal weight at your current pace", Component: () => <GoalDateWidget /> },
   { id: "weight-chart", pages: { goals: 1 }, fits: "wide", title: "Weight", description: "Your weight chart with start, now and goal, and your weigh-ins", Component: () => <GoalsWeight /> },
+  // §40b: under Water on the Dashboard, under Weight on Goals (placed here so it sits between Weight and Weekly trends)
+  { id: "activity", pages: { dashboard: 1, goals: 1 }, fits: "narrow", title: "Activity", description: "Steps and workouts for the day: add, edit and delete them", Component: ({ day, data, loadsDay }) => <ActivityWidget day={day} data={data} loadsDay={loadsDay} /> },
   { id: "weekly-trends", pages: { goals: 1 }, fits: "wide", title: "Weekly trends", description: "Each week's averages against your targets", Component: () => <WeeklyTrends /> },
   { id: "badges", pages: { goals: 0 }, fits: "narrow", title: "Badges", description: "Badges you've earned and the ones still to get", Component: () => <Badges /> },
 ];

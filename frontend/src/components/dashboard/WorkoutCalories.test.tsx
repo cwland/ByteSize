@@ -67,6 +67,26 @@ describe("workout calories on the Budget and Day totals", () => {
     expect(screen.getByText("Over by 250 — covered by your bank")).toBeInTheDocument();
   });
 
+  it("the gauge shows a day the bank fully covered as covered, not over", () => {
+    show("budget", { ...bankDay({ thisDay: { overBy: 250, covered: 250, treatSpent: 0 } }), totals: { calories: 2360, unknownCount: {} } } as unknown as Day);
+    const centre = screen.getByTestId("gauge-centre");
+    expect(centre).toHaveAttribute("data-state", "covered");
+    expect(centre).toHaveTextContent("250");
+    expect(centre).toHaveTextContent("covered by bank");
+  });
+
+  it("the gauge counts what the bank still didn't pay as over; a treat paid from the bank isn't counted against the range", () => {
+    show("budget", { ...bankDay({ thisDay: { overBy: 250, covered: 100, treatSpent: 0 } }), totals: { calories: 2360, unknownCount: {} } } as unknown as Day);
+    expect(screen.getByTestId("gauge-centre")).toHaveAttribute("data-state", "over");
+    expect(screen.getByTestId("gauge-centre")).toHaveTextContent("150");
+  });
+
+  it("a treat paid from the bank leaves the rest of the range as it was", () => {
+    show("budget", { ...bankDay({ thisDay: { overBy: 0, covered: 0, treatSpent: 300 } }), totals: { calories: 1900, unknownCount: {} } } as unknown as Day);
+    expect(screen.getByTestId("gauge-centre")).toHaveAttribute("data-state", "left");
+    expect(screen.getByTestId("gauge-centre")).toHaveTextContent("510"); // 2,110 − (1,900 − 300)
+  });
+
   it("partly covered says how much the bank paid", () => {
     show("budget", bankDay({ thisDay: { overBy: 250, covered: 100, treatSpent: 0 } }));
     expect(screen.getByText("Over by 250 — your bank covered 100")).toBeInTheDocument();
@@ -83,8 +103,9 @@ describe("workout calories on the Budget and Day totals", () => {
     expect(within(totals).getByText("Earned today: 320")).toBeInTheDocument();
   });
 
-  it("Activity is offered on the Dashboard and Goals (Add widget), leaving Cory's default order as it is", () => {
-    expect(registryFor("dashboard").find((w) => w.id === "activity")?.column).toBeNull();
-    expect(registryFor("goals").find((w) => w.id === "activity")?.column).toBeNull();
+  it("Activity is in both default layouts: the Dashboard's middle column under Water, Goals' right column under Weight", () => {
+    const ids = (page: "dashboard" | "goals", col: number) => registryFor(page).filter((w) => w.column === col).map((w) => w.id);
+    expect(ids("dashboard", 1)).toEqual(["budget", "water", "activity"]);
+    expect(ids("goals", 1)).toEqual(["weight-chart", "activity", "weekly-trends"]);
   });
 });

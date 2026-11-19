@@ -120,7 +120,7 @@ function WeekTable({ weeks, units }: { weeks: WeekTrend[]; units: Units }) {
                   </td>
                 ))}
                 <td className={`${num} font-semibold`}>{weightChange(w.weightChangeKg, units)}</td>
-                <td className={`${num} pr-0 text-subtle`}>{w.daysLogged === 0 ? "Nothing logged" : `${w.daysLogged} ${w.daysLogged === 1 ? "day" : "days"}`}</td>
+                <td className={`${num} pr-0 text-subtle`}>{w.daysLogged === 0 ? "Nothing logged" : `${w.daysLogged} ${w.daysLogged === 1 ? "day" : "days"}${w.caloriesInRange !== undefined ? ` · ${w.caloriesInRange} in range` : ""}`}</td>
               </tr>
             );
           })}
