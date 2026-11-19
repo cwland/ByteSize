@@ -6,7 +6,7 @@ import type { Db } from "./db/index.js";
 import { apiKeys, users } from "./db/schema.js";
 import { HttpError } from "./lib/errors.js";
 import { hashApiKey, verifyToken } from "./lib/auth.js";
-import { BAD_KEY, DEFAULT_KEY_RATE_LIMIT, KEY_SHAPE, KEY_TOO_FAST, LAST_USED_EVERY_MS, isKeyLike, keyDenial, keyLimiter, sameHash, type KeyRateLimit } from "./lib/apiKeys.js";
+import { BAD_KEY, DEFAULT_KEY_RATE_LIMIT, KEY_SHAPE, KEY_TOO_FAST, LAST_USED_EVERY_MS, isKeyLike, keyDenial, keyLimiter, sameHash, wrongKeyLimiter, type KeyRateLimit } from "./lib/apiKeys.js";
 import apiKeyRoutes from "./routes/api-keys.js";
 import inviteRoutes from "./routes/invites.js";
 import { sessionForToken } from "./lib/sessions.js";
@@ -143,15 +143,23 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   // nowhere else. Wrong, deleted, malformed or the owner turned off: 401, all with the same message. The key
   // is never logged: only its first characters.
   const keyOverLimit = opts.keyRateLimit === false ? null : keyLimiter(opts.keyRateLimit ?? DEFAULT_KEY_RATE_LIMIT);
+  const wrongKeys = opts.rateLimit === false ? null : wrongKeyLimiter(opts.rateLimit ?? DEFAULT_RATE_LIMIT);
   async function keyCaller(req: FastifyRequest, key: string) {
-    if (!KEY_SHAPE.test(key)) throw new HttpError(401, BAD_KEY);
+    const at = app.now().getTime();
+    const wait = wrongKeys?.waitMs(req.ip, at) ?? 0;
+    if (wait > 0) throw new HttpError(429, `Too many tries. Wait ${Math.ceil(wait / 1000)} seconds and try again.`);
+    const wrong = () => {
+      wrongKeys?.failed(req.ip, at);
+      return new HttpError(401, BAD_KEY);
+    };
+    if (!KEY_SHAPE.test(key)) throw wrong();
     const hash = hashApiKey(key);
     const [row] = await opts.db
-      .select({ id: apiKeys.id, userId: apiKeys.userId, keyHash: apiKeys.keyHash, access: apiKeys.access, prefix: apiKeys.prefix, disabled: users.disabled })
+      .select({ id: apiKeys.id, userId: apiKeys.userId, keyHash: apiKeys.keyHash, access: apiKeys.access, prefix: apiKeys.prefix, lastUsedAt: apiKeys.lastUsedAt, disabled: users.disabled })
       .from(apiKeys)
       .innerJoin(users, eq(users.id, apiKeys.userId))
       .where(eq(apiKeys.keyHash, hash));
-    if (!row || !sameHash(row.keyHash, hash) || row.disabled) throw new HttpError(401, BAD_KEY);
+    if (!row || !sameHash(row.keyHash, hash) || row.disabled) throw wrong();
     // No such route (or only the web app's catch-all): the 404 handler answers, as nobody
     if (!req.routeOptions.url || req.routeOptions.url === "/*") return;
     const denial = keyDenial(row.access, req.method, req.routeOptions.url);
@@ -160,7 +168,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     if (keyOverLimit?.(row.keyHash, now.getTime())) throw new HttpError(429, KEY_TOO_FAST);
     req.auth = { userId: row.userId, sessionId: 0, isAdmin: false, keyId: row.id };
     req.log.debug({ apiKey: row.prefix, keyId: row.id, userId: row.userId }, "API key used");
-    // Last used: at most once a minute
+    // Last used: at most once a minute, and no write at all within the minute
+    if (row.lastUsedAt && now.getTime() - row.lastUsedAt.getTime() < LAST_USED_EVERY_MS) return;
     await opts.db
       .update(apiKeys)
       .set({ lastUsedAt: now })
