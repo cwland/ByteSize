@@ -143,6 +143,13 @@ describe("the weekly bank (pure)", () => {
     expect(w2.days[1]).toMatchObject({ treatSpent: 100, overBy: 200, covered: 0, balance: 0, status: "above" });
   });
 
+  it("a treat on a day that's otherwise in range keeps it in range (the minimum counts all the food)", () => {
+    const w = bankWeek([day("a", { earned: 1000, food: 0, logged: false }), day("b", { food: 1600, treat: 400, range: { min: 1400, max: 2000 } })]);
+    expect(w.days[1]).toMatchObject({ treatSpent: 400, status: "in" });
+    // below the minimum even with the treat: still below
+    expect(bankWeek([day("a", { earned: 1000, food: 1300, treat: 300 })]).days[0].status).toBe("below");
+  });
+
   it("days not on the weekly bank neither fill nor spend it (a mode change mid-week)", () => {
     const w = bankWeek([day("a", { earned: 1000, settings: show }), day("b", { earned: 400 }), day("c", { food: 2100, settings: add() })]);
     expect(w.days.map((d) => d.deposit)).toEqual([0, 200, 0]);

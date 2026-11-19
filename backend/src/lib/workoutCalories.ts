@@ -38,11 +38,15 @@ export function addedRange(range: Range | null, earned: number, s: WorkoutCalori
 
 export type CalorieStatus = "below" | "in" | "above" | null;
 
-/** A day's calories against its range; a day the bank covered is in range. Nothing logged or no range: not judged. */
-export function calorieStatus(food: number, range: Range | null, covered: boolean, logged: boolean): CalorieStatus {
+/**
+ * A day's calories against its range; a day the bank covered is in range. Nothing logged or no range: not judged.
+ * overMax: the food judged against the maximum (after a treat paid from the bank); the minimum always counts all of it,
+ * so a treat never makes a day "below".
+ */
+export function calorieStatus(food: number, range: Range | null, covered: boolean, logged: boolean, overMax = food): CalorieStatus {
   if (!logged || !range) return null;
   if (food < range.min) return "below";
-  if (food > range.max) return covered ? "in" : "above";
+  if (overMax > range.max) return covered ? "in" : "above";
   return "in";
 }
 
@@ -99,7 +103,7 @@ export function bankWeek(days: BankDay[]): { days: BankDayResult[]; balance: num
     const covered = Math.min(overBy, balance);
     balance -= covered;
     spent += treatSpent + covered;
-    return { day: d.day, mode: s.mode, settings: s, range, added, deposit, treatSpent, overBy, covered, balance, status: calorieStatus(food, range, overBy > 0 && covered === overBy, d.logged) };
+    return { day: d.day, mode: s.mode, settings: s, range, added, deposit, treatSpent, overBy, covered, balance, status: calorieStatus(d.food, range, overBy > 0 && covered === overBy, d.logged, food) };
   });
   return { days: out, balance, deposited, spent };
 }

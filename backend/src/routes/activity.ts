@@ -19,6 +19,7 @@ const FUTURE = "Choose today or an earlier day";
 const NOT_FOUND = "Workout not found";
 const NO_WEIGHT = "Add your weight first, then Estimate can work it out";
 const HEALTH_ID = "A workout from Health needs its externalId, so sending it again doesn't add it twice";
+const TYPED_ID = "Only workouts from Health carry an externalId";
 const MAX_RANGE_DAYS = 366;
 const STEPS = "Enter steps between 0 and 500,000";
 const MINUTES = "Enter minutes between 1 and 1,440";
@@ -130,11 +131,13 @@ export default async function activityRoutes(app: FastifyInstance) {
     return reply.status(204).send();
   });
 
-  // A workout; with externalId (required from Health) the same id again updates the one already there
+  // A workout; from Health its externalId (required, and only from Health) again updates the one already there
   app.post("/api/workouts", async (req) => {
     const userId = requireUser(req);
     const b = workoutBody.parse(req.body ?? {});
     if (b.source === "health" && !b.externalId) throw badRequest(HEALTH_ID);
+    // A typed workout is always its own row: it can never match (and re-source) a Health one
+    if (b.source === "manual" && b.externalId) throw badRequest(TYPED_ID);
     const day = b.day ?? (await todayFor(app, userId));
     await notFuture(userId, day);
     const now = app.now();

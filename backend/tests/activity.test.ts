@@ -125,6 +125,13 @@ describe("workouts", () => {
     expect((await activity()).workouts).toEqual([expect.objectContaining({ externalId: "HK-1", minutes: 42, calories: 362, source: "health" })]);
   });
 
+  it("a typed workout never matches or re-sources a Health one: externalId is for Health sends only", async () => {
+    const hk = (await workout({ source: "health", externalId: "HK-7", minutes: 40 })).body.workout;
+    const typed = await workout({ externalId: "HK-7", minutes: 5 });
+    expect([typed.status, typed.body.error]).toEqual([400, "Only workouts from Health carry an externalId"]);
+    expect((await activity()).workouts).toEqual([expect.objectContaining({ id: hk.id, source: "health", minutes: 40 })]);
+  });
+
   it("Estimate: MET × body weight × hours, from the person's weight; without one it says what to do", async () => {
     const none = await t.api("GET", "/api/workouts/estimate?type=walk&minutes=60");
     expect([none.status, none.body.error]).toEqual([409, "Add your weight first, then Estimate can work it out"]);
@@ -279,6 +286,17 @@ describe("workout calories in the plan", () => {
     await workout({ day: "2026-11-15", calories: 500 });
     await workout({ day: "2026-11-16", calories: 500 });
     expect((await dayView()).workoutCalories.bank).toMatchObject({ balance: 600, deposited: 600, weeklyCap: 600 });
+  });
+
+  it("weekly trends judge the average calories against the day ranges grown by workouts, so the mark agrees with 'N in range'", async () => {
+    await plan("2026-11-01");
+    await mode({ mode: "add", countPct: 100 }, "2026-11-15");
+    for (const d of ["2026-11-15", "2026-11-16", "2026-11-17"]) {
+      await workout({ day: d, calories: 500 });
+      await eat(d, 2300);
+    }
+    const [week] = (await t.api("GET", "/api/trends/weekly?weeks=1")).body.weeks;
+    expect(week).toMatchObject({ caloriesInRange: 3, avg: { calories: 2300 }, status: { calories: "in" } });
   });
 
   it("calorie days: each day's calories against its range, with bank-covered days in range (what streaks, badges and goals count)", async () => {
