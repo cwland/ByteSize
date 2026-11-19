@@ -59,7 +59,13 @@ public final class DashboardModel {
         editing = true
     }
 
-    public func move(from source: IndexSet, to destination: Int) { widgets.move(fromOffsets: source, toOffset: destination) }
+    /// Same meaning as SwiftUI's onMove: `destination` is the index before the move.
+    public func move(from source: IndexSet, to destination: Int) {
+        let moving = source.map { widgets[$0] }
+        let before = source.filter { $0 < destination }.count
+        for index in source.reversed() { widgets.remove(at: index) }
+        widgets.insert(contentsOf: moving, at: Swift.min(destination - before, widgets.count))
+    }
     public func remove(_ widget: DashboardWidget) { widgets.removeAll { $0 == widget } }
     public func add(_ widget: DashboardWidget) { if !widgets.contains(widget) { widgets.append(widget) } }
 
