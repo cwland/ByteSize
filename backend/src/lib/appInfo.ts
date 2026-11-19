@@ -60,6 +60,7 @@ async function mine(app: FastifyInstance, userId: number) {
     barcodesScanned: by.barcodes_scanned ?? 0,
     photosRead: by.photos_read ?? 0,
     aiEstimates: by.ai_estimates ?? 0,
+    aiInsights: by.ai_insights ?? 0, // §43: recaps, protein help and answers the AI wrote
     lookupsSaved: by.lookups_saved ?? 0,
     outsideLookups: outsideTotals(by),
   };

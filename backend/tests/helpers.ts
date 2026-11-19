@@ -134,9 +134,10 @@ export async function setupTestApp(
       mail.sent.push({ ...m, config });
     },
   });
-  // Files (uploads, backups) go to a temp folder, removed on close. The daily backup is off unless a test asks for it.
+  // Files (uploads, backups) go to a temp folder, removed on close. The daily backup and the weekly insights run are off
+  // unless a test asks for them.
   const dataDir = mkdtempSync(path.join(tmpdir(), "bytesize-test-"));
-  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, foodFetch, now: () => clock.date ?? new Date(), sleep, dataDir, backupSchedule: false, mailTransport, emailEnv: null, appOrigins: [], ...opts });
+  const app = buildApp({ db, jwtSecret: TEST_SECRET, rateLimit: false, aiFetch, foodFetch, now: () => clock.date ?? new Date(), sleep, dataDir, backupSchedule: false, insightsSchedule: false, mailTransport, emailEnv: null, appOrigins: [], ...opts });
   if (beforeReady) await beforeReady(app);
   await app.ready();
   let token = "";

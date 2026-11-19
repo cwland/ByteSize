@@ -97,7 +97,7 @@ async function seed() {
   const [corrected, loggedOnly, inRecipeOnly, unused] = await t.db.insert(foodCache).values([cached("corrected"), cached("logged"), cached("recipe"), cached("unused")]).returning();
   for (const [i, u] of [a, b].entries()) {
     await t.db.insert(userBody).values({ userId: u.id, sex: i ? "male" : "female", birthDate: "1985-03-0" + (i + 1), heightCm: 170.18 + i, weightKg: 81.123456789, goalWeightKg: 70, activity: "some", glp1: i === 0, targetsWeightKg: null });
-    await t.db.insert(userSettings).values({ userId: u.id, weekStart: 1, dateFormat: i ? "weekday-long-month-short" : "dmy-dot", waterButtonsMl: [250, 500], culuryUrl: i ? null : "http://culury.lan:4000", culuryKeyEnc: i ? null : encryptSecret("cul_key", TEST_SECRET) });
+    await t.db.insert(userSettings).values({ userId: u.id, weekStart: 1, dateFormat: i ? "weekday-long-month-short" : "dmy-dot", waterButtonsMl: [250, 500], culuryUrl: i ? null : "http://culury.lan:4000", culuryKeyEnc: i ? null : encryptSecret("cul_key", TEST_SECRET), insightsWeekly: i === 1 });
     await t.db.insert(targets).values({ userId: u.id, effectiveFrom: "2026-11-01", plan: "steady", caloriesMin: 1600, caloriesMax: 1800, proteinMin: 100.5, proteinMax: 140, fiberMin: 25, fiberMax: 38, waterMin: 2000, waterMax: 3000 });
     await t.db.insert(weighIns).values({ userId: u.id, day: "2026-11-10", weightKg: 82.4 + i / 10, note: i ? null : "after run, \"tired\"" });
     await t.db.insert(glp1Settings).values({ userId: u.id, medication: "semaglutide", doseMg: 0.25, injectionWeekday: 3 });
@@ -109,6 +109,11 @@ async function seed() {
     await t.db.insert(schema.activitySteps).values([{ userId: u.id, day: "2026-11-12", source: "manual", steps: 4000 + i }, { userId: u.id, day: "2026-11-12", source: "health", steps: 6100 }]);
     await t.db.insert(schema.workouts).values([{ userId: u.id, day: "2026-11-12", type: "run", minutes: 30, calories: 300, note: i ? null : "hills" }, { userId: u.id, day: "2026-11-13", type: "walk", minutes: 20, calories: null, source: "health", externalId: `HK-${i}` }]);
     await t.db.insert(schema.workoutCalorieModes).values({ userId: u.id, effectiveFrom: "2026-11-01", mode: i ? "bank" : "add", countPct: 75, weeklyCap: 1200 });
+    // §43: what the AI wrote (a weekly recap with the app's numbers, an answer to a question)
+    await t.db.insert(schema.insights).values([
+      { userId: u.id, kind: "recap", source: "weekly", periodStart: "2026-11-08", periodEnd: "2026-11-14", content: { summary: `Week ${i}`, wentWell: ["Logged"], slipped: [], tryNext: "Eggs", numbers: { daysLogged: 3 } } },
+      { userId: u.id, kind: "answer", source: "ask", periodStart: "2026-10-22", periodEnd: "2026-11-18", question: "How's my protein?", content: { answer: "Fine", offTopic: false } },
+    ]);
     await t.db.insert(usageCounts).values([{ userId: u.id, key: "barcodes_scanned", count: 3 + i }, { userId: u.id, key: "outside_off", count: 1 }]); // App info's numbers are the person's own data
     await t.db.insert(restaurantFavourites).values({ userId: u.id, cacheId: cache.id, chain: "Acme Diner" });
     await t.db.insert(dashboardLayouts).values({ userId: u.id, columns: i ? [["food"], [], ["budget"]] : [["budget", "water"], ["food"]] }); // the person's Dashboard
@@ -271,6 +276,7 @@ describe("backups", () => {
     await t.db.update(schema.activitySteps).set({ steps: 1 });
     await t.db.delete(schema.workoutCalorieModes);
     await t.db.update(logEntries).set({ treat: true });
+    await t.db.delete(schema.insights).where(eq(schema.insights.userId, a.id)); // §43
     await t.db.insert(logEntries).values({ userId: b.id, day: "2026-11-16", meal: "lunch", name: "New", icon: "🍎", source: "cache", unit: "g", quantity: 1, perServing: {}, servings: [], nutrients: {} });
     await t.db.update(appSettings).set({ value: { left: 3, day: "2026-11-17" } }).where(eq(appSettings.key, "restaurant_quota"));
     rmSync(path.join(uploadsDir(), photo.path));

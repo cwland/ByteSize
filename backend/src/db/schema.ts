@@ -226,6 +226,8 @@ export const userSettings = pgTable("user_settings", {
   culuryKeyEnc: text("culury_key_enc"), // encrypted
   // The person's Culury switch (Settings › Integrations); null = never switched: on when linked
   culuryEnabled: boolean("culury_enabled"),
+  // Insights' weekly recap (§43): the switch on the Insights page, on by default
+  insightsWeekly: boolean("insights_weekly").notNull().default(true),
 });
 
 // Daily targets. The targets in force on day D: the latest effective_from <= D (ties: highest id).
@@ -615,4 +617,26 @@ export const workoutCalorieModes = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("workout_calorie_modes_user_from_idx").on(t.userId, t.effectiveFrom)]
+);
+
+// ---- §43: Insights ----
+
+// What the AI wrote for a person (lib/insightsRun.ts): a weekly recap, protein help and food swaps, or an answer to a
+// question. source: weekly (the scheduled run, for a whole week that ended), refresh (on demand: a recap then covers
+// this week so far), ask (an answer), demo (seed-demo). content: the card as shown (a recap carries the app's own
+// numbers for its week). Their own data: backed up, in "Download my data", gone with the person.
+export const insights = pgTable(
+  "insights",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    kind: text("kind").$type<"recap" | "protein" | "answer">().notNull(),
+    source: text("source").$type<"weekly" | "refresh" | "ask" | "demo">().notNull(),
+    periodStart: date("period_start", { mode: "string" }).notNull(),
+    periodEnd: date("period_end", { mode: "string" }).notNull(),
+    question: text("question"), // answers: what was asked
+    content: jsonb("content").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("insights_user_kind_created_idx").on(t.userId, t.kind, t.createdAt)]
 );

@@ -141,6 +141,13 @@
       "when": 1795063959039,
       "tag": "0019_activity",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795071199745,
+      "tag": "0020_insights",
+      "breakpoints": true
     }
   ]
 }
