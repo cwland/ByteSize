@@ -83,6 +83,34 @@ describe("DayPicker (§39)", () => {
     expect(screen.getByRole("dialog", { name: "Choose a day" })).toBeInTheDocument();
   });
 
+  it("Escape closes it only from inside it: focus elsewhere on the page keeps it open (§46)", async () => {
+    show();
+    await open();
+    screen.getByRole("button", { name: "go 2026-10-05" }).focus();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: "Choose a day" })).toBeInTheDocument();
+    // back inside: Escape closes it and focus returns to the date
+    within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }).focus();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(trigger()).toHaveFocus();
+  });
+
+  it("an Escape something else already handled doesn't close it (§46)", async () => {
+    show();
+    await open();
+    const handled = (e: KeyboardEvent) => e.key === "Escape" && e.preventDefault();
+    document.addEventListener("keydown", handled, true);
+    try {
+      await userEvent.keyboard("{Escape}"); // focus is on a day in the calendar
+      expect(screen.getByRole("dialog", { name: "Choose a day" })).toBeInTheDocument();
+    } finally {
+      document.removeEventListener("keydown", handled, true);
+    }
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("puts a dot under the days the server says have food, and tells screen readers", async () => {
     const server = show({ logged: ["2026-11-03", "2026-11-17"] });
     const cal = await open();

@@ -146,6 +146,16 @@ describe("the remembered look after signing out (§46)", () => {
 });
 
 describe("tap the date for a calendar (§39)", () => {
+  it("the calendar is beside the page's <h1>, not inside it (§46)", async () => {
+    show();
+    const h1 = await screen.findByRole("heading", { level: 1, name: "Wednesday, Nov 18" });
+    await userEvent.click(screen.getByRole("button", { name: "Choose a day" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose a day" });
+    expect(h1.contains(dialog)).toBe(false);
+    expect(dialog.parentElement).toBe(h1.parentElement);
+    expect(within(h1).getByRole("button", { name: "Choose a day" })).toBeInTheDocument(); // the date itself stays the heading
+  });
+
   it("the centred date is a button that opens the calendar under it; choosing a day changes the day shown", async () => {
     show();
     expect(await screen.findByRole("heading", { level: 1, name: "Wednesday, Nov 18" })).toBeInTheDocument(); // still the heading
