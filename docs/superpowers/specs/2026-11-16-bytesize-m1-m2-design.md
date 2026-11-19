@@ -1456,3 +1456,15 @@ how the registry marks which pages a widget fits.
   shows, e.g. "Steady"; "Your own targets" when set by hand) with a small change icon button ("Change plan") that
   opens the plan picker (the same flow as Goals › Change plan); with no plan, "Pick a plan" opens it.
 - **No My foods button** on the food widget (My foods stays in the side menu / phone bar).
+
+## 42. My foods: a compact header with a real search (Cory, 2026-11-18)
+
+**Asked for.** "I don't like how this looks — clean it up and make it more compact … there needs to be a search."
+Cory picked option **B** of three mock-ups.
+- **Search on top**, full width: a search box with a magnifier icon, placeholder "Search my foods", and a clear (×)
+  button when there's text. It searches as you type (name, brand, notes as today).
+- **Under it, one row:** small type pills with counts — **All 42 · Foods 31 · Recipes 6 · Meals 5** — the same small
+  pill style as the food-search source pills (§22/§23), one chosen at a time; counts follow the search. On the right of
+  the same row, a compact **Sort: Recent ▾** dropdown (Recent, Most used, A–Z).
+- No full-width stretched segmented rows any more. The row wraps on narrow phones (pills first, sort under them,
+  right-aligned). Choices are remembered on this device as they are today.

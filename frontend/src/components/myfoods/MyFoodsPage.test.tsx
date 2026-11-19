@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import MyFoodsPage from "./MyFoodsPage";
 import { fakeServer } from "../../test/fakeServer";
@@ -19,10 +19,11 @@ function show(routes: Record<string, (b: any, path: string) => unknown> = {}) {
 
 afterEach(() => {
   window.location.hash = "";
+  localStorage.clear();
 });
 
 describe("My Foods", () => {
-  it("lists every kind with Recipe and Meal tags; chips, sort and search ask the server", async () => {
+  it("lists every kind with Recipe and Meal tags; one request serves the type pills, sort and search", async () => {
     const server = show();
     expect(screen.getByRole("heading", { level: 1, name: "My Foods" })).toBeInTheDocument();
     const list = await screen.findByRole("list", { name: "My foods" });
@@ -38,17 +39,64 @@ describe("My Foods", () => {
     expect(listPaths(server)).toEqual(["/api/my-foods?kind=all&sort=recent"]);
 
     const user = userEvent.setup();
-    expect(screen.getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getAllByRole("radio").map((r) => r.textContent)).toEqual(["All", "Foods", "Recipes", "Meals", "Recent", "Most used", "A–Z"]);
-    await user.click(screen.getByRole("radio", { name: "Recipes" }));
-    await waitFor(() => expect(listPaths(server).at(-1)).toBe("/api/my-foods?kind=recipes&sort=recent"));
-    await user.click(screen.getByRole("radio", { name: "Most used" }));
-    await waitFor(() => expect(listPaths(server).at(-1)).toBe("/api/my-foods?kind=recipes&sort=used"));
-    await user.click(screen.getByRole("radio", { name: "A–Z" }));
-    await waitFor(() => expect(listPaths(server).at(-1)).toBe("/api/my-foods?kind=recipes&sort=az"));
-    await user.click(screen.getByRole("radio", { name: "Meals" }));
+    // The type pills only filter what was fetched; they don't ask the server again
+    await user.click(screen.getByRole("button", { name: /^Recipes/ }));
+    expect(within(screen.getByRole("list", { name: "My foods" })).getAllByRole("listitem")).toHaveLength(1);
+    await user.selectOptions(screen.getByRole("combobox", { name: "Sort" }), "Most used");
+    await waitFor(() => expect(listPaths(server).at(-1)).toBe("/api/my-foods?kind=all&sort=used"));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Sort" }), "A–Z");
+    await waitFor(() => expect(listPaths(server).at(-1)).toBe("/api/my-foods?kind=all&sort=az"));
     await user.type(screen.getByRole("searchbox", { name: "Search my foods" }), "chi");
-    await waitFor(() => expect(listPaths(server).at(-1)).toBe("/api/my-foods?kind=meals&sort=az&q=chi"));
+    await waitFor(() => expect(listPaths(server).at(-1)).toBe("/api/my-foods?kind=all&sort=az&q=chi"));
+  });
+
+  it("the Sort dropdown offers Recent, Most used and A–Z", async () => {
+    show();
+    await screen.findByRole("list", { name: "My foods" });
+    const sort = screen.getByRole("combobox", { name: "Sort" });
+    expect(within(sort).getAllByRole("option").map((o) => o.textContent)).toEqual(["Recent", "Most used", "A–Z"]);
+    expect(sort).toHaveValue("recent");
+  });
+
+  it("type pills show counts that follow the search; one is chosen at a time", async () => {
+    show({
+      "GET /api/my-foods": (_b, path) => {
+        const q = new URL(path, "http://x").searchParams.get("q")?.toLowerCase() ?? "";
+        return { foods: [chili, breakfastMeal, shake].filter((f) => f.name.toLowerCase().includes(q)) };
+      },
+    });
+    const user = userEvent.setup();
+    await screen.findByRole("list", { name: "My foods" });
+    const group = screen.getByRole("group", { name: "Show" });
+    const names = () => within(group).getAllByRole("button").map((b) => b.textContent);
+    expect(names()).toEqual(["All 3", "Foods 1", "Recipes 1", "Meals 1"]);
+    expect(screen.getByRole("button", { name: "All 3" })).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(screen.getByRole("button", { name: "Meals 1" }));
+    expect(screen.getByRole("button", { name: "Meals 1" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "All 3" })).toHaveAttribute("aria-pressed", "false");
+    expect(within(screen.getByRole("list", { name: "My foods" })).getAllByRole("listitem")).toHaveLength(1);
+
+    await user.type(screen.getByRole("searchbox", { name: "Search my foods" }), "chi");
+    await waitFor(() => expect(names()).toEqual(["All 1", "Foods 0", "Recipes 1", "Meals 0"]));
+    expect(screen.getByText("Nothing here matches.")).toBeInTheDocument(); // Meals is still the chosen pill
+    await user.click(screen.getByRole("button", { name: "Recipes 1" }));
+    expect(within(screen.getByRole("list", { name: "My foods" })).getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { pressed: true })).toHaveLength(1);
+  });
+
+  it("the search box has a clear button that empties it", async () => {
+    const server = show();
+    const user = userEvent.setup();
+    await screen.findByRole("list", { name: "My foods" });
+    const box = screen.getByRole("searchbox", { name: "Search my foods" });
+    expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+    await user.type(box, "chi");
+    await user.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(box).toHaveValue("");
+    expect(box).toHaveFocus();
+    expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+    await waitFor(() => expect(listPaths(server).at(-1)).toBe("/api/my-foods?kind=all&sort=recent"));
   });
 
   it("a search uses the best-match order unless a sort is picked", async () => {
@@ -57,11 +105,41 @@ describe("My Foods", () => {
     await screen.findByRole("list", { name: "My foods" });
     await user.type(screen.getByRole("searchbox", { name: "Search my foods" }), "chi");
     await waitFor(() => expect(listPaths(server).at(-1)).toBe("/api/my-foods?kind=all&q=chi"));
-    expect(screen.getByRole("radio", { name: "Recent" })).toHaveAttribute("aria-checked", "false");
-    await user.click(screen.getByRole("radio", { name: "Most used" }));
+    expect(screen.getByRole("combobox", { name: "Sort" })).toHaveDisplayValue("Best match");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Sort" }), "Most used");
     await waitFor(() => expect(listPaths(server).at(-1)).toBe("/api/my-foods?kind=all&sort=used&q=chi"));
     await user.clear(screen.getByRole("searchbox", { name: "Search my foods" }));
     await waitFor(() => expect(listPaths(server).at(-1)).toBe("/api/my-foods?kind=all&sort=used"));
+  });
+
+  it("the type and sort choices are remembered on this device", async () => {
+    const first = show();
+    const user = userEvent.setup();
+    await screen.findByRole("list", { name: "My foods" });
+    await user.click(screen.getByRole("button", { name: /^Recipes/ }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Sort" }), "A–Z");
+    expect(first.sent.length).toBeGreaterThan(0);
+    cleanup();
+    show();
+    await screen.findByRole("list", { name: "My foods" });
+    expect(screen.getByRole("button", { name: /^Recipes/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("combobox", { name: "Sort" })).toHaveValue("az");
+  });
+
+  it("junk in the remembered choice is ignored", async () => {
+    localStorage.setItem("bytesize.myFoods.1", "{not json");
+    show();
+    await screen.findByRole("list", { name: "My foods" });
+    expect(screen.getByRole("button", { name: /^All/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("combobox", { name: "Sort" })).toHaveValue("recent");
+  });
+
+  it("on a narrow phone the controls wrap: pills first, Sort under them on the right", async () => {
+    show();
+    await screen.findByRole("list", { name: "My foods" });
+    const row = screen.getByRole("group", { name: "Show" }).parentElement!;
+    expect(row).toHaveClass("flex-wrap");
+    expect(screen.getByRole("combobox", { name: "Sort" }).closest("label")).toHaveClass("ml-auto");
   });
 
   it("New food, New recipe and New quick meal open their editors", async () => {
