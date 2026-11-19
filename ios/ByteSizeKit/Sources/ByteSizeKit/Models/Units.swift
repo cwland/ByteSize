@@ -4,8 +4,8 @@ import Foundation
 public enum Units: Sendable, Equatable {
     case imperial, metric
 
-    static let lbPerKg = 2.20462262
-    static let mlPerFlOz = 29.5735296
+    public static let lbPerKg = 2.20462262
+    public static let mlPerFlOz = 29.5735296
 
     public init(_ server: String?) { self = server == "metric" ? .metric : .imperial }
 

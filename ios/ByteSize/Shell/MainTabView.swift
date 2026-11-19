@@ -5,13 +5,15 @@ import SwiftUI
 struct MainTabView: View {
     @Bindable var shell: ShellModel
     let profile: ProfileModel
+    let today: TodayModels
     @Environment(\.palette) private var palette
 
     var body: some View {
         ZStack(alignment: .bottom) {
             NavigationStack {
-                PlaceholderScreen(title: shell.tab.title, systemImage: shell.tab.systemImage)
+                tabContent
                     .navigationTitle(shell.tab.title)
+                    .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button { shell.profileOpen = true } label: {
@@ -40,6 +42,16 @@ struct MainTabView: View {
         }
         .sheet(isPresented: $shell.profileOpen) {
             ProfileSheet(profile: profile)
+        }
+        .task { await today.load() }
+    }
+
+    @ViewBuilder
+    private var tabContent: some View {
+        switch shell.tab {
+        case .dashboard: DashboardView(dashboard: today.dashboard, days: today.days, units: today.units)
+        case .foodLog: FoodLogView(log: today.log, days: today.days, units: today.units)
+        case .goals, .myFoods: PlaceholderScreen(title: shell.tab.title, systemImage: shell.tab.systemImage)
         }
     }
 }
