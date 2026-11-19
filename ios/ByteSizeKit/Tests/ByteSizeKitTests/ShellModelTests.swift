@@ -45,7 +45,7 @@ final class ShellModelTests: XCTestCase {
     func testTabsAndActions() {
         XCTAssertEqual(AppTab.allCases.map(\.title), ["Dashboard", "Food Log", "Goals", "My Foods"])
         XCTAssertEqual(AppTab.allCases.map(\.systemImage), ["square.grid.2x2", "list.bullet.rectangle", "target", "fork.knife"])
-        XCTAssertEqual(QuickAction.allCases.map(\.title), ["Add Food", "Scan Food", "Photo", "Describe Food"])
+        XCTAssertEqual(QuickAction.allCases.map(\.title), ["Track Food", "Scan Food", "Photo", "Describe Food"])
         XCTAssertEqual(QuickAction.allCases.map(\.systemImage), ["magnifyingglass", "barcode.viewfinder", "camera", "text.bubble"])
     }
 

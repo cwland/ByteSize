@@ -22,7 +22,7 @@ final class SmokeUITests: XCTestCase {
         shot("2-dashboard")
 
         app.buttons["Quick add"].tap()
-        for action in ["Add Food", "Scan Food", "Photo", "Describe Food"] {
+        for action in ["Track Food", "Scan Food", "Photo", "Describe Food"] {
             XCTAssertTrue(app.buttons[action].waitForExistence(timeout: 3), "missing \(action)")
         }
         sleep(1)
