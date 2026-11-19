@@ -3,6 +3,7 @@ import { Target } from "lucide-react";
 import { useSession } from "../../session";
 import type { Targets } from "../../types";
 import { fmt, waterUnit, waterValue } from "../../units";
+import { planName } from "../../plans";
 import { linkButton, primaryButton, secondaryButton } from "../ui/styles";
 
 // What the Goals page shares with its widgets (§40a): today's targets (undefined while loading, null: no plan) and
@@ -12,7 +13,6 @@ export type GoalsShared = { targets: Targets | null | undefined; setMode: (m: Go
 export const GoalsContext = createContext<GoalsShared | null>(null);
 export const useGoals = () => useContext(GoalsContext);
 
-const planName = (t: Targets) => (t.plan ? `${t.plan[0].toUpperCase()}${t.plan.slice(1)} plan` : "Your own targets");
 
 // Your plan (Goals): today's plan and target ranges, Change plan, Edit targets, Edit my details
 export function YourPlan() {
@@ -35,7 +35,7 @@ export function YourPlan() {
   return (
     <section aria-label="Plan" className="rounded-2xl bg-container p-5">
       <p className="text-sm text-muted">Your plan</p>
-      <h2 className="text-2xl font-bold">{planName(targets)}</h2>
+      <h2 className="text-2xl font-bold">{planName(targets, true)}</h2>
       <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2">
         <dt className="text-subtle">Calories</dt>
         <dd className="font-semibold tabular">{`${fmt(targets.calories.min)}–${fmt(targets.calories.max)} cals`}</dd>

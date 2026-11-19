@@ -54,7 +54,8 @@ describe("Day totals: the plan", () => {
     const change = screen.getByRole("button", { name: "Change plan" });
     expect(change).toHaveAttribute("title", "Change plan");
     change.click();
-    expect(window.location.hash).toBe("#/goals/plan");
+    // The plan picker comes back to the Dashboard when done or cancelled
+    expect(window.location.hash).toBe("#/goals/plan?from=/");
     window.location.hash = "";
   });
 
@@ -67,7 +68,7 @@ describe("Day totals: the plan", () => {
     show({ ...day, targets: null });
     expect(screen.queryByText(/^Plan:/)).not.toBeInTheDocument();
     screen.getByRole("button", { name: "Pick a plan" }).click();
-    expect(window.location.hash).toBe("#/goals/plan");
+    expect(window.location.hash).toBe("#/goals/plan?from=/");
     window.location.hash = "";
   });
 });

@@ -72,7 +72,7 @@ export function WidgetColumns({ layout, props, wideGrid }: { layout: WidgetLayou
   return (
     <div data-testid={`${page}-columns`} className={wide ? (wideGrid?.(shown) ?? autoFit) : "flex flex-col gap-3"}>
       {cols.map((c, i) => (
-        <div key={i} data-testid={c.length ? "dashboard-column" : undefined} hidden={!c.length} className={wide ? "flex min-w-0 flex-col gap-4" : "flex flex-col gap-3"}>
+        <div key={i} data-testid={c.length ? "widget-column" : undefined} hidden={!c.length} className={wide ? "flex min-w-0 flex-col gap-4" : "flex flex-col gap-3"}>
           {c.map(widget)}
         </div>
       ))}
@@ -235,7 +235,7 @@ export function EditLayout({ page, cols, wide, onChange, onCancel, onSaved }: { 
               <div
                 key={ci}
                 ref={(el) => void (columnEls.current[ci] = el)}
-                data-testid="dashboard-column"
+                data-testid="widget-column"
                 aria-label={`Column ${ci + 1}`}
                 className="flex min-h-32 min-w-0 flex-col gap-4 rounded-2xl bg-pressed/40 p-2"
               >

@@ -34,7 +34,7 @@ function show({ layout = null as Layout, wide = true, over = {} as Record<string
   );
   return server;
 }
-const columns = () => screen.getAllByTestId("dashboard-column");
+const columns = () => screen.getAllByTestId("widget-column");
 // The widgets shown in each column (live: their regions; editing: their cards)
 const names = (col: HTMLElement) => [...col.querySelectorAll(":scope > section")].map((s) => s.getAttribute("aria-label") ?? document.getElementById(s.getAttribute("aria-labelledby")!)?.textContent?.trim());
 const editCards = (col: HTMLElement) => [...col.querySelectorAll("[data-widget]")].map((s) => s.getAttribute("data-widget"));

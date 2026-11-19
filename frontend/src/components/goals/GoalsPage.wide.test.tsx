@@ -39,7 +39,7 @@ describe("Goals on a wide screen", () => {
     expect(screen.getByRole("button", { name: "Edit page" })).toBeInTheDocument();
     const grid = await screen.findByTestId("goals-columns");
     expect(grid).toHaveClass("lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]");
-    const [left, right] = within(grid).getAllByTestId("dashboard-column");
+    const [left, right] = within(grid).getAllByTestId("widget-column");
     expect(within(left).getByRole("region", { name: "Plan" })).toBeInTheDocument();
     expect(within(left).getByRole("region", { name: "Goal date" })).toBeInTheDocument();
     expect(within(right).getByRole("region", { name: "Weight" })).toBeInTheDocument();
@@ -51,7 +51,7 @@ describe("Goals on a wide screen", () => {
     show({ "GET /api/layouts/goals": () => ({ layout: { version: 1, columns: [["your-plan"], ["goal-date"], ["badges"]] } }) });
     await screen.findByRole("region", { name: "Goal date" });
     const grid = screen.getByTestId("goals-columns");
-    expect(within(grid).getAllByTestId("dashboard-column")).toHaveLength(3);
+    expect(within(grid).getAllByTestId("widget-column")).toHaveLength(3);
     expect(grid).not.toHaveClass("lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]");
   });
 

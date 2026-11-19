@@ -192,6 +192,22 @@ describe("Goals", () => {
     expect(screen.getByRole("region", { name: "Goal date" }).compareDocumentPosition(screen.getByRole("region", { name: "Plan" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it("the plan picker opened from the Dashboard (#/goals/plan?from=/) goes back there on Cancel; from Goals it stays", async () => {
+    fakeServer({ ...m3Routes, "GET /api/targets": () => ({ targets: steadyTargets }), "GET /api/body": () => ({ body: bodyA }), "GET /api/plans": () => plansA });
+    window.location.hash = "#/goals/plan?from=/";
+    const user = userEvent.setup();
+    const { unmount } = renderWithSession(<GoalsPage />);
+    expect(await screen.findByRole("heading", { name: "Choose your plan" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(window.location.hash).toBe("#/");
+    unmount();
+    window.location.hash = "#/goals/plan";
+    renderWithSession(<GoalsPage />);
+    await user.click(await screen.findByRole("button", { name: "Cancel" }));
+    expect(window.location.hash).toBe("#/goals");
+    window.location.hash = "";
+  });
+
   it("#/goals/details, and the goal date's Set a goal weight link, open Edit my details", async () => {
     fakeServer({
       ...m3Routes,

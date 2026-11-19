@@ -78,7 +78,7 @@ describe("Dashboard on a wide screen", () => {
 
   it("lays out three columns: the Food widget; the budget with water under it; Day totals, weight, GLP-1 and streak", async () => {
     show({ "GET /api/glp1": () => glp1View() });
-    const columns = await screen.findAllByTestId("dashboard-column");
+    const columns = await screen.findAllByTestId("widget-column");
     expect(columns).toHaveLength(3);
     expect(within(columns[0]).getByRole("region", { name: "Today's food" })).toBeInTheDocument();
     const middle = [...columns[1].querySelectorAll("section")].map((s) => s.getAttribute("aria-label"));

@@ -1,6 +1,7 @@
 import { ArrowLeftRight } from "lucide-react";
 import type { Day, NutrientKey, Range, Targets, Units } from "../../types";
 import { linkButton } from "../ui/styles";
+import { planName, planPickerHref } from "../../plans";
 import { fmt, waterUnit, waterValue } from "../../units";
 
 type Row = { name: string; key: NutrientKey; unit: string; target?: keyof Pick<Targets, "calories" | "protein_g" | "fiber_g" | "water_ml"> };
@@ -15,9 +16,8 @@ const ROWS: Row[] = [
   { name: "Water", key: "water_ml", unit: "", target: "water_ml" },
 ];
 
-// The plan picker, as Goals › Change plan opens it
-const openPlanPicker = () => (window.location.hash = "#/goals/plan");
-const planName = (t: Targets) => (t.plan ? `${t.plan[0].toUpperCase()}${t.plan.slice(1)}` : "Your own targets");
+// The plan picker, as Goals › Change plan opens it, coming back to the Dashboard
+const openPlanPicker = () => (window.location.hash = planPickerHref("/"));
 
 // "Day totals" (a Dashboard widget): the plan in force that day with Change plan (§41; Pick a plan without one), then
 // eaten vs the target range for the day ("—" where there is no target).

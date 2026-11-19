@@ -13,8 +13,8 @@ import type { WidgetProps } from "../dashboard/widgets";
 import { GoalsContext, type GoalsMode } from "./goalsContext";
 import { WeightProvider } from "../../weight";
 
-// The mode a Goals address opens: "#/goals/plan" the plan picker (the Dashboard's "Pick a plan"), "#/goals/details"
-// Edit my details (the goal date's "Set a goal weight")
+// The mode a Goals address opens: "#/goals/plan" the plan picker (the Dashboard's "Pick a plan" / "Change plan", with
+// ?from=/ to go back there), "#/goals/details" Edit my details (the goal date's "Set a goal weight")
 const modeOf = (hash: string): GoalsMode | null => (hash.startsWith("#/goals/plan") ? "plan" : hash.startsWith("#/goals/details") ? "details" : null);
 
 // Goals (§40a): widgets the person can arrange, as on the Dashboard (§28) — by default Your plan and Goal date on
@@ -45,9 +45,12 @@ export default function GoalsPage() {
     return () => window.removeEventListener("hashchange", on);
   }, []);
 
+  // Back to where the picker was opened from (?from=/ : the Dashboard), else Goals
   const close = () => {
     setMode("view");
-    if (modeOf(window.location.hash)) window.location.hash = "#/goals";
+    if (!modeOf(window.location.hash)) return;
+    const from = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("from");
+    window.location.hash = from?.startsWith("/") ? `#${from}` : "#/goals";
   };
   const saved = (t: Targets) => {
     setTargets(t);

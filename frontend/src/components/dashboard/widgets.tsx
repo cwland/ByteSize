@@ -19,6 +19,7 @@ import Badges from "../goals/Badges";
 import { YourPlan } from "../goals/goalsContext";
 import GoalsWeight from "../goals/GoalsWeight";
 import type { LayoutPage, LayoutWidget } from "./layout";
+import { planPickerHref } from "../../plans";
 
 // The widget registry (§28, §40a): the one list every widget page (Dashboard, Goals), the Add widget list and the
 // layout read. Adding a widget later means adding one entry here (and its id, per page, to backend/src/lib/widgets.ts,
@@ -68,7 +69,7 @@ function Budget({ data }: WidgetProps) {
         data && (
           <div className="mt-3 flex flex-col items-center gap-3 text-center">
             <p className="text-subtle">Pick a plan to see your budget</p>
-            <button type="button" onClick={() => (window.location.hash = "#/goals/plan")} className={primaryButton}>
+            <button type="button" onClick={() => (window.location.hash = planPickerHref("/"))} className={primaryButton}>
               Pick a plan
             </button>
           </div>
