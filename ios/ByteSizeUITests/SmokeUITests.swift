@@ -15,15 +15,19 @@ final class SmokeUITests: XCTestCase {
     func testSignInTabsMenuProfileSignOut() {
         shot("1-sign-in")
         signIn(password: "pw")
+        dismissSavePassword()
 
         for tab in ["Dashboard", "Food Log", "Goals", "My Foods", "Quick add"] {
             XCTAssertTrue(app.buttons[tab].waitForExistence(timeout: 5), "missing \(tab)")
         }
         shot("2-dashboard")
 
+        // Closed: the quick actions aren't on screen (or read by VoiceOver)
+        XCTAssertFalse(app.buttons["Track Food"].exists)
         app.buttons["Quick add"].tap()
         for action in ["Track Food", "Scan Food", "Photo", "Describe Food"] {
             XCTAssertTrue(app.buttons[action].waitForExistence(timeout: 3), "missing \(action)")
+            XCTAssertTrue(app.buttons[action].isHittable, "\(action) can't be tapped")
         }
         sleep(1)
         shot("3-quick-add")
@@ -62,6 +66,17 @@ final class SmokeUITests: XCTestCase {
         pass.tap()
         pass.typeText(password)
         app.buttons["Sign in"].tap()
+    }
+
+    /// iOS offers to save the password after signing in; say Not Now so it doesn't swallow the next tap.
+    private func dismissSavePassword() {
+        for source in [app!, XCUIApplication(bundleIdentifier: "com.apple.springboard")] {
+            let notNow = source.buttons["Not Now"]
+            if notNow.waitForExistence(timeout: 3) {
+                notNow.tap()
+                return
+            }
+        }
     }
 
     private func shot(_ name: String) {
