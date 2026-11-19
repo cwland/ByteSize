@@ -4,6 +4,7 @@ import SwiftUI
 /// The signed-in app: the selected tab's screen, the bottom bar with the raised (+), and the radial menu over both.
 struct MainTabView: View {
     @Bindable var shell: ShellModel
+    let profile: ProfileModel
     @Environment(\.palette) private var palette
 
     var body: some View {
@@ -36,6 +37,9 @@ struct MainTabView: View {
                     }
             }
             .presentationDetents([.large])
+        }
+        .sheet(isPresented: $shell.profileOpen) {
+            ProfileSheet(profile: profile)
         }
     }
 }
