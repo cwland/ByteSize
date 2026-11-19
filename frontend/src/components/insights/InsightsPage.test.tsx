@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import InsightsPage from "./InsightsPage";
 import { fakeServer } from "../../test/fakeServer";
@@ -11,7 +11,24 @@ import { answerRow, insightsJson, proteinRow, recapRow, streamed, weekNumbers } 
 
 const stat = (card: HTMLElement, name: string) => within(card).getByRole("group", { name });
 
+afterEach(() => void vi.useRealTimers());
+
 describe("Insights page", () => {
+  it("the Refresh wait counts down, and Refresh comes back on by itself", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    fakeServer({ "GET /api/insights": () => insightsJson({ limits: { ...insightsJson().limits, recapRefreshIn: 90 } }) });
+    renderWithSession(<InsightsPage />);
+    const card = await screen.findByRole("region", { name: "Weekly recap" });
+    expect(within(card).getByRole("button", { name: "Refresh weekly recap" })).toBeDisabled();
+    expect(within(card).getByText("You can refresh again in 2 minutes.")).toBeInTheDocument();
+    act(() => void vi.advanceTimersByTime(31_000));
+    expect(within(card).getByText("You can refresh again in 1 minute.")).toBeInTheDocument();
+    act(() => void vi.advanceTimersByTime(60_000));
+    expect(within(card).getByRole("button", { name: "Refresh weekly recap" })).toBeEnabled();
+    expect(within(card).queryByText(/You can refresh again/)).not.toBeInTheDocument();
+  });
+
+
   it("the weekly recap: what the AI wrote, and the week's numbers from the app beside it; past recaps below", async () => {
     fakeServer({ "GET /api/insights": () => insightsJson() });
     renderWithSession(<InsightsPage />);
@@ -88,17 +105,22 @@ describe("Insights page", () => {
     expect(within(card).getByText("You can refresh again in 10 minutes.")).toBeInTheDocument();
   });
 
-  it("Refresh that fails: a plain message, and the last good recap stays", async () => {
+  it("Refresh that fails: a plain message saying when to try again, the last good recap stays, and Refresh waits", async () => {
+    let page = insightsJson();
     fakeServer({
-      "GET /api/insights": () => insightsJson(),
-      "POST /api/insights/refresh": () => ({ status: 502, json: { error: "Couldn't write your insights right now. Try again in a little while." } }),
+      "GET /api/insights": () => page,
+      "POST /api/insights/refresh": () => {
+        page = insightsJson({ limits: { ...insightsJson().limits, recapRefreshIn: 600 } }); // the try counts
+        return { status: 502, json: { error: "Couldn't write your insights right now. Try again in 10 minutes.", retryAfterSec: 600 } };
+      },
     });
     renderWithSession(<InsightsPage />);
     const user = userEvent.setup();
     const card = await screen.findByRole("region", { name: "Weekly recap" });
     await user.click(within(card).getByRole("button", { name: "Refresh weekly recap" }));
-    expect(await within(card).findByRole("alert")).toHaveTextContent("Couldn't write your insights right now. Try again in a little while.");
+    expect(await within(card).findByRole("alert")).toHaveTextContent("Couldn't write your insights right now. Try again in 10 minutes.");
     expect(within(card).getByText("A solid week: you logged 3 days and hit your range on 2.")).toBeInTheDocument();
+    await waitFor(() => expect(within(card).getByRole("button", { name: "Refresh weekly recap" })).toBeDisabled());
   });
 
   it("no recap yet: when the first one comes, and the numbers for the week just ended", async () => {

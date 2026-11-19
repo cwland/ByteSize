@@ -1501,6 +1501,8 @@ support; showing which AI service answered.
 **Where.** A new **Insights** page (lightbulb icon) in the wide side rail after Goals; on phones, an **Insights**
 widget (newest recap's first lines + "See all insights") that is in the Dashboard default layout (below Day totals /
 in reading order) — the phone bottom bar is unchanged. The widget can be added to Goals too. Route `#/insights`.
+Phones always have a way in: an **Insights** row (lightbulb) in the phone Settings list, and a Dashboard saved before
+Insights gets the widget once (below Day totals, or at the bottom of the right column); taken off later, it stays off.
 
 **Cards on the page** (newest first within each):
 1. **Weekly recap** — for the week just ended (person's week start): a 2–3 sentence summary, "What went well" (2–3
@@ -1524,16 +1526,25 @@ in reading order) — the phone bottom bar is unchanged. The widget can be added
 - **Weekly**: a scheduled job (like backups, `lib/schedule.ts`) writes each person's recap (and refreshes Protein
   help) once after their week ends, at about 6 am in their time zone; skipped when they logged fewer than 3 days that
   week or Insights' weekly run is switched off (a switch on the Insights page, on by default); a failure retries
-  hourly up to 3 times. Waits on close like the other jobs.
-- **On demand**: Refresh at most once per 10 minutes per card per person; questions at most 20 a day per person
-  (friendly message when reached). Counted in App info ("AI insights").
+  hourly up to 3 times (due 55 minutes after the last try, so an hourly check never skips one). Waits on close like the
+  other jobs. A seed-demo recap never blocks it (the weekly one replaces it); a week's "so far" recap is replaced by the
+  week's recap, or deleted when that week is skipped (under 3 days, or the switch off).
+- **On demand**: Refresh at most once per 10 minutes per card per person — every try counts, worked or not, so a
+  failing AI isn't asked again at once ("Try again in 10 minutes"); the wait counts down on the page. Questions at most
+  20 a day per person (friendly message when reached; a question with no answer doesn't count). Both are checked
+  under a per-person lock, so two tabs can't both get past a limit. Counted in App info ("AI insights").
 - **The summary** sent to the AI is built by one pure, tested function: per day — date, plan range, totals (calories,
   protein, carbs, fat, fiber, sugar, sodium, water), foods by meal with amounts and per-food calories/protein, in range
   yes/no (calorieDays.ts), weigh-in/trend, shot (med/dose), steps, workouts; plus the person's plan, goal weight,
   active goals, units and week start. Nothing else (no names, emails, keys, notes fields beyond food names).
+  Long periods are shortened: food lists for the last 6 weeks, day totals back to 13 weeks, weekly totals before
+  that, and never more than 40 KB (food lists dropped oldest first, then the oldest days made weeks); the ask says
+  what was summarised. Reading goals for it changes nothing (no goal is kept/frozen by an insight).
 - **Prompt rules** (system prompt, tested by snapshot): friendly coach; short; use only numbers in the summary or say
   you don't know; no medical/dose advice (suggest talking to their care team for symptoms or doses); never suggest
-  eating below the plan's minimum; protein-first framing on a GLP-1; plain words, the person's units.
+  eating below the plan's minimum; protein-first framing on a GLP-1; plain words, the person's units. The summary and
+  the question sit between `<data>` and `<question>` fences that nothing inside can close, and a rule says what's
+  inside is the person's data, never instructions.
 
 **Data & API.** `insights` table (user, kind `recap`|`protein`|`answer`, period start/end, question (answers),
 content json, created). Per-user isolation, backed up, in "Download my data". Read routes allowed for Read only API

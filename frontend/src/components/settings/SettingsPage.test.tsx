@@ -3,8 +3,24 @@ import { screen } from "@testing-library/react";
 import SettingsPage from "./SettingsPage";
 import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
+import { wideScreen } from "../../test/wide";
 
 describe("SettingsPage", () => {
+  it("phones: an Insights row (lightbulb) opens the Insights page, whatever the Dashboard holds (§43); wide screens have the rail", async () => {
+    fakeServer({});
+    const { unmount } = renderWithSession(<SettingsPage />, { isAdmin: false });
+    const link = await screen.findByRole("link", { name: "Insights" });
+    expect(link).toHaveAttribute("href", "#/insights");
+    expect(link.querySelector("svg.lucide-lightbulb")).not.toBeNull();
+    expect(screen.queryByRole("tab", { name: "Insights" })).not.toBeInTheDocument(); // a way to a page, not a section
+    unmount();
+    wideScreen();
+    fakeServer({});
+    renderWithSession(<SettingsPage />, { isAdmin: false });
+    await screen.findByRole("heading", { name: "Settings" });
+    expect(screen.queryByRole("link", { name: "Insights" })).not.toBeInTheDocument();
+  });
+
   it("members don't see admin sections", async () => {
     fakeServer({});
     renderWithSession(<SettingsPage />, { isAdmin: false });

@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, LogOut, ScrollText, Shield, User, Users, Database, HardDrive, Info, KeyRound, Link2, Mail } from "lucide-react";
+import { ChevronLeft, ChevronRight, Lightbulb, LogOut, ScrollText, Shield, User, Users, Database, HardDrive, Info, KeyRound, Link2, Mail } from "lucide-react";
 import { settingsSectionFromHash, useHash } from "../../routes";
 import { useSession } from "../../session";
 import ApiKeysSettings from "./ApiKeysSettings";
@@ -105,6 +105,21 @@ export default function SettingsPage() {
           className={wide ? `mt-5 ${"twoUp" in active ? "gap-5 lg:columns-2 [&>*]:mb-5 [&>*]:break-inside-avoid" : "flex flex-col gap-3"}` : "mt-4 flex flex-col gap-3"}
         >
           <active.Panel />
+        </div>
+      )}
+      {!wide && !tab && (
+        // §43: phones always have a way to Insights here (wide screens: the rail), whatever their Dashboard holds
+        <div className="mt-3 overflow-hidden rounded-2xl bg-container">
+          <a href="#/insights" aria-label="Insights" className={row}>
+            <span className={rowIcon}>
+              <Lightbulb className="size-5" aria-hidden="true" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">Insights</span>
+              <span className="block truncate text-sm text-muted">Weekly recap, protein help, ask a question</span>
+            </span>
+            <ChevronRight className="size-5 shrink-0 text-inactive" aria-hidden="true" />
+          </a>
         </div>
       )}
       {!wide && !tab && (

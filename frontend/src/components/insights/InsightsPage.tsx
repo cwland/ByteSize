@@ -119,7 +119,24 @@ function RefreshButton({ label, busy, wait, onClick }: { label: string; busy: bo
   );
 }
 
-/** Refresh one card: the AI request with its working line, a plain error, then the page loaded again. */
+/** Seconds left of a wait the server gave (`since`: the view it came with), counting down once a second. */
+function useCountdown(seconds: number, since: unknown) {
+  const [left, setLeft] = useState(seconds);
+  useEffect(() => {
+    setLeft(seconds);
+    if (seconds <= 0) return;
+    const start = Date.now();
+    const timer = setInterval(() => {
+      const now = Math.max(0, seconds - Math.floor((Date.now() - start) / 1000));
+      setLeft(now);
+      if (now === 0) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [seconds, since]);
+  return left;
+}
+
+/** Refresh one card: the AI request with its working line, a plain error, then the page loaded again (a failed try counts too). */
 function useRefresh(kind: "recap" | "protein", onChanged: () => Promise<unknown>) {
   const ai = useInsightAi();
   const [msg, setMsg] = useState<Msg>(null);
@@ -129,6 +146,7 @@ function useRefresh(kind: "recap" | "protein", onChanged: () => Promise<unknown>
       if (await ai.run("/api/insights/refresh", { kind })) await onChanged();
     } catch (e) {
       setMsg(errorMsg(e));
+      await onChanged(); // the wait it started
     }
   };
   return { ai, msg, refresh };
@@ -139,7 +157,7 @@ function RecapCard({ view, onChanged }: { view: InsightsView; onChanged: () => P
   const [pastOpen, setPastOpen] = useState(false);
   const recap: RecapInsight | undefined = view.recaps[0];
   const numbers = recap?.content.numbers ?? view.week.numbers;
-  const wait = view.limits.recapRefreshIn;
+  const wait = useCountdown(view.limits.recapRefreshIn, view);
   const period = recap ? (recap.soFar ? "So far this week" : dayRange(recap.periodStart, recap.periodEnd)) : dayRange(view.week.from, view.week.to);
   const past = view.recaps.slice(1);
   return (
@@ -236,7 +254,7 @@ function Numbers({ n }: { n: WeekNumbers }) {
 function ProteinCard({ view, onChanged }: { view: InsightsView; onChanged: () => Promise<unknown> }) {
   const { ai, msg, refresh } = useRefresh("protein", onChanged);
   const p: ProteinInsight | null = view.protein;
-  const wait = view.limits.proteinRefreshIn;
+  const wait = useCountdown(view.limits.proteinRefreshIn, view);
   const c = p?.content;
   return (
     <section aria-label="Protein help and food swaps" className="flex flex-col gap-4 rounded-2xl bg-container p-5">
