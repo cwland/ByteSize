@@ -1550,3 +1550,15 @@ Insights gets the widget once (below Day totals, or at the bottom of the right c
 content json, created). Per-user isolation, backed up, in "Download my data". Read routes allowed for Read only API
 keys; Refresh/ask and the switch are not allowed for keys. seed-demo adds one recap and one protein card (static,
 no AI call) so the page isn't empty; --replace clears them.
+
+## 44. Hover text on every icon button (Cory, 2026-11-18)
+
+**Asked for.** "Any icons used in the app should have hover text to describe what they do, like move, copy, etc."
+- Every button or link that shows only an icon (no visible words) has hover text saying what it does — a verb phrase
+  with its object where useful ("Move to another meal", "Copy to another day", "Delete Banana", "Change plan",
+  "Clear search", "Show key", "Copy key", "Previous week", "Close") — and the same words as its accessible name
+  (`aria-label`), so screen readers say the same thing. Buttons with visible words don't need it.
+- One small shared `IconButton` (or equivalent helper) so new icon buttons can't forget it.
+- A test walks every rendered screen the test suite already renders (or a list of the main screens) and fails if any
+  button/link with no visible text lacks an accessible name and a title.
+- Hover text appears on desktop hover and on long-press where the browser supports it; on touch it's harmless.

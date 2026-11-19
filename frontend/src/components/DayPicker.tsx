@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { api } from "../api";
 import { onDayChanged, useSettingsMe } from "../day";
 import { addDays, useSelectedDay, weekOf } from "../selectedDay";
+import { IconButton } from "./ui/IconButton";
 
 // Tap the date for a calendar (§39): one month at a time, a dot under days with food logged, today ringed, the
 // viewed day filled, days after today dimmed. Only the X, Escape, choosing a day or tapping the date again close
@@ -132,21 +133,21 @@ function Calendar({ placement, spans, need, onClose }: { placement: "popover" | 
     >
       <div className={placement === "bar" ? "mx-auto max-w-[560px]" : ""}>
         <div className="mb-2 flex items-center gap-1">
-          <button type="button" aria-label="Previous month" onClick={() => move(addMonths(cursor, -1), false)} className={arrow}>
+          <IconButton label="Previous month" onClick={() => move(addMonths(cursor, -1), false)} className={arrow}>
             <ChevronLeft className="size-5" />
-          </button>
+          </IconButton>
           <p id={titleId} aria-live="polite" className="flex-1 text-center font-bold">
             {fmt(cursor, { month: "long", year: "numeric" })}
           </p>
-          <button type="button" aria-label="Next month" disabled={!nextMonthOk} onClick={() => move(addMonths(cursor, 1), false)} className={arrow}>
+          <IconButton label="Next month" disabled={!nextMonthOk} onClick={() => move(addMonths(cursor, 1), false)} className={arrow}>
             <ChevronRight className="size-5" />
-          </button>
+          </IconButton>
           <button type="button" onClick={() => choose(todayDay)} className="rounded-full px-3 py-1 text-sm font-semibold text-link hover:bg-pressed">
             Today
           </button>
-          <button type="button" aria-label="Close" onClick={() => onClose()} className="flex size-8 items-center justify-center rounded-full text-subtle hover:bg-pressed hover:text-ink">
+          <IconButton label="Close" onClick={() => onClose()} className="flex size-8 items-center justify-center rounded-full text-subtle hover:bg-pressed hover:text-ink">
             <X className="size-5" />
-          </button>
+          </IconButton>
         </div>
         <div ref={grid} role="group" aria-labelledby={titleId} onKeyDown={onKey}>
           <div role="row" aria-hidden="true" className="grid grid-cols-7 text-center text-[11px] font-semibold text-subtle uppercase">

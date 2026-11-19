@@ -3,6 +3,7 @@ import { isGlp1, myFoodsHref, type Page } from "../routes";
 import { initialsOf, useSession } from "../session";
 import { Logo } from "./ui/Logo";
 import { useGlp1On } from "./glp1/useGlp1On";
+import { IconLink } from "./ui/IconButton";
 
 // Wide screens: the side rail in place of the top bar and bottom tab bar. Logo (home), the pages (GLP-1 among
 // them since it left Goals, §40a) with My foods, and Settings and the account at the bottom (no +: food is added from the Food widget; no Log page). Stays in view. It comes
@@ -23,9 +24,9 @@ export default function Rail({ page }: { page: Page }) {
   );
   return (
     <nav aria-label="Main" className="sticky top-0 order-first flex h-screen w-[84px] shrink-0 flex-col items-center gap-2.5 bg-container py-5">
-      <a href="#/" aria-label="ByteSize home" className="shrink-0 rounded-xl">
+      <IconLink href="#/" label="ByteSize home" className="shrink-0 rounded-xl">
         <Logo className="size-11 rounded-xl" />
-      </a>
+      </IconLink>
       <div className="mt-3.5 flex flex-col gap-1.5">
         {item("Dashboard", "#/", page === "dashboard" && !glp1, <House aria-hidden="true" className="size-[22px]" />)}
         {item("Goals", "#/goals", page === "goals", <Target aria-hidden="true" className="size-[22px]" />)}

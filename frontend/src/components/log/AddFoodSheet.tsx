@@ -511,6 +511,7 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose, b
         <button
           type="button"
           aria-label="Barcode"
+          title="Look up a food by its barcode"
           aria-pressed={barcodeOpen}
           onClick={() => setBarcodeOpen((o) => !o)}
           className={`flex size-11 shrink-0 items-center justify-center rounded-full border border-line ${barcodeOpen ? "bg-active text-link" : "text-ink hover:bg-pressed"}`}

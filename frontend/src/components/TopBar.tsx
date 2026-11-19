@@ -3,6 +3,7 @@ import { Logo } from "./ui/Logo";
 import { initialsOf, useSession } from "../session";
 import DayPickerMenu from "./DayPicker";
 import WeekStrip, { monthsOf } from "./WeekStrip";
+import { IconLink } from "./ui/IconButton";
 
 // Logo (home) · month of the week shown · avatar (Settings), and under it the week strip
 // (Dashboard and Log only: `days`)
@@ -12,9 +13,9 @@ export default function TopBar({ days = true }: { days?: boolean }) {
   return (
     <header className="sticky top-0 z-20 bg-page/95 pt-[env(safe-area-inset-top)] backdrop-blur">
       <div className="mx-auto flex h-14 max-w-[560px] items-center gap-2 px-3">
-        <a href="#/" aria-label="ByteSize home" className="shrink-0 rounded-full">
+        <IconLink href="#/" label="ByteSize home" className="shrink-0 rounded-full">
           <Logo className="size-9 rounded-full" />
-        </a>
+        </IconLink>
         <p className="flex-1 text-center font-bold">
           {days && week && (
             <DayPickerMenu placement="bar" className="rounded-full px-3 py-1 hover:bg-pressed">

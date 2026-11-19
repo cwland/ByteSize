@@ -11,6 +11,7 @@ import { Field } from "../ui/Field";
 import { KeyField, copyText } from "../ui/KeyField";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { linkButton, primaryButton, secondaryButton } from "../ui/styles";
+import { IconButton } from "../ui/IconButton";
 
 // Settings › API keys (everyone): the person's own keys for their tools (Home Assistant, n8n, Shortcuts,
 // scripts). A key is sent by the server only when it's made and when its owner presses the eye or copy.
@@ -274,9 +275,9 @@ function Example({ what, text }: { what: string; text: string }) {
     <div className="mt-2">
       <div className="flex items-start gap-2 rounded-xl bg-page px-3 py-2">
         <code className="min-w-0 flex-1 font-mono text-sm break-all">{text}</code>
-        <button type="button" aria-label={`Copy the example for ${what}`} title="Copy" onClick={() => void copyText(text).then((ok) => setState(ok ? "copied" : "failed"))} className="shrink-0 text-subtle hover:text-ink">
+        <IconButton label={`Copy the example for ${what}`} onClick={() => void copyText(text).then((ok) => setState(ok ? "copied" : "failed"))} className="shrink-0 text-subtle hover:text-ink">
           {state === "copied" ? <span className="text-xs font-semibold text-success">Copied</span> : <Copy className="size-4" />}
-        </button>
+        </IconButton>
       </div>
       {state === "failed" && (
         <p role="alert" className="mt-1 text-xs text-error">

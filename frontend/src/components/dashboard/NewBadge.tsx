@@ -4,6 +4,7 @@ import { api } from "../../api";
 import { useSession } from "../../session";
 import { badgeInfo } from "../goals/Badges";
 import { linkButton } from "../ui/styles";
+import { IconButton } from "../ui/IconButton";
 
 // Dashboard: a small celebration for badges earned since the last visit. Shown once: they are marked
 // seen as soon as the card shows. Quiet when badges can't be loaded (the Dashboard still works).
@@ -38,9 +39,9 @@ export default function NewBadge() {
           See your badges
         </a>
       </div>
-      <button type="button" aria-label="Dismiss" onClick={() => setIds([])} className="rounded-full p-1.5 text-subtle hover:bg-pressed">
+      <IconButton label="Dismiss" onClick={() => setIds([])} className="rounded-full p-1.5 text-subtle hover:bg-pressed">
         <X className="size-4" aria-hidden="true" />
-      </button>
+      </IconButton>
     </section>
   );
 }

@@ -8,6 +8,7 @@ import { KeyField, copyText } from "../ui/KeyField";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Toggle } from "../ui/Toggle";
 import { label as labelClass, linkButton, primaryButton, secondaryButton } from "../ui/styles";
+import { IconButton } from "../ui/IconButton";
 
 // Settings › Security: sign in with OAuth / OpenID Connect (Authentik, Keycloak, Google...), copied from
 // Culury's SignInSettings. The admin sets up the provider; everyone can link their own account once it's on.
@@ -116,9 +117,9 @@ export function OAuthSettings() {
             <p className={labelClass}>Redirect URI (add it at your provider)</p>
             <div className="mt-1 flex items-center gap-2 rounded-xl bg-page px-3 py-2">
               <code className="min-w-0 flex-1 truncate font-mono text-sm">{redirectUri ?? ownRedirectUri()}</code>
-              <button type="button" aria-label="Copy redirect URI" onClick={() => void copyUri()} className="text-subtle hover:text-ink">
+              <IconButton label="Copy redirect URI" onClick={() => void copyUri()} className="text-subtle hover:text-ink">
                 {copied ? <span className="text-xs font-semibold text-success">Copied</span> : <Copy className="size-4" />}
-              </button>
+              </IconButton>
             </div>
           </div>
           <div className="flex items-start justify-between gap-4 rounded-xl border border-line p-3">

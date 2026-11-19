@@ -7,6 +7,7 @@ import { onCombined, type Combined } from "../combined";
 import { notifyDayChanged } from "../day";
 import { MEAL_NAMES } from "../meals";
 import { useSession } from "../session";
+import { IconButton } from "./ui/IconButton";
 
 // How long the note shows (tests shorten it)
 export const combinedNote = { showMs: 10000 };
@@ -99,9 +100,9 @@ export default function CombinedNote() {
             Undo
           </button>
         )}
-        <button type="button" aria-label="Dismiss" onClick={() => setList(null)} className="flex size-11 shrink-0 items-center justify-center rounded-full hover:bg-black/20">
+        <IconButton label="Dismiss" onClick={() => setList(null)} className="flex size-11 shrink-0 items-center justify-center rounded-full hover:bg-black/20">
           <X aria-hidden="true" className="size-4" />
-        </button>
+        </IconButton>
       </div>
     </div>
   );

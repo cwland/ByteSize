@@ -3,6 +3,7 @@ import { Check, Plus } from "lucide-react";
 import type { FoodKind, Nutrients } from "../../types";
 import Pills from "./Pills";
 import FoodPic from "./FoodPic";
+import { IconButton } from "../ui/IconButton";
 
 // The small tag on a recipe or quick meal row (database and own foods have none)
 export const tagOf = (k: FoodKind | undefined) => (k === "recipe" ? "Recipe" : k === "quick_meal" ? "Meal" : null);
@@ -38,9 +39,8 @@ export function useQuickAdd(add: () => Promise<void>) {
 
 export function QuickAddButton({ label, added, onClick }: { label: string; added: boolean; onClick: () => void }) {
   return (
-    <button
-      type="button"
-      aria-label={label}
+    <IconButton
+      label={label}
       onClick={onClick}
       className={`flex size-10 shrink-0 items-center justify-center rounded-full ${added ? "bg-success text-on-primary" : "bg-primary text-on-primary hover:bg-primary-pressed"}`}
     >
@@ -49,7 +49,7 @@ export function QuickAddButton({ label, added, onClick }: { label: string; added
           <Check aria-hidden="true" className="size-5" strokeWidth={3} />
         </span>
       ) : <Plus aria-hidden="true" className="size-5" strokeWidth={3} />}
-    </button>
+    </IconButton>
   );
 }
 

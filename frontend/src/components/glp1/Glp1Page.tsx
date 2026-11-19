@@ -12,6 +12,7 @@ import AfterInjection from "./AfterInjection";
 import ShotSheet from "./ShotSheet";
 import SideEffectsSheet from "./SideEffectsSheet";
 import { EFFECT_LABELS, LEVEL_LABELS, SITE_LABELS, WEEKDAYS, mg, statusText } from "./glp1";
+import { IconButton } from "../ui/IconButton";
 
 // "#/glp1?from=/goals" -> "#/goals" (default: the Dashboard)
 const backHref = (hash: string) => {
@@ -246,12 +247,12 @@ function History({ shots, doses, onEdit, onDelete }: { shots: Shot[]; doses: Glp
             {c && <p className="mt-0.5 text-sm font-semibold text-action">{c}</p>}
             {s.note && <p className="mt-0.5 text-sm text-muted">{s.note}</p>}
             <div className="mt-1 flex gap-4">
-              <button type="button" aria-label={`Edit shot on ${dayLabel(s.day)}`} onClick={() => onEdit(s.day)} className={`${linkButton} text-sm`}>
+              <IconButton label={`Edit shot on ${dayLabel(s.day)}`} onClick={() => onEdit(s.day)} className={`${linkButton} text-sm`}>
                 Edit
-              </button>
-              <button type="button" aria-label={`Delete shot on ${dayLabel(s.day)}`} onClick={() => onDelete(s.day)} className="text-sm font-semibold text-error hover:underline">
+              </IconButton>
+              <IconButton label={`Delete shot on ${dayLabel(s.day)}`} onClick={() => onDelete(s.day)} className="text-sm font-semibold text-error hover:underline">
                 Delete
-              </button>
+              </IconButton>
             </div>
           </li>
         );

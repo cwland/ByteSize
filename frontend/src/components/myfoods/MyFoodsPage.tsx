@@ -15,6 +15,7 @@ import { noAutofill } from "../ui/styles";
 import { EditorHeader, addButton } from "./items";
 import QuickMealEditor from "./QuickMealEditor";
 import RecipeEditor from "./RecipeEditor";
+import { IconButton } from "../ui/IconButton";
 
 type Kind = "all" | "foods" | "recipes" | "meals";
 type Sort = "recent" | "used" | "az";
@@ -176,9 +177,8 @@ export default function MyFoodsPage() {
           className="h-11 w-full rounded-full border border-line bg-page pl-11 pr-11 text-ink outline-none placeholder:text-inactive focus:border-action focus:ring-2 focus:ring-action/25 [&::-webkit-search-cancel-button]:appearance-none"
         />
         {query && (
-          <button
-            type="button"
-            aria-label="Clear search"
+          <IconButton
+            label="Clear search"
             onClick={() => {
               setQuery("");
               searchRef.current?.focus();
@@ -186,7 +186,7 @@ export default function MyFoodsPage() {
             className="absolute right-0.5 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full text-subtle hover:bg-pressed hover:text-ink"
           >
             <X className="size-5" />
-          </button>
+          </IconButton>
         )}
       </div>
 
@@ -242,9 +242,9 @@ export default function MyFoodsPage() {
                     </span>
                   </span>
                 </button>
-                <button type="button" aria-label={`Delete ${f.name}`} onClick={() => setDeleting(f)} className="flex size-10 shrink-0 items-center justify-center rounded-full text-subtle hover:bg-pressed hover:text-error">
+                <IconButton label={`Delete ${f.name}`} onClick={() => setDeleting(f)} className="flex size-10 shrink-0 items-center justify-center rounded-full text-subtle hover:bg-pressed hover:text-error">
                   <Trash2 className="size-5" />
-                </button>
+                </IconButton>
               </li>
             );
           })}

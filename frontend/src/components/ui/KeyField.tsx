@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Copy, Eye, EyeOff } from "lucide-react";
 import { field, label as labelClass, noAutofill } from "./styles";
+import { IconButton } from "./IconButton";
 
 export const COPY_FAILED = "Couldn't copy. Show the key and copy it by hand.";
 
@@ -203,12 +204,12 @@ export function KeyField({
         className={`${field} mt-0 min-w-0 font-mono placeholder:font-sans ${copied ? "pr-28" : "pr-21"} ${inputClassName}`}
       />
       <div className="absolute inset-y-0 right-0 flex">
-        <button type="button" aria-label={`${shown ? "Hide" : "Show"} ${keyName}`} title={shown ? "Hide" : "Show"} aria-pressed={shown} disabled={busy || !canUse} onClick={() => void toggle()} className={button}>
+        <IconButton label={`${shown ? "Hide" : "Show"} ${keyName}`} aria-pressed={shown} disabled={busy || !canUse} onClick={() => void toggle()} className={button}>
           {shown ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-        </button>
-        <button type="button" aria-label={`Copy ${keyName}`} title="Copy" disabled={busy || !canUse} onClick={() => void copy()} className={`${button} rounded-r-xl px-2`}>
+        </IconButton>
+        <IconButton label={`Copy ${keyName}`} disabled={busy || !canUse} onClick={() => void copy()} className={`${button} rounded-r-xl px-2`}>
           {copied ? <span className="text-xs font-semibold text-success">Copied</span> : <Copy className="size-4" />}
-        </button>
+        </IconButton>
       </div>
     </div>
   );

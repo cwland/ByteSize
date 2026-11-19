@@ -14,6 +14,7 @@ import Pills from "../log/Pills";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
 import { field, noAutofill } from "../ui/styles";
+import { IconButton } from "../ui/IconButton";
 
 // The pieces the recipe and quick meal editors share (and Add Food's "Track meal"): an editable list of
 // foods with amounts, live totals, and a food search to add one.
@@ -124,9 +125,9 @@ export function ItemList({ label, items, onChange, onRemove }: { label: string; 
                 </div>
               </div>
               {onRemove && (
-                <button type="button" aria-label={`Remove ${i.name}`} onClick={() => onRemove(i.key)} className="flex size-9 shrink-0 items-center justify-center rounded-full text-subtle hover:bg-strong hover:text-error">
+                <IconButton label={`Remove ${i.name}`} onClick={() => onRemove(i.key)} className="flex size-9 shrink-0 items-center justify-center rounded-full text-subtle hover:bg-strong hover:text-error">
                   <Trash2 className="size-5" />
-                </button>
+                </IconButton>
               )}
             </div>
             {!i.available && <p className="mt-2 text-xs text-muted">No longer in your foods — using its saved values</p>}
