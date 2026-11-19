@@ -1468,3 +1468,57 @@ Cory picked option **B** of three mock-ups.
   the same row, a compact **Sort: Recent ▾** dropdown (Recent, Most used, A–Z).
 - No full-width stretched segmented rows any more. The row wraps on narrow phones (pills first, sort under them,
   right-aligned). Choices are remembered on this device as they are today.
+
+## 43. Insights: weekly recap, protein help and food swaps, ask a question (Cory, 2026-11-18)
+
+**Asked for.** An "Insights" place where AI tells you things about your food, trends and eating, with tips. Cory
+chose for the first version: **Weekly recap**, **Protein help + food swaps**, **Ask a question**; runs **weekly +
+on demand**; tone a **friendly coach** (encouraging but honest, short, practical); the AI may see **daily
+summaries** (per-day totals, meal names/foods and amounts, weights, shots, activity, goals — no account details,
+keys, emails or other people). Patterns/shot-day effects, a plateau check and emailing the weekly recap go to the
+backlog.
+**Why.** Cory wants the app to notice things he wouldn't and suggest practical changes while on a GLP-1.
+**Anti-goals.** Medical or dose advice; anything nudging eating below the plan's minimum; numbers the data doesn't
+support; showing which AI service answered.
+
+**Where.** A new **Insights** page (lightbulb icon) in the wide side rail after Goals; on phones, an **Insights**
+widget (newest recap's first lines + "See all insights") that is in the Dashboard default layout (below Day totals /
+in reading order) — the phone bottom bar is unchanged. The widget can be added to Goals too. Route `#/insights`.
+
+**Cards on the page** (newest first within each):
+1. **Weekly recap** — for the week just ended (person's week start): a 2–3 sentence summary, "What went well" (2–3
+   bullets), "What slipped" (1–2), **One thing to try** next week; plus the week's numbers from the app (days logged,
+   days in range, average calories and protein vs plan, water days, steps/workouts, trend weight change) shown
+   beside it, computed by the app, not the AI. Written automatically once a week (see Running) and kept; earlier
+   recaps listed under "Past recaps". **Refresh** rewrites this week's-so-far ("so far this week") on demand.
+2. **Protein help and food swaps** — on demand (Refresh) and refreshed with the weekly run: your top protein sources
+   (from the data), days protein fell short and by how much, 2–3 concrete additions that fit the plan ("Greek yogurt at
+   breakfast would close the gap on 4 of 5 short days"), and 2–3 swaps of foods you log often that are calorie-dense
+   for little protein, each with a suggested swap and the saving. Only foods/numbers grounded in the summary.
+3. **Ask a question** — a text box ("Ask about your eating, weight or habits"); the answer comes from the person's
+   own data for the range the question implies (default last 4 weeks, at most 26 weeks); keeps the last 20 questions
+   and answers. Questions outside food/weight/activity/habits get a polite "I can only help with your ByteSize data".
+
+**Running.**
+- Uses the existing AI services and their order/failover (`lib/ai.ts` — add an insights task; plain-text-free JSON
+  replies validated with zod; length retry as elsewhere). Never names the AI service on screen; while working shows
+  "Thinking… asking AI" with the spinner like Describe it (§23). No AI service set up → the page explains and links
+  to Settings › Integrations; the app-computed numbers still show.
+- **Weekly**: a scheduled job (like backups, `lib/schedule.ts`) writes each person's recap (and refreshes Protein
+  help) once after their week ends, at about 6 am in their time zone; skipped when they logged fewer than 3 days that
+  week or Insights' weekly run is switched off (a switch on the Insights page, on by default); a failure retries
+  hourly up to 3 times. Waits on close like the other jobs.
+- **On demand**: Refresh at most once per 10 minutes per card per person; questions at most 20 a day per person
+  (friendly message when reached). Counted in App info ("AI insights").
+- **The summary** sent to the AI is built by one pure, tested function: per day — date, plan range, totals (calories,
+  protein, carbs, fat, fiber, sugar, sodium, water), foods by meal with amounts and per-food calories/protein, in range
+  yes/no (calorieDays.ts), weigh-in/trend, shot (med/dose), steps, workouts; plus the person's plan, goal weight,
+  active goals, units and week start. Nothing else (no names, emails, keys, notes fields beyond food names).
+- **Prompt rules** (system prompt, tested by snapshot): friendly coach; short; use only numbers in the summary or say
+  you don't know; no medical/dose advice (suggest talking to their care team for symptoms or doses); never suggest
+  eating below the plan's minimum; protein-first framing on a GLP-1; plain words, the person's units.
+
+**Data & API.** `insights` table (user, kind `recap`|`protein`|`answer`, period start/end, question (answers),
+content json, created). Per-user isolation, backed up, in "Download my data". Read routes allowed for Read only API
+keys; Refresh/ask and the switch are not allowed for keys. seed-demo adds one recap and one protein card (static,
+no AI call) so the page isn't empty; --replace clears them.

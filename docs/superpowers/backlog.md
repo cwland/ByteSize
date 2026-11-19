@@ -25,3 +25,9 @@ _(add as they come in)_
 - Invites: link breaks under a sub-path deployment; spent token stays in browser history; expired invites never cleaned.
 - API keys: last-used UPDATE on every request; wrong-key 401s not rate-limited.
 - Seed-demo: earned badges are left as they were after --replace.
+
+## From Insights planning (Cory, 2026-11-18)
+
+- **Email the weekly recap** (and maybe other insights) as a notification, using the email setup.
+- **Insights: patterns + shot-day effects** — weekend/dinner-out patterns, appetite and calories by days since shot.
+- **Insights: plateau check** — when the trend flattens, what changed.
