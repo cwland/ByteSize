@@ -1,0 +1,2 @@
+// Shared settings. Local.xcconfig (git-ignored) holds DEVELOPMENT_TEAM for device builds.
+#include? "Local.xcconfig"

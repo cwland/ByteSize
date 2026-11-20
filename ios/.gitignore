@@ -1,0 +1,6 @@
+*.xcodeproj/
+ByteSize/Info.plist
+Local.xcconfig
+build/
+ByteSizeKit/.build/
+ByteSizeKit/.swiftpm/
