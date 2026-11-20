@@ -703,4 +703,69 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5), "saved on today, not the picked day")
         XCTAssertFalse(app.descendants(matching: .any)["history-\(dayString(1))"].exists)
     }
+
+    // MARK: - I4 My Foods
+
+    private func openMyFoods() {
+        app.buttons["My Foods"].tap()
+        XCTAssertTrue(app.buttons["filter-all"].waitForExistence(timeout: 5))
+    }
+
+    private func foodLogShows(_ name: String) -> Bool {
+        app.buttons["Food Log"].tap()
+        let entry = label(name)
+        return waitUntil { self.reveal(entry).exists }
+    }
+
+    func testMyFoodsFiltersAndLogsARecipe() {
+        signedIn()
+        openMyFoods()
+        app.buttons["filter-recipes"].tap()
+        let chili = app.buttons["myFood-203"]
+        XCTAssertTrue(chili.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil { !self.app.buttons["myFood-201"].exists }, "only recipes")
+        shot("33-my-foods")
+        chili.tap()
+        let log = app.buttons["logButton"]
+        XCTAssertTrue(log.waitForExistence(timeout: 5))
+        log.tap()
+        XCTAssertTrue(app.buttons["filter-all"].waitForExistence(timeout: 5), "back on the list after logging")
+        XCTAssertTrue(foodLogShows("Chili"))
+    }
+
+    func testQuickMealLeavesOneOut() {
+        signedIn()
+        openMyFoods()
+        app.buttons["filter-meals"].tap()
+        let meal = app.buttons["myFood-204"]
+        XCTAssertTrue(meal.waitForExistence(timeout: 5))
+        meal.tap()
+        let toast = app.buttons["mealItem-1"]
+        XCTAssertTrue(toast.waitForExistence(timeout: 5))
+        toast.tap()
+        shot("34-quick-meal")
+        app.buttons["logMeal"].tap()
+        XCTAssertTrue(app.buttons["filter-all"].waitForExistence(timeout: 5), "back on the list after logging")
+        XCTAssertTrue(foodLogShows("Coffee"))
+        XCTAssertTrue(label("Eggs").exists)
+        XCTAssertFalse(label("Toast").exists)
+    }
+
+    func testMyEditsShowsOnlyCorrections() {
+        signedIn()
+        openMyFoods()
+        app.buttons["filter-edits"].tap()
+        XCTAssertTrue(app.buttons["myFood-202"].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil { !self.app.buttons["myFood-201"].exists && !self.app.buttons["myFood-203"].exists })
+    }
+
+    func testSearchFindsAFood() {
+        signedIn()
+        openMyFoods()
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("oat")
+        XCTAssertTrue(waitUntil { self.app.buttons["myFood-201"].exists && !self.app.buttons["myFood-203"].exists })
+    }
 }
