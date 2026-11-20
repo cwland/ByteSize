@@ -227,7 +227,7 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["logButton"].exists)
         XCTAssertTrue(app.searchFields.firstMatch.exists)
-        app.buttons["Close"].firstMatch.tap()
+        app.buttons["closeSheet"].tap()
         app.buttons["Food Log"].tap()
         XCTAssertTrue(app.staticTexts["Banana"].waitForExistence(timeout: 5))
     }
@@ -256,14 +256,10 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists })
-        app.buttons["Close"].firstMatch.tap()
+        app.buttons["closeSheet"].tap()
         app.buttons["Food Log"].tap()
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "6 × 1 prune")).firstMatch
-        if !row.waitForExistence(timeout: 5), let dir = ProcessInfo.processInfo.environment["SHOTS_DIR"] {
-            shot("12b-food-log")
-            try? app.debugDescription.write(toFile: dir + "/12b-food-log.txt", atomically: true, encoding: .utf8)
-        }
-        XCTAssertTrue(row.exists)
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
     }
 
     func testBigAmountAsks() {
