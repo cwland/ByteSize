@@ -528,6 +528,34 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(waitUntil { !totals.exists })
     }
 
+    func testLogShotWithDoseDateAndNote() {
+        signedIn()
+        let log = reveal(app.buttons["Log shot"])
+        XCTAssertTrue(log.waitForExistence(timeout: 5))
+        log.tap()
+        let dose = app.buttons["shotDose"]
+        XCTAssertTrue(dose.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.datePickers["shotDate"].exists)
+        dose.tap()
+        app.buttons["7.5 mg"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["currentDoseNote"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts["currentDoseNote"].label, "This becomes your current dose")
+        let note = app.textFields["shotNote"].exists ? app.textFields["shotNote"] : app.textViews["shotNote"]
+        note.tap()
+        note.typeText("left side sore")
+        shot("25-log-shot")
+        app.buttons["saveShot"].tap()
+        let last = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "7.5 mg")).firstMatch
+        XCTAssertTrue(last.waitForExistence(timeout: 5), "the card's Last: line shows the new dose")
+    }
+
+    func testSettingsDivider() {
+        signedIn()
+        app.buttons["Profile"].tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Theme")).firstMatch.waitForExistence(timeout: 5))
+        shot("26-settings") // checked by eye: the separator between Theme and Appearance spans the row
+    }
+
     func testBigAmountAsks() {
         signedIn()
         trackSearch("banana", pick: "Banana")
