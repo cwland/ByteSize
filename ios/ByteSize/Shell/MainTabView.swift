@@ -55,7 +55,8 @@ struct MainTabView: View {
         switch shell.tab {
         case .dashboard: DashboardView(dashboard: today.dashboard, days: today.days, units: today.units)
         case .foodLog: FoodLogView(log: today.log, days: today.days, units: today.units) { shell.open(.track, meal: $0) }
-        case .goals, .myFoods: PlaceholderScreen(title: shell.tab.title, systemImage: shell.tab.systemImage)
+        case .goals: GoalsView(model: today.goals)
+        case .myFoods: PlaceholderScreen(title: shell.tab.title, systemImage: shell.tab.systemImage)
         }
     }
 }

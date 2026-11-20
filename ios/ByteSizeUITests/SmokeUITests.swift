@@ -649,9 +649,8 @@ final class SmokeUITests: XCTestCase {
         let field = app.textFields["weightField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.tap()
-        field.press(forDuration: 1.0)
-        if app.menuItems["Select All"].waitForExistence(timeout: 1) { app.menuItems["Select All"].tap() }
-        field.typeText(text)
+        let current = field.value as? String ?? ""
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + text)
         app.buttons["saveWeight"].tap()
         XCTAssertTrue(waitUntil { !field.exists }, "the sheet closes after saving")
     }
