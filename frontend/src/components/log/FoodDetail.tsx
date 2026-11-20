@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import FoodPic from "./FoodPic";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { formatAmount } from "../../amounts";
+import { formatAmount, isBigAmount } from "../../amounts";
 import { amountFactor, scaleNutrients } from "../../nutrition";
 import type { NutrientKey, Nutrients, Portion, Serving } from "../../types";
 import { fmt } from "../../units";
@@ -24,7 +24,8 @@ const BARE_AMOUNT = /^\s*[\d.,/\s]+\s*(g|grams?|ml|millilit(?:er|re)s?|l|lit(?:e
 // ("1 shake", "1 bottle (500 ml)") starts at 1 of it.
 export function defaultPortion(servings: Serving[], units: "imperial" | "metric" = "imperial"): Portion {
   const base = servings[0];
-  const own = servings.length > 1 ? servings[1] : null;
+  // the food's own second serving ("1 bar" after "100 g"), never a unit the server worked out ("1 prune")
+  const own = servings.length > 1 && !servings[1].derived ? servings[1] : null;
   if (base && !own && !BARE_AMOUNT.test(base.label)) return { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 };
   if (base?.ml && (!own || GRAMS_ONLY.test(own.label))) {
     const mlPerGram = base.grams ? base.ml / base.grams : 1;
@@ -106,13 +107,21 @@ export default function FoodDetail({
   const [picking, setPicking] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
   const editable = food.servings.length > 0;
   const empty = !(portion.quantity * portion.fraction > 0);
   const n = nutrientsFor(food, portion);
   const chips = insights(n);
   const amount = formatAmount(food.servings, portion.servingIndex, portion.unit, portion.quantity, portion.fraction);
 
+  // A big amount asks first (L1): more than 20 servings or 2,000 calories
+  const trySubmit = () => {
+    if (isBigAmount(food.servings, portion, n.calories)) setAsking(true);
+    else void submit();
+  };
+
   const submit = async () => {
+    setAsking(false);
     setBusy(true);
     setMsg(null);
     try {
@@ -214,8 +223,21 @@ export default function FoodDetail({
       )}
 
       <Notice msg={msg} />
-      {editable && (
-        <button type="button" disabled={busy || empty} onClick={submit} className={`${primaryButton} w-full py-3.5 text-lg`}>
+      {asking && (
+        <div role="alertdialog" aria-labelledby="big-amount" className={`${boxed} flex flex-col gap-3 p-4`}>
+          <p id="big-amount" className="font-semibold">{`That's a lot — log ${fmt(n.calories ?? 0)} cal of ${food.name}?`}</p>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setAsking(false)} className={`${linkButton} flex-1 py-2`}>
+              Change
+            </button>
+            <button type="button" onClick={() => void submit()} className={`${primaryButton} flex-1 py-2`}>
+              Log it
+            </button>
+          </div>
+        </div>
+      )}
+      {editable && !asking && (
+        <button type="button" disabled={busy || empty} onClick={trySubmit} className={`${primaryButton} w-full py-3.5 text-lg`}>
           {submitLabel}
         </button>
       )}
