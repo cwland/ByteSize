@@ -169,6 +169,13 @@
       "when": 1795104825745,
       "tag": "0023_goal_week_start_badge_count",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795130440542,
+      "tag": "0024_log_trash",
+      "breakpoints": true
     }
   ]
 }
