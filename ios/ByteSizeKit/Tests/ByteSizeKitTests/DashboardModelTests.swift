@@ -18,7 +18,7 @@ final class DashboardModelTests: XCTestCase {
             case ("GET", "/api/weight"): return .json(200, #"{"weighIns":[{"day":"2026-11-12","weightKg":83.0,"trendKg":83.1},{"day":"2026-11-19","weightKg":82.28,"trendKg":82.6}],"latest":{"day":"2026-11-19","weightKg":82.28},"goalKg":75}"#)
             case ("PUT", _) where req.url!.path().hasPrefix("/api/weigh-ins/"):
                 return weightError ? .json(400, #"{"error":"Invalid request","details":[{"path":"weightKg","message":"Enter a weight between 30 and 350 kg"}]}"#) : .json(200, #"{"weighIn":{}}"#)
-            case ("GET", "/api/glp1"): return .json(200, #"{"settings":null,"lastShot":{"day":"2026-11-13","medication":"tirzepatide","doseMg":5,"site":"abdomen_left"},"nextDue":"2026-11-20","status":"upcoming","overdueDays":0,"suggestedSite":"abdomen_right"}"#)
+            case ("GET", "/api/glp1"): return .json(200, #"{"settings":null,"lastShot":{"day":"2026-11-13","medication":"Zepbound","doseMg":5,"site":"abdomen_left"},"nextDue":"2026-11-20","status":"upcoming","overdueDays":0,"suggestedSite":"abdomen_right"}"#)
             case ("PUT", _) where req.url!.path().hasPrefix("/api/glp1/shots/"): return .json(200, #"{"ok":true}"#)
             case ("GET", "/api/badges"): return .json(200, #"{"badges":[{"id":"first_weigh_in","earnedOn":"2026-11-02"},{"id":"lost_5","earnedOn":"2026-11-15"},{"id":"halfway","earnedOn":null},{"id":"streak_7","earnedOn":"2026-11-10"},{"id":"streak_14","earnedOn":"2026-11-17"},{"id":"streak_30","earnedOn":"2026-11-18"}]}"#)
             case ("GET", "/api/days/logged"): return .json(200, #"{"days":[]}"#)
@@ -128,9 +128,13 @@ final class DashboardModelTests: XCTestCase {
     func testLogShotOnTodayAndReload() async throws {
         serve()
         let (m, days) = model()
+        await m.load()
         await days.select("2026-11-17") // looking at another day: the shot is still today's
         HTTPStub.requests = []
-        try await m.logShot(site: "abdomen_right")
+        let view = try XCTUnwrap(m.glp1)
+        let form = ShotForm(view: view, today: days.today)
+        form.site = "abdomen_right"
+        try await m.logShot(form)
         let put = try XCTUnwrap(requests("PUT", "/api/glp1/shots/2026-11-19").first)
         XCTAssertEqual(put.json?["site"] as? String, "abdomen_right")
         XCTAssertFalse(requests("GET", "/api/glp1").isEmpty)
