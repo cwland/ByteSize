@@ -4,6 +4,8 @@ import VisionKit
 /// The live camera barcode reader (EAN-13, EAN-8, UPC-E). Reports each code it reads.
 struct BarcodeScanner: UIViewControllerRepresentable {
     let onCode: (String) -> Void
+    /// The camera stopped being available (e.g. Don't Allow at the first prompt).
+    var onUnavailable: () -> Void = {}
 
     /// False on the simulator, on devices without the hardware, or when camera access is denied.
     @MainActor static var isAvailable: Bool { DataScannerViewController.isSupported && DataScannerViewController.isAvailable }
@@ -25,11 +27,19 @@ struct BarcodeScanner: UIViewControllerRepresentable {
         controller.stopScanning()
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(onCode: onCode) }
+    func makeCoordinator() -> Coordinator { Coordinator(onCode: onCode, onUnavailable: onUnavailable) }
 
     final class Coordinator: NSObject, DataScannerViewControllerDelegate {
         let onCode: (String) -> Void
-        init(onCode: @escaping (String) -> Void) { self.onCode = onCode }
+        let onUnavailable: () -> Void
+        init(onCode: @escaping (String) -> Void, onUnavailable: @escaping () -> Void) {
+            self.onCode = onCode
+            self.onUnavailable = onUnavailable
+        }
+
+        func dataScanner(_ scanner: DataScannerViewController, becameUnavailableWithError error: DataScannerViewController.ScanningUnavailable) {
+            onUnavailable()
+        }
 
         func dataScanner(_ scanner: DataScannerViewController, didAdd items: [RecognizedItem], allItems: [RecognizedItem]) {
             for item in items {

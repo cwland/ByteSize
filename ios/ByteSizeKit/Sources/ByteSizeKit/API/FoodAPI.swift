@@ -84,7 +84,13 @@ public enum FoodAPI {
     }
 
     /// Saves what the AI read as the person's own food; with a barcode, the next scan of it finds this food.
-    public static func saveFood(_ draft: AiDraft, barcode: String?) -> Endpoint<FoodResponse> {
-        Endpoint("POST", "/api/my-foods", json: SaveBody(name: draft.name, brand: draft.brand, barcode: barcode ?? draft.barcode, category: draft.category, servings: draft.servings, nutrients: draft.nutrients, aiFields: draft.nutrients.values.keys.sorted(), photoId: draft.photoId))
+    /// original: what the AI read, so values the person corrected or typed in aren't marked AI.
+    public static func saveFood(_ draft: AiDraft, barcode: String?, original: AiDraft? = nil) -> Endpoint<FoodResponse> {
+        let aiFields = draft.nutrients.values.keys.sorted().filter { key in
+            guard let original else { return true }
+            guard let read = original.nutrients.values[key] else { return false }
+            return abs(read - draft.nutrients[key]) < 1e-9
+        }
+        return Endpoint("POST", "/api/my-foods", json: SaveBody(name: draft.name, brand: draft.brand, barcode: barcode ?? draft.barcode, category: draft.category, servings: draft.servings, nutrients: draft.nutrients, aiFields: aiFields, photoId: draft.photoId))
     }
 }

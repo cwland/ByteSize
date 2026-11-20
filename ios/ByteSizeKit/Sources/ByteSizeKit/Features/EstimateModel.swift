@@ -50,6 +50,7 @@ public final class EstimateModel {
         defer { busy = false }
         message = nil
         assumedNote = nil
+        items = [] // a new description: never the old list under a new answer (or error)
         do {
             let result = try await api.send(FoodAPI.estimateItems(words))
             items = result.items
@@ -93,11 +94,11 @@ public final class EstimateModel {
     }
 
     /// A label read from a photo, saved as the person's own food (no barcode), ready to log.
-    public func save(_ draft: AiDraft) async -> Food? {
+    public func save(_ draft: AiDraft, original: AiDraft? = nil) async -> Food? {
         busy = true
         defer { busy = false }
         do {
-            return try await api.send(FoodAPI.saveFood(draft, barcode: nil)).food
+            return try await api.send(FoodAPI.saveFood(draft, barcode: nil, original: original)).food
         } catch {
             message = Self.text(error)
             return nil
