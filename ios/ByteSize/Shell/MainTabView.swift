@@ -23,7 +23,8 @@ struct MainTabView: View {
                         }
                     }
             }
-            .safeAreaPadding(.bottom, TabBar.height)
+            // Room for the tab bar as a real inset, so lists and toasts on every screen stay above it
+            .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: TabBar.height) }
 
             RadialMenu(shell: shell)
             TabBar(shell: shell)

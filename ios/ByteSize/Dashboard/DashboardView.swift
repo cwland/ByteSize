@@ -104,6 +104,7 @@ struct DashboardView: View {
             Section {
                 ForEach(dashboard.widgets) { widget in
                     Label(widget.title, systemImage: widget.systemImage)
+                        .accessibilityIdentifier("edit-\(widget.rawValue)")
                 }
                 .onMove { dashboard.move(from: $0, to: $1) }
                 .onDelete { offsets in

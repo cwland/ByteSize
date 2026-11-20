@@ -142,11 +142,7 @@ final class SmokeUITests: XCTestCase {
         app.buttons["Delete"].tap()
         let undo = app.buttons["Undo"]
         XCTAssertTrue(undo.waitForExistence(timeout: 3))
-        let app = self.app!
-        MainActor.assumeIsolated {
-            print("DIAG-UNDO frame=\(undo.frame) hittable=\(undo.isHittable) count=\(app.buttons.matching(identifier: "Undo").count)")
-            print("DIAG-TREE " + app.debugDescription.split(separator: "\n").filter { $0.contains("Undo") || $0.contains("Deleted") || $0.contains("TabBar") || $0.contains("Quick add") }.joined(separator: " || "))
-        }
+        XCTAssertTrue(undo.isHittable, "the Undo toast sits above the tab bar")
         XCTAssertFalse(app.staticTexts["Greek yogurt"].exists)
         shot("9-undo")
         undo.tap()
@@ -168,20 +164,16 @@ final class SmokeUITests: XCTestCase {
     func testEditDashboardLayout() {
         signedIn()
         XCTAssertTrue(app.staticTexts["362 to go"].waitForExistence(timeout: 5))
-        let app = self.app!
-        MainActor.assumeIsolated { print("DIAG-EDIT edits=\(app.buttons.matching(identifier: "Edit").count) frame=\(app.buttons["Edit"].frame)") }
         app.buttons["Edit"].tap()
-        sleep(1)
-        MainActor.assumeIsolated { print("DIAG-BUTTONS " + app.buttons.allElementsBoundByIndex.map { $0.label }.joined(separator: " | ")) }
         XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 3))
-        let badges = app.staticTexts["Badges"]
+        let badges = app.descendants(matching: .any)["edit-badges"]
         XCTAssertTrue(badges.waitForExistence(timeout: 3))
         shot("11-dashboard-edit")
         badges.swipeLeft()
         let delete = app.buttons["Delete"].firstMatch
         XCTAssertTrue(delete.waitForExistence(timeout: 3))
         delete.tap()
-        XCTAssertFalse(app.staticTexts["Badges"].waitForExistence(timeout: 1))
+        XCTAssertFalse(app.descendants(matching: .any)["edit-badges"].waitForExistence(timeout: 1))
         app.buttons["Done"].tap()
         XCTAssertTrue(app.staticTexts["362 to go"].waitForExistence(timeout: 5))
         app.swipeUp()
