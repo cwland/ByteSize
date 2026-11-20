@@ -65,6 +65,14 @@ public final class PortionModel {
         (whole, fraction) = Self.split(amount)
     }
 
+    /// A quick meal's or recipe's item at its saved amount.
+    public convenience init(item: MealItem, meal: Meal) {
+        let unit = AmountUnit(rawValue: item.unit) ?? .serving
+        self.init(name: item.name, icon: item.icon, servings: item.servings, nutrients: item.perServing, meal: meal)
+        choice = unit == .serving ? .serving(item.servingIndex) : .unit(unit)
+        (whole, fraction) = Self.split(item.quantity * item.fraction)
+    }
+
     /// 2.4 → (2, ⅜): the whole number and the nearest fraction on the wheel (a remainder nearer 1 rounds up).
     public static func split(_ amount: Double) -> (Int, Double) {
         var whole = Int(amount.rounded(.down))
