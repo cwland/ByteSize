@@ -84,7 +84,7 @@ final class TodayOverviewTests: XCTestCase {
     }
 
     func testLogSummary() throws {
-        XCTAssertEqual(logSummary(try Fixtures.decodeDay()), LogSummary(eaten: "1,138 eaten", left: "362 left", protein: "Protein 97 / 110 g", fiber: "Fiber 0 / 25 g"))
+        XCTAssertEqual(logSummary(try Fixtures.decodeDay()), LogSummary(eaten: "1,138 eaten", left: "862 left", protein: "Protein 97 / 110 g", fiber: "Fiber 0 / 25 g"))
     }
 
     func testLogSummaryAtTheMaxAndOver() throws {

@@ -87,7 +87,7 @@ arrows; UI covered by XCUITest against the in-app `StubServer`. No server change
 
 - [ ] **Step 1: Failing tests:** `testBarFillThresholds` (1499 under, 1500 within, 2000 within, 2001 over for 1500–2000),
   `testDailyTotalsInTheWebsOrder` (names in order; Calories target "1,500–2,000"; Carbs target "—"; Water "17 fl oz" imperial),
-  `testLogSummary` (fixture day → "1,138 eaten", "362 left", "Protein 97 / 110 g", "Fiber 0 / 25 g"),
+  `testLogSummary` (fixture day → "1,138 eaten", "862 left", "Protein 97 / 110 g", "Fiber 0 / 25 g"),
   `testLogSummaryAtTheMaxAndOver` (2000 → "0 left"; 2120 → "over by 120"), `testLogSummaryWithoutTargets`.
 - [ ] **Step 2:** `swift test --filter OverviewTests` → FAIL.
 - [ ] **Step 3:** implement.
@@ -142,7 +142,7 @@ arrows; UI covered by XCUITest against the in-app `StubServer`. No server change
 - [ ] **Step 1: Failing UI tests:** `testStripSelectsADayAndTheCalendarJumps` (Food Log → `day-<yesterday>` tap → header
   reads the long date; `dayHeader` → calendar → pick today → header "Today"); `testNoArrowsRemain` ("Previous day",
   "Next day", "Previous week", "Next week" don't exist); `testFoodLogSummaryShowsWhatsLeft` (`logSummary` contains
-  "1,138 eaten" and "362 left"); `testTomorrowCantBeChosen` (tap `day-<tomorrow>` → header still "Today").
+  "1,138 eaten" and "862 left"); `testTomorrowCantBeChosen` (tap `day-<tomorrow>` → header still "Today").
 - [ ] **Step 2:** Mac UI run of those → FAIL.
 - [ ] **Step 3:** implement (ScrollView(.horizontal) + `.scrollTargetBehavior(.viewAligned)` + `.scrollPosition(id:)` centred on
   the selected chip; dots from `loggedDays`; `onScrollTargetVisibilityChange` or `.onChange(of: scroll position)` → `loadLogged(around:)`;
