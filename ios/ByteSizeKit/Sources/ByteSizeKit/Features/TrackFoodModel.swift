@@ -148,6 +148,14 @@ public final class TrackFoodModel {
         }
     }
 
+    /// Photo or Describe, opened inside Track Food, logged: back on the search with "Logged …", lists fresh.
+    public func loggedElsewhere(_ name: String) async {
+        message = nil
+        lastLogged = name
+        await dayStore.reload()
+        await load()
+    }
+
     public func isFavorite(_ food: Food) -> Bool {
         favorites.contains { fav in
             fav.ref == food.ref || Self.same(fav, food.ref) || (fav.baseCacheId != nil && fav.baseCacheId == food.baseCacheId)
