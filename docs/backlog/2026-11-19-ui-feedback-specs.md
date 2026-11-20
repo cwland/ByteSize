@@ -170,21 +170,3 @@ Add a **Compounded** option that reveals:
 - Custom dose and unit (e.g. 3.5 mg or 25 units)
 
 **Acceptance:** each standard GLP-1 shows its dose tiers; Compounded allows a custom name and dose.
-
-## Part 4: Added later on 2026-11-19
-
-### SPEC-15: Web — daily backups you can see (like Culury's)
-Cory: "I don't see a backup in the web, it should back up like Culury daily."
-
-What exists today (Claude checked the code): the server already writes a **daily whole-server backup**
-(`scheduleBackups`, after `BACKUP_HOUR`, keeping `backupKeep()` copies in `data/app/backups`), and admins can list,
-download, make, delete and restore backups in **Settings → Data** ("Your data and backups"). So the gap is likely
-one of these, to confirm with Cory:
-- **Discoverability:** it's under "Data", not a "Backups" item, and only admins see it.
-- **The running server is older than the backup feature.**
-- **Missing pieces compared with Culury:** last backup time and next run on the screen, the schedule (time,
-  how many to keep) set in the UI rather than env vars, a copy to somewhere off the server (a NAS share, S3), and
-  an alert when a backup fails.
-
-**Acceptance (draft):** an admin can find Backups in Settings at a glance, see when the last daily backup ran and
-whether it worked, and change the time and how many are kept.
