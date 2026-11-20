@@ -40,7 +40,7 @@ struct PhotoSheet: View {
             }
         }
         .sheet(item: $portionFood) { food in
-            FoodPortionView(food: food, meal: model.meal, message: track.message) { food, portion in
+            FoodPortionView(food: food, meal: model.meal, message: track.message, favorites: track) { food, portion in
                 let ok = await track.log(food, portion: portion)
                 if ok { close() }
                 return ok
