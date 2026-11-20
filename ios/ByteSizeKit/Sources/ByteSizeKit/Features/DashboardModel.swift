@@ -89,6 +89,7 @@ public final class DashboardModel {
 
     /// Water for the day being looked at.
     public func addWater(ml: Int) async {
+        guard !dayStore.selectedIsFuture else { return } // that day hasn't happened yet
         do {
             _ = try await api.send(LogAPI.water(ml: ml, day: dayStore.selected))
             message = nil
