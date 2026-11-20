@@ -178,6 +178,43 @@ final class TrackFoodQuickTests: XCTestCase {
         XCTAssertEqual(requests("GET", "/api/foods/recent").count, 1, "Recently tracked reloads")
     }
 
+    func testAnOlderMealsListsDontOverwriteTheNewOnes() async {
+        serve()
+        let lunchDay = Self.day("2026-11-18", [Self.entry(70, "2026-11-18", "lunch", "Oatmeal", sourceRef: "cache:50"), Self.entry(72, "2026-11-18", "dinner", "Soup", sourceRef: "cache:60")])
+        let previous = HTTPStub.handler
+        let calls = Counter()
+        HTTPStub.handler = { req in
+            // The first (Lunch) load answers slowly; Dinner's answers at once
+            if req.url?.path() == "/api/day/2026-11-18" { return calls.next() == 1 ? .delayed(0.4, .json(200, lunchDay)) : .json(200, lunchDay) }
+            return previous(req)
+        }
+        let (m, _) = model(meal: .lunch)
+        let lunch = Task { await m.load() }
+        try? await Task.sleep(for: .milliseconds(50))
+        m.meal = .dinner
+        await m.load()
+        await lunch.value
+        XCTAssertEqual(m.yesterday.map(\.entry.name), ["Soup"], "the picker says Dinner: the list is Dinner's")
+    }
+
+    func testUnbookmarkingRemovesAFavoriteStoredAsTheCorrection() async throws {
+        serve(favorites: [Self.prunesFixed])
+        let (m, _) = model()
+        await m.load()
+        await m.toggleFavorite(try food(Self.prunes)) // the database food itself, e.g. from a barcode
+        XCTAssertEqual(requests("DELETE", "/api/foods/favorites/user_food/9").count, 1, "what's stored is the correction")
+        XCTAssertFalse(m.isFavorite(try food(Self.prunes)))
+    }
+
+    func testOpeningAFoodClearsAnOldMessage() async throws {
+        serve(favoritePut: .json(500, #"{"error":"Something went wrong"}"#))
+        let (m, _) = model()
+        await m.toggleFavorite(try food(Self.prunes))
+        XCTAssertNotNil(m.message)
+        m.clearMessage()
+        XCTAssertNil(m.message)
+    }
+
     func testAFailedToggleGoesBack() async throws {
         serve(favoritePut: .json(500, #"{"error":"Something went wrong"}"#))
         let (m, _) = model()
@@ -188,4 +225,11 @@ final class TrackFoodQuickTests: XCTestCase {
         XCTAssertEqual(m.favorites, [])
         XCTAssertNotNil(m.message)
     }
+}
+
+/// Counts calls from the stub's handler (any thread).
+final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var n = 0
+    func next() -> Int { lock.withLock { n += 1; return n } }
 }

@@ -353,6 +353,40 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["quickAdd-Prunes"].waitForExistence(timeout: 5))
     }
 
+    func testAFailedQuickLogSaysSo() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        XCTAssertTrue(app.buttons["addTo-snacks"].waitForExistence(timeout: 5))
+        app.buttons["addTo-snacks"].tap()
+        XCTAssertTrue(app.buttons["quickAdd-Broken bar"].waitForExistence(timeout: 5))
+        app.buttons["quickAdd-Broken bar"].tap()
+        XCTAssertTrue(label("That entry can't be copied").waitForExistence(timeout: 5), "the error shows on the quick screen")
+    }
+
+    func testAMealChosenInsideDescribeComesBackToTheSearch() {
+        signedIn()
+        openDinnerFromTheFoodLog()
+        app.buttons["hub-describe"].tap()
+        let field = app.textFields["describeField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText("2 eggs and toast")
+        app.buttons["estimateButton"].tap()
+        XCTAssertTrue(app.buttons["logAll"].waitForExistence(timeout: 5))
+        let picker = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Meal")).firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 3))
+        picker.tap()
+        app.buttons["Snacks"].firstMatch.tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap() // Back to the search
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Snacks")).firstMatch.waitForExistence(timeout: 5), "the search is in Snacks now")
+        XCTAssertTrue(app.buttons["quickAdd-Banana"].waitForExistence(timeout: 5))
+        app.buttons["quickAdd-Banana"].tap()
+        XCTAssertTrue(label("Logged Banana").waitForExistence(timeout: 5))
+        closeSheet()
+        let banana = app.staticTexts["Banana"]
+        XCTAssertTrue(banana.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(banana.frame.minY, app.buttons["addTo-dinner"].frame.minY, "under Snacks, after Dinner")
+    }
+
     // MARK: - L2: Track Food is the hub for Photo, Scan and Describe; the (+) menu doesn't overlap
 
     func testHubOpensScanInsideTrackFoodAndBack() {
