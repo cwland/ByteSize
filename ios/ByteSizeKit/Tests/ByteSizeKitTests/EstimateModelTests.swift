@@ -17,6 +17,7 @@ final class EstimateModelTests: XCTestCase {
             case ("GET", "/api/days/logged"): return .json(200, #"{"days":[]}"#)
             case ("POST", "/api/ai/estimate-items"): return estimate
             case ("POST", "/api/log/estimates"): return .json(200, #"{"entries":[]}"#)
+            case ("POST", "/api/my-foods"): return .json(200, #"{"food":{"kind":"user_food","id":9,"name":"Wheat crackers","brand":"Acme","icon":"🍘","barcode":null,"servings":[{"label":"2 crackers","grams":30}],"nutrients":{"calories":140},"aiFields":["calories"],"source":"mine","foodKind":"custom"}}"#)
             case ("POST", "/api/photos/analyze"):
                 // URLSession hands uploads to the stub as a stream: the recorded copy has the bytes
                 let body = String(decoding: req.httpBody ?? HTTPStub.requests.last?.body ?? Data(), as: UTF8.self)
@@ -177,5 +178,16 @@ final class EstimateModelTests: XCTestCase {
         XCTAssertEqual(outcome, .nothing)
         XCTAssertEqual(m.message, EstimateModel.needsPhotoAI)
         XCTAssertEqual(requests("POST", "/api/photos/analyze").count, 1, "no point asking for a plate")
+    }
+
+    func testALabelFromAPhotoIsSavedWithoutABarcode() async throws {
+        serve()
+        let (m, _) = model()
+        let draft = try JSONDecoder().decode(AiDraft.self, from: Data(FoodFixtures.draft.utf8))
+        let food = await m.save(draft)
+        XCTAssertEqual(food?.ref, "user_food:9")
+        let body = try XCTUnwrap(requests("POST", "/api/my-foods").last?.json)
+        XCTAssertTrue(body["barcode"] == nil || body["barcode"] is NSNull)
+        XCTAssertEqual(body["photoId"] as? String, "p1")
     }
 }

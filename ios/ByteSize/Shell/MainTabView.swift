@@ -32,15 +32,8 @@ struct MainTabView: View {
         }
         .background(palette.color("page").ignoresSafeArea())
         .sheet(item: $shell.activeAction) { action in
-            NavigationStack {
-                PlaceholderScreen(title: action.title, systemImage: action.systemImage)
-                    .navigationTitle(action.title)
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) { Button("Close") { shell.activeAction = nil } }
-                    }
-            }
-            .presentationDetents([.large])
+            QuickActionSheet(action: action, today: today) { shell.activeAction = nil }
+                .presentationDetents([.large])
         }
         .sheet(isPresented: $shell.profileOpen) {
             ProfileSheet(profile: profile)
@@ -58,6 +51,44 @@ struct MainTabView: View {
         case .dashboard: DashboardView(dashboard: today.dashboard, days: today.days, units: today.units)
         case .foodLog: FoodLogView(log: today.log, days: today.days, units: today.units)
         case .goals, .myFoods: PlaceholderScreen(title: shell.tab.title, systemImage: shell.tab.systemImage)
+        }
+    }
+}
+
+/// One (+) action, with its own models for as long as the sheet is up.
+private struct QuickActionSheet: View {
+    let action: QuickAction
+    let close: () -> Void
+    @State private var track: TrackFoodModel
+    @State private var scan: ScanModel
+    @State private var estimate: EstimateModel
+
+    init(action: QuickAction, today: TodayModels, close: @escaping () -> Void) {
+        self.action = action
+        self.close = close
+        _track = State(initialValue: TrackFoodModel(api: today.api, dayStore: today.days))
+        _scan = State(initialValue: ScanModel(api: today.api))
+        _estimate = State(initialValue: EstimateModel(api: today.api, dayStore: today.days))
+    }
+
+    var body: some View {
+        NavigationStack {
+            content
+                .navigationTitle(action.title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Close", action: close) }
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch action {
+        case .track: TrackFoodSheet(model: track, close: close)
+        case .scan: ScanSheet(model: scan, track: track, close: close)
+        case .photo: PhotoSheet(model: estimate, track: track, close: close)
+        case .describe: DescribeSheet(model: estimate, close: close)
         }
     }
 }
