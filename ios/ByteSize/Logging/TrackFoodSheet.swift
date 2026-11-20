@@ -38,13 +38,14 @@ struct TrackFoodSheet: View {
             await model.search()
         }
         .onChange(of: model.meal) { Task { await model.load() } }
-        .sheet(item: $picked) { food in
+        // Pushed, not a sheet: iOS won't open a sheet over an active search
+        .navigationDestination(item: $picked) { food in
             if let portion {
                 PortionSheet(portion: portion, onLog: {
                     let ok = await model.log(food, portion: portion)
                     if ok { close() }
                     return ok
-                }, message: model.message)
+                }, message: model.message, pushed: true)
             }
         }
     }
