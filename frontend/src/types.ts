@@ -18,7 +18,7 @@ export const NUTRIENT_KEYS = [
 export type NutrientKey = (typeof NUTRIENT_KEYS)[number];
 // A missing key means unknown, never 0
 export type Nutrients = Partial<Record<NutrientKey, number>>;
-export type Serving = { label: string; grams?: number; ml?: number; approx?: true }; // approx: ml estimated from grams (1 g ≈ 1 ml)
+export type Serving = { label: string; grams?: number; ml?: number; approx?: true; per?: number; derived?: true }; // per: share of servings[0] (a counted unit with no weight); derived: worked out by the server ("1 prune"), never saved // approx: ml estimated from grams (1 g ≈ 1 ml)
 // What a food is to its owner. Database (cache) foods read as "custom"; only recipes and quick meals get a tag.
 export type FoodKind = "custom" | "override" | "recipe" | "quick_meal";
 export type FoodResult = {
