@@ -254,9 +254,10 @@ final class SmokeUITests: XCTestCase {
         shot("12-prunes-wheel")
         app.buttons["logButton"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists })
         app.buttons["Close"].firstMatch.tap()
         app.buttons["Food Log"].tap()
-        XCTAssertTrue(app.staticTexts["Prunes"].waitForExistence(timeout: 5) || app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Prunes")).firstMatch.waitForExistence(timeout: 1))
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "6 × 1 prune")).firstMatch
         if !row.waitForExistence(timeout: 5), let dir = ProcessInfo.processInfo.environment["SHOTS_DIR"] {
             shot("12b-food-log")
