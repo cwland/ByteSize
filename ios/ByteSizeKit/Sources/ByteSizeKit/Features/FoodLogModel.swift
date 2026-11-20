@@ -62,11 +62,17 @@ public final class FoodLogModel {
     }
 
     public func move(_ entry: LogEntry, to day: String, meal: Meal) async {
-        await write { _ = try await self.api.send(LogAPI.move(ids: [entry.id], day: day, meal: meal, copy: false)) }
+        await write {
+            _ = try await self.api.send(LogAPI.move(ids: [entry.id], day: day, meal: meal, copy: false))
+            self.dayStore.invalidate(day) // that day changed too
+        }
     }
 
     public func copy(_ entry: LogEntry, to day: String, meal: Meal) async {
-        await write { _ = try await self.api.send(LogAPI.move(ids: [entry.id], day: day, meal: meal, copy: true)) }
+        await write {
+            _ = try await self.api.send(LogAPI.move(ids: [entry.id], day: day, meal: meal, copy: true))
+            self.dayStore.invalidate(day)
+        }
     }
 
     public func delete(_ entry: LogEntry) async {

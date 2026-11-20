@@ -39,6 +39,7 @@ struct ProfileSheet: View {
                         }
                     }
                     .pickerStyle(.navigationLink)
+                    .alignmentGuide(.listRowSeparatorLeading) { _ in 0 } // SPEC-12: the divider spans the row
                     Picker("Appearance", selection: $profile.modeOverride) {
                         Text("Match my account (\(modeName(profile.accountMode)))").tag(ColorMode?.none)
                         ForEach(ColorMode.allCases) { mode in

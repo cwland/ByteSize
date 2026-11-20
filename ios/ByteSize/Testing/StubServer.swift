@@ -92,6 +92,9 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         private var trash: [Int: Entry] = [:]
         private var nextId = 100
         private var layout: [String]?
+        /// GLP-1 shots, newest first (Today polish: the Log shot sheet), and the current dose.
+        private var shotLog: [(day: String, dose: Double, unit: String, site: String, note: String?)] = [("2026-11-13", 5, "mg", "abdomen_left", nil)]
+        private var currentDose: Double = 5
         /// Bookmarked foods, newest first ("cache:42").
         private var favoriteRefs: [String] = []
 
@@ -155,7 +158,17 @@ final class StubServer: URLProtocol, @unchecked Sendable {
             case ("GET", "/api/weight"):
                 return (200, #"{"weighIns":[{"day":"2026-11-12","weightKg":83.5,"trendKg":83.6},{"day":"2026-11-19","weightKg":82.28,"trendKg":82.9}],"latest":{"day":"2026-11-19","weightKg":82.28},"goalKg":75}"#)
             case ("GET", "/api/glp1"):
-                return (200, #"{"settings":{"medication":"tirzepatide","doseMg":5,"injectionWeekday":2},"lastShot":{"day":"2026-11-13","medication":"tirzepatide","doseMg":5,"site":"abdomen_left"},"nextDue":"2026-11-20","status":"upcoming","overdueDays":0,"suggestedSite":"abdomen_right"}"#)
+                let shots = shotLog.map { json(["day": $0.day, "medication": "Zepbound", "doseMg": $0.dose, "doseUnit": $0.unit, "site": $0.site, "note": $0.note as Any]) }
+                let last = shots.first ?? "null"
+                return (200, #"{"settings":{"medication":"Zepbound","doseMg":\#(currentDose),"doseUnit":"mg","injectionWeekday":2},"lastShot":\#(last),"nextDue":"2026-11-20","status":"upcoming","overdueDays":0,"suggestedSite":"abdomen_right","shots":[\#(shots.joined(separator: ","))],"medications":[{"name":"Zepbound","ingredient":"tirzepatide","doses":[2.5,5,7.5,10,12.5,15]},{"name":"Wegovy","ingredient":"semaglutide","doses":[0.25,0.5,1,1.7,2.4]}]}"#)
+            case ("PUT", _) where path.hasPrefix("/api/glp1/shots/"):
+                let day = String(path.dropFirst("/api/glp1/shots/".count))
+                let dose = (body["doseMg"] as? Double) ?? currentDose
+                shotLog.removeAll { $0.day == day }
+                shotLog.append((day, dose, body["doseUnit"] as? String ?? "mg", body["site"] as? String ?? "abdomen_left", body["note"] as? String))
+                shotLog.sort { $0.day > $1.day }
+                if day == shotLog.first?.day { currentDose = dose }
+                return (200, #"{"ok":true}"#)
             case ("GET", "/api/badges"):
                 return (200, #"{"badges":[{"id":"first_weigh_in","earnedOn":"2026-11-02"},{"id":"lost_5","earnedOn":"2026-11-15"},{"id":"streak_7","earnedOn":"2026-11-10"}]}"#)
             case ("GET", "/api/days/logged"):
@@ -236,6 +249,10 @@ final class StubServer: URLProtocol, @unchecked Sendable {
             default: break
             }
             // /api/day/:d
+            // Today polish: a day three days back that fails to load (the Food Log says so, with Retry)
+            if method == "GET", parts.count == 3, parts[1] == "day", parts[2] == Self.day(Calendar.current.date(byAdding: .day, value: -3, to: Date()) ?? Date()) {
+                return (500, #"{"error":"ByteSize didn't answer"}"#)
+            }
             if method == "GET", parts.count == 3, parts[1] == "day" { return (200, json(dayView(parts[2]))) }
             // /api/log/:id and /api/log/:id/restore
             if parts.count >= 3, parts[1] == "log", let id = Int(parts[2]) {

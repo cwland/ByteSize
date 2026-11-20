@@ -1,3 +1,4 @@
+import Combine
 import ByteSizeKit
 import SwiftUI
 
@@ -42,6 +43,10 @@ struct MainTabView: View {
         // Back in the app (maybe the next morning): follow today if that's what was showing
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await today.days.dayMayHaveChanged() } }
+        }
+        // …and at midnight while the app stays open
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
+            Task { await today.days.dayMayHaveChanged() }
         }
     }
 
