@@ -11,7 +11,6 @@ struct FoodLogView: View {
     @Environment(\.palette) private var palette
     @State private var editing: LogEntry?
     @State private var moving: MoveRequest?
-    @State private var pickingDay = false
 
     struct MoveRequest: Identifiable {
         let entry: LogEntry
@@ -58,11 +57,12 @@ struct FoodLogView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        // SPEC-04: changing day animates rather than flashing (the previous day stays until the new one is in)
+        .animation(.easeInOut(duration: 0.2), value: days.dayIsFor)
         .background(palette.color("page").ignoresSafeArea())
         .refreshable { await days.reload() }
         .sheet(item: $editing) { entry in EditEntrySheet(entry: entry, units: units, log: log) }
         .sheet(item: $moving) { req in MoveCopySheet(entry: req.entry, copy: req.copy, log: log, today: days.today) }
-        .sheet(isPresented: $pickingDay) { DayPickerSheet(days: days) }
         // In the safe area's inset (not an overlay), so the toast sits above the tab bar instead of under it
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 8) {
@@ -78,29 +78,39 @@ struct FoodLogView: View {
     }
 
     private var header: some View {
-        HStack {
-            Button { Task { await days.select(DayMath.add(-1, to: days.selected)) } } label: { Image(systemName: "chevron.left") }
-                .accessibilityLabel("Previous day")
-            Spacer()
-            Button { pickingDay = true } label: {
-                VStack(spacing: 2) {
-                    Text(days.isToday ? "Today" : DayText.long(days.selected)).font(.headline).foregroundStyle(palette.color("ink"))
-                    if let day = days.day {
-                        let cal = day.totals["calories"]
-                        Text(day.targets.map { "\(Int(cal.rounded())) cal · " + budget(calories: cal, range: $0.calories).text } ?? "\(Int(cal.rounded())) cal")
-                            .font(.caption).foregroundStyle(palette.color("subtle"))
-                    }
+        VStack(spacing: 10) {
+            DayStrip(days: days)
+            if let day = days.day { summaryBar(logSummary(day)) }
+        }
+    }
+
+    /// SPEC-06: what's eaten, what's left, protein and fiber against their minimums.
+    private func summaryBar(_ s: LogSummary) -> some View {
+        VStack(spacing: 4) {
+            HStack {
+                Text(s.eaten).font(.subheadline.weight(.semibold)).foregroundStyle(palette.color("ink"))
+                Spacer()
+                if let left = s.left {
+                    Text(left).font(.subheadline.weight(.semibold))
+                        .foregroundStyle(palette.color(left.hasPrefix("over") ? "error" : "success"))
                 }
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Choose a day")
-            Spacer()
-            Button { Task { await days.select(DayMath.add(1, to: days.selected)) } } label: { Image(systemName: "chevron.right") }
-                .accessibilityLabel("Next day")
+            if let protein = s.protein, let fiber = s.fiber {
+                HStack {
+                    Text(protein)
+                    Spacer()
+                    Text(fiber)
+                }
+                .font(.caption)
+                .foregroundStyle(palette.color("subtle"))
+            }
         }
-        .font(.title3)
-        .foregroundStyle(palette.color("primary"))
-        .buttonStyle(.borderless)
+        .monospacedDigit()
+        .contentTransition(.numericText())
+        .padding(12)
+        .background(palette.color("container"), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("logSummary")
     }
 }
 
@@ -161,30 +171,3 @@ struct UndoToast: View {
     }
 }
 
-struct DayPickerSheet: View {
-    let days: DayStore
-    @Environment(\.dismiss) private var dismiss
-    @State private var date = Date()
-
-    var body: some View {
-        NavigationStack {
-            DatePicker("Day", selection: $date, displayedComponents: .date)
-                .datePickerStyle(.graphical)
-                .environment(\.timeZone, TimeZone(identifier: "UTC")!)
-                .padding()
-                .navigationTitle("Choose a day")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Go") {
-                            Task { await days.select(DayText.day(date)) }
-                            dismiss()
-                        }
-                    }
-                }
-                .onAppear { date = DayText.date(days.selected) }
-        }
-        .presentationDetents([.medium, .large])
-    }
-}
