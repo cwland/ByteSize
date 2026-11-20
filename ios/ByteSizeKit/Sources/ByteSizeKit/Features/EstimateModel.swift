@@ -92,6 +92,18 @@ public final class EstimateModel {
         }
     }
 
+    /// A label read from a photo, saved as the person's own food (no barcode), ready to log.
+    public func save(_ draft: AiDraft) async -> Food? {
+        busy = true
+        defer { busy = false }
+        do {
+            return try await api.send(FoodAPI.saveFood(draft, barcode: nil)).food
+        } catch {
+            message = Self.text(error)
+            return nil
+        }
+    }
+
     public func setQuantity(_ q: Double, at i: Int) {
         guard items.indices.contains(i), q > 0, q.isFinite else { return }
         items[i].quantity = q
