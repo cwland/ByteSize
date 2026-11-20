@@ -227,9 +227,19 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["logButton"].exists)
         XCTAssertTrue(app.searchFields.firstMatch.exists)
-        app.navigationBars.buttons["Close"].firstMatch.tap()
+        closeSheet()
         app.buttons["Food Log"].tap()
         XCTAssertTrue(app.staticTexts["Banana"].waitForExistence(timeout: 5))
+    }
+
+    /// Close on a sheet that stays open after logging; a tap during the pop back to the search can be lost.
+    private func closeSheet() {
+        let close = app.navigationBars.buttons["Close"].firstMatch
+        for _ in 0..<3 where close.exists {
+            if close.isHittable { close.tap() }
+            if waitUntil(timeout: 2, { !close.exists }) { return }
+        }
+        XCTAssertFalse(close.exists, "the sheet didn't close")
     }
 
     private func trackSearch(_ text: String, pick name: String) {
@@ -256,14 +266,10 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists })
-        app.navigationBars.buttons["Close"].firstMatch.tap()
+        closeSheet()
         app.buttons["Food Log"].tap()
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "6 × 1 prune")).firstMatch
-        if !row.waitForExistence(timeout: 5), let dir = ProcessInfo.processInfo.environment["SHOTS_DIR"] {
-            shot("12b-food-log")
-            try? app.debugDescription.write(toFile: dir + "/12b-food-log.txt", atomically: true, encoding: .utf8)
-        }
-        XCTAssertTrue(row.exists)
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
     }
 
     func testTrackFoodStaysOpenForTheNext() {
@@ -284,7 +290,7 @@ final class SmokeUITests: XCTestCase {
         app.buttons["logButton"].tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Logged Prunes")).firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists })
-        app.navigationBars.buttons["Close"].firstMatch.tap()
+        closeSheet()
         app.buttons["Food Log"].tap()
         XCTAssertTrue(app.staticTexts["Banana"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Prunes"].waitForExistence(timeout: 5))
