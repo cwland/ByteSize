@@ -2,11 +2,11 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import multipart from "@fastify/multipart";
 import { z } from "zod";
 import { requireUser } from "../lib/guards.js";
-import { AiError, LABEL_ASK, LABEL_SYSTEM } from "../lib/ai.js";
+import { AiError, LABEL_ASK, LABEL_SYSTEM, PLATE_ASK, PLATE_SYSTEM } from "../lib/ai.js";
 import { logEvent } from "../lib/appLog.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { countUsage } from "../lib/usage.js";
-import { aiDraft, lookupBarcode, type AiDraft, type FoodResult, type SearchResult } from "../lib/foods.js";
+import { aiDraft, estimateItems, lookupBarcode, type AiDraft, type EstimateItem, type FoodResult, type SearchResult } from "../lib/foods.js";
 import { MAX_PHOTOS, MAX_PHOTO_BYTES, MAX_REQUEST_BYTES, decodeBarcode, normalisePhoto, photoUrl, readPhoto, signImageUrl, storePhoto } from "../lib/photos.js";
 
 export type PhotoDraft = AiDraft & { photoId: string };
@@ -17,13 +17,15 @@ export type AnalyzeResult = {
   draft?: PhotoDraft;
   errors: SearchResult["errors"];
   labelReading: boolean; // false: no AI service reads photos, so labels aren't read
+  plate?: { items: EstimateItem[] }; // mode "plate": the foods the photo AI saw, to adjust before logging
 };
 
 const TOO_BIG = "Each photo must be 12 MB or less";
 const TOO_MANY = "Send at most 2 photos";
 const UNREADABLE = "That upload couldn't be read";
 const NO_LABEL = "The AI couldn't read a nutrition label in that photo. Try a clearer photo, or enter the food yourself.";
-const modeField = z.enum(["auto", "barcode", "label"]);
+const modeField = z.enum(["auto", "barcode", "label", "plate"]);
+const NO_PLATE = "Couldn't make out the food in that photo";
 
 /** The uploaded images (as sent) and the mode. Too big, too many or not a form upload → 4xx. */
 async function readUpload(req: FastifyRequest): Promise<{ images: Buffer[]; mode: z.infer<typeof modeField> }> {
@@ -78,6 +80,29 @@ export default async function photoRoutes(app: FastifyInstance) {
     const photoIds = stored.map((s) => s.id);
     const labelReading = !!(await app.ai.active("photo"));
     const errors: SearchResult["errors"] = [];
+
+    // A plate of food (iPhone app): the photo AI lists what it sees, with amounts; nothing is saved
+    if (mode === "plate") {
+      if (!labelReading) return { photoIds, errors, labelReading };
+      let items: EstimateItem[] = [];
+      try {
+        const { json } = await app.ai.ask("photo", PLATE_SYSTEM, PLATE_ASK, {
+          userId,
+          maxTokens: 4000,
+          reasoning: "low",
+          images: [{ mime: "image/jpeg", base64: normalised[0].toString("base64") }],
+        });
+        items = estimateItems(json);
+        if (!items.length) {
+          await logEvent(app.db, { category: "ai", level: "warning", source: "Plate photo", event: "The AI's plate reading couldn't be used", detail: JSON.stringify(json).slice(0, 600), userId });
+        }
+      } catch (err) {
+        if (!(err instanceof AiError)) throw err;
+        errors.push({ source: "ai", message: err.message });
+      }
+      if (!items.length && !errors.length) errors.push({ source: "ai", message: NO_PLATE });
+      return { photoIds, plate: { items }, errors, labelReading };
+    }
 
     // Barcode: every photo is tried; the first barcode wins and is looked up like a typed one
     let barcode: string | undefined;
