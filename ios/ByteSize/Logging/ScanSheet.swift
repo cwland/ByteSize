@@ -9,6 +9,7 @@ struct ScanSheet: View {
     let close: () -> Void
     @State private var typed = ""
     @State private var portionFood: Food?
+    @State private var cameraFailed = false
     @Environment(\.palette) private var palette
 
     var body: some View {
@@ -37,9 +38,10 @@ struct ScanSheet: View {
             }
         }
         .sheet(item: $portionFood, onDismiss: { model.restart() }) { food in
+            // SPEC-16: after logging, back to the camera for the next barcode (Close leaves)
             FoodPortionView(food: food, meal: track.meal, message: track.message) { food, portion in
                 let ok = await track.log(food, portion: portion)
-                if ok { close() }
+                if ok { model.logged(food.name) }
                 return ok
             }
         }
@@ -49,11 +51,16 @@ struct ScanSheet: View {
     private var stepView: some View {
         switch model.step {
         case .scanning:
-            if BarcodeScanner.isAvailable {
-                BarcodeScanner { code in
+            if let logged = model.lastLogged {
+                Label("Logged \(logged)", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(palette.color("success"))
+                    .accessibilityIdentifier("loggedToast")
+            }
+            if BarcodeScanner.isAvailable && !cameraFailed {
+                BarcodeScanner(onCode: { code in
                     Haptics.scanned()
-                    Task { await model.scanned(code) }
-                }
+                    Task { await model.scanned(code, fromCamera: true) }
+                }, onUnavailable: { cameraFailed = true })
                 .frame(height: 320)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .accessibilityLabel("Barcode camera")

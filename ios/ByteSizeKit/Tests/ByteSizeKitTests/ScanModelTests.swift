@@ -125,5 +125,49 @@ final class ScanModelTests: XCTestCase {
         XCTAssertEqual(m.step, .review(draft, barcode: "0099999999999"), "back to the form, edits kept")
         XCTAssertEqual(m.message, "Give the food a name")
     }
-}
 
+    func testAfterLoggingBackToTheCamera() async {
+        serve()
+        let m = ScanModel(api: api)
+        await m.scanned("0012345678905")
+        m.logged("Banana")
+        XCTAssertEqual(m.step, .scanning)
+        XCTAssertNil(m.code)
+        XCTAssertEqual(m.lastLogged, "Banana")
+        await m.scanned("0099999999999", fromCamera: true) // the next product
+        guard case .notFound = m.step else { return XCTFail("\(m.step)") }
+    }
+
+    func testTheProductJustLoggedIsntReadAgainByTheCamera() async {
+        serve()
+        var clock = Date(timeIntervalSince1970: 1_000)
+        let m = ScanModel(api: api, now: { clock })
+        await m.scanned("0012345678905", fromCamera: true)
+        m.logged("Banana")
+        await m.scanned("0012345678905", fromCamera: true) // still in front of the camera
+        XCTAssertEqual(m.step, .scanning, "it would open the food just logged again")
+        clock += 4
+        await m.scanned("0012345678905", fromCamera: true) // a second one, on purpose
+        guard case .found = m.step else { return XCTFail("\(m.step)") }
+    }
+
+    func testATypedBarcodeIsAlwaysLookedUp() async {
+        serve()
+        let m = ScanModel(api: api)
+        await m.scanned("0012345678905", fromCamera: true)
+        m.logged("Banana")
+        await m.scanned("0012345678905") // typed
+        guard case .found = m.step else { return XCTFail("\(m.step)") }
+    }
+
+    func testSavingAnEditedLabelMarksOnlyWhatTheAIRead() async throws {
+        serve()
+        let m = ScanModel(api: api)
+        await m.scanned("0099999999999")
+        await m.readLabel(jpeg: Data([1]))
+        guard case .review(var draft, _) = m.step else { return XCTFail("\(m.step)") }
+        draft.nutrients = Nutrients(["calories": 150, "protein_g": 3, "fat_g": 5])
+        await m.save(draft)
+        XCTAssertEqual(HTTPStub.requests.last?.json?["aiFields"] as? [String], ["fat_g", "protein_g"])
+    }
+}

@@ -67,3 +67,19 @@ describe("estimate several foods", () => {
     expect((await estimate("a big buffet plate")).body.items).toHaveLength(12);
   });
 });
+
+describe("what the AI sends is kept within what can be logged (I3 review)", () => {
+  it("at most 20 servings, each at most 100,000 g or ml, so Log all never fails on them", async () => {
+    await t.api("PUT", "/api/settings/ai", aiSettings);
+    const servings = Array.from({ length: 25 }, (_, i) => ({ label: `size ${i}`, grams: i === 0 ? 50 : 2_000_000 }));
+    aiAnswers(t, { items: [{ ...egg, servings }] });
+    const r = await estimate("a giant egg");
+    expect(r.status).toBe(200);
+    const s = r.body.items[0].food.servings;
+    expect(s).toHaveLength(20);
+    expect(s[0]).toEqual({ label: "size 0", grams: 50 });
+    expect(s[1]).toEqual({ label: "size 1" }); // an impossible weight is dropped, the serving kept
+    const logged = await t.api("POST", "/api/log/estimates", { day: "2026-11-19", meal: "lunch", items: [{ ...r.body.items[0].food, servingIndex: 0, quantity: 1 }] });
+    expect(logged.status).toBe(200);
+  });
+});

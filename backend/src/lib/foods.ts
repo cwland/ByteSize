@@ -851,7 +851,8 @@ export function aiDraft(json: unknown): AiDraft | null {
     category,
     icon: iconFor(category, f.name),
     barcode: null,
-    servings: f.servings.map((s) => ({ label: s.label, ...(s.grams ? { grams: s.grams } : {}), ...(s.ml ? { ml: s.ml } : {}) })),
+    // At most 20 servings, and no weight/volume a log entry can't hold (100,000 g or ml): Log all mustn't fail on them
+    servings: f.servings.slice(0, 20).map((s) => ({ label: s.label, ...(s.grams && s.grams <= 100000 ? { grams: s.grams } : {}), ...(s.ml && s.ml <= 100000 ? { ml: s.ml } : {}) })),
     nutrients,
     aiFields: Object.keys(nutrients),
     imageUrl: null,

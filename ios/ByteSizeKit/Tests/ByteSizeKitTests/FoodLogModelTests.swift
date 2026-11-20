@@ -118,4 +118,21 @@ final class FoodLogModelTests: XCTestCase {
         XCTAssertNil(m.undo)
         XCTAssertEqual(m.message, "Entry not found")
     }
+
+    func testEditingWithTheWheelSendsTheWholePortion() async throws {
+        serve()
+        let (m, days) = await model()
+        let e = try entry(11, in: days)
+        let portion = PortionModel(entry: e)
+        portion.whole = 3
+        portion.fraction = 0.5
+        HTTPStub.requests = []
+        await m.update(e, portion: portion)
+        let patch = try XCTUnwrap(requests("PATCH", "/api/log/11").first?.json)
+        XCTAssertEqual(patch.keys.sorted(), ["fraction", "quantity", "servingIndex", "unit"])
+        XCTAssertEqual(patch["quantity"] as? Double, 3.5)
+        XCTAssertEqual(patch["fraction"] as? Double, 1)
+        XCTAssertEqual(patch["unit"] as? String, "serving")
+        XCTAssertFalse(requests("GET", "/api/day/2026-11-19").isEmpty, "the day reloads")
+    }
 }

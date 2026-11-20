@@ -7,6 +7,8 @@ struct PhotoSheet: View {
     let track: TrackFoodModel
     let close: () -> Void
     @State private var draft: AiDraft?
+    @State private var read: AiDraft? // what the AI read, so values corrected on review aren't marked AI
+    @State private var notHere: String?
     @State private var portionFood: Food?
     @State private var reading = false
     @Environment(\.palette) private var palette
@@ -15,7 +17,7 @@ struct PhotoSheet: View {
         Form {
             if let draft {
                 LabelReview(draft: draft) { edited in
-                    if let food = await model.save(edited) {
+                    if let food = await model.save(edited, original: read) {
                         self.draft = nil
                         openPortion(food)
                     }
@@ -33,7 +35,7 @@ struct PhotoSheet: View {
                     }
                 }
             }
-            if let message = model.message {
+            if let message = notHere ?? model.message {
                 Section { Text(message).foregroundStyle(palette.color("error")).accessibilityIdentifier("photoMessage") }
             }
         }
@@ -51,7 +53,9 @@ struct PhotoSheet: View {
         Task {
             switch await model.photo(jpeg: jpeg) {
             case .food(let food): openPortion(food)
-            case .draft(let d): draft = d
+            case .draft(let d):
+                draft = d
+                read = d
             case .items, .nothing: break
             }
             reading = false
@@ -59,7 +63,10 @@ struct PhotoSheet: View {
     }
 
     private func openPortion(_ food: Food) {
-        guard food.isLoggable else { return }
+        guard food.isLoggable else {
+            notHere = "\(food.name): track Culury recipes and quick meals in the web app"
+            return
+        }
         portionFood = food
     }
 }

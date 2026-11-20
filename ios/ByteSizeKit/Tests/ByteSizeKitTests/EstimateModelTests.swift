@@ -190,4 +190,28 @@ final class EstimateModelTests: XCTestCase {
         XCTAssertTrue(body["barcode"] == nil || body["barcode"] is NSNull)
         XCTAssertEqual(body["photoId"] as? String, "p1")
     }
+
+    func testAnItemsServingAndAmount() async {
+        serve()
+        let (m, _) = model()
+        m.text = "2 eggs and toast"
+        await m.describe()
+        m.setPortion(servingIndex: 0, quantity: 3.5, at: 0)
+        XCTAssertEqual(m.items[0].quantity, 3.5)
+        m.setPortion(servingIndex: 4, quantity: 1, at: 0) // not one of its servings: unchanged
+        XCTAssertEqual(m.items[0].quantity, 3.5)
+    }
+
+    func testAFailedReEstimateClearsTheOldList() async {
+        serve()
+        let (m, _) = model()
+        m.text = "2 eggs and toast"
+        await m.describe()
+        XCTAssertEqual(m.items.count, 2)
+        serve(estimate: .json(502, #"{"error":"The AI couldn't estimate that. Try again, or describe it differently."}"#))
+        m.text = "something else"
+        await m.describe()
+        XCTAssertEqual(m.items, [], "no list from the old description under the new error")
+        XCTAssertNotNil(m.message)
+    }
 }

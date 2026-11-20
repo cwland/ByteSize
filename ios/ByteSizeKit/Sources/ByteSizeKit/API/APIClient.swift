@@ -43,6 +43,8 @@ public actor APIClient {
         } catch let error as URLError {
             // The caller gave up (a newer search, a closed screen): not an outage
             if error.code == .cancelled || Task.isCancelled { throw CancellationError() }
+            // A long-wait call (the AI) that ran out of time: the AI was slow, not ByteSize unreachable
+            if error.code == .timedOut, endpoint.timeout > 20 { throw APIError.aiTimedOut }
             throw APIError.unreachable(host: base.host)
         }
         guard let http = response as? HTTPURLResponse else { throw APIError.notByteSize(host: base.host) }

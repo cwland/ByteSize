@@ -155,12 +155,16 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Greek yogurt"].waitForExistence(timeout: 5))
         app.staticTexts["Greek yogurt"].tap()
         XCTAssertTrue(app.navigationBars["Edit"].waitForExistence(timeout: 3))
-        app.buttons["½"].tap()
+        // L1: three wheels — whole | fraction | unit — starting at the entry's 2 × 1 cup
+        let wheels = app.pickerWheels
+        XCTAssertTrue(wheels.element(boundBy: 0).waitForExistence(timeout: 3))
+        wheels.element(boundBy: 1).adjust(toPickerWheelValue: "½")
+        XCTAssertTrue(waitUntil { self.app.staticTexts["previewCalories"].label == "About 325 calories" }, "2½ × 130")
         shot("10-edit-entry")
-        app.buttons["Save"].tap()
-        // the row reads as one combined label ("Greek yogurt, Fage · ½ × 2 × 1 cup, 130")
-        let halved = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "½ × 2 × 1 cup")).firstMatch
-        XCTAssertTrue(halved.waitForExistence(timeout: 5))
+        app.buttons["saveEntry"].tap()
+        // the row reads as one combined label ("Greek yogurt, Fage · 2½ × 1 cup, 325")
+        let edited = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "2½ × 1 cup")).firstMatch
+        XCTAssertTrue(edited.waitForExistence(timeout: 5))
     }
 
     func testEditDashboardLayout() {
@@ -219,9 +223,107 @@ final class SmokeUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["previewCalories"].label, "About 105 calories", "the calorie preview, at the top")
         shot("8-portion")
         log.tap()
-        XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists && !self.app.searchFields.firstMatch.exists }, "both sheets close")
+        // SPEC-16: back to the search for the next food; Close leaves
+        XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["logButton"].exists)
+        XCTAssertTrue(app.searchFields.firstMatch.exists)
+        closeSheet()
         app.buttons["Food Log"].tap()
         XCTAssertTrue(app.staticTexts["Banana"].waitForExistence(timeout: 5))
+    }
+
+    /// Close on a sheet that stays open after logging; a tap during the pop back to the search can be lost.
+    private func closeSheet() {
+        let close = app.navigationBars.buttons["Close"].firstMatch
+        for _ in 0..<3 where close.exists {
+            if close.isHittable { close.tap() }
+            if waitUntil(timeout: 2, { !close.exists }) { return }
+        }
+        XCTAssertFalse(close.exists, "the sheet didn't close")
+    }
+
+    private func trackSearch(_ text: String, pick name: String) {
+        openAction("Track Food")
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText(text)
+        let row = app.buttons["food-\(name)"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5))
+    }
+
+    func testTrackPrunesBySix() {
+        signedIn()
+        trackSearch("prunes", pick: "Prunes")
+        let wheels = app.pickerWheels
+        wheels.element(boundBy: 2).adjust(toPickerWheelValue: "1 prune")
+        wheels.element(boundBy: 0).adjust(toPickerWheelValue: "6")
+        XCTAssertTrue(waitUntil { self.app.staticTexts["previewCalories"].label == "About 180 calories" }, "6 of a 5-prune 150-cal serving")
+        shot("12-prunes-wheel")
+        app.buttons["logButton"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists })
+        closeSheet()
+        app.buttons["Food Log"].tap()
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "6 × 1 prune")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+    }
+
+    func testTrackFoodStaysOpenForTheNext() {
+        signedIn()
+        trackSearch("banana", pick: "Banana")
+        app.buttons["logButton"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
+        // the second food, without leaving the search
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists })
+        search.tap()
+        search.typeText("prunes")
+        let prunes = app.buttons["food-Prunes"]
+        XCTAssertTrue(prunes.waitForExistence(timeout: 5))
+        prunes.tap()
+        XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5))
+        app.buttons["logButton"].tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Logged Prunes")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists })
+        closeSheet()
+        app.buttons["Food Log"].tap()
+        XCTAssertTrue(app.staticTexts["Banana"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Prunes"].waitForExistence(timeout: 5))
+    }
+
+    func testBigAmountAsks() {
+        signedIn()
+        trackSearch("banana", pick: "Banana")
+        app.pickerWheels.element(boundBy: 0).adjust(toPickerWheelValue: "20")
+        app.buttons["logButton"].tap()
+        let ask = app.alerts["That's a lot — log 2,100 cal of Banana?"]
+        XCTAssertTrue(ask.waitForExistence(timeout: 5))
+        shot("13-big-amount")
+        ask.buttons["Change"].tap()
+        XCTAssertFalse(app.descendants(matching: .any)["loggedToast"].exists, "nothing logged")
+        XCTAssertTrue(app.buttons["logButton"].exists, "still choosing")
+    }
+
+    func testScanReturnsToTheCamera() {
+        signedIn()
+        openAction("Scan Food")
+        let field = app.textFields["barcodeField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("0012345678905")
+        app.buttons["lookUpBarcode"].tap()
+        let log = app.buttons["logButton"]
+        XCTAssertTrue(log.waitForExistence(timeout: 5))
+        log.tap()
+        // SPEC-16: back to the scanner for the next barcode
+        XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["barcodeField"].exists)
+        shot("14-scan-again")
     }
 
     func testTypedBarcodeNotFoundOffersLabel() {

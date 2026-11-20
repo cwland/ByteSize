@@ -51,6 +51,14 @@ public final class FoodLogModel {
         }
     }
 
+    /// L1: the amount from the wheel (whole + fraction of a unit), sent whole: unit, serving, quantity and fraction 1.
+    public func update(_ entry: LogEntry, portion: PortionModel) async {
+        guard portion.canLog else { return }
+        await write {
+            _ = try await self.api.send(LogAPI.update(id: entry.id, quantity: portion.quantity, fraction: 1, servingIndex: portion.servingIndex, unit: portion.unit))
+        }
+    }
+
     public func move(_ entry: LogEntry, to day: String, meal: Meal) async {
         await write { _ = try await self.api.send(LogAPI.move(ids: [entry.id], day: day, meal: meal, copy: false)) }
     }

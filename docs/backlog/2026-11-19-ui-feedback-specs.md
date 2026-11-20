@@ -185,3 +185,10 @@ number to the left bottom and when users click on the version they can see the c
   repo that the build ships with.
 
 **Acceptance:** after a deploy, the first visit shows what changed; the corner version always opens the change list.
+
+### SPEC-16: iOS — keep scanning and searching after logging (scheduled in L1, Task 6)
+Cory: people scan or search several things in a row. After logging a scanned item, go back to the camera, ready for
+the next barcode. After logging a searched item, go back to the search. Only the Close button leaves.
+
+**Acceptance:** scan → log → scan again without reopening Scan Food; search → log → search again without reopening Track Food.
+
