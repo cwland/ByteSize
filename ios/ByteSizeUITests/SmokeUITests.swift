@@ -353,6 +353,57 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["quickAdd-Prunes"].waitForExistence(timeout: 5))
     }
 
+    // MARK: - L2: Track Food is the hub for Photo, Scan and Describe; the (+) menu doesn't overlap
+
+    func testHubOpensScanInsideTrackFoodAndBack() {
+        signedIn()
+        openAction("Track Food")
+        XCTAssertTrue(app.buttons["hub-scan"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["hub-photo"].exists)
+        XCTAssertTrue(app.buttons["hub-describe"].exists)
+        shot("18-hub")
+        app.buttons["hub-scan"].tap()
+        XCTAssertTrue(app.textFields["barcodeField"].waitForExistence(timeout: 5) || app.otherElements["scanner"].exists)
+        app.navigationBars.buttons.element(boundBy: 0).tap() // Back
+        XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 5), "back on the search, the sheet still open")
+        XCTAssertTrue(app.buttons["hub-scan"].exists)
+    }
+
+    func testDescribeInTheHubLogsIntoTheChosenMealAndComesBack() {
+        signedIn()
+        openDinnerFromTheFoodLog()
+        app.buttons["hub-describe"].tap()
+        let field = app.textFields["describeField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText("2 eggs and toast")
+        app.buttons["estimateButton"].tap()
+        XCTAssertTrue(app.buttons["logAll"].waitForExistence(timeout: 5))
+        app.buttons["logAll"].tap()
+        XCTAssertTrue(label("Logged 2 foods").waitForExistence(timeout: 5), "back on the search")
+        XCTAssertTrue(app.searchFields.firstMatch.exists)
+        closeSheet()
+        XCTAssertTrue(app.staticTexts["Egg"].waitForExistence(timeout: 5))
+        let dinner = app.buttons["addTo-dinner"]
+        XCTAssertTrue(dinner.exists)
+        XCTAssertLessThan(app.staticTexts["Egg"].frame.minY, dinner.frame.minY, "logged under Dinner, above its Add")
+        XCTAssertGreaterThan(app.staticTexts["Egg"].frame.minY, app.buttons["addTo-lunch"].frame.minY)
+    }
+
+    func testQuickAddMenuButtonsDontOverlap() {
+        signedIn()
+        app.buttons["Quick add"].tap()
+        let titles = ["Track Food", "Scan Food", "Photo", "Describe Food"]
+        XCTAssertTrue(app.buttons["Describe Food"].waitForExistence(timeout: 3))
+        sleep(1) // the fan-out animation
+        shot("3-quick-add")
+        let frames = titles.map { app.buttons[$0].frame }
+        for i in frames.indices {
+            for j in frames.indices where j > i {
+                XCTAssertFalse(frames[i].intersects(frames[j]), "\(titles[i]) overlaps \(titles[j])")
+            }
+        }
+    }
+
     func testBigAmountAsks() {
         signedIn()
         trackSearch("banana", pick: "Banana")

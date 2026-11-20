@@ -170,6 +170,14 @@ final class TrackFoodQuickTests: XCTestCase {
         XCTAssertEqual(m.favorites, [])
     }
 
+    func testLoggedElsewhereInTheHubShowsAndReloads() async {
+        serve()
+        let (m, _) = model()
+        await m.loggedElsewhere("2 foods")
+        XCTAssertEqual(m.lastLogged, "2 foods")
+        XCTAssertEqual(requests("GET", "/api/foods/recent").count, 1, "Recently tracked reloads")
+    }
+
     func testAFailedToggleGoesBack() async throws {
         serve(favoritePut: .json(500, #"{"error":"Something went wrong"}"#))
         let (m, _) = model()
