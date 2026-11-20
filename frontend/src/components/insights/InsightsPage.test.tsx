@@ -21,6 +21,8 @@ describe("Insights page", () => {
     const card = await screen.findByRole("region", { name: "Weekly recap" });
     expect(within(card).getByRole("button", { name: "Refresh weekly recap" })).toBeDisabled();
     expect(within(card).getByText("You can refresh again in 2 minutes.")).toBeInTheDocument();
+    // Let React run the countdown's effect first: on a slow machine it could otherwise start after the clock jumped
+    await act(async () => {});
     act(() => void vi.advanceTimersByTime(31_000));
     expect(within(card).getByText("You can refresh again in 1 minute.")).toBeInTheDocument();
     act(() => void vi.advanceTimersByTime(60_000));
