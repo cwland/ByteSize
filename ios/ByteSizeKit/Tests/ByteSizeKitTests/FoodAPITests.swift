@@ -136,4 +136,24 @@ final class FoodAPITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(FoodAPI.estimateItems("x").timeout, 90)
         XCTAssertEqual(FoodAPI.search("x").timeout, 20)
     }
+
+    func testFoodsCanBeUsedAsNavigationValues() throws {
+        let banana = try JSONDecoder().decode(Food.self, from: Data(FoodFixtures.banana.utf8))
+        XCTAssertEqual(Set([banana, banana]).count, 1) // Hashable: Track Food pushes the portion screen with it
+    }
+
+    func testACancelledCallIsACancellationNotAnOutage() async {
+        HTTPStub.routes(["/api/foods/search": .delayed(2, .json(200, FoodFixtures.search))])
+        let api = self.api
+        let call = Task { try await api.send(FoodAPI.search("banana")) }
+        try? await Task.sleep(for: .milliseconds(100))
+        call.cancel()
+        do {
+            _ = try await call.value
+            XCTFail("should have stopped")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+    }
 }
+
