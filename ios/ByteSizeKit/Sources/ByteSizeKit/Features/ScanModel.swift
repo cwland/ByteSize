@@ -27,6 +27,7 @@ public final class ScanModel {
     public private(set) var lastLogged: String?
 
     @ObservationIgnored private let api: APIClient
+    @ObservationIgnored private var lastRead: AiDraft?
 
     public static let unreadable = "Couldn't read that label. Try again with the whole Nutrition Facts panel in view."
     public static let needsPhotoAI = "Reading labels needs a photo AI service — set one up in the web app."
@@ -57,6 +58,7 @@ public final class ScanModel {
         do {
             let result = try await api.send(FoodAPI.analyzePhoto(jpeg: jpeg, mode: .label))
             if let draft = result.draft {
+                lastRead = draft
                 step = .review(draft, barcode: code)
             } else {
                 step = .failed(result.labelReading ? Self.unreadable : Self.needsPhotoAI)
@@ -71,10 +73,12 @@ public final class ScanModel {
     /// Saves the (checked, maybe edited) label as the person's food with the barcode.
     public func save(_ draft: AiDraft) async {
         guard let code else { return }
+        // What the AI read, so values the person corrected aren't marked AI
+        let read = lastRead
         step = .saving
         message = nil
         do {
-            let saved = try await api.send(FoodAPI.saveFood(draft, barcode: code))
+            let saved = try await api.send(FoodAPI.saveFood(draft, barcode: code, original: read))
             step = .saved(saved.food)
         } catch {
             // Back to the form with what they typed, to fix and save again
@@ -90,6 +94,7 @@ public final class ScanModel {
     }
 
     public func restart() {
+        lastRead = nil
         step = .scanning
         code = nil
         message = nil

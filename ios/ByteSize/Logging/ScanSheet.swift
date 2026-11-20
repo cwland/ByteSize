@@ -9,6 +9,7 @@ struct ScanSheet: View {
     let close: () -> Void
     @State private var typed = ""
     @State private var portionFood: Food?
+    @State private var cameraFailed = false
     @Environment(\.palette) private var palette
 
     var body: some View {
@@ -55,11 +56,11 @@ struct ScanSheet: View {
                     .foregroundStyle(palette.color("success"))
                     .accessibilityIdentifier("loggedToast")
             }
-            if BarcodeScanner.isAvailable {
-                BarcodeScanner { code in
+            if BarcodeScanner.isAvailable && !cameraFailed {
+                BarcodeScanner(onCode: { code in
                     Haptics.scanned()
                     Task { await model.scanned(code) }
-                }
+                }, onUnavailable: { cameraFailed = true })
                 .frame(height: 320)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .accessibilityLabel("Barcode camera")
