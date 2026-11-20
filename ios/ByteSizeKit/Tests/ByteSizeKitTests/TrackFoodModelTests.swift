@@ -175,4 +175,16 @@ final class TrackFoodModelTests: XCTestCase {
         XCTAssertEqual(m.groups, [])
         XCTAssertEqual(m.lastLogged, "Banana")
     }
+
+    func testTheMealChosenForOneFoodIsWhereTheNextStarts() async throws {
+        serve()
+        let (m, _) = model()
+        m.meal = .lunch
+        let food = try JSONDecoder().decode(Food.self, from: Data(FoodFixtures.banana.utf8))
+        let portion = PortionModel(food: food, meal: m.meal)
+        portion.meal = .dinner
+        let ok = await m.log(food, portion: portion)
+        XCTAssertTrue(ok)
+        XCTAssertEqual(m.meal, .dinner, "a three-item dinner shouldn't need the meal changed three times")
+    }
 }
