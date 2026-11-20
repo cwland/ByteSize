@@ -510,6 +510,24 @@ final class SmokeUITests: XCTestCase {
         XCTAssertEqual(app.buttons["dayHeader"].label, "Today")
     }
 
+    func testOverviewExpandsToDailyTotals() {
+        signedIn()
+        let chevron = app.buttons["overviewChevron"]
+        XCTAssertTrue(chevron.waitForExistence(timeout: 5))
+        XCTAssertEqual(chevron.label, "Show daily totals")
+        XCTAssertFalse(app.staticTexts["Carbs"].exists, "collapsed: no carbs and fat row")
+        chevron.tap()
+        let totals = app.descendants(matching: .any)["dailyTotals"]
+        XCTAssertTrue(totals.waitForExistence(timeout: 3))
+        for name in ["Calories", "Protein", "Carbs", "Fat", "Fiber", "Sugar", "Sodium", "Water"] {
+            XCTAssertTrue(totals.staticTexts[name].exists || totals.label.contains(name), "\(name) in the daily totals")
+        }
+        shot("24-overview-expanded")
+        XCTAssertEqual(chevron.label, "Hide daily totals")
+        chevron.tap()
+        XCTAssertTrue(waitUntil { !totals.exists })
+    }
+
     func testBigAmountAsks() {
         signedIn()
         trackSearch("banana", pick: "Banana")
