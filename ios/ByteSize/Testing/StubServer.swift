@@ -112,7 +112,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 Entry(id: 14, day: d, meal: "supplements", name: "Water", brand: nil, icon: "💧", unit: "ml", quantity: 500, fraction: 1, serving: "1 ml", perUnit: ["water_ml": 1], source: "water"),
                 // L2: yesterday's dinner, for Same as yesterday (a food, and an AI estimate with no food behind it)
                 Entry(id: 15, day: Self.yesterday, meal: "dinner", name: "Pasta", brand: nil, icon: "🍝", unit: "serving", quantity: 1, fraction: 1, serving: "1 cup", perUnit: ["calories": 220, "carbs_g": 43], source: "cache", ref: "cache:50"),
-                Entry(id: 17, day: Self.yesterday, meal: "snacks", name: "Broken bar", brand: nil, icon: "🍫", unit: "serving", quantity: 1, fraction: 1, serving: "1 bar", perUnit: ["calories": 200], source: "ai", ai: true),
+                Entry(id: 17, day: Self.yesterday, meal: "lunch", name: "Broken bar", brand: nil, icon: "🍫", unit: "serving", quantity: 1, fraction: 1, serving: "1 bar", perUnit: ["calories": 200], source: "ai", ai: true),
                 Entry(id: 16, day: Self.yesterday, meal: "dinner", name: "Plate estimate", brand: nil, icon: "🍽️", unit: "serving", quantity: 1, fraction: 1, serving: "1 plate", perUnit: ["calories": 450], source: "ai", ai: true),
             ]
         }
