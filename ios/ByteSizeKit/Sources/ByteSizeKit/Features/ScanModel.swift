@@ -23,6 +23,8 @@ public final class ScanModel {
     public private(set) var code: String?
     /// Why the last save didn't work (shown on the review form, edits kept).
     public private(set) var message: String?
+    /// The food just logged; the camera is back for the next barcode (SPEC-16).
+    public private(set) var lastLogged: String?
 
     @ObservationIgnored private let api: APIClient
 
@@ -79,6 +81,12 @@ public final class ScanModel {
             message = Self.text(error)
             step = .review(draft, barcode: code)
         }
+    }
+
+    /// A scanned food was logged: back to the camera for the next one.
+    public func logged(_ name: String) {
+        restart()
+        lastLogged = name
     }
 
     public func restart() {

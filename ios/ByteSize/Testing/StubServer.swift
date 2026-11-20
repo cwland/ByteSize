@@ -108,6 +108,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         }
 
         static let banana = #"{"kind":"cache","id":41,"name":"Banana","brand":null,"icon":"🍌","barcode":"0012345678905","servings":[{"label":"1 medium","grams":118},{"label":"100 g","grams":100}],"nutrients":{"calories":105,"protein_g":1.3,"carbs_g":27,"fiber_g":3.1},"aiFields":[],"imageUrl":null,"override":false,"source":"usda","foodKind":"custom"}"#
+        static let prunes = #"{"kind":"cache","id":42,"name":"Prunes","brand":null,"icon":"🍇","barcode":null,"servings":[{"label":"5 prunes","grams":40},{"label":"1 prune","grams":8,"derived":true}],"nutrients":{"calories":150,"fiber_g":3},"aiFields":[],"imageUrl":null,"override":false,"source":"usda","foodKind":"custom"}"#
         static let egg = #"{"food":{"name":"Egg","brand":null,"category":"eggs","icon":"🥚","barcode":null,"servings":[{"label":"1 large egg","grams":50}],"nutrients":{"calories":72,"protein_g":6.3,"fat_g":4.8},"aiFields":["calories","protein_g","fat_g"],"source":"ai"},"servingIndex":0,"quantity":2}"#
         static let toast = #"{"food":{"name":"Toast","brand":null,"category":"bread","icon":"🍞","barcode":null,"servings":[{"label":"1 slice","grams":30}],"nutrients":{"calories":80,"carbs_g":15,"protein_g":3},"aiFields":["calories","carbs_g","protein_g"],"source":"ai"},"servingIndex":0,"quantity":1}"#
 
@@ -146,8 +147,9 @@ final class StubServer: URLProtocol, @unchecked Sendable {
             case ("GET", "/api/days/logged"):
                 return (200, json(["days": Array(Set(entries.map(\.day))).sorted()]))
             case ("GET", "/api/foods/search"):
-                let found = query.lowercased().contains("ban")
-                return (200, #"{"groups":[{"source":"basic","label":"Basic foods","foods":[\#(found ? Self.banana : "")]}],"errors":[],"searched":["basic"]}"#)
+                let q = query.lowercased()
+                let food = q.contains("ban") ? Self.banana : q.contains("prun") ? Self.prunes : ""
+                return (200, #"{"groups":[{"source":"basic","label":"Basic foods","foods":[\#(food)]}],"errors":[],"searched":["basic"]}"#)
             case ("GET", "/api/foods/recent"): return (200, #"{"foods":[\#(Self.banana)]}"#)
             case ("GET", "/api/foods/frequent"): return (200, #"{"foods":[]}"#)
             case ("POST", "/api/ai/estimate-items"):
@@ -169,7 +171,13 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 return (200, #"{"food":\#(Self.banana.replacingOccurrences(of: #""kind":"cache","id":41"#, with: #""kind":"user_food","id":9"#))}"#)
             case ("POST", "/api/log") where body["food"] != nil:
                 nextId += 1
-                let e = Entry(id: nextId, day: body["day"] as? String ?? Self.today, meal: body["meal"] as? String ?? "snacks", name: "Banana", brand: nil, icon: "🍌", unit: "serving", quantity: (body["quantity"] as? Double) ?? 1, fraction: (body["fraction"] as? Double) ?? 1, serving: "1 medium", perUnit: ["calories": 105, "protein_g": 1.3, "carbs_g": 27, "fiber_g": 3.1], source: "cache")
+                // Banana (41) or Prunes (42; "1 prune" is a fifth of "5 prunes"), in the serving chosen
+                let isPrunes = (body["food"] as? [String: Any])?["id"] as? Int == 42
+                let idx = body["servingIndex"] as? Int ?? 0
+                let (name, icon, serving, per): (String, String, String, [String: Double]) = isPrunes
+                    ? ("Prunes", "🍇", idx == 1 ? "1 prune" : "5 prunes", ["calories": idx == 1 ? 30 : 150, "fiber_g": idx == 1 ? 0.6 : 3])
+                    : ("Banana", "🍌", "1 medium", ["calories": 105, "protein_g": 1.3, "carbs_g": 27, "fiber_g": 3.1])
+                let e = Entry(id: nextId, day: body["day"] as? String ?? Self.today, meal: body["meal"] as? String ?? "snacks", name: name, brand: nil, icon: icon, unit: "serving", quantity: (body["quantity"] as? Double) ?? 1, fraction: (body["fraction"] as? Double) ?? 1, serving: serving, perUnit: per, source: "cache")
                 entries.append(e)
                 return (200, json(["entry": e.json]))
             case ("POST", "/api/log"):

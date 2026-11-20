@@ -12,6 +12,19 @@ struct PortionSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.palette) private var palette
     @State private var logging = false
+    @State private var askingBig = false
+
+    private func log() {
+        logging = true
+        Task {
+            let ok = await onLog()
+            logging = false
+            if ok {
+                Haptics.logged()
+                dismiss() // a sheet closes; pushed (Track Food), it goes back to the search
+            }
+        }
+    }
 
     var body: some View {
         if pushed {
@@ -40,23 +53,7 @@ struct PortionSheet: View {
                     }
                 }
                 Section("Amount") {
-                    if portion.servings.count > 1 {
-                        Picker("Serving", selection: $portion.servingIndex) {
-                            ForEach(portion.servings.indices, id: \.self) { i in
-                                Text(portion.servings[i].label).tag(i)
-                            }
-                        }
-                    } else if let only = portion.servings.first {
-                        LabeledContent("Serving", value: only.label)
-                    }
-                    HStack {
-                        Text("How many")
-                        TextField("1", text: $portion.quantityText)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                            .accessibilityIdentifier("quantityField")
-                    }
-                    FractionChips(fraction: $portion.fraction)
+                    AmountWheel(portion: portion)
                 }
                 Section {
                     MealPicker(meal: $portion.meal)
@@ -64,6 +61,10 @@ struct PortionSheet: View {
                 if let message {
                     Section { Text(message).foregroundStyle(palette.color("error")) }
                 }
+            }
+            .alert(BigAmount.question(calories: portion.previewCalories ?? 0, name: portion.name), isPresented: $askingBig) {
+                Button("Change", role: .cancel) {}
+                Button("Log it") { log() }
             }
             .navigationTitle("Track")
             .navigationBarTitleDisplayMode(.inline)
@@ -73,45 +74,13 @@ struct PortionSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Log") {
-                        logging = true
-                        Task {
-                            let ok = await onLog()
-                            logging = false
-                            if ok {
-                                Haptics.logged()
-                                dismiss()
-                            }
-                        }
+                        if portion.isBig { askingBig = true } else { log() }
                     }
                     .bold()
                     .disabled(!portion.canLog || logging)
                     .accessibilityIdentifier("logButton")
                 }
             }
-    }
-}
-
-/// ¼ ⅓ ½ ¾ All
-struct FractionChips: View {
-    @Binding var fraction: Double
-    @Environment(\.palette) private var palette
-    private static let labels = ["¼", "⅓", "½", "¾", "All"]
-
-    var body: some View {
-        HStack(spacing: 8) {
-            ForEach(Array(PortionModel.fractions.enumerated()), id: \.offset) { i, value in
-                let on = abs(fraction - value) < 0.001
-                Button(Self.labels[i]) { fraction = value }
-                    .buttonStyle(.plain)
-                    .font(.subheadline.weight(on ? .semibold : .regular))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(on ? palette.color("primary") : palette.color("brand-subtle"), in: Capsule())
-                    .foregroundStyle(on ? palette.color("on-primary") : palette.color("ink"))
-                    .accessibilityAddTraits(on ? .isSelected : [])
-                    .accessibilityLabel(Self.labels[i] == "All" ? "All of it" : "\(Self.labels[i]) of it")
-            }
-        }
     }
 }
 

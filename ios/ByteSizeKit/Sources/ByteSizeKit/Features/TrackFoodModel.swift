@@ -11,6 +11,8 @@ public final class TrackFoodModel {
     public private(set) var groups: [FoodGroup] = []
     public private(set) var searching = false
     public private(set) var message: String?
+    /// The food just logged ("Logged Banana"); the search is cleared for the next one (SPEC-16).
+    public private(set) var lastLogged: String?
     /// The meal new portions start in (the time of day's meal, in the account's timezone).
     public var meal: Meal
 
@@ -82,6 +84,9 @@ public final class TrackFoodModel {
         do {
             _ = try await api.send(FoodAPI.log(food: food, day: dayStore.selected, meal: portion.meal, servingIndex: portion.servingIndex, unit: portion.unit, quantity: portion.quantity))
             message = nil
+            lastLogged = food.name
+            query = ""
+            groups = []
             await dayStore.reload()
             return true
         } catch {

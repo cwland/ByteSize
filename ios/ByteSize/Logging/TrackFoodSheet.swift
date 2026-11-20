@@ -11,6 +11,11 @@ struct TrackFoodSheet: View {
 
     var body: some View {
         List {
+            if let logged = model.lastLogged {
+                Label("Logged \(logged)", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(palette.color("success"))
+                    .accessibilityIdentifier("loggedToast")
+            }
             if model.query.trimmingCharacters(in: .whitespaces).count < 2 {
                 Section {
                     MealPicker(meal: $model.meal)
@@ -37,12 +42,14 @@ struct TrackFoodSheet: View {
             await model.search()
         }
         .onChange(of: model.meal) { Task { await model.load() } }
+        .onChange(of: picked) { _, now in
+            if now == nil, model.lastLogged != nil { searchShown = true } // back from logging: ready to type the next
+        }
         // Pushed, not a sheet: iOS won't open a sheet over an active search
         .navigationDestination(item: $picked) { food in
+            // SPEC-16: after logging, back to an empty search for the next food (Close leaves)
             FoodPortionView(food: food, meal: model.meal, pushed: true, message: model.message) { food, portion in
-                let ok = await model.log(food, portion: portion)
-                if ok { close() }
-                return ok
+                await model.log(food, portion: portion)
             }
         }
     }
