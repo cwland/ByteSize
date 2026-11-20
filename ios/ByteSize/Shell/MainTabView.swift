@@ -77,7 +77,7 @@ private struct QuickActionSheet: View {
                 .navigationTitle(action.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Close", action: close).accessibilityIdentifier("closeSheet") }
+                    ToolbarItem(placement: .cancellationAction) { Button("Close", action: close) }
                 }
         }
     }

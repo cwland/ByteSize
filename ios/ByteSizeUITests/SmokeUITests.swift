@@ -227,7 +227,7 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["logButton"].exists)
         XCTAssertTrue(app.searchFields.firstMatch.exists)
-        app.buttons["closeSheet"].tap()
+        app.navigationBars.buttons["Close"].firstMatch.tap()
         app.buttons["Food Log"].tap()
         XCTAssertTrue(app.staticTexts["Banana"].waitForExistence(timeout: 5))
     }
@@ -256,7 +256,7 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists })
-        app.buttons["closeSheet"].tap()
+        app.navigationBars.buttons["Close"].firstMatch.tap()
         app.buttons["Food Log"].tap()
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "6 × 1 prune")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
