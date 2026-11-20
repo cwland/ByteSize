@@ -78,7 +78,7 @@ struct DashboardView: View {
         .sheet(isPresented: $drawerOpen) {
             WidgetDrawer(dashboard: dashboard)
         }
-        .overlay(alignment: .bottom) {
+        .safeAreaInset(edge: .bottom) {
             if let message = dashboard.message {
                 MessageBanner(text: message) { dashboard.clearMessage() }
                     .padding(.bottom, 8)

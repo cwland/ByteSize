@@ -162,16 +162,21 @@ final class SmokeUITests: XCTestCase {
 
     func testEditDashboardLayout() {
         signedIn()
-        XCTAssertTrue(app.staticTexts["Badges"].waitForExistence(timeout: 5) || { app.swipeUp(); return app.staticTexts["Badges"].waitForExistence(timeout: 3) }())
+        XCTAssertTrue(app.staticTexts["362 to go"].waitForExistence(timeout: 5))
         app.buttons["Edit"].tap()
-        let badgesRow = app.cells.containing(.staticText, identifier: "Badges").firstMatch
-        XCTAssertTrue(badgesRow.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 3))
+        let badges = app.staticTexts["Badges"]
+        XCTAssertTrue(badges.waitForExistence(timeout: 3))
         shot("11-dashboard-edit")
-        badgesRow.swipeLeft()
-        app.buttons["Delete"].firstMatch.tap()
+        badges.swipeLeft()
+        let delete = app.buttons["Delete"].firstMatch
+        XCTAssertTrue(delete.waitForExistence(timeout: 3))
+        delete.tap()
+        XCTAssertFalse(app.staticTexts["Badges"].waitForExistence(timeout: 1))
         app.buttons["Done"].tap()
         XCTAssertTrue(app.staticTexts["362 to go"].waitForExistence(timeout: 5))
         app.swipeUp()
-        XCTAssertFalse(app.staticTexts["Badges"].exists)
+        app.swipeUp()
+        XCTAssertFalse(app.staticTexts["Badges"].exists, "the Badges card is gone")
     }
 }

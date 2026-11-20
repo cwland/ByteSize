@@ -60,7 +60,8 @@ struct FoodLogView: View {
         .sheet(item: $editing) { entry in EditEntrySheet(entry: entry, units: units, log: log) }
         .sheet(item: $moving) { req in MoveCopySheet(entry: req.entry, copy: req.copy, log: log, today: days.today) }
         .sheet(isPresented: $pickingDay) { DayPickerSheet(days: days) }
-        .overlay(alignment: .bottom) {
+        // In the safe area's inset (not an overlay), so the toast sits above the tab bar instead of under it
+        .safeAreaInset(edge: .bottom) {
             VStack(spacing: 8) {
                 if let message = log.message {
                     MessageBanner(text: message) { log.clearMessage() }
