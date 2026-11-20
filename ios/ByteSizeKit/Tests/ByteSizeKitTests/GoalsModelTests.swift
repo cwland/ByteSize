@@ -7,12 +7,12 @@ final class GoalsModelTests: XCTestCase {
     private let api = APIClient(base: ServerAddress("https://h.test")!, token: { "t" }, session: HTTPStub.session)
     private let noon = ISO8601DateFormatter().date(from: "2026-11-19T19:00:00Z")!
 
-    static let targets = #"{"targets":{"calories":{"min":1500,"max":2000},"protein_g":{"min":110,"max":130},"fiber_g":{"min":25,"max":35},"water_ml":{"min":2000,"max":3000},"plan":"steady","effectiveFrom":"2026-11-01"}}"#
-    static let weighIns = #"[{"day":"2026-08-01","weightKg":90.0,"trendKg":90.0,"note":null},{"day":"2026-11-05","weightKg":84.0,"trendKg":85.0,"note":null},{"day":"2026-11-12","weightKg":83.0,"trendKg":84.0,"note":null},{"day":"2026-11-19","weightKg":82.28,"trendKg":83.2,"note":null}]"#
-    static func weight(_ list: String = weighIns) -> String {
+    nonisolated static let targets = #"{"targets":{"calories":{"min":1500,"max":2000},"protein_g":{"min":110,"max":130},"fiber_g":{"min":25,"max":35},"water_ml":{"min":2000,"max":3000},"plan":"steady","effectiveFrom":"2026-11-01"}}"#
+    nonisolated static let weighIns = #"[{"day":"2026-08-01","weightKg":90.0,"trendKg":90.0,"note":null},{"day":"2026-11-05","weightKg":84.0,"trendKg":85.0,"note":null},{"day":"2026-11-12","weightKg":83.0,"trendKg":84.0,"note":null},{"day":"2026-11-19","weightKg":82.28,"trendKg":83.2,"note":null}]"#
+    nonisolated static func weight(_ list: String = weighIns) -> String {
         #"{"weighIns":\#(list),"start":{"day":"2026-08-01","weightKg":90.0},"latest":{"day":"2026-11-19","weightKg":82.28},"trendKg":83.2,"goalKg":75,"lostKg":6.8,"projection":{"status":"ok","date":"2027-03-01","kgPerWeek":0.5},"goalDate":{"status":"ok","kgPerWeek":0.5,"toGoKg":8.2,"weeks":{"min":12,"max":20},"date":"2027-03-01","earliest":"2027-02-10","latest":"2027-04-10"},"replanHint":null}"#
     }
-    static func goal(id: Int, type: String, period: String, state: String = "active", value: Double = 3, target: Double = 5, start: String = "2026-11-01", end: String? = "2026-12-31", measure: String? = nil, hit: Int = 2, needed: Int? = 4, of: Int? = 5) -> String {
+    nonisolated static func goal(id: Int, type: String, period: String, state: String = "active", value: Double = 3, target: Double = 5, start: String = "2026-11-01", end: String? = "2026-12-31", measure: String? = nil, hit: Int = 2, needed: Int? = 4, of: Int? = 5) -> String {
         let endJSON = end.map { "\"\($0)\"" } ?? "null"
         let measureJSON = measure.map { "\"\($0)\"" } ?? "null"
         let current = state == "upcoming" ? "null" : #"{"start":"2026-11-16","end":"2026-11-22","value":\#(value),"target":\#(target),"status":"open"}"#
