@@ -66,6 +66,20 @@ struct FoodLogView: View {
         // In the safe area's inset (not an overlay), so the toast sits above the tab bar instead of under it
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 8) {
+                // A day that didn't load says why (it isn't an empty day), with Retry
+                if let error = days.error {
+                    HStack {
+                        Text(error).font(.subheadline)
+                        Spacer()
+                        Button("Retry") { Task { await days.reload() } }
+                            .font(.subheadline.weight(.semibold))
+                            .accessibilityIdentifier("retryDay")
+                    }
+                    .foregroundStyle(palette.color("ink"))
+                    .padding(12)
+                    .background(palette.color("error-subtle"), in: RoundedRectangle(cornerRadius: 12))
+                    .padding(.horizontal)
+                }
                 if let message = log.message {
                     MessageBanner(text: message) { log.clearMessage() }
                 }

@@ -72,9 +72,12 @@ public final class DayStore {
         let start = DayMath.string(now(), in: timeZone)
         selected = start
         lastToday = start
+        today = start
     }
 
-    public var today: String { DayMath.string(now(), in: timeZone) }
+    /// The account's today: stored and observed, so the strip and "Today" redraw when the day turns
+    /// (`dayMayHaveChanged`, called when the app comes back and when the calendar day changes).
+    public private(set) var today: String
     public var zone: TimeZone { timeZone }
     public var isToday: Bool { selected == today }
 
@@ -126,7 +129,8 @@ public final class DayStore {
     /// When the app comes back (or a new day starts): if it was showing today and today has moved on, show the
     /// new today. A day the person chose stays put.
     public func dayMayHaveChanged() async {
-        let now = today
+        let now = DayMath.string(self.now(), in: timeZone)
+        if today != now { today = now }
         if selected == lastToday, now != lastToday {
             await select(now)
         }

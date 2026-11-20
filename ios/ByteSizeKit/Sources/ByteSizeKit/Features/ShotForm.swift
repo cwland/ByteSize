@@ -8,7 +8,9 @@ import Observation
 public final class ShotForm {
     public var day: String { didSet { if day != oldValue { fill() } } }
     public var custom: Bool
-    public var doseMg: Double
+    public var doseMg: Double { didSet { if doseMg != oldValue, Double(doseText) != doseMg { doseText = Self.text(doseMg) } } }
+    /// The custom dose as typed: an empty field is no dose (never the previous one behind it).
+    public var doseText: String = "" { didSet { if doseText != oldValue { doseMg = Double(doseText.replacingOccurrences(of: ",", with: ".")) ?? 0 } } }
     public var doseUnit: String
     public var site: String
     public var note: String
@@ -43,12 +45,26 @@ public final class ShotForm {
     /// The day already has a shot: saving replaces it.
     public var replaces: Bool { shots.contains { $0.day == day } }
 
-    /// A different dose on the latest shot becomes the current one (the server's rule; a backdated shot never does).
+    /// The day's shot, if it has one.
+    private var shotThatDay: Shot? { shots.first { $0.day == day } }
+
+    /// The dose to send: left out when re-saving a day's shot with its own dose, so the server keeps the current
+    /// dose as it is (a dose it's sent for the latest shot becomes the current one).
+    public var sentDose: (mg: Double, unit: String)? {
+        if let shot = shotThatDay, shot.doseMg == doseMg, (shot.doseUnit ?? "mg") == doseUnit { return nil }
+        return (doseMg, doseUnit)
+    }
+
+    /// A dose sent for the latest shot (or a new latest one) becomes the current one; a backdated shot never does.
     public var becomesCurrentDose: Bool {
-        guard let s = view.settings else { return false }
+        guard let s = view.settings, sentDose != nil else { return false }
         let differs = doseMg != s.doseMg || doseUnit != (s.doseUnit ?? "mg")
         let latest = shots.map(\.day).max()
         return differs && (latest.map { day >= $0 } ?? true)
+    }
+
+    static func text(_ dose: Double) -> String {
+        dose == 0 ? "" : (dose.rounded() == dose ? String(Int(dose)) : String(dose))
     }
 
     public var error: String? {
