@@ -142,7 +142,11 @@ final class SmokeUITests: XCTestCase {
         app.buttons["Delete"].tap()
         let undo = app.buttons["Undo"]
         XCTAssertTrue(undo.waitForExistence(timeout: 3))
-        print("DIAG-UNDO frame=\(undo.frame) hittable=\(undo.isHittable) count=\(app.buttons.matching(identifier: "Undo").count)")
+        let app = self.app!
+        MainActor.assumeIsolated {
+            print("DIAG-UNDO frame=\(undo.frame) hittable=\(undo.isHittable) count=\(app.buttons.matching(identifier: "Undo").count)")
+            print("DIAG-TREE " + app.debugDescription.split(separator: "\n").filter { $0.contains("Undo") || $0.contains("Deleted") || $0.contains("TabBar") || $0.contains("Quick add") }.joined(separator: " || "))
+        }
         XCTAssertFalse(app.staticTexts["Greek yogurt"].exists)
         shot("9-undo")
         undo.tap()
@@ -164,10 +168,11 @@ final class SmokeUITests: XCTestCase {
     func testEditDashboardLayout() {
         signedIn()
         XCTAssertTrue(app.staticTexts["362 to go"].waitForExistence(timeout: 5))
-        print("DIAG-EDIT edits=\(app.buttons.matching(identifier: "Edit").count) frame=\(app.buttons["Edit"].frame)")
+        let app = self.app!
+        MainActor.assumeIsolated { print("DIAG-EDIT edits=\(app.buttons.matching(identifier: "Edit").count) frame=\(app.buttons["Edit"].frame)") }
         app.buttons["Edit"].tap()
         sleep(1)
-        print("DIAG-BUTTONS " + app.buttons.allElementsBoundByIndex.map { $0.label }.joined(separator: " | "))
+        MainActor.assumeIsolated { print("DIAG-BUTTONS " + app.buttons.allElementsBoundByIndex.map { $0.label }.joined(separator: " | ")) }
         XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 3))
         let badges = app.staticTexts["Badges"]
         XCTAssertTrue(badges.waitForExistence(timeout: 3))
