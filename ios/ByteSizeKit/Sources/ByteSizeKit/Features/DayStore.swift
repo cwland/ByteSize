@@ -80,7 +80,7 @@ public final class DayStore {
     }
 
     public func select(_ day: String) async {
-        // DAYNIL
+        if day != selected { self.day = nil } // never show one day's entries under another day's date
         selected = day
         lastToday = today
         await load()
