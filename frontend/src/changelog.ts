@@ -10,6 +10,17 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.5.0",
+    date: "2026-11-20",
+    title: "Adding food on iPhone",
+    changes: [
+      "iPhone: the Food Log always shows Breakfast, Lunch, Dinner and Snacks, each with its own Add, which opens Track Food in that meal.",
+      "iPhone: before you type, Track Food shows Same as yesterday, Favorites and Recently tracked. The + on a row logs it at once (at the amount you last had); Log all copies all of yesterday's meal.",
+      "iPhone: the bookmark on a food's amount screen makes it a Favorite.",
+      "iPhone: Photo, Scan and Describe sit right under the search in Track Food and log into the meal you chose; the (+) menu buttons no longer overlap.",
+    ],
+  },
+  {
     version: "0.4.0",
     date: "2026-11-20",
     title: "Amount wheels and logging in a row on iPhone",
