@@ -1,3 +1,4 @@
+/// <reference types="node" /> // Node-only: reads/writes files (the app itself stays browser-only)
 // Writes the iPhone app's color tokens from the web themes, so both apps share one palette.
 // Run from frontend/ (so its packages resolve):  npx tsx ../scripts/gen-ios-theme.ts
 // frontend/src/ios-theme.test.ts fails when the Swift file is out of date.
