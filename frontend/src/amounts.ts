@@ -1,15 +1,20 @@
-import type { Serving, Unit, Units } from "./types";
+import type { Portion, Serving, Unit, Units } from "./types";
+import { amountFactor } from "./nutrition";
 import { ML_PER_FL_OZ } from "./units";
 
 // How an amount reads: amount first, mixed fractions, plural nouns. "1½ bars", "⅓ cup", "2 slices (56 g)".
 
 export const FRACTION_CHOICES = [
   { value: 0, label: "—" },
+  { value: 0.125, label: "⅛" },
   { value: 0.25, label: "¼" },
   { value: 0.333, label: "⅓" },
+  { value: 0.375, label: "⅜" },
   { value: 0.5, label: "½" },
+  { value: 0.625, label: "⅝" },
   { value: 0.667, label: "⅔" },
   { value: 0.75, label: "¾" },
+  { value: 0.875, label: "⅞" },
 ] as const;
 export type Fraction = (typeof FRACTION_CHOICES)[number]["value"];
 
@@ -167,3 +172,16 @@ export function splitWhole(q: number): { whole: number; fraction: Fraction } {
 
 // The picker's fractions are rounded labels; ⅓ and ⅔ mean exactly a third
 export const exactFraction = (f: number) => (f === 0.333 ? 1 / 3 : f === 0.667 ? 2 / 3 : f);
+
+/** L1: more than 20 of the food's serving, or more than 2,000 calories, in one entry asks first ("That's a lot"). */
+export const BIG_FACTOR = 20;
+export const BIG_CALORIES = 2000;
+export function isBigAmount(servings: Serving[], p: Portion, calories: number | undefined): boolean {
+  let factor = 0;
+  try {
+    factor = amountFactor(servings, p.servingIndex, p.unit, p.quantity) * p.fraction;
+  } catch {
+    factor = 0;
+  }
+  return factor > BIG_FACTOR || (calories ?? 0) > BIG_CALORIES;
+}
