@@ -701,3 +701,16 @@ export const goals = pgTable(
   },
   (t) => [index("goals_user_idx").on(t.userId, t.startDay)]
 );
+
+// L2 (SPEC-10): foods a person bookmarked as Favorites — a cached food or one of their own, one row each
+export const favorites = pgTable(
+  "favorites",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    cacheId: integer("cache_id").references(() => foodCache.id, { onDelete: "cascade" }),
+    userFoodId: integer("user_food_id").references(() => userFoods.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("favorites_user_cache_idx").on(t.userId, t.cacheId), uniqueIndex("favorites_user_food_idx").on(t.userId, t.userFoodId)]
+);
