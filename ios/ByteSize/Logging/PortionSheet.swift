@@ -7,12 +7,22 @@ struct PortionSheet: View {
     /// Logs it; true closes the sheet.
     let onLog: () async -> Bool
     var message: String?
+    /// Pushed onto a navigation stack (Track Food, where a sheet can't open over an active search) rather than a sheet.
+    var pushed = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.palette) private var palette
     @State private var logging = false
 
     var body: some View {
-        NavigationStack {
+        if pushed {
+            form
+        } else {
+            NavigationStack { form }
+                .presentationDetents([.medium, .large])
+        }
+    }
+
+    private var form: some View {
             Form {
                 Section {
                     HStack(spacing: 12) {
@@ -58,7 +68,9 @@ struct PortionSheet: View {
             .navigationTitle("Track")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                if !pushed {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Log") {
                         logging = true
@@ -76,8 +88,6 @@ struct PortionSheet: View {
                     .accessibilityIdentifier("logButton")
                 }
             }
-        }
-        .presentationDetents([.medium, .large])
     }
 }
 
