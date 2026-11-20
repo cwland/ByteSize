@@ -6,7 +6,6 @@ struct TrackFoodSheet: View {
     @Bindable var model: TrackFoodModel
     let close: () -> Void
     @State private var picked: Food?
-    @State private var portion: PortionModel?
     @State private var searchShown = true
     @Environment(\.palette) private var palette
 
@@ -40,12 +39,10 @@ struct TrackFoodSheet: View {
         .onChange(of: model.meal) { Task { await model.load() } }
         // Pushed, not a sheet: iOS won't open a sheet over an active search
         .navigationDestination(item: $picked) { food in
-            if let portion {
-                PortionSheet(portion: portion, onLog: {
-                    let ok = await model.log(food, portion: portion)
-                    if ok { close() }
-                    return ok
-                }, message: model.message, pushed: true)
+            FoodPortionView(food: food, meal: model.meal, pushed: true, message: model.message) { food, portion in
+                let ok = await model.log(food, portion: portion)
+                if ok { close() }
+                return ok
             }
         }
     }
@@ -57,7 +54,6 @@ struct TrackFoodSheet: View {
                 ForEach(foods, id: \.ref) { food in
                     Button {
                         guard food.isLoggable else { return }
-                        portion = PortionModel(food: food, meal: model.meal)
                         picked = food
                     } label: {
                         FoodRow(food: food)

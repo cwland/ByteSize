@@ -9,7 +9,6 @@ struct ScanSheet: View {
     let close: () -> Void
     @State private var typed = ""
     @State private var portionFood: Food?
-    @State private var portion: PortionModel?
     @Environment(\.palette) private var palette
 
     var body: some View {
@@ -38,12 +37,10 @@ struct ScanSheet: View {
             }
         }
         .sheet(item: $portionFood, onDismiss: { model.restart() }) { food in
-            if let portion {
-                PortionSheet(portion: portion, onLog: {
-                    let ok = await track.log(food, portion: portion)
-                    if ok { close() }
-                    return ok
-                }, message: track.message)
+            FoodPortionView(food: food, meal: track.meal, message: track.message) { food, portion in
+                let ok = await track.log(food, portion: portion)
+                if ok { close() }
+                return ok
             }
         }
     }
@@ -120,7 +117,6 @@ struct ScanSheet: View {
 
     private func openPortion(_ food: Food) {
         guard food.isLoggable else { return }
-        portion = PortionModel(food: food, meal: track.meal)
         portionFood = food
     }
 }
