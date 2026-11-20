@@ -10,6 +10,17 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.6.0",
+    date: "2026-11-20",
+    title: "Today on iPhone",
+    changes: [
+      "iPhone: the Dashboard and Food Log have a day strip you swipe one day at a time (tap the date for a month calendar); days you've seen show instantly, without a flash.",
+      "iPhone: the Food Log shows what you've eaten, what's left, and protein and fiber against your targets.",
+      "iPhone: Today's overview opens with a chevron to the full daily totals, and the calorie bar goes light green, dark green in range, red over.",
+      "iPhone: Log shot takes the dose (your medication's steps or a custom dose), the date and notes.",
+    ],
+  },
+  {
     version: "0.5.0",
     date: "2026-11-20",
     title: "Adding food on iPhone",

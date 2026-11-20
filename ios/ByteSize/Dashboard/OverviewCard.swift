@@ -2,14 +2,34 @@ import ByteSizeKit
 import SwiftUI
 
 /// The day at a glance: the calorie budget bar (range band, "N to go"), protein / fiber / water rings full at
-/// the range minimum, and carbs and fat.
+/// the range minimum. The chevron (SPEC-02) opens the full daily totals, as on the web; it stays as left.
 struct OverviewCard: View {
     let days: DayStore
     let units: Units
     @Environment(\.palette) private var palette
+    @AppStorage("overviewExpanded") private var expanded = false
 
     var body: some View {
-        Card(title: days.isToday ? "Today's overview" : "Overview · \(DayText.short(days.selected))") {
+        Card {
+            HStack {
+                Text(days.isToday ? "Today's overview" : "Overview · \(DayText.short(days.selected))")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(palette.color("subtle"))
+                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) { expanded.toggle() }
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.subheadline.weight(.semibold))
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                        .foregroundStyle(palette.color("primary"))
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(expanded ? "Hide daily totals" : "Show daily totals")
+                .accessibilityIdentifier("overviewChevron")
+            }
             if let day = days.day {
                 let calories = day.totals["calories"]
                 if let targets = day.targets {
@@ -25,13 +45,9 @@ struct OverviewCard: View {
                         Text(notice).font(.footnote).foregroundStyle(palette.color("subtle"))
                     }
                 }
-                HStack {
-                    macro("Carbs", day.totals["carbs_g"])
-                    macro("Fat", day.totals["fat_g"])
-                    if day.targets == nil {
-                        macro("Protein", day.totals["protein_g"])
-                        macro("Fiber", day.totals["fiber_g"])
-                    }
+                if expanded {
+                    totals(dailyTotals(day, units: units))
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             } else {
                 ProgressView().frame(maxWidth: .infinity)
@@ -42,14 +58,16 @@ struct OverviewCard: View {
     private func budgetBar(calories: Double, range: TargetRange) -> some View {
         let status = budget(calories: calories, range: range)
         let scaleMax = max(range.max * 1.15, calories)
-        let fill: String = switch status {
-        case .toGo: "inactive"
-        case .inRange: "success"
-        case .over: "warning"
+        // SPEC-05: light green under the range, dark green within, red over
+        let (fill, strength): (String, Double) = switch barFill(calories: calories, range: range) {
+        case .under: ("success", 0.45)
+        case .within: ("success", 1)
+        case .over: ("error", 1)
         }
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text("\(Int(calories.rounded()))").font(.title.bold()).foregroundStyle(palette.color("ink"))
+                    .contentTransition(.numericText())
                 Text("cal").foregroundStyle(palette.color("subtle"))
                 Spacer()
                 Text(status.text).font(.headline).foregroundStyle(palette.color(status == .inRange ? "success" : "ink"))
@@ -61,7 +79,7 @@ struct OverviewCard: View {
                     Rectangle().fill(palette.color("success-subtle"))
                         .frame(width: w * (range.max - range.min) / scaleMax)
                         .offset(x: w * range.min / scaleMax)
-                    Capsule().fill(palette.color(fill))
+                    Capsule().fill(palette.color(fill).opacity(strength))
                         .frame(width: max(6, w * min(calories, scaleMax) / scaleMax))
                 }
                 .clipShape(Capsule())
@@ -99,11 +117,22 @@ struct OverviewCard: View {
         .accessibilityLabel("\(name): " + rangeLabel(value: shown.0, range: shown.1, unit: shown.2))
     }
 
-    private func macro(_ name: String, _ grams: Double) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(name).font(.caption).foregroundStyle(palette.color("muted"))
-            Text("\(Int(grams.rounded())) g").font(.subheadline.weight(.semibold)).foregroundStyle(palette.color("ink"))
+    /// The web's Daily Totals: eaten, and the target range where there is one.
+    private func totals(_ rows: [TotalRow]) -> some View {
+        VStack(spacing: 6) {
+            ForEach(rows, id: \.name) { row in
+                HStack {
+                    Text(row.name).font(.subheadline).foregroundStyle(palette.color("ink"))
+                    Spacer()
+                    Text(row.amount).font(.subheadline.weight(.semibold)).foregroundStyle(palette.color("ink"))
+                        .contentTransition(.numericText())
+                    Text(row.target).font(.caption).foregroundStyle(palette.color("muted"))
+                        .frame(width: 110, alignment: .trailing)
+                }
+                .monospacedDigit()
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("dailyTotals")
     }
 }

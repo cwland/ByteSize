@@ -341,8 +341,9 @@ final class SmokeUITests: XCTestCase {
         app.buttons["logAllYesterday"].tap()
         XCTAssertTrue(label("Logged 2 foods").waitForExistence(timeout: 5))
         closeSheet()
-        XCTAssertTrue(app.staticTexts["Pasta"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Plate estimate"].exists)
+        // The Food Log's header (strip and summary) is taller now: Dinner's rows may be below the fold
+        XCTAssertTrue(app.staticTexts["Pasta"].waitForExistence(timeout: 5) || reveal(app.staticTexts["Pasta"]).exists)
+        XCTAssertTrue(reveal(app.staticTexts["Plate estimate"]).exists)
     }
 
     func testBookmarkMakesAFavorite() {
@@ -398,7 +399,8 @@ final class SmokeUITests: XCTestCase {
         app.buttons["quickAdd-Banana"].tap()
         XCTAssertTrue(label("Logged Banana").waitForExistence(timeout: 5))
         closeSheet()
-        let banana = app.staticTexts["Banana"]
+        XCTAssertTrue(app.buttons["addTo-breakfast"].waitForExistence(timeout: 5))
+        let banana = reveal(app.staticTexts["Banana"]) // Snacks is below the fold
         XCTAssertTrue(banana.waitForExistence(timeout: 5))
         XCTAssertGreaterThan(banana.frame.minY, app.buttons["addTo-dinner"].frame.minY, "under Snacks, after Dinner")
     }
@@ -433,7 +435,7 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.searchFields.firstMatch.exists)
         closeSheet()
         XCTAssertTrue(app.staticTexts["Egg"].waitForExistence(timeout: 5))
-        let dinner = app.buttons["addTo-dinner"]
+        let dinner = reveal(app.buttons["addTo-dinner"]) // below the fold under the taller header
         XCTAssertTrue(dinner.exists)
         XCTAssertLessThan(app.staticTexts["Egg"].frame.minY, dinner.frame.minY, "logged under Dinner, above its Add")
         XCTAssertGreaterThan(app.staticTexts["Egg"].frame.minY, app.buttons["addTo-lunch"].frame.minY)
@@ -452,6 +454,119 @@ final class SmokeUITests: XCTestCase {
                 XCTAssertFalse(frames[i].intersects(frames[j]), "\(titles[i]) overlaps \(titles[j])")
             }
         }
+    }
+
+    // MARK: - Today polish: the day strip, the month calendar, the Food Log summary
+
+    private func dayString(_ offset: Int) -> String {
+        let d = Calendar.current.date(byAdding: .day, value: offset, to: Date())!
+        let p = Calendar.current.dateComponents([.year, .month, .day], from: d)
+        return String(format: "%04d-%02d-%02d", p.year!, p.month!, p.day!)
+    }
+
+    func testStripSelectsADayAndTheCalendarJumps() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        let header = app.buttons["dayHeader"]
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+        XCTAssertEqual(header.label, "Today")
+        let yesterday = app.buttons["day-\(dayString(-1))"]
+        XCTAssertTrue(yesterday.waitForExistence(timeout: 5))
+        yesterday.tap()
+        XCTAssertTrue(waitUntil { header.label != "Today" }, "the header shows the chosen day")
+        shot("21-strip")
+        header.tap()
+        XCTAssertTrue(app.datePickers["dayCalendar"].waitForExistence(timeout: 5))
+        shot("22-calendar")
+        app.buttons["todayInCalendar"].tap()
+        XCTAssertTrue(waitUntil { header.label == "Today" })
+    }
+
+    func testNoArrowsRemain() {
+        signedIn()
+        XCTAssertTrue(app.buttons["dayHeader"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Previous week"].exists)
+        XCTAssertFalse(app.buttons["Next week"].exists)
+        app.buttons["Food Log"].tap()
+        XCTAssertTrue(app.buttons["dayHeader"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Previous day"].exists)
+        XCTAssertFalse(app.buttons["Next day"].exists)
+    }
+
+    func testFoodLogSummaryShowsWhatsLeft() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        let summary = app.descendants(matching: .any)["logSummary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 5))
+        XCTAssertTrue(summary.label.contains("1,138 eaten"), summary.label)
+        XCTAssertTrue(summary.label.contains("862 left"), summary.label)
+        shot("23-log-summary")
+    }
+
+    func testTomorrowCantBeChosen() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        let tomorrow = app.buttons["day-\(dayString(1))"]
+        XCTAssertTrue(tomorrow.waitForExistence(timeout: 5))
+        XCTAssertFalse(tomorrow.isEnabled)
+        XCTAssertEqual(app.buttons["dayHeader"].label, "Today")
+    }
+
+    func testAFailedDayShowsWhyInTheFoodLog() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        let chip = app.buttons["day-\(dayString(-3))"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 5))
+        chip.tap()
+        XCTAssertTrue(label("ByteSize didn't answer").waitForExistence(timeout: 5), "not a silently empty day")
+        XCTAssertTrue(app.buttons["retryDay"].exists)
+    }
+
+    func testOverviewExpandsToDailyTotals() {
+        signedIn()
+        let chevron = app.buttons["overviewChevron"]
+        XCTAssertTrue(chevron.waitForExistence(timeout: 5))
+        if chevron.label == "Hide daily totals" { chevron.tap() } // the open state is remembered between launches
+        XCTAssertTrue(waitUntil { chevron.label == "Show daily totals" })
+        XCTAssertFalse(app.staticTexts["Carbs"].exists, "collapsed: no carbs and fat row")
+        chevron.tap()
+        let sugar = app.staticTexts["Sugar"] // only in the daily totals
+        XCTAssertTrue(sugar.waitForExistence(timeout: 3))
+        for name in ["Calories", "Carbs", "Fat", "Sodium"] {
+            XCTAssertTrue(app.staticTexts[name].exists, "\(name) in the daily totals")
+        }
+        shot("24-overview-expanded")
+        XCTAssertEqual(chevron.label, "Hide daily totals")
+        chevron.tap()
+        XCTAssertTrue(waitUntil { !sugar.exists })
+    }
+
+    func testLogShotWithDoseDateAndNote() {
+        signedIn()
+        let log = reveal(app.buttons["Log shot"])
+        XCTAssertTrue(log.waitForExistence(timeout: 5))
+        log.tap()
+        let dose = app.buttons["shotDose"]
+        XCTAssertTrue(dose.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.datePickers["shotDate"].exists)
+        dose.tap()
+        app.buttons["7.5 mg"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["currentDoseNote"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts["currentDoseNote"].label, "This becomes your current dose")
+        let note = app.textFields["shotNote"].exists ? app.textFields["shotNote"] : app.textViews["shotNote"]
+        note.tap()
+        note.typeText("left side sore")
+        shot("25-log-shot")
+        app.buttons["saveShot"].tap()
+        let last = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "7.5 mg")).firstMatch
+        XCTAssertTrue(last.waitForExistence(timeout: 5), "the card's Last: line shows the new dose")
+    }
+
+    func testSettingsDivider() {
+        signedIn()
+        app.buttons["Profile"].tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Theme")).firstMatch.waitForExistence(timeout: 5))
+        shot("26-settings") // checked by eye: the separator between Theme and Appearance spans the row
     }
 
     func testBigAmountAsks() {
@@ -513,7 +628,8 @@ final class SmokeUITests: XCTestCase {
         app.buttons["logAll"].tap()
         XCTAssertTrue(waitUntil { !self.app.buttons["logAll"].exists }, "the sheet closes")
         app.buttons["Food Log"].tap()
-        XCTAssertTrue(app.staticTexts["Egg"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["addTo-breakfast"].waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(app.staticTexts["Egg"]).waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Toast"].exists)
         // Each log row reads as one element: "Egg, AI estimated, …"
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Egg' AND label CONTAINS 'AI estimated'")).firstMatch.exists, "marked AI")

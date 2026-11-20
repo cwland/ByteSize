@@ -58,7 +58,7 @@ final class DayStoreTests: XCTestCase {
         XCTAssertEqual(s.day?.day, "2026-11-18")
         XCTAssertEqual(s.loggedDays, ["2026-11-17"])
         let logged = HTTPStub.requests.first { $0.request.url?.path() == "/api/days/logged" }
-        XCTAssertEqual(logged?.request.url?.query(), "from=2026-11-15&to=2026-11-21")
+        XCTAssertEqual(logged?.request.url?.query(), "from=2026-10-18&to=2026-11-26", "a window around the day, at most a week ahead")
         XCTAssertFalse(s.loading)
         XCTAssertNil(s.error)
     }
@@ -114,6 +114,107 @@ final class DayStoreTests: XCTestCase {
         XCTAssertEqual(s.error, "Can't reach ByteSize at h.test")
     }
 
+    // MARK: - Today polish (SPEC-03/04): the strip's range, the day cache, logged-day windows
+
+    func testStripRunsAYearBackToAWeekAhead() {
+        let s = store()
+        XCTAssertEqual(s.stripDays.first, "2025-11-19")
+        XCTAssertEqual(s.stripDays.last, "2026-11-26")
+        XCTAssertEqual(s.stripDays.count, 373)
+        XCTAssertTrue(s.canSelect("2026-11-19"))
+        XCTAssertTrue(s.canSelect("2025-11-19"))
+        XCTAssertFalse(s.canSelect("2026-11-20"), "tomorrow is shown, not chosen")
+        XCTAssertFalse(s.canSelect("2025-11-18"))
+    }
+
+    func testAFutureDayIsntSelected() async {
+        serveDays()
+        let s = store()
+        await s.select("2026-11-21")
+        XCTAssertEqual(s.selected, "2026-11-19")
+        XCTAssertFalse(HTTPStub.requests.contains { $0.request.url?.path() == "/api/day/2026-11-21" })
+    }
+
+    func testSwitchingToALoadedDayShowsItAtOnce() async {
+        serveDays()
+        let s = store()
+        await s.select("2026-11-18")
+        await s.select("2026-11-19")
+        serveDays(delay: ["2026-11-18": 0.4])
+        let back = Task { await s.select("2026-11-18") }
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(s.day?.day, "2026-11-18", "shown from the cache while it refreshes")
+        XCTAssertEqual(s.dayIsFor, "2026-11-18")
+        await back.value
+        XCTAssertTrue(HTTPStub.requests.contains { $0.request.url?.path() == "/api/day/2026-11-18" }, "and refreshed quietly")
+    }
+
+    func testSwitchingToANewDayKeepsThePreviousDayOnScreen() async {
+        serveDays(delay: ["2026-11-17": 0.4])
+        let s = store()
+        await s.select("2026-11-19")
+        let next = Task { await s.select("2026-11-17") }
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(s.day?.day, "2026-11-19", "no empty state between days")
+        XCTAssertEqual(s.dayIsFor, "2026-11-19")
+        XCTAssertEqual(s.selected, "2026-11-17")
+        await next.value
+        XCTAssertEqual(s.day?.day, "2026-11-17")
+        XCTAssertEqual(s.dayIsFor, "2026-11-17")
+    }
+
+    func testLoggedDotsLoadInWindows() async {
+        serveDays()
+        let s = store()
+        await s.select("2026-11-19")
+        let logged = { HTTPStub.requests.filter { $0.request.url?.path() == "/api/days/logged" }.map { $0.request.url?.query() ?? "" } }
+        XCTAssertEqual(logged(), ["from=2026-10-19&to=2026-11-26"])
+        await s.select("2026-11-18")
+        XCTAssertEqual(logged().count, 1, "18 is inside the loaded window")
+        await s.loadLogged(around: "2026-08-01")
+        XCTAssertEqual(logged().last, "from=2026-07-01&to=2026-08-31")
+        XCTAssertTrue(s.loggedDays.contains("2026-11-17"))
+    }
+
+    func testCopyingToAnotherDayDropsItsCachedCopy() async {
+        serveDays()
+        let s = store()
+        await s.select("2026-11-18")
+        await s.select("2026-11-19")
+        s.invalidate("2026-11-18")
+        serveDays(delay: ["2026-11-18": 0.4])
+        let back = Task { await s.select("2026-11-18") }
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(s.dayIsFor, "2026-11-19", "a dropped day isn't shown from the cache")
+        await back.value
+        XCTAssertEqual(s.dayIsFor, "2026-11-18")
+    }
+
+    func testANewTodayMovesTheStrip() async {
+        serveDays()
+        let clock = Clock(ISO8601DateFormatter().date(from: "2026-11-19T06:00:00Z")!) // Nov 18, 11 pm in Denver
+        let s = DayStore(api: api, timeZone: denver, now: { clock.now })
+        XCTAssertEqual(s.stripDays.last, "2026-11-25")
+        clock.now = ISO8601DateFormatter().date(from: "2026-11-19T14:00:00Z")!
+        await s.dayMayHaveChanged()
+        XCTAssertEqual(s.stripDays.last, "2026-11-26")
+        XCTAssertTrue(s.canSelect("2026-11-19"))
+    }
+
+    func testTodayIsObservedSoTheStripMovesWhileOnAnOlderDay() async {
+        serveDays()
+        let clock = Clock(ISO8601DateFormatter().date(from: "2026-11-19T06:00:00Z")!) // Nov 18, 11 pm in Denver
+        let s = DayStore(api: api, timeZone: denver, now: { clock.now })
+        await s.select("2026-11-10")
+        let changed = Flag()
+        withObservationTracking { _ = s.stripDays; _ = s.isToday } onChange: { changed.set() }
+        clock.now = ISO8601DateFormatter().date(from: "2026-11-19T14:00:00Z")! // Nov 19, 7 am
+        await s.dayMayHaveChanged()
+        XCTAssertTrue(changed.value, "views showing the strip must redraw: Nov 19 is choosable now")
+        XCTAssertEqual(s.selected, "2026-11-10")
+        XCTAssertTrue(s.canSelect("2026-11-19"))
+    }
+
     func testFollowsTodayPastMidnight() async {
         serveDays()
         let clock = Clock(ISO8601DateFormatter().date(from: "2026-11-19T06:00:00Z")!) // Nov 18, 11 pm in Denver
@@ -140,4 +241,12 @@ final class DayStoreTests: XCTestCase {
 final class Clock: @unchecked Sendable {
     var now: Date
     init(_ now: Date) { self.now = now }
+}
+
+/// Set from an observation callback (any thread).
+final class Flag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var on = false
+    func set() { lock.withLock { on = true } }
+    var value: Bool { lock.withLock { on } }
 }

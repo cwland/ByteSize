@@ -53,6 +53,7 @@ struct DashboardView: View {
                         }
                     }
                     .padding()
+                    .animation(.easeInOut(duration: 0.2), value: days.dayIsFor) // SPEC-04
                 }
                 .refreshable {
                     await days.reload()
@@ -89,7 +90,7 @@ struct DashboardView: View {
     @ViewBuilder
     private func card(_ widget: DashboardWidget) -> some View {
         switch widget {
-        case .calendar: CalendarStrip(days: days)
+        case .calendar: Card { DayStrip(days: days) }
         case .overview: OverviewCard(days: days, units: units)
         case .water: WaterCard(dashboard: dashboard, days: days, units: units)
         case .weight: WeightCard(dashboard: dashboard, units: units)

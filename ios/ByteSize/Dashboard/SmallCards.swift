@@ -189,7 +189,7 @@ struct ShotCard: View {
                         .foregroundStyle(palette.color(g.status == "overdue" ? "error" : g.status == "due" ? "warning" : "ink"))
                 }
                 if let last = g.lastShot {
-                    Text("Last: \(DayText.short(last.day)) · \(formatDose(last.doseMg)) mg · \(ShotSite.name(last.site))")
+                    Text("Last: \(DayText.short(last.day)) · \(last.doseText) · \(ShotSite.name(last.site))")
                         .font(.caption).foregroundStyle(palette.color("subtle"))
                 }
                 Text("Next site: \(ShotSite.name(g.suggestedSite))").font(.caption).foregroundStyle(palette.color("subtle"))
@@ -211,24 +211,23 @@ struct ShotCard: View {
         }
     }
 
-    private func formatDose(_ mg: Double) -> String { mg.rounded() == mg ? String(Int(mg)) : String(mg) }
 }
 
 struct ShotSheet: View {
     let dashboard: DashboardModel
     @Environment(\.dismiss) private var dismiss
-    @State private var site = ""
+    @Environment(\.palette) private var palette
+    @State private var form: ShotForm?
     @State private var error: String?
+    @State private var saving = false
 
     var body: some View {
         NavigationStack {
-            Form {
-                Picker("Site", selection: $site) {
-                    ForEach(ShotSite.all, id: \.self) { Text(ShotSite.name($0)).tag($0) }
-                }
-                .pickerStyle(.inline)
-                Section { Text("Logged for today with your usual dose.").font(.footnote).foregroundStyle(.secondary) }
-                if let error { Section { Text(error).foregroundStyle(.red) } }
+            Group {
+                if let form { ShotFormView(form: form) } else { ProgressView() }
+            }
+            .safeAreaInset(edge: .bottom) {
+                if let error { Text(error).foregroundStyle(palette.color("error")).padding() }
             }
             .navigationTitle("Log shot")
             .navigationBarTitleDisplayMode(.inline)
@@ -236,18 +235,97 @@ struct ShotSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
+                        guard let form else { return }
+                        saving = true
                         Task {
                             do {
-                                try await dashboard.logShot(site: site)
+                                try await dashboard.logShot(form)
                                 dismiss()
                             } catch {
                                 self.error = (error as? APIError)?.message ?? error.localizedDescription
                             }
+                            saving = false
                         }
                     }
+                    .bold()
+                    .disabled(!(form?.canSave ?? false) || saving)
+                    .accessibilityIdentifier("saveShot")
                 }
             }
-            .onAppear { site = dashboard.glp1?.suggestedSite ?? ShotSite.all[0] }
+            .onAppear {
+                if form == nil, let view = dashboard.glp1 { form = ShotForm(view: view, today: dashboard.today) }
+            }
         }
     }
 }
+
+/// SPEC-11: date (one shot per day), dose (the medication's steps, or custom), site and notes.
+private struct ShotFormView: View {
+    @Bindable var form: ShotForm
+    @Environment(\.palette) private var palette
+    /// The dose picker's choice: one of the steps, or -1 for Custom…
+    private var stepChoice: Binding<Double> {
+        Binding(
+            get: { form.custom ? -1 : form.doseMg },
+            set: { new in
+                if new < 0 { form.custom = true } else { form.custom = false; form.doseMg = new; form.doseUnit = "mg" }
+            }
+        )
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                DatePicker("Date", selection: dayBinding, in: ...DayText.date(form.today), displayedComponents: .date)
+                    .environment(\.timeZone, TimeZone(identifier: "UTC")!)
+                    .accessibilityIdentifier("shotDate")
+                if form.replaces {
+                    Text("Replaces the shot logged that day").font(.footnote).foregroundStyle(palette.color("subtle"))
+                }
+            }
+            Section("Dose") {
+                if !form.doses.isEmpty {
+                    Picker("Dose", selection: stepChoice) {
+                        ForEach(form.doses, id: \.self) { Text("\(formatDose($0)) mg").tag($0) }
+                        Text("Custom…").tag(-1.0)
+                    }
+                    .accessibilityIdentifier("shotDose")
+                }
+                if form.custom {
+                    HStack {
+                        TextField("Dose", text: $form.doseText)
+                            .keyboardType(.decimalPad)
+                            .accessibilityIdentifier("shotCustomDose")
+                        Picker("Unit", selection: $form.doseUnit) {
+                            ForEach(ShotForm.units, id: \.self) { Text($0).tag($0) }
+                        }
+                        .labelsHidden()
+                    }
+                    if let error = form.error { Text(error).font(.footnote).foregroundStyle(palette.color("error")) }
+                }
+                if form.becomesCurrentDose {
+                    Text("This becomes your current dose")
+                        .font(.footnote).foregroundStyle(palette.color("subtle"))
+                        .accessibilityIdentifier("currentDoseNote")
+                }
+            }
+            Section("Site") {
+                Picker("Site", selection: $form.site) {
+                    ForEach(ShotSite.all, id: \.self) { Text(ShotSite.name($0)).tag($0) }
+                }
+            }
+            Section("Notes") {
+                TextField("Site, side effects…", text: $form.note, axis: .vertical)
+                    .lineLimit(2...5)
+                    .accessibilityIdentifier("shotNote")
+            }
+        }
+    }
+
+    private var dayBinding: Binding<Date> {
+        Binding(get: { DayText.date(form.day) }, set: { form.day = DayText.day($0) })
+    }
+}
+
+/// "7.5", "5" — a dose without a trailing ".0".
+func formatDose(_ mg: Double) -> String { mg.rounded() == mg ? String(Int(mg)) : String(mg) }
