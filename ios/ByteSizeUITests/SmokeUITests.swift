@@ -172,11 +172,8 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(badges.waitForExistence(timeout: 3))
         shot("11-dashboard-edit")
         // edit mode shows a red ⊖ before each row: tap it (left of the row's label), then Delete
-        badges.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5)).withOffset(CGVector(dx: -55, dy: 0)).tap()
-        sleep(1)
-        shot("12-after-minus")
-        let all = app!
-        MainActor.assumeIsolated { print("DIAG-AFTER " + all.buttons.allElementsBoundByIndex.map { "\($0.label)@\(Int($0.frame.minX)),\(Int($0.frame.minY))" }.joined(separator: " | ")) }
+        // (the ⊖ sits about 30 pt left of the row's icon)
+        badges.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5)).withOffset(CGVector(dx: -30, dy: 0)).tap()
         let delete = app.buttons["Delete"].firstMatch
         XCTAssertTrue(delete.waitForExistence(timeout: 3))
         delete.tap()
