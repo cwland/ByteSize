@@ -32,6 +32,11 @@ public struct Shot: Codable, Equatable, Sendable {
     public let doseUnit: String?
     public let site: String
     public let note: String?
+
+    /// "7.5 mg", "25 units"
+    public var doseText: String {
+        "\(doseMg.rounded() == doseMg ? String(Int(doseMg)) : String(doseMg)) \(doseUnit ?? "mg")"
+    }
 }
 
 public struct Glp1Settings: Codable, Equatable, Sendable {

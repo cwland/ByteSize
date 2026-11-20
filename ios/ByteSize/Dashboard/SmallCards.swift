@@ -189,7 +189,7 @@ struct ShotCard: View {
                         .foregroundStyle(palette.color(g.status == "overdue" ? "error" : g.status == "due" ? "warning" : "ink"))
                 }
                 if let last = g.lastShot {
-                    Text("Last: \(DayText.short(last.day)) · \(formatDose(last.doseMg)) mg · \(ShotSite.name(last.site))")
+                    Text("Last: \(DayText.short(last.day)) · \(last.doseText) · \(ShotSite.name(last.site))")
                         .font(.caption).foregroundStyle(palette.color("subtle"))
                 }
                 Text("Next site: \(ShotSite.name(g.suggestedSite))").font(.caption).foregroundStyle(palette.color("subtle"))
@@ -293,7 +293,7 @@ private struct ShotFormView: View {
                 }
                 if form.custom {
                     HStack {
-                        TextField("Dose", value: $form.doseMg, format: .number)
+                        TextField("Dose", text: $form.doseText)
                             .keyboardType(.decimalPad)
                             .accessibilityIdentifier("shotCustomDose")
                         Picker("Unit", selection: $form.doseUnit) {
