@@ -162,3 +162,24 @@ struct FoodRow: View {
             : "Track Culury recipes in the web app"
     }
 }
+
+/// The portion screen for a food: makes (and keeps) its own portion, so it never opens empty.
+struct FoodPortionView: View {
+    let food: Food
+    var pushed = false
+    var message: String?
+    let log: (Food, PortionModel) async -> Bool
+    @State private var portion: PortionModel
+
+    init(food: Food, meal: Meal, pushed: Bool = false, message: String? = nil, log: @escaping (Food, PortionModel) async -> Bool) {
+        self.food = food
+        self.pushed = pushed
+        self.message = message
+        self.log = log
+        _portion = State(initialValue: PortionModel(food: food, meal: meal))
+    }
+
+    var body: some View {
+        PortionSheet(portion: portion, onLog: { await log(food, portion) }, message: message, pushed: pushed)
+    }
+}
