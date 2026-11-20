@@ -635,5 +635,73 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Egg' AND label CONTAINS 'AI estimated'")).firstMatch.exists, "marked AI")
         shot("11-log-with-ai")
     }
-}
 
+    // MARK: - I4 Goals
+
+    private func openGoals() {
+        app.buttons["Goals"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["goalsTargets"].waitForExistence(timeout: 5))
+    }
+
+    private func logWeightOnGoals(_ text: String) {
+        let button = reveal(app.buttons["logWeight"])
+        button.tap()
+        let field = app.textFields["weightField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.press(forDuration: 1.0)
+        if app.menuItems["Select All"].waitForExistence(timeout: 1) { app.menuItems["Select All"].tap() }
+        field.typeText(text)
+        app.buttons["saveWeight"].tap()
+        XCTAssertTrue(waitUntil { !field.exists }, "the sheet closes after saving")
+    }
+
+    func testGoalsShowTargetsGoalsAndChart() {
+        signedIn()
+        openGoals()
+        XCTAssertTrue(label("Goals and targets are managed in the ByteSize web app.").exists)
+        let goal = app.descendants(matching: .any)["goal-1"]
+        XCTAssertTrue(goal.waitForExistence(timeout: 5))
+        XCTAssertTrue(goal.label.contains("3 of 5 days this week"), goal.label)
+        XCTAssertTrue(reveal(app.descendants(matching: .any)["weightChart"]).exists)
+        app.buttons["range-All"].tap()
+        shot("31-goals")
+    }
+
+    func testLogWeightAddsToHistory() {
+        signedIn()
+        openGoals()
+        logWeightOnGoals("180")
+        let row = reveal(app.descendants(matching: .any)["history-\(dayString(0))"])
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("180.0 lb"), row.label)
+    }
+
+    func testSwipeDeletesAWeighIn() {
+        signedIn()
+        openGoals()
+        let oldest = app.descendants(matching: .any)["history-\(dayString(-60))"]
+        for _ in 0..<6 where !(oldest.exists && oldest.isHittable) { app.swipeUp() }
+        XCTAssertTrue(oldest.exists)
+        oldest.swipeLeft()
+        app.buttons["Delete"].tap()
+        XCTAssertTrue(waitUntil { !oldest.exists }, "the weigh-in is gone")
+    }
+
+    func testLogWeightUsesTodayEvenWhenTomorrowIsPicked() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        let tomorrow = app.buttons["day-\(dayString(1))"]
+        XCTAssertTrue(tomorrow.waitForExistence(timeout: 5))
+        tomorrow.tap()
+        openGoals()
+        reveal(app.buttons["logWeight"]).tap()
+        XCTAssertTrue(app.textFields["weightField"].waitForExistence(timeout: 5))
+        shot("32-log-weight")
+        app.buttons["Cancel"].tap()
+        logWeightOnGoals("179")
+        let row = reveal(app.descendants(matching: .any)["history-\(dayString(0))"])
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "saved on today, not the picked day")
+        XCTAssertFalse(app.descendants(matching: .any)["history-\(dayString(1))"].exists)
+    }
+}
