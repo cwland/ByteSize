@@ -10,6 +10,17 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.3.0",
+    date: "2026-11-20",
+    title: "Log by the piece, in eighths",
+    changes: [
+      "Foods offer the units you count in: \"1 prune\" from a \"5 prunes\" serving, \"1 slice\" from \"4 slices (56g)\", and Small / Medium / Large for apples, bananas, oranges, pears, peaches, potatoes, sweet potatoes, eggs, avocados and chicken breasts. Six prunes logs 1.2 servings' worth.",
+      "Amounts go in eighths: ⅛ ¼ ⅓ ⅜ ½ ⅝ ⅔ ¾ ⅞.",
+      "A big amount (more than 20 servings or 2,000 calories in one entry) asks \"That's a lot — log it?\" before logging.",
+      "Server support for Favorites and Same as yesterday in the iPhone app.",
+    ],
+  },
+  {
     version: "0.2.0",
     date: "2026-11-20",
     title: "GLP-1 doses, What's new, and the iPhone app",
