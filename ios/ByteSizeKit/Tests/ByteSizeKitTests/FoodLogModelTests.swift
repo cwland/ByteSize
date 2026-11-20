@@ -69,6 +69,16 @@ final class FoodLogModelTests: XCTestCase {
         XCTAssertFalse(requests("GET", "/api/day/2026-11-19").isEmpty)
     }
 
+    func testCopyToAnotherDayDropsItsCachedCopy() async throws {
+        serve()
+        let (m, days) = await model()
+        await days.select("2026-11-18")
+        await days.select("2026-11-19")
+        XCTAssertTrue(days.isCached("2026-11-18"))
+        await m.copy(try entry(11, in: days), to: "2026-11-18", meal: .lunch)
+        XCTAssertFalse(days.isCached("2026-11-18"), "the copy changed it: fetch it fresh when visited")
+    }
+
     func testMoveAndCopy() async throws {
         serve()
         let (m, days) = await model()
