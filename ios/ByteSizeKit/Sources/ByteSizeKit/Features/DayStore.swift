@@ -63,8 +63,9 @@ public final class DayStore {
         self.timeZone = timeZone
         self.weekStart = weekStart
         self.now = now
-        selected = DayMath.string(now(), in: timeZone)
-        lastToday = selected
+        let start = DayMath.string(now(), in: timeZone)
+        selected = start
+        lastToday = start
     }
 
     public var today: String { DayMath.string(now(), in: timeZone) }
