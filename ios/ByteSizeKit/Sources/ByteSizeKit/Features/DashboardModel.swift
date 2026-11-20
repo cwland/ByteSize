@@ -119,6 +119,9 @@ public final class DashboardModel {
 
     // MARK: - private
 
+    /// After a weigh-in changes elsewhere (the Goals tab).
+    public func reloadWeight() async { await loadWeight() }
+
     private func loadWeight() async {
         weight = try? await api.send(BodyAPI.weight(from: DayMath.add(-Self.weightDays, to: dayStore.today)))
     }
