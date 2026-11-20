@@ -239,7 +239,7 @@ struct ShotSheet: View {
                         Task {
                             do {
                                 guard let view = dashboard.glp1 else { return }
-                                let form = ShotForm(view: view, today: DayMath.string(Date(), in: .current))
+                                let form = ShotForm(view: view, today: dashboard.today)
                                 form.site = site
                                 try await dashboard.logShot(form)
                                 dismiss()
