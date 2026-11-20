@@ -41,12 +41,12 @@ describe("Glp1Page", () => {
     });
     const setup = await screen.findByRole("region", { name: "Setup" });
     const user = userEvent.setup();
-    await user.type(within(setup).getByLabelText("Medication"), "Zepbound");
-    await user.type(within(setup).getByLabelText("Dose (mg)"), "2.5");
+    await user.selectOptions(within(setup).getByLabelText("Medication"), "Zepbound");
+    await user.selectOptions(within(setup).getByLabelText("Dose"), "2.5");
     await user.selectOptions(within(setup).getByLabelText("Injection day"), "Friday");
     await user.click(within(setup).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(server.writes()).toHaveLength(1));
-    expect(server.writes()[0]).toMatchObject({ method: "PUT", path: "/api/glp1/settings", body: { medication: "Zepbound", doseMg: 2.5, injectionWeekday: 5 } });
+    expect(server.writes()[0]).toMatchObject({ method: "PUT", path: "/api/glp1/settings", body: { medication: "Zepbound", doseMg: 2.5, doseUnit: "mg", injectionWeekday: 5 } });
     expect(await screen.findByText("Zepbound 2.5 mg, Fridays")).toBeInTheDocument();
     expect(screen.getByText("Next shot Fri, Nov 20")).toBeInTheDocument();
   });
@@ -58,8 +58,8 @@ describe("Glp1Page", () => {
       show(noGlp1, { "PUT /api/glp1/settings": (b) => glp1View({ settings: b }) });
       const setup = await screen.findByRole("region", { name: "Setup" });
       const user = userEvent.setup();
-      await user.type(within(setup).getByLabelText("Medication"), "Zepbound");
-      await user.type(within(setup).getByLabelText("Dose (mg)"), "2.5");
+      await user.selectOptions(within(setup).getByLabelText("Medication"), "Zepbound");
+      await user.selectOptions(within(setup).getByLabelText("Dose"), "2.5");
       await user.click(within(setup).getByRole("button", { name: "Save" }));
       await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
     } finally {
@@ -74,7 +74,7 @@ describe("Glp1Page", () => {
     await userEvent.setup().click(within(setup).getByRole("button", { name: "Edit" }));
     const form = screen.getByRole("region", { name: "Setup" });
     expect(within(form).getByLabelText("Medication")).toHaveValue("Ozempic");
-    expect(within(form).getByLabelText("Dose (mg)")).toHaveValue(1);
+    expect(within(form).getByLabelText("Dose")).toHaveValue("1"); // a brand: its dose steps (W1)
     expect(within(form).getByLabelText("Injection day")).toHaveValue("5");
   });
 
@@ -269,3 +269,68 @@ describe("#/glp1 route", () => {
     await waitFor(() => expect(screen.queryByRole("heading", { level: 1, name: "GLP-1" })).not.toBeInTheDocument());
   });
 });
+
+// W1 (SPEC-14): standard dose steps for each brand, and a Compounded option with its own name, dose and unit
+describe("GLP-1 medications", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-17T19:00:00Z"));
+    window.location.hash = "#/glp1";
+  });
+  afterEach(() => void vi.useRealTimers());
+
+  it("a brand offers its standard doses", async () => {
+    show(noGlp1);
+    const setup = await screen.findByRole("region", { name: "Setup" });
+    const user = userEvent.setup();
+    const med = within(setup).getByLabelText("Medication");
+    expect(within(med).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Choose…", "Wegovy (semaglutide)", "Ozempic (semaglutide)", "Zepbound (tirzepatide)", "Mounjaro (tirzepatide)", "Saxenda (liraglutide)", "Trulicity (dulaglutide)", "Compounded",
+    ]);
+    await user.selectOptions(med, "Zepbound");
+    expect(within(within(setup).getByLabelText("Dose")).getAllByRole("option").map((o) => o.textContent)).toEqual(["2.5 mg", "5 mg", "7.5 mg", "10 mg", "12.5 mg", "15 mg"]);
+    await user.selectOptions(med, "Wegovy");
+    expect(within(within(setup).getByLabelText("Dose")).getAllByRole("option").map((o) => o.textContent)).toEqual(["0.25 mg", "0.5 mg", "1 mg", "1.7 mg", "2.4 mg"]);
+  });
+
+  it("Compounded takes its own name, dose and unit", async () => {
+    let view: object = noGlp1;
+    const server = show(noGlp1, {
+      "GET /api/glp1": () => view,
+      "PUT /api/glp1/settings": (b) => (view = glp1View({ settings: b, shots: [], lastShot: null, doseHistory: [] })),
+    });
+    const setup = await screen.findByRole("region", { name: "Setup" });
+    const user = userEvent.setup();
+    await user.selectOptions(within(setup).getByLabelText("Medication"), "Compounded");
+    await user.type(within(setup).getByLabelText("Medication / compound name"), "Compounded Tirzepatide + B12");
+    await user.type(within(setup).getByLabelText("Dose"), "25");
+    await user.selectOptions(within(setup).getByLabelText("Unit"), "units");
+    await user.selectOptions(within(setup).getByLabelText("Injection day"), "Tuesday");
+    await user.click(within(setup).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(server.writes()).toHaveLength(1));
+    expect(server.writes()[0].body).toEqual({ medication: "Compounded Tirzepatide + B12", doseMg: 25, doseUnit: "units", injectionWeekday: 2 });
+    expect(await screen.findByText("Compounded Tirzepatide + B12 25 units, Tuesdays")).toBeInTheDocument();
+  });
+
+  it("a saved medication that isn't a brand opens as Compounded", async () => {
+    show(glp1View({ settings: { medication: "Compounded Tirzepatide + B12", doseMg: 25, doseUnit: "units", injectionWeekday: 2 } }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    const form = screen.getByRole("region", { name: "Setup" });
+    expect(within(form).getByLabelText("Medication")).toHaveValue("compounded");
+    expect(within(form).getByLabelText("Medication / compound name")).toHaveValue("Compounded Tirzepatide + B12");
+    expect(within(form).getByLabelText("Dose")).toHaveValue(25);
+    expect(within(form).getByLabelText("Unit")).toHaveValue("units");
+  });
+
+  it("Compounded needs a name", async () => {
+    show(noGlp1);
+    const setup = await screen.findByRole("region", { name: "Setup" });
+    const user = userEvent.setup();
+    await user.selectOptions(within(setup).getByLabelText("Medication"), "Compounded");
+    await user.type(within(setup).getByLabelText("Dose"), "25");
+    await user.click(within(setup).getByRole("button", { name: "Save" }));
+    expect(await within(setup).findByText("Enter the medication or compound name")).toBeInTheDocument();
+  });
+});
+

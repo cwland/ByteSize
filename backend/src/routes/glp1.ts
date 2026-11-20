@@ -7,7 +7,7 @@ import { badRequest, notFound } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
 import { addDays, DAY, todayFor } from "../lib/days.js";
 import { sumNutrients, type Nutrients } from "../lib/nutrients.js";
-import { AFTER_INJECTION_DAYS, afterInjection, doseHistory, nextDueDay, nextSite, scheduleStatus, SIDE_EFFECTS, SITES } from "../lib/glp1.js";
+import { AFTER_INJECTION_DAYS, afterInjection, DOSE_MAX, DOSE_UNITS, doseHistory, MEDICATIONS, nextDueDay, nextSite, scheduleStatus, SIDE_EFFECTS, SITES, type DoseUnit } from "../lib/glp1.js";
 
 // GLP-1: settings (medication, dose, injection weekday), shots (one per day), side-effect check-ins
 // (one per day) and the after-injection view. Who is asking comes only from the login.
@@ -20,16 +20,24 @@ const note = z
   .max(500, "Keep the note under 500 characters")
   .transform((s) => s.trim() || null)
   .nullish();
-const dose = z.number().positive("Enter a dose above 0").max(100, "That dose looks too high");
+const dose = z.number().positive("Enter a dose above 0").max(1000, "That dose looks too high");
+const doseUnit = z.enum(DOSE_UNITS, "Choose mg, units or ml");
+/** A dose's ceiling depends on its unit (100 mg, 1000 units): checked where both are known. */
+const TOO_HIGH = "That dose looks too high";
+function checkDose(doseMg: number, unit: DoseUnit) {
+  if (doseMg > DOSE_MAX[unit]) throw badRequest(TOO_HIGH);
+}
 const medication = z.string().trim().min(1, "Enter the medication").max(60, "Keep the medication name short");
 
 const settingsBody = z.object({
   medication,
   doseMg: dose,
+  doseUnit: doseUnit.default("mg"),
   injectionWeekday: z.number().int().min(0).max(6),
 });
 const shotBody = z.object({
   doseMg: dose.optional(),
+  doseUnit: doseUnit.optional(),
   medication: medication.optional(),
   site: z.enum(SITES, "Choose an injection site"),
   note,
@@ -42,7 +50,7 @@ const sideEffectBody = z.object({
 const rangeQuery = z.object({ from: DAY, to: DAY });
 
 type ShotRow = typeof glp1Shots.$inferSelect;
-const toShot = (r: ShotRow) => ({ day: r.day, medication: r.medication, doseMg: r.doseMg, site: r.site, note: r.note });
+const toShot = (r: ShotRow) => ({ day: r.day, medication: r.medication, doseMg: r.doseMg, doseUnit: r.doseUnit, site: r.site, note: r.note });
 
 /** A day from the URL that isn't after the person's today. */
 async function pastDay(app: FastifyInstance, userId: number, raw: string): Promise<string> {
@@ -53,7 +61,7 @@ async function pastDay(app: FastifyInstance, userId: number, raw: string): Promi
 
 async function settingsFor(db: Db, userId: number) {
   const [s] = await db.select().from(glp1Settings).where(eq(glp1Settings.userId, userId));
-  return s ? { medication: s.medication, doseMg: s.doseMg, injectionWeekday: s.injectionWeekday } : null;
+  return s ? { medication: s.medication, doseMg: s.doseMg, doseUnit: s.doseUnit as DoseUnit, injectionWeekday: s.injectionWeekday } : null;
 }
 
 /** GET /api/glp1: settings, last shot, schedule status, suggested site, recent shots and dose history. */
@@ -71,6 +79,7 @@ async function glp1View(app: FastifyInstance, userId: number) {
     suggestedSite: nextSite(last?.site),
     shots: rows.slice(-SHOT_LIST_LIMIT).reverse().map(toShot),
     doseHistory: doseHistory(rows),
+    medications: MEDICATIONS,
   };
 }
 
@@ -82,6 +91,7 @@ export default async function glp1Routes(app: FastifyInstance) {
   app.put("/api/glp1/settings", async (req) => {
     const userId = requireUser(req);
     const b = settingsBody.parse(req.body ?? {});
+    checkDose(b.doseMg, b.doseUnit);
     await db
       .insert(glp1Settings)
       .values({ userId, ...b })
@@ -100,10 +110,12 @@ export default async function glp1Routes(app: FastifyInstance) {
     const [existing] = await db.select().from(glp1Shots).where(and(eq(glp1Shots.userId, userId), eq(glp1Shots.day, day)));
     const doseMg = b.doseMg ?? existing?.doseMg ?? settings?.doseMg;
     const med = b.medication ?? existing?.medication ?? settings?.medication;
+    const unit = (b.doseUnit ?? existing?.doseUnit ?? settings?.doseUnit ?? "mg") as DoseUnit;
     if (doseMg === undefined || med === undefined) throw badRequest("Set up your medication and dose first");
+    checkDose(doseMg, unit);
     const noteText = b.note === undefined ? (existing?.note ?? null) : b.note;
     await db.transaction(async (tx) => {
-      const values = { medication: med, doseMg, site: b.site, note: noteText };
+      const values = { medication: med, doseMg, doseUnit: unit, site: b.site, note: noteText };
       await tx
         .insert(glp1Shots)
         .values({ userId, day, ...values })
@@ -111,9 +123,9 @@ export default async function glp1Routes(app: FastifyInstance) {
       const [later] = await tx.select({ id: glp1Shots.id }).from(glp1Shots).where(and(eq(glp1Shots.userId, userId), gt(glp1Shots.day, day))).limit(1);
       // Only a dose or medication sent with this shot, or a new latest shot, speaks for the current one: re-saving
       // the latest shot (e.g. a new site) mustn't undo a dose changed in the settings since
-      const speaks = b.doseMg !== undefined || b.medication !== undefined || !existing;
-      if (settings && speaks && !later && (settings.doseMg !== doseMg || settings.medication !== med)) {
-        await tx.update(glp1Settings).set({ doseMg, medication: med, updatedAt: app.now() }).where(eq(glp1Settings.userId, userId));
+      const speaks = b.doseMg !== undefined || b.medication !== undefined || b.doseUnit !== undefined || !existing;
+      if (settings && speaks && !later && (settings.doseMg !== doseMg || settings.medication !== med || settings.doseUnit !== unit)) {
+        await tx.update(glp1Settings).set({ doseMg, doseUnit: unit, medication: med, updatedAt: app.now() }).where(eq(glp1Settings.userId, userId));
       }
     });
     return glp1View(app, userId);
@@ -129,7 +141,7 @@ export default async function glp1Routes(app: FastifyInstance) {
       const [later] = await tx.select({ id: glp1Shots.id }).from(glp1Shots).where(and(eq(glp1Shots.userId, userId), gt(glp1Shots.day, day))).limit(1);
       if (later) return;
       const [latest] = await tx.select().from(glp1Shots).where(eq(glp1Shots.userId, userId)).orderBy(desc(glp1Shots.day)).limit(1);
-      if (latest) await tx.update(glp1Settings).set({ doseMg: latest.doseMg, medication: latest.medication, updatedAt: app.now() }).where(eq(glp1Settings.userId, userId));
+      if (latest) await tx.update(glp1Settings).set({ doseMg: latest.doseMg, doseUnit: latest.doseUnit, medication: latest.medication, updatedAt: app.now() }).where(eq(glp1Settings.userId, userId));
     });
     return glp1View(app, userId);
   });

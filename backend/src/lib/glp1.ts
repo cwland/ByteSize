@@ -41,6 +41,22 @@ export function scheduleStatus(today: string, nextDue: string | null): { status:
 
 export type DoseChange = { day: string; doseMg: number; medication: string };
 
+/** W1 (SPEC-14): the standard GLP-1 medications and their dose steps (mg). Anything else is "Compounded" (own name, dose and unit). */
+export const MEDICATIONS = [
+  { name: "Wegovy", ingredient: "semaglutide", doses: [0.25, 0.5, 1, 1.7, 2.4] },
+  { name: "Ozempic", ingredient: "semaglutide", doses: [0.25, 0.5, 1, 2] },
+  { name: "Zepbound", ingredient: "tirzepatide", doses: [2.5, 5, 7.5, 10, 12.5, 15] },
+  { name: "Mounjaro", ingredient: "tirzepatide", doses: [2.5, 5, 7.5, 10, 12.5, 15] },
+  { name: "Saxenda", ingredient: "liraglutide", doses: [0.6, 1.2, 1.8, 2.4, 3] },
+  { name: "Trulicity", ingredient: "dulaglutide", doses: [0.75, 1.5, 3, 4.5] },
+] as const;
+
+/** What a dose is measured in (a compounded dose can be in units or ml). */
+export const DOSE_UNITS = ["mg", "units", "ml"] as const;
+export type DoseUnit = (typeof DOSE_UNITS)[number];
+/** The most a dose can be in each unit. */
+export const DOSE_MAX: Record<DoseUnit, number> = { mg: 100, units: 1000, ml: 100 };
+
 /** The shots where the dose or medication changed (the first shot included), oldest first. */
 export function doseHistory(shotsOldestFirst: DoseChange[]): DoseChange[] {
   const out: DoseChange[] = [];

@@ -25,6 +25,8 @@ export default function ShotSheet({ view, day: startDay, onClose, onSaved }: { v
   const first = startDay ?? today;
   const [day, setDay] = useState(first);
   const [dose, setDose] = useState(() => valuesFor(first).dose);
+  // W1: the dose's unit (a compounded dose can be in units or ml)
+  const unit = view.settings?.doseUnit ?? view.lastShot?.doseUnit ?? "mg";
   const [site, setSite] = useState<Site>(() => valuesFor(first).site);
   const [note, setNote] = useState(() => valuesFor(first).note);
   const editing = shotOn(day) !== null;
@@ -45,7 +47,7 @@ export default function ShotSheet({ view, day: startDay, onClose, onSaved }: { v
     const doseMg = Number(dose);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return setMsg({ ok: false, text: "Pick the day of the shot" });
     if (day > today) return setMsg({ ok: false, text: "That day hasn't happened yet" });
-    if (!(doseMg > 0)) return setMsg({ ok: false, text: "Enter the dose in mg" });
+    if (!(doseMg > 0)) return setMsg({ ok: false, text: `Enter the dose in ${unit}` });
     setBusy(true);
     try {
       onSaved(await api<Glp1View>("PUT", `/api/glp1/shots/${day}`, { site, doseMg, note: note.trim() }));
@@ -64,8 +66,8 @@ export default function ShotSheet({ view, day: startDay, onClose, onSaved }: { v
             <input {...noAutofill} aria-label="Date" type="date" value={day} max={today} onChange={(e) => changeDay(e.target.value)} className={field} />
           </label>
           <label className={label}>
-            Dose (mg)
-            <input {...noAutofill} aria-label="Dose (mg)" type="number" inputMode="decimal" min="0" step="any" value={dose} onChange={(e) => setDose(e.target.value)} className={field} />
+            {`Dose (${unit})`}
+            <input {...noAutofill} aria-label={`Dose (${unit})`} type="number" inputMode="decimal" min="0" step="any" value={dose} onChange={(e) => setDose(e.target.value)} className={field} />
           </label>
         </div>
         <div>

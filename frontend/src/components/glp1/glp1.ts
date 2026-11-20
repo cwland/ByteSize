@@ -1,4 +1,4 @@
-import type { Glp1View, SideEffect, Site } from "../../types";
+import type { DoseUnit, Glp1View, SideEffect, Site } from "../../types";
 
 // Plain words for the API's GLP-1 values
 export const SITE_LABELS: Record<Site, string> = {
@@ -35,3 +35,6 @@ export function statusText(v: Glp1View, now = new Date()): string | null {
 
 // 0.5 -> "0.5 mg", 2.25 -> "2.25 mg"
 export const mg = (n: number) => `${Number(n.toFixed(3))} mg`;
+// W1: 25 units, 0.5 ml, 2.5 mg
+export const doseText = (n: number, unit: DoseUnit = "mg") => `${Number(n.toFixed(3))} ${unit}`;
+export const DOSE_UNITS: DoseUnit[] = ["mg", "units", "ml"];

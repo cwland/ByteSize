@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../src/lib/version.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -53,7 +54,7 @@ describe("web app serving", () => {
   it("health is still json", async () => {
     const res = await t.api("GET", "/health");
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ok: true, db: true, version: "0.1.0" });
+    expect(res.body).toEqual({ ok: true, db: true, version: APP_VERSION });
   });
 
   it("doesn't serve files outside the web folder", async () => {

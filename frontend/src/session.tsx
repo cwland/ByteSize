@@ -12,6 +12,8 @@ export interface User {
   units: "imperial" | "metric";
   timezone: string;
   setupDone: boolean;
+  /** W1: the version whose "What's new" was dismissed (null: none yet; missing: an older server, so never shown). */
+  seenVersion?: string | null;
 }
 
 export interface Session {

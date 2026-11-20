@@ -124,7 +124,9 @@ describe("password managers leave data fields alone", () => {
     renderWithSession(inDay(<Glp1Page />));
     const user = userEvent.setup();
     await user.click(within(await screen.findByRole("region", { name: "Setup" })).getByRole("button", { name: "Edit" }));
-    expect(expectAllIgnored("GLP-1 setup")).toEqual(expect.arrayContaining(["Medication", "Dose (mg)"]));
+    // a brand has only selects (W1); Compounded's typed fields are the ones password managers must leave alone
+    await user.selectOptions(screen.getByLabelText("Medication"), "Compounded");
+    expect(expectAllIgnored("GLP-1 setup")).toEqual(expect.arrayContaining(["Medication / compound name", "Dose"]));
     await user.click(screen.getByRole("button", { name: "Log shot" }));
     expect(expectAllIgnored("Log shot")).toEqual(expect.arrayContaining(["Date", "Note"]));
   });

@@ -176,6 +176,13 @@
       "when": 1795130440542,
       "tag": "0024_log_trash",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795157012944,
+      "tag": "0025_glp1_units_seen_version",
+      "breakpoints": true
     }
   ]
 }

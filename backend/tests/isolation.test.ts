@@ -271,7 +271,7 @@ describe("per-user isolation", () => {
     const annas = (await a.as("GET", "/api/glp1")).body;
 
     // ben sees none of it
-    expect((await b.as("GET", "/api/glp1")).body).toEqual({ settings: null, lastShot: null, nextDue: null, status: "none", overdueDays: 0, suggestedSite: "abdomen_left", shots: [], doseHistory: [] });
+    expect((await b.as("GET", "/api/glp1")).body).toEqual({ settings: null, lastShot: null, nextDue: null, status: "none", overdueDays: 0, suggestedSite: "abdomen_left", shots: [], doseHistory: [], medications: expect.any(Array) }); // the medication list is the same for everyone
     expect((await b.as("GET", "/api/side-effects?from=2026-11-01&to=2026-11-17")).body).toEqual({ days: [] });
     const bensAfter = (await b.as("GET", "/api/glp1/after-injection")).body;
     expect(bensAfter.enough).toBe(false);
@@ -285,7 +285,7 @@ describe("per-user isolation", () => {
     expect((await b.as("GET", "/api/glp1")).body.shots).toMatchObject([{ day: "2026-11-10", site: "arm_right", doseMg: 2, medication: "Ozempic" }]);
     // ...and anna's are untouched
     expect((await a.as("GET", "/api/glp1")).body).toEqual(annas);
-    expect(annas.settings).toEqual({ medication: "Mounjaro", doseMg: 2.5, injectionWeekday: 5 });
+    expect(annas.settings).toEqual({ medication: "Mounjaro", doseMg: 2.5, doseUnit: "mg", injectionWeekday: 5 });
     expect((await a.as("GET", "/api/side-effects?from=2026-11-01&to=2026-11-17")).body).toEqual({ days: [effects] });
     const annasAfter = (await a.as("GET", "/api/glp1/after-injection")).body;
     expect(annasAfter.enough).toBe(true);
