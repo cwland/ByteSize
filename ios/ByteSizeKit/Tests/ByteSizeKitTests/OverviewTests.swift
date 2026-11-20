@@ -53,8 +53,12 @@ final class BadgesTests: XCTestCase {
         XCTAssertEqual(badgeInfo("lost_10", units: .metric).name, "4.5 kg down")
         XCTAssertEqual(badgeInfo("lost_20", units: .metric).name, "9 kg down")
     }
+}
 
-    // MARK: - Today polish (SPEC-02, 05, 06)
+/// Today polish (SPEC-02, 05, 06): the calorie bar, the daily totals, the Food Log summary.
+final class TodayOverviewTests: XCTestCase {
+    private let calories = TargetRange(min: 1500, max: 2000)
+
 
     func testBarFillThresholds() {
         XCTAssertEqual(barFill(calories: 1499, range: calories), .under)
