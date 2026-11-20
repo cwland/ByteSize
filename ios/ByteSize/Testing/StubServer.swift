@@ -5,6 +5,8 @@ import Foundation
 /// A pretend ByteSize server for UI tests (launch argument -UITestStubServer). Debug builds only.
 /// Username "cory" with password "pw" signs in. Today has 1138 calories logged (362 to go of 1500–2000)
 /// and 500 ml of water; the log can be edited, moved, deleted and restored in memory.
+/// Logging (round 3): search finds "Banana" (also barcode 0012345678905; any other barcode is unknown),
+/// "2 eggs and toast" is estimated as Egg ×2 and Toast, and a photo is read as that same plate.
 final class StubServer: URLProtocol, @unchecked Sendable {
     static let launchArgument = "-UITestStubServer"
 
@@ -70,6 +72,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
             var serving: String
             var perUnit: [String: Double] // nutrients for 1 × serving (or 1 ml of water)
             var source: String
+            var ai = false
 
             var nutrients: [String: Double] { perUnit.mapValues { $0 * quantity * fraction } }
 
@@ -78,7 +81,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                     "id": id, "day": day, "meal": meal, "name": name, "brand": brand as Any, "icon": icon, "servingIndex": 0,
                     "unit": unit, "quantity": quantity, "fraction": fraction,
                     "servings": [unit == "ml" ? ["label": "1 ml", "ml": 1] : ["label": serving]],
-                    "nutrients": nutrients, "aiEstimated": false, "source": source,
+                    "nutrients": nutrients, "aiEstimated": ai, "source": source,
                 ]
             }
         }
@@ -103,6 +106,10 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 Entry(id: 14, day: d, meal: "supplements", name: "Water", brand: nil, icon: "💧", unit: "ml", quantity: 500, fraction: 1, serving: "1 ml", perUnit: ["water_ml": 1], source: "water"),
             ]
         }
+
+        static let banana = #"{"kind":"cache","id":41,"name":"Banana","brand":null,"icon":"🍌","barcode":"0012345678905","servings":[{"label":"1 medium","grams":118},{"label":"100 g","grams":100}],"nutrients":{"calories":105,"protein_g":1.3,"carbs_g":27,"fiber_g":3.1},"aiFields":[],"imageUrl":null,"override":false,"source":"usda","foodKind":"custom"}"#
+        static let egg = #"{"food":{"name":"Egg","brand":null,"category":"eggs","icon":"🥚","barcode":null,"servings":[{"label":"1 large egg","grams":50}],"nutrients":{"calories":72,"protein_g":6.3,"fat_g":4.8},"aiFields":["calories","protein_g","fat_g"],"source":"ai"},"servingIndex":0,"quantity":2}"#
+        static let toast = #"{"food":{"name":"Toast","brand":null,"category":"bread","icon":"🍞","barcode":null,"servings":[{"label":"1 slice","grams":30}],"nutrients":{"calories":80,"carbs_g":15,"protein_g":3},"aiFields":["calories","carbs_g","protein_g"],"source":"ai"},"servingIndex":0,"quantity":1}"#
 
         func answer(_ req: URLRequest, body: [String: Any]) -> (Int, String) {
             lock.withLock { route(req.httpMethod ?? "GET", req.url?.path() ?? "", req.url?.query() ?? "", body) }
@@ -138,6 +145,33 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 return (200, #"{"badges":[{"id":"first_weigh_in","earnedOn":"2026-11-02"},{"id":"lost_5","earnedOn":"2026-11-15"},{"id":"streak_7","earnedOn":"2026-11-10"}]}"#)
             case ("GET", "/api/days/logged"):
                 return (200, json(["days": Array(Set(entries.map(\.day))).sorted()]))
+            case ("GET", "/api/foods/search"):
+                let found = query.lowercased().contains("ban")
+                return (200, #"{"groups":[{"source":"basic","label":"Basic foods","foods":[\#(found ? Self.banana : "")]}],"errors":[],"searched":["basic"]}"#)
+            case ("GET", "/api/foods/recent"): return (200, #"{"foods":[\#(Self.banana)]}"#)
+            case ("GET", "/api/foods/frequent"): return (200, #"{"foods":[]}"#)
+            case ("POST", "/api/ai/estimate-items"):
+                return (200, #"{"items":[\#(Self.egg),\#(Self.toast)],"assumed":false}"#)
+            case ("POST", "/api/photos/analyze"):
+                return (200, #"{"photoIds":["stub-photo"],"plate":{"items":[\#(Self.egg),\#(Self.toast)]},"errors":[],"labelReading":true}"#)
+            case ("POST", "/api/log/estimates"):
+                var out: [[String: Any]] = []
+                for item in body["items"] as? [[String: Any]] ?? [] {
+                    nextId += 1
+                    let per = (item["nutrients"] as? [String: Double]) ?? [:]
+                    let serving = ((item["servings"] as? [[String: Any]])?.first?["label"] as? String) ?? "1 serving"
+                    let e = Entry(id: nextId, day: body["day"] as? String ?? Self.today, meal: body["meal"] as? String ?? "snacks", name: item["name"] as? String ?? "Food", brand: nil, icon: item["icon"] as? String ?? "🍽️", unit: "serving", quantity: (item["quantity"] as? Double) ?? 1, fraction: 1, serving: serving, perUnit: per, source: "ai", ai: true)
+                    entries.append(e)
+                    out.append(e.json)
+                }
+                return (200, json(["entries": out]))
+            case ("POST", "/api/my-foods"):
+                return (200, #"{"food":\#(Self.banana.replacingOccurrences(of: #""kind":"cache","id":41"#, with: #""kind":"user_food","id":9"#))}"#)
+            case ("POST", "/api/log") where body["food"] != nil:
+                nextId += 1
+                let e = Entry(id: nextId, day: body["day"] as? String ?? Self.today, meal: body["meal"] as? String ?? "snacks", name: "Banana", brand: nil, icon: "🍌", unit: "serving", quantity: (body["quantity"] as? Double) ?? 1, fraction: (body["fraction"] as? Double) ?? 1, serving: "1 medium", perUnit: ["calories": 105, "protein_g": 1.3, "carbs_g": 27, "fiber_g": 3.1], source: "cache")
+                entries.append(e)
+                return (200, json(["entry": e.json]))
             case ("POST", "/api/log"):
                 let ml = (body["water_ml"] as? Double) ?? Double(body["water_ml"] as? Int ?? 0)
                 nextId += 1
@@ -185,6 +219,11 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                     return (200, json(["entry": e.json]))
                 }
                 return (404, #"{"error":"Entry not found"}"#)
+            }
+            // /api/foods/barcode/:code
+            if method == "GET", parts.count == 4, parts[1] == "foods", parts[2] == "barcode" {
+                let food = parts[3] == "0012345678905" ? Self.banana : "null"
+                return (200, #"{"code":"\#(parts[3])","food":\#(food),"errors":[]}"#)
             }
             if method == "PUT", path.hasPrefix("/api/weigh-ins/") || path.hasPrefix("/api/glp1/shots/") { return (200, #"{"ok":true}"#) }
             return (404, #"{"error":"Not found"}"#)
