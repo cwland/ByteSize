@@ -15,4 +15,5 @@ export const publicUser = (u: typeof users.$inferSelect) => ({
   units: u.units,
   timezone: u.timezone,
   setupDone: !!u.setupDoneAt,
+  seenVersion: u.seenVersion ?? null,
 });
