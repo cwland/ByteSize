@@ -162,5 +162,17 @@ final class TrackFoodModelTests: XCTestCase {
         XCTAssertEqual(body["quantity"] as? Double, 150)
         XCTAssertEqual(body["servingIndex"] as? Int, 0)
     }
-}
 
+    func testAfterLoggingTheSearchIsReadyForTheNext() async throws {
+        serve()
+        let (m, _) = model()
+        m.query = "banana"
+        await m.search()
+        let food = try JSONDecoder().decode(Food.self, from: Data(FoodFixtures.banana.utf8))
+        let ok = await m.log(food, portion: PortionModel(food: food, meal: .lunch))
+        XCTAssertTrue(ok)
+        XCTAssertEqual(m.query, "")
+        XCTAssertEqual(m.groups, [])
+        XCTAssertEqual(m.lastLogged, "Banana")
+    }
+}
