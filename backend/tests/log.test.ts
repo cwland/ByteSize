@@ -81,7 +81,8 @@ describe("food log", () => {
     expect((await getDay()).entries).toEqual([entry]);
     // ...and editing the entry re-reads only its snapshot
     const patched = await t.api("PATCH", `/api/log/${entry.id}`, { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
-    expect(patched.body.entry).toMatchObject({ name: "Toast", servings: toast.servings, nutrients: toast.nutrients });
+    // the snapshot as logged: its own serving plus "1 slice" worked out from "2 slices" (L1)
+    expect(patched.body.entry).toMatchObject({ name: "Toast", servings: [...toast.servings, { label: "1 slice", grams: 30, derived: true }], nutrients: toast.nutrients });
   });
 
   it("PATCH portion rescales from the snapshot", async () => {

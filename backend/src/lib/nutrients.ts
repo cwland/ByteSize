@@ -22,7 +22,9 @@ export type Nutrients = Partial<Record<NutrientKey, number>>;
  * servings[0] is the base the nutrients are for. approx: the ml was estimated from the grams
  * (1 g ≈ 1 ml) for a drink known only by weight; it plays no other part in the maths.
  */
-export type Serving = { label: string; grams?: number; ml?: number; approx?: true };
+/** per: how many of servings[0] one of this is, for a counted unit with no weight ("1 cracker" of "12 crackers").
+ * derived: worked out on lookup (lib/measures.ts), never stored on a food. */
+export type Serving = { label: string; grams?: number; ml?: number; approx?: true; per?: number; derived?: true };
 export type Unit = "serving" | "g" | "oz" | "ml" | "fl_oz" | "cup" | "tbsp" | "tsp";
 
 export class UnitError extends Error {
@@ -57,6 +59,7 @@ export function amountFactor(servings: Serving[], servingIndex: number, unit: Un
     if (servingIndex === 0) return quantity;
     if (positive(s.grams) && positive(base.grams)) return quantity * (s.grams / base.grams);
     if (positive(s.ml) && positive(base.ml)) return quantity * (s.ml / base.ml);
+    if (positive(s.per)) return quantity * s.per;
     throw cant();
   }
 
