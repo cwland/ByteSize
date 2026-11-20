@@ -112,6 +112,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 Entry(id: 14, day: d, meal: "supplements", name: "Water", brand: nil, icon: "💧", unit: "ml", quantity: 500, fraction: 1, serving: "1 ml", perUnit: ["water_ml": 1], source: "water"),
                 // L2: yesterday's dinner, for Same as yesterday (a food, and an AI estimate with no food behind it)
                 Entry(id: 15, day: Self.yesterday, meal: "dinner", name: "Pasta", brand: nil, icon: "🍝", unit: "serving", quantity: 1, fraction: 1, serving: "1 cup", perUnit: ["calories": 220, "carbs_g": 43], source: "cache", ref: "cache:50"),
+                Entry(id: 17, day: Self.yesterday, meal: "snacks", name: "Broken bar", brand: nil, icon: "🍫", unit: "serving", quantity: 1, fraction: 1, serving: "1 bar", perUnit: ["calories": 200], source: "ai", ai: true),
                 Entry(id: 16, day: Self.yesterday, meal: "dinner", name: "Plate estimate", brand: nil, icon: "🍽️", unit: "serving", quantity: 1, fraction: 1, serving: "1 plate", perUnit: ["calories": 450], source: "ai", ai: true),
             ]
         }
@@ -211,6 +212,8 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 let e = Entry(id: nextId, day: body["day"] as? String ?? Self.today, meal: "supplements", name: "Water", brand: nil, icon: "💧", unit: "ml", quantity: ml, fraction: 1, serving: "1 ml", perUnit: ["water_ml": 1], source: "water")
                 entries.append(e)
                 return (200, json(["entry": e.json]))
+            case ("POST", "/api/log/move") where (body["ids"] as? [Int] ?? []).contains(17):
+                return (400, #"{"error":"That entry can't be copied"}"#) // L2: a + that fails
             case ("POST", "/api/log/move"):
                 let ids = body["ids"] as? [Int] ?? []
                 let copy = body["copy"] as? Bool ?? false
