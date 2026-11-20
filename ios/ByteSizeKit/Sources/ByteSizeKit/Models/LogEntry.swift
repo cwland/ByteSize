@@ -33,6 +33,8 @@ public struct LogEntry: Codable, Identifiable, Equatable, Sendable {
     public let fraction: Double
     public let servings: [Serving]
     public let nutrients: Nutrients
+    /// The food's own nutrients per servings[0], unrounded (servers before 0.4 don't send it).
+    public let perServing: Nutrients?
     public let aiEstimated: Bool
     public let source: String
 

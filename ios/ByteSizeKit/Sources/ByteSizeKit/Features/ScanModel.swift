@@ -28,19 +28,27 @@ public final class ScanModel {
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private var lastRead: AiDraft?
+    /// The barcode just logged and when: the package is usually still in front of the camera.
+    @ObservationIgnored private var justLogged: (code: String, at: Date)?
+    @ObservationIgnored private let now: () -> Date
+    /// How long the camera ignores the barcode just logged (a typed one always goes through).
+    static let sameCodePause: TimeInterval = 3
 
     public static let unreadable = "Couldn't read that label. Try again with the whole Nutrition Facts panel in view."
     public static let needsPhotoAI = "Reading labels needs a photo AI service — set one up in the web app."
 
-    public init(api: APIClient) {
+    public init(api: APIClient, now: @escaping () -> Date = Date.init) {
         self.api = api
+        self.now = now
     }
 
-    /// A code from the camera or typed. Ignored unless scanning (the camera reports the same code many times).
-    public func scanned(_ raw: String) async {
+    /// A code from the camera or typed. Ignored unless scanning (the camera reports the same code many times),
+    /// and the camera's read of the product just logged is ignored for a moment.
+    public func scanned(_ raw: String, fromCamera: Bool = false) async {
         guard step == .scanning else { return }
         let digits = raw.filter { $0.isASCII && $0.isNumber }
         guard !digits.isEmpty else { return }
+        if fromCamera, let last = justLogged, last.code == digits, now().timeIntervalSince(last.at) < Self.sameCodePause { return }
         code = digits
         step = .looking(digits)
         do {
@@ -89,6 +97,7 @@ public final class ScanModel {
 
     /// A scanned food was logged: back to the camera for the next one.
     public func logged(_ name: String) {
+        justLogged = code.map { ($0, now()) }
         restart()
         lastLogged = name
     }

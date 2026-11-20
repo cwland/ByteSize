@@ -41,9 +41,15 @@ public final class PortionModel {
     public convenience init(entry: LogEntry) {
         let unit = AmountUnit(rawValue: entry.unit) ?? .serving
         let amount = entry.quantity * entry.fraction
-        // The entry's nutrients are for its amount: back to one of servings[0]
-        let factor = AmountMath.factor(entry.servings, servingIndex: entry.servingIndex, unit: unit, quantity: amount) ?? 0
-        let per = factor > 0 ? Nutrients(entry.nutrients.values.mapValues { $0 / factor }) : Nutrients()
+        // The food's own per-serving nutrients when the server sends them; otherwise the entry's
+        // (rounded) nutrients for its amount, worked back to one of servings[0]
+        let per: Nutrients
+        if let own = entry.perServing {
+            per = own
+        } else {
+            let factor = AmountMath.factor(entry.servings, servingIndex: entry.servingIndex, unit: unit, quantity: amount) ?? 0
+            per = factor > 0 ? Nutrients(entry.nutrients.values.mapValues { $0 / factor }) : Nutrients()
+        }
         self.init(name: entry.name, icon: entry.icon, servings: entry.servings, nutrients: per, meal: entry.meal)
         choice = unit == .serving ? .serving(entry.servingIndex) : .unit(unit)
         (whole, fraction) = Self.split(amount)

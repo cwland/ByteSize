@@ -85,6 +85,7 @@ public final class TrackFoodModel {
             _ = try await api.send(FoodAPI.log(food: food, day: dayStore.selected, meal: portion.meal, servingIndex: portion.servingIndex, unit: portion.unit, quantity: portion.quantity))
             message = nil
             lastLogged = food.name
+            meal = portion.meal // the next food starts in the same meal
             query = ""
             groups = []
             await dayStore.reload()
