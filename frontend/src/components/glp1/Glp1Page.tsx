@@ -4,7 +4,7 @@ import { notifySettingsChanged } from "../../day";
 import { useHash } from "../../routes";
 import { useSession } from "../../session";
 import { dayLabel, todayIn, useSelectedDay } from "../../selectedDay";
-import { SIDE_EFFECTS, type AfterInjection as AfterData, type Glp1Settings, type Glp1View, type Shot, type SideEffectDay } from "../../types";
+import { SIDE_EFFECTS, type AfterInjection as AfterData, type DoseUnit, type Glp1Settings, type Glp1View, type Medication, type Shot, type SideEffectDay } from "../../types";
 import { Card } from "../ui/Card";
 import { Confirm } from "../ui/Confirm";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
@@ -12,7 +12,7 @@ import { field, label, linkButton, noAutofill, primaryButton, secondaryButton } 
 import AfterInjection from "./AfterInjection";
 import ShotSheet from "./ShotSheet";
 import SideEffectsSheet from "./SideEffectsSheet";
-import { EFFECT_LABELS, LEVEL_LABELS, SITE_LABELS, WEEKDAYS, mg, statusText } from "./glp1";
+import { DOSE_UNITS, EFFECT_LABELS, LEVEL_LABELS, SITE_LABELS, WEEKDAYS, doseText, statusText } from "./glp1";
 import { IconButton } from "../ui/IconButton";
 
 // "#/glp1?from=/goals" -> "#/goals" (default: the Dashboard)
@@ -82,7 +82,7 @@ export default function Glp1Page() {
       <Notice msg={msg} />
       {view && (
         <>
-          <Setup settings={view.settings} today={today} onSaved={setView} />
+          <Setup settings={view.settings} medications={view.medications ?? []} today={today} onSaved={setView} />
           {view.settings && (
             <section aria-label="Next shot" className="flex items-center gap-3 rounded-2xl bg-container p-5">
               <p className={`flex-1 text-lg font-bold ${view.status === "overdue" ? "text-action" : ""}`}>{status}</p>
@@ -144,28 +144,48 @@ function summary(d: SideEffectDay) {
 }
 
 // Setup: medication, dose and injection weekday. A form when there's nothing yet (or on Edit), else one line.
-function Setup({ settings, today, onSaved }: { settings: Glp1Settings | null; today: string; onSaved: (v: Glp1View) => void }) {
+// W1 (SPEC-14): a brand offers its standard dose steps; Compounded takes its own name, dose and unit.
+const COMPOUNDED = "compounded";
+function Setup({ settings, medications, today, onSaved }: { settings: Glp1Settings | null; medications: Medication[]; today: string; onSaved: (v: Glp1View) => void }) {
+  const brandOf = (name: string | undefined) => medications.find((m) => m.name === name);
+  const start = () => {
+    const brand = brandOf(settings?.medication);
+    return {
+      choice: settings ? (brand ? brand.name : COMPOUNDED) : "",
+      name: settings && !brand ? settings.medication : "",
+      dose: settings ? String(settings.doseMg) : "",
+      unit: (settings?.doseUnit ?? "mg") as DoseUnit,
+      weekday: String(settings?.injectionWeekday ?? new Date(`${today}T00:00:00Z`).getUTCDay()),
+    };
+  };
   const [editing, setEditing] = useState(false);
-  const [medication, setMedication] = useState(settings?.medication ?? "");
-  const [dose, setDose] = useState(settings ? String(settings.doseMg) : "");
-  const [weekday, setWeekday] = useState(String(settings?.injectionWeekday ?? new Date(`${today}T00:00:00Z`).getUTCDay()));
+  const [form, setForm] = useState(start);
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
+  const set = (patch: Partial<ReturnType<typeof start>>) => setForm((f) => ({ ...f, ...patch }));
+  const brand = brandOf(form.choice);
+
+  // A brand: its doses (the saved one if it's a step, else the first); Compounded: whatever was typed
+  const pick = (choice: string) => {
+    const b = brandOf(choice);
+    if (b) set({ choice, unit: "mg", dose: b.doses.includes(Number(form.dose)) ? form.dose : String(b.doses[0]) });
+    else set({ choice });
+  };
 
   const edit = () => {
-    setMedication(settings?.medication ?? "");
-    setDose(settings ? String(settings.doseMg) : "");
-    setWeekday(String(settings?.injectionWeekday ?? new Date(`${today}T00:00:00Z`).getUTCDay()));
+    setForm(start());
     setMsg(null);
     setEditing(true);
   };
   const save = async () => {
-    const doseMg = Number(dose);
-    if (!medication.trim()) return setMsg({ ok: false, text: "Enter your medication" });
-    if (!(doseMg > 0)) return setMsg({ ok: false, text: "Enter the dose in mg" });
+    const doseMg = Number(form.dose);
+    const medication = brand ? brand.name : form.name.trim();
+    if (!form.choice) return setMsg({ ok: false, text: "Choose your medication" });
+    if (!medication) return setMsg({ ok: false, text: "Enter the medication or compound name" });
+    if (!(doseMg > 0)) return setMsg({ ok: false, text: "Enter the dose" });
     setBusy(true);
     try {
-      onSaved(await api<Glp1View>("PUT", "/api/glp1/settings", { medication: medication.trim(), doseMg, injectionWeekday: Number(weekday) }));
+      onSaved(await api<Glp1View>("PUT", "/api/glp1/settings", { medication, doseMg, doseUnit: brand ? "mg" : form.unit, injectionWeekday: Number(form.weekday) }));
       notifySettingsChanged(); // GLP-1 is on now: the rail's GLP-1 item reads it from the settings (§46)
       setEditing(false);
     } catch (e) {
@@ -178,7 +198,7 @@ function Setup({ settings, today, onSaved }: { settings: Glp1Settings | null; to
   if (settings && !editing) {
     return (
       <section aria-label="Setup" className="flex items-center gap-3 rounded-2xl bg-container px-5 py-4">
-        <p className="flex-1 font-semibold">{`${settings.medication} ${mg(settings.doseMg)}, ${WEEKDAYS[settings.injectionWeekday]}s`}</p>
+        <p className="flex-1 font-semibold">{`${settings.medication} ${doseText(settings.doseMg, settings.doseUnit)}, ${WEEKDAYS[settings.injectionWeekday]}s`}</p>
         <button type="button" onClick={edit} className={linkButton}>
           Edit
         </button>
@@ -190,16 +210,57 @@ function Setup({ settings, today, onSaved }: { settings: Glp1Settings | null; to
       <div className="flex flex-col gap-3">
         <label className={label}>
           Medication
-          <input {...noAutofill} aria-label="Medication" value={medication} maxLength={60} onChange={(e) => setMedication(e.target.value)} placeholder="e.g. Ozempic" className={field} />
+          <select aria-label="Medication" value={form.choice} onChange={(e) => pick(e.target.value)} className={field}>
+            <option value="" disabled>
+              Choose…
+            </option>
+            {medications.map((m) => (
+              <option key={m.name} value={m.name}>{`${m.name} (${m.ingredient})`}</option>
+            ))}
+            <option value={COMPOUNDED}>Compounded</option>
+          </select>
         </label>
-        <div className="grid grid-cols-2 gap-3">
+        {form.choice === COMPOUNDED && (
           <label className={label}>
-            Dose (mg)
-            <input {...noAutofill} aria-label="Dose (mg)" type="number" inputMode="decimal" min="0" step="any" value={dose} onChange={(e) => setDose(e.target.value)} className={field} />
+            Medication / compound name
+            <input {...noAutofill} aria-label="Medication / compound name" value={form.name} maxLength={60} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. Compounded Tirzepatide + B12" className={field} />
           </label>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          {brand ? (
+            <label className={label}>
+              Dose
+              <select aria-label="Dose" value={form.dose} onChange={(e) => set({ dose: e.target.value })} className={field}>
+                {brand.doses.map((d) => (
+                  <option key={d} value={String(d)}>
+                    {doseText(d)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            form.choice === COMPOUNDED && (
+              <div className="grid grid-cols-2 gap-2">
+                <label className={label}>
+                  Dose
+                  <input {...noAutofill} aria-label="Dose" type="number" inputMode="decimal" min="0" step="any" value={form.dose} onChange={(e) => set({ dose: e.target.value })} className={field} />
+                </label>
+                <label className={label}>
+                  Unit
+                  <select aria-label="Unit" value={form.unit} onChange={(e) => set({ unit: e.target.value as DoseUnit })} className={field}>
+                    {DOSE_UNITS.map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )
+          )}
           <label className={label}>
             Injection day
-            <select aria-label="Injection day" value={weekday} onChange={(e) => setWeekday(e.target.value)} className={field}>
+            <select aria-label="Injection day" value={form.weekday} onChange={(e) => set({ weekday: e.target.value })} className={field}>
               {WEEKDAYS.map((w, i) => (
                 <option key={w} value={String(i)}>
                   {w}
@@ -230,10 +291,10 @@ function History({ shots, doses, onEdit, onDelete }: { shots: Shot[]; doses: Glp
   const change = (s: Shot) => {
     const i = doses.findIndex((d) => d.day === s.day);
     if (i < 0) return null;
-    if (i === 0) return `Started ${s.medication} ${mg(s.doseMg)}`;
+    if (i === 0) return `Started ${s.medication} ${doseText(s.doseMg, s.doseUnit)}`;
     const was = doses[i - 1];
-    if (was.medication !== s.medication) return `Switched to ${s.medication} ${mg(s.doseMg)}`;
-    return `Dose changed from ${mg(was.doseMg)} to ${mg(s.doseMg)}`;
+    if (was.medication !== s.medication) return `Switched to ${s.medication} ${doseText(s.doseMg, s.doseUnit)}`;
+    return `Dose changed from ${doseText(was.doseMg, s.doseUnit)} to ${doseText(s.doseMg, s.doseUnit)}`;
   };
   return (
     <ul className="flex flex-col divide-y divide-line">
@@ -243,7 +304,7 @@ function History({ shots, doses, onEdit, onDelete }: { shots: Shot[]; doses: Glp
           <li key={s.day} className="py-2.5 first:pt-0 last:pb-0">
             <div className="flex items-baseline gap-2">
               <span className="flex-1 font-semibold">{dayLabel(s.day)}</span>
-              <span className="tabular">{mg(s.doseMg)}</span>
+              <span className="tabular">{doseText(s.doseMg, s.doseUnit)}</span>
             </div>
             <p className="text-sm text-subtle">{SITE_LABELS[s.site]}</p>
             {c && <p className="mt-0.5 text-sm font-semibold text-action">{c}</p>}
