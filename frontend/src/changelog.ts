@@ -10,6 +10,18 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.4.0",
+    date: "2026-11-20",
+    title: "Amount wheels and logging in a row on iPhone",
+    changes: [
+      "iPhone: amounts are picked on three wheels — whole number, fraction (in eighths) and unit — when logging and when editing an entry.",
+      "iPhone: after logging, Scan Food goes back to the camera and Track Food back to the search, so you can log several foods in a row. Close when you're done. The meal you picked stays for the next food.",
+      "iPhone: a big amount (more than 20 servings or 2,000 calories) asks \"That's a lot — log it?\" first, as on the web.",
+      "Editing an entry shows its calories exactly, even for very small amounts.",
+      "AI-drafted foods with absurd servings are trimmed, and a slow AI says \"The AI took too long — try again\".",
+    ],
+  },
+  {
     version: "0.3.0",
     date: "2026-11-20",
     title: "Log by the piece, in eighths",
