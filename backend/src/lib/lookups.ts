@@ -23,13 +23,14 @@ type CacheRow = typeof foodCache.$inferSelect;
 /**
  * A kept food something uses, by the "table.column" that points at it: a starred restaurant item, a logged entry
  * (entries keep their own copy, but recent chains and backups read the kept food), a recipe or quick-meal
- * ingredient, or a "My foods" edit based on it. Every column a backup counts (backup.ts CACHE_REFERENCES) is here.
+ * ingredient, a "My foods" edit based on it, or a food someone bookmarked as a Favorite (L2). Every column a backup counts (backup.ts CACHE_REFERENCES) is here.
  */
 const USES: Record<string, SQL> = {
   "restaurant_favourites.cache_id": sql`exists (select 1 from restaurant_favourites f where f.cache_id = ${foodCache.id})`,
   "log_entries.source_ref": sql`exists (select 1 from log_entries le where le.source_ref = 'cache:' || ${foodCache.id})`,
   "recipe_items.food_id": sql`exists (select 1 from recipe_items ri where ri.food_kind = 'cache' and ri.food_id = ${foodCache.id})`,
   "user_foods.base_cache_id": sql`exists (select 1 from user_foods uf where uf.base_cache_id = ${foodCache.id})`,
+  "favorites.cache_id": sql`exists (select 1 from favorites fv where fv.cache_id = ${foodCache.id})`,
 };
 export const IN_USE_REFS = Object.keys(USES);
 export const IN_USE: SQL = sql`(${sql.join(Object.values(USES), sql` or `)})`;

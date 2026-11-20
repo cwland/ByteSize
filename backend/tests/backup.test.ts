@@ -1,3 +1,4 @@
+import { favorites } from "../src/db/schema.js";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -136,6 +137,8 @@ async function seed() {
     .values({ userId: a.id, kind: "custom", name: "Protein bar", servings: [{ label: "1 bar", grams: 60 }], nutrients: { calories: 210, protein_g: 20 }, aiFields: ["fiber_g", "sugar_g"], imagePath: photo.path, barcode: "0000000000456" })
     .returning();
   await t.db.insert(userFoods).values({ userId: b.id, kind: "override", name: "Food corrected", baseCacheId: corrected.id, servings: [], nutrients: { calories: 2 } });
+  // L2: a favorite of each kind (a kept food and one of the person's own)
+  await t.db.insert(favorites).values([{ userId: a.id, cacheId: cache.id }, { userId: a.id, userFoodId: custom.id }]);
   const [recipe] = await t.db.insert(userFoods).values({ userId: a.id, kind: "recipe", name: "Overnight oats", servings: [{ label: "1 serving" }], nutrients: { calories: 360 }, recipeServings: 2, servingGrams: null }).returning();
   await t.db.insert(recipeItems).values([
     { recipeId: recipe.id, position: 0, foodKind: "cache", foodId: cache.id, unit: "g", quantity: 80, snapshot: { name: "Oats", brand: null, icon: "🥣", foodKind: "cache", nutrients: { calories: 300 }, perServing: { calories: 150 }, servings: [], aiFields: [] } },
