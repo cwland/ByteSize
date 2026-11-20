@@ -24,6 +24,9 @@ struct TrackFoodSheet: View {
                     .accessibilityIdentifier("loggedToast")
             }
             if model.query.trimmingCharacters(in: .whitespaces).count < 2 {
+                if let message = model.message {
+                    Text(message).foregroundStyle(palette.color("error")).accessibilityIdentifier("trackMessage")
+                }
                 Section {
                     MealPicker(meal: $model.meal)
                 }
@@ -51,6 +54,7 @@ struct TrackFoodSheet: View {
         }
         .onChange(of: model.meal) { Task { await model.load() } }
         .onChange(of: picked) { _, now in
+            if now != nil { model.clearMessage() } // an old error isn't about the food being opened
             if now == nil, model.lastLogged != nil { searchShown = true } // back from logging: ready to type the next
         }
         .navigationDestination(item: $hub) { action in hubScreen(action) }

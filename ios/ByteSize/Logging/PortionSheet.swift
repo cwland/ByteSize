@@ -179,6 +179,7 @@ struct FoodPortionView: View {
     }
 
     var body: some View {
-        PortionSheet(portion: portion, onLog: { await log(food, portion) }, message: message, pushed: pushed, bookmark: bookmark)
+        // The model's message read here, so a failed bookmark or log shows while this screen is open
+        PortionSheet(portion: portion, onLog: { await log(food, portion) }, message: favorites?.message ?? message, pushed: pushed, bookmark: bookmark)
     }
 }

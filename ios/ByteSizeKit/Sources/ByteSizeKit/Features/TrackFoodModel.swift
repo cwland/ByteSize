@@ -34,6 +34,7 @@ public final class TrackFoodModel {
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let dayStore: DayStore
     @ObservationIgnored private var searchNumber = 0
+    @ObservationIgnored private var loadNumber = 0
 
     public static let unknownBarcode = "We don't know this barcode yet. Scan Food can read its label."
 
@@ -45,6 +46,8 @@ public final class TrackFoodModel {
     }
 
     public func load() async {
+        loadNumber += 1
+        let mine = loadNumber
         let day = dayStore.selected
         let meal = meal
         async let y = try? api.send(LogAPI.day(DayMath.add(-1, to: day)))
@@ -52,6 +55,8 @@ public final class TrackFoodModel {
         async let f = try? api.send(FoodAPI.favorites())
         async let r = try? api.send(FoodAPI.recent(meal: meal))
         let (yesterdayDay, sameFoods, favoriteList, recentList) = await (y, s, f, r)
+        // A newer load (another meal or day) took over while this one waited: keep what it shows
+        guard mine == loadNumber else { return }
         let foods = sameFoods?.foods ?? []
         yesterday = (yesterdayDay?.entries ?? []).filter { $0.meal == meal }.map { entry in
             YesterdayItem(entry: entry, food: entry.sourceRef.flatMap { ref in foods.first { Self.same($0, ref) } })
@@ -156,6 +161,8 @@ public final class TrackFoodModel {
         await load()
     }
 
+    public func clearMessage() { message = nil }
+
     public func isFavorite(_ food: Food) -> Bool {
         favorites.contains { fav in
             fav.ref == food.ref || Self.same(fav, food.ref) || (fav.baseCacheId != nil && fav.baseCacheId == food.baseCacheId)
@@ -167,11 +174,17 @@ public final class TrackFoodModel {
     public func toggleFavorite(_ food: Food) async {
         let before = favorites
         let wasOn = isFavorite(food)
-        favorites = wasOn ? favorites.filter { !($0.ref == food.ref || Self.same($0, food.ref) || ($0.baseCacheId != nil && $0.baseCacheId == food.baseCacheId)) } : [food] + favorites
+        let matches: (Food) -> Bool = { $0.ref == food.ref || Self.same($0, food.ref) || ($0.baseCacheId != nil && $0.baseCacheId == food.baseCacheId) }
+        // Off: whatever is stored for it — the favorites it matched, the food itself, the database food it corrects
+        var refs = favorites.filter(matches).map { ($0.kind, $0.id) } + [(food.kind, food.id)]
+        if let base = food.baseCacheId { refs.append(("cache", base)) }
+        favorites = wasOn ? favorites.filter { !matches($0) } : [food] + favorites
         do {
             if wasOn {
-                _ = try await api.send(FoodAPI.removeFavorite(kind: food.kind, id: food.id))
-                if let base = food.baseCacheId { _ = try await api.send(FoodAPI.removeFavorite(kind: "cache", id: base)) }
+                var sent = Set<String>()
+                for (kind, id) in refs where sent.insert("\(kind):\(id)").inserted {
+                    _ = try await api.send(FoodAPI.removeFavorite(kind: kind, id: id))
+                }
             } else {
                 _ = try await api.send(FoodAPI.addFavorite(food))
             }
