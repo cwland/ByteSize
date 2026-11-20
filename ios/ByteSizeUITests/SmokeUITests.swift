@@ -364,12 +364,10 @@ final class SmokeUITests: XCTestCase {
     func testAFailedQuickLogSaysSo() {
         signedIn()
         app.buttons["Food Log"].tap()
-        XCTAssertTrue(app.buttons["addTo-breakfast"].waitForExistence(timeout: 5))
-        reveal(app.buttons["addTo-snacks"]).tap() // the last meal: above the tab bar once scrolled
-        let broken = app.buttons["quickAdd-Broken bar"]
-        if !broken.waitForExistence(timeout: 5) { shot("19a-snacks-open") }
-        XCTAssertTrue(broken.exists)
-        app.buttons["quickAdd-Broken bar"].tap()
+        XCTAssertTrue(app.buttons["addTo-lunch"].waitForExistence(timeout: 5))
+        app.buttons["addTo-lunch"].tap()
+        XCTAssertTrue(app.buttons["quickAdd-Broken bar"].waitForExistence(timeout: 5))
+        app.buttons["quickAdd-Broken bar"].firstMatch.tap()
         XCTAssertTrue(label("That entry can't be copied").waitForExistence(timeout: 5), "the error shows on the quick screen")
     }
 
@@ -386,11 +384,12 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(picker.waitForExistence(timeout: 3))
         picker.tap()
         app.buttons["Snacks"].firstMatch.tap()
-        app.navigationBars.buttons.element(boundBy: 0).tap() // Back to the search
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Snacks")).firstMatch.waitForExistence(timeout: 5), "the search is in Snacks now")
-        let quickBanana = reveal(app.buttons["quickAdd-Banana"])
-        if !quickBanana.waitForExistence(timeout: 5) { shot("19b-after-describe") }
-        XCTAssertTrue(quickBanana.exists)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Snacks")).firstMatch.waitForExistence(timeout: 3))
+        // Back (not Close): the hub screen has both
+        app.navigationBars.buttons.matching(NSPredicate(format: "label != %@", "Close")).firstMatch.tap()
+        XCTAssertTrue(app.buttons["hub-describe"].waitForExistence(timeout: 5), "back on the search, sheet still open")
+        XCTAssertTrue(app.buttons["Meal, Snacks"].exists || app.buttons.matching(NSPredicate(format: "label == %@", "Meal, Snacks")).firstMatch.exists, "the search is in Snacks now")
+        XCTAssertTrue(reveal(app.buttons["quickAdd-Banana"]).waitForExistence(timeout: 5))
         app.buttons["quickAdd-Banana"].tap()
         XCTAssertTrue(label("Logged Banana").waitForExistence(timeout: 5))
         closeSheet()
