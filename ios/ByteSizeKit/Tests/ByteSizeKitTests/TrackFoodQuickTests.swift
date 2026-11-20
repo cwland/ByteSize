@@ -9,19 +9,19 @@ final class TrackFoodQuickTests: XCTestCase {
     /// 8:00 in Boise on 2026-11-19: breakfast time.
     private let morning = ISO8601DateFormatter().date(from: "2026-11-19T15:00:00Z")!
 
-    static func entry(_ id: Int, _ day: String, _ meal: String, _ name: String, sourceRef: String?) -> String {
+    nonisolated static func entry(_ id: Int, _ day: String, _ meal: String, _ name: String, sourceRef: String?) -> String {
         let ref = sourceRef.map { "\"\($0)\"" } ?? "null"
         return #"{"id":\#(id),"day":"\#(day)","meal":"\#(meal)","name":"\#(name)","brand":null,"icon":"🍽️","servingIndex":0,"unit":"serving","quantity":1,"fraction":1,"servings":[{"label":"1 cup"}],"nutrients":{"calories":150},"aiEstimated":\#(sourceRef == nil),"source":"cache","sourceRef":\#(ref),"treat":false}"#
     }
 
-    static func day(_ day: String, _ entries: [String]) -> String {
+    nonisolated static func day(_ day: String, _ entries: [String]) -> String {
         #"{"day":"\#(day)","entries":[\#(entries.joined(separator: ","))],"totals":{},"meals":{},"targets":null,"streak":0}"#
     }
 
-    static let oatmeal = #"{"kind":"cache","id":50,"name":"Oatmeal","brand":null,"icon":"🥣","barcode":null,"servings":[{"label":"1 cup","grams":234}],"nutrients":{"calories":150},"aiFields":[],"source":"usda","foodKind":"custom","last":{"servingIndex":0,"unit":"serving","quantity":1,"fraction":1}}"#
-    static let prunes = #"{"kind":"cache","id":42,"name":"Prunes","brand":null,"icon":"🍇","barcode":null,"servings":[{"label":"5 prunes","grams":40},{"label":"1 prune","grams":8,"derived":true}],"nutrients":{"calories":150},"aiFields":[],"source":"usda","foodKind":"custom","last":{"servingIndex":1,"unit":"serving","quantity":6,"fraction":1}}"#
+    nonisolated static let oatmeal = #"{"kind":"cache","id":50,"name":"Oatmeal","brand":null,"icon":"🥣","barcode":null,"servings":[{"label":"1 cup","grams":234}],"nutrients":{"calories":150},"aiFields":[],"source":"usda","foodKind":"custom","last":{"servingIndex":0,"unit":"serving","quantity":1,"fraction":1}}"#
+    nonisolated static let prunes = #"{"kind":"cache","id":42,"name":"Prunes","brand":null,"icon":"🍇","barcode":null,"servings":[{"label":"5 prunes","grams":40},{"label":"1 prune","grams":8,"derived":true}],"nutrients":{"calories":150},"aiFields":[],"source":"usda","foodKind":"custom","last":{"servingIndex":1,"unit":"serving","quantity":6,"fraction":1}}"#
     /// Cory's own correction of database food 42.
-    static let prunesFixed = #"{"kind":"user_food","id":9,"name":"Prunes","brand":null,"icon":"🍇","barcode":null,"servings":[{"label":"5 prunes","grams":40}],"nutrients":{"calories":140},"aiFields":[],"source":"mine","foodKind":"override","baseCacheId":42}"#
+    nonisolated static let prunesFixed = #"{"kind":"user_food","id":9,"name":"Prunes","brand":null,"icon":"🍇","barcode":null,"servings":[{"label":"5 prunes","grams":40}],"nutrients":{"calories":140},"aiFields":[],"source":"mine","foodKind":"override","baseCacheId":42}"#
 
     /// Yesterday (2026-11-18 when 2026-11-19 is selected) had two lunch entries: Oatmeal (a food) and an AI plate.
     private func serve(favorites: [String] = [], favoritePut: HTTPStub.Reply = .json(200, #"{"refs":["cache:42"]}"#)) {
