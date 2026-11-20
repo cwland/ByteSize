@@ -109,4 +109,9 @@ final class PortionModelTests: XCTestCase {
         XCTAssertEqual(p.whole, 150)
         XCTAssertEqual(p.previewCalories, 195)
     }
+
+    func testServingsOnlyForAIEstimates() {
+        let p = PortionModel(name: "Egg", icon: "🥚", servings: [Serving(label: "1 large egg", grams: 50)], nutrients: Nutrients(["calories": 72]), meal: .breakfast, servingsOnly: true)
+        XCTAssertEqual(p.choices.map(\.label), ["1 large egg"])
+    }
 }

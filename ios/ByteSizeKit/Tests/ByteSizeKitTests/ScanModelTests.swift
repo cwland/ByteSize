@@ -125,5 +125,16 @@ final class ScanModelTests: XCTestCase {
         XCTAssertEqual(m.step, .review(draft, barcode: "0099999999999"), "back to the form, edits kept")
         XCTAssertEqual(m.message, "Give the food a name")
     }
-}
 
+    func testAfterLoggingBackToTheCamera() async {
+        serve()
+        let m = ScanModel(api: api)
+        await m.scanned("0012345678905")
+        m.logged("Banana")
+        XCTAssertEqual(m.step, .scanning)
+        XCTAssertNil(m.code)
+        XCTAssertEqual(m.lastLogged, "Banana")
+        await m.scanned("0012345678905") // the next one
+        guard case .found = m.step else { return XCTFail("\(m.step)") }
+    }
+}
