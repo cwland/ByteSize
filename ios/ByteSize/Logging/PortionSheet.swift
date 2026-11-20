@@ -9,6 +9,11 @@ struct PortionSheet: View {
     var message: String?
     /// Pushed onto a navigation stack (Track Food, where a sheet can't open over an active search) rather than a sheet.
     var pushed = false
+    struct Bookmark {
+        let isOn: Bool
+        let toggle: () async -> Void
+    }
+    var bookmark: Bookmark?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.palette) private var palette
     @State private var logging = false
@@ -72,6 +77,15 @@ struct PortionSheet: View {
                 if !pushed {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 }
+                if let bookmark {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button { Task { await bookmark.toggle() } } label: {
+                            Image(systemName: bookmark.isOn ? "bookmark.fill" : "bookmark")
+                        }
+                        .accessibilityLabel(bookmark.isOn ? "Remove from Favorites" : "Add to Favorites")
+                        .accessibilityIdentifier("bookmark")
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Log") {
                         if portion.isBig { askingBig = true } else { log() }
@@ -122,6 +136,13 @@ struct FoodRow: View {
         .accessibilityElement(children: .combine)
     }
 
+    init(icon: String, name: String, brand: String?, detail: String) {
+        self.icon = icon
+        self.name = name
+        self.brand = brand
+        self.detail = detail
+    }
+
     init(food: Food) {
         icon = food.icon
         name = food.name
@@ -137,18 +158,27 @@ struct FoodPortionView: View {
     let food: Food
     var pushed = false
     var message: String?
+    /// Where the bookmark lives (Track Food's favorites); nil hides it.
+    var favorites: TrackFoodModel?
     let log: (Food, PortionModel) async -> Bool
     @State private var portion: PortionModel
 
-    init(food: Food, meal: Meal, pushed: Bool = false, message: String? = nil, log: @escaping (Food, PortionModel) async -> Bool) {
+    init(food: Food, meal: Meal, pushed: Bool = false, message: String? = nil, favorites: TrackFoodModel? = nil, log: @escaping (Food, PortionModel) async -> Bool) {
         self.food = food
         self.pushed = pushed
         self.message = message
+        self.favorites = favorites
         self.log = log
         _portion = State(initialValue: PortionModel(food: food, meal: meal))
     }
 
+    /// A database food or one of the person's own, loggable here (SPEC-10).
+    private var bookmark: PortionSheet.Bookmark? {
+        guard let favorites, food.isLoggable, food.kind == "cache" || food.kind == "user_food" else { return nil }
+        return PortionSheet.Bookmark(isOn: favorites.isFavorite(food)) { await favorites.toggleFavorite(food) }
+    }
+
     var body: some View {
-        PortionSheet(portion: portion, onLog: { await log(food, portion) }, message: message, pushed: pushed)
+        PortionSheet(portion: portion, onLog: { await log(food, portion) }, message: message, pushed: pushed, bookmark: bookmark)
     }
 }

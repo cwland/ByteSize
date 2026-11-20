@@ -32,7 +32,7 @@ struct MainTabView: View {
         }
         .background(palette.color("page").ignoresSafeArea())
         .sheet(item: $shell.activeAction) { action in
-            QuickActionSheet(action: action, today: today) { shell.activeAction = nil }
+            QuickActionSheet(action: action, meal: shell.activeMeal, today: today) { shell.activeAction = nil }
                 .presentationDetents([.large])
         }
         .sheet(isPresented: $shell.profileOpen) {
@@ -49,7 +49,7 @@ struct MainTabView: View {
     private var tabContent: some View {
         switch shell.tab {
         case .dashboard: DashboardView(dashboard: today.dashboard, days: today.days, units: today.units)
-        case .foodLog: FoodLogView(log: today.log, days: today.days, units: today.units)
+        case .foodLog: FoodLogView(log: today.log, days: today.days, units: today.units) { shell.open(.track, meal: $0) }
         case .goals, .myFoods: PlaceholderScreen(title: shell.tab.title, systemImage: shell.tab.systemImage)
         }
     }
@@ -63,10 +63,13 @@ private struct QuickActionSheet: View {
     @State private var scan: ScanModel
     @State private var estimate: EstimateModel
 
-    init(action: QuickAction, today: TodayModels, close: @escaping () -> Void) {
+    let units: Units
+
+    init(action: QuickAction, meal: Meal?, today: TodayModels, close: @escaping () -> Void) {
         self.action = action
         self.close = close
-        _track = State(initialValue: TrackFoodModel(api: today.api, dayStore: today.days))
+        units = today.units
+        _track = State(initialValue: TrackFoodModel(api: today.api, dayStore: today.days, meal: meal))
         _scan = State(initialValue: ScanModel(api: today.api))
         _estimate = State(initialValue: EstimateModel(api: today.api, dayStore: today.days))
     }
@@ -80,12 +83,14 @@ private struct QuickActionSheet: View {
                     ToolbarItem(placement: .cancellationAction) { Button("Close", action: close) }
                 }
         }
+        // Scan and Photo show the bookmark too: they need the favorites (Track Food loads its own)
+        .task { if action != .track { await track.load() } }
     }
 
     @ViewBuilder
     private var content: some View {
         switch action {
-        case .track: TrackFoodSheet(model: track, close: close)
+        case .track: TrackFoodSheet(model: track, units: units, close: close)
         case .scan: ScanSheet(model: scan, track: track, close: close)
         case .photo: PhotoSheet(model: estimate, track: track, close: close)
         case .describe: DescribeSheet(model: estimate, close: close)
