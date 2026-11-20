@@ -19,6 +19,9 @@ import { isGlp1, isOldLog, pageFromHash, useHash, type Page } from "../routes";
 import { useSession } from "../session";
 import { SelectedDayProvider, todayIn, useSelectedDay } from "../selectedDay";
 import { useWide } from "../wide";
+import { isNewer } from "../changelog";
+import { APP_VERSION, showWhatsNew, versionLabel } from "../version";
+import WhatsNew from "./WhatsNew";
 
 // The signed-in app: top bar (week strip on the Dashboard), the page for the address, and the bottom tab bar.
 // Mobile-first; up to 1024 px the content stays a centered phone-width column. Wider (useWide): a side rail
@@ -26,7 +29,23 @@ import { useWide } from "../wide";
 export default function AppShell() {
   const hash = useHash();
   const page: Page = pageFromHash(hash);
-  const { user } = useSession();
+  const { user, setUser } = useSession();
+  // W1 "What's new": once per version after an update (until Got it), and from the version number in the corner.
+  // A user without seenVersion at all comes from an older server: never shown.
+  const [news, setNews] = useState<"new" | "all" | null>(() => (user.seenVersion !== undefined && isNewer(APP_VERSION, user.seenVersion) ? "new" : null));
+  const [since] = useState(user.seenVersion ?? null);
+  useEffect(() => {
+    const open = () => setNews("all");
+    window.addEventListener("bytesize:whats-new", open);
+    return () => window.removeEventListener("bytesize:whats-new", open);
+  }, []);
+  const closeNews = () => {
+    setNews(null);
+    if (user.seenVersion !== undefined && isNewer(APP_VERSION, user.seenVersion)) {
+      setUser({ ...user, seenVersion: APP_VERSION });
+      void api("PUT", "/api/auth/seen-version", { version: APP_VERSION }).catch(() => {});
+    }
+  };
   // No Log page (§28): its old address shows the Dashboard, and says so in the address bar
   useEffect(() => {
     if (isOldLog(hash)) history.replaceState(null, "", "#/");
@@ -75,10 +94,17 @@ export default function AppShell() {
         {!wide && <TopBar days={page === "dashboard" && !isGlp1(hash)} />}
         <main className={wide ? "min-w-0 flex-1 px-9 pt-7 pb-12" : "mx-auto max-w-[560px] px-3 pt-2 pb-32"}>
           <div className={wide ? "mx-auto max-w-[1180px]" : undefined}>{content}</div>
+          {/* W1: the version, bottom left; it opens What's new */}
+          <div className={wide ? "mx-auto mt-10 max-w-[1180px]" : "mt-8"}>
+            <button type="button" onClick={showWhatsNew} aria-label={`What's new in ${versionLabel}`} title="What's new in this version" className="rounded px-1 text-xs text-muted hover:text-link hover:underline">
+              {versionLabel}
+            </button>
+          </div>
         </main>
         {/* After the page, as on phones (tab and screen-reader order); the rail moves itself first (order-first) */}
         <LogButton page={page} wide={wide} />
         <CombinedNote />
+        {news && <WhatsNew since={since} all={news === "all"} onClose={closeNews} />}
       </div>
     </SelectedDayProvider>
   );
