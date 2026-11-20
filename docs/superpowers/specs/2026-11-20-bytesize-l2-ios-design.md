@@ -44,7 +44,8 @@ the meal he means should never get lost along the way. L1 already made Scan and 
 - Reordering or managing Favorites beyond the toggle.
 - Logging Culury recipes or quick meals on the iPhone (still "track in the web app"); they get no + and no bookmark.
 - Changing Scan / Photo / Describe themselves beyond where they live and what happens after a log.
-- Any server change.
+- Any server change, except one additive field found while planning: food results carry `baseCacheId` (which
+  database food a correction corrects), needed for call 2 below.
 
 ## Anti-goals (would make this a failure even if it works)
 
