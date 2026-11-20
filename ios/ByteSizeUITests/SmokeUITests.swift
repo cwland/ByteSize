@@ -302,6 +302,14 @@ final class SmokeUITests: XCTestCase {
         app.descendants(matching: .any).matching(NSPredicate(format: "label ==[c] %@", text)).firstMatch
     }
 
+    /// Scrolls up until the element is on screen and tappable (lists only build the rows they show).
+    private func reveal(_ element: XCUIElement) -> XCUIElement {
+        for _ in 0..<5 where !(element.exists && element.isHittable) {
+            app.swipeUp()
+        }
+        return element
+    }
+
     private func openDinnerFromTheFoodLog() {
         app.buttons["Food Log"].tap()
         let add = app.buttons["addTo-dinner"]
@@ -356,8 +364,8 @@ final class SmokeUITests: XCTestCase {
     func testAFailedQuickLogSaysSo() {
         signedIn()
         app.buttons["Food Log"].tap()
-        XCTAssertTrue(app.buttons["addTo-snacks"].waitForExistence(timeout: 5))
-        app.buttons["addTo-snacks"].tap()
+        XCTAssertTrue(app.buttons["addTo-breakfast"].waitForExistence(timeout: 5))
+        reveal(app.buttons["addTo-snacks"]).tap() // the last meal: above the tab bar once scrolled
         XCTAssertTrue(app.buttons["quickAdd-Broken bar"].waitForExistence(timeout: 5))
         app.buttons["quickAdd-Broken bar"].tap()
         XCTAssertTrue(label("That entry can't be copied").waitForExistence(timeout: 5), "the error shows on the quick screen")
@@ -378,7 +386,7 @@ final class SmokeUITests: XCTestCase {
         app.buttons["Snacks"].firstMatch.tap()
         app.navigationBars.buttons.element(boundBy: 0).tap() // Back to the search
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Snacks")).firstMatch.waitForExistence(timeout: 5), "the search is in Snacks now")
-        XCTAssertTrue(app.buttons["quickAdd-Banana"].waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(app.buttons["quickAdd-Banana"]).waitForExistence(timeout: 5))
         app.buttons["quickAdd-Banana"].tap()
         XCTAssertTrue(label("Logged Banana").waitForExistence(timeout: 5))
         closeSheet()
