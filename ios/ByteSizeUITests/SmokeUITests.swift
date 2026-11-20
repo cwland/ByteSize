@@ -374,9 +374,14 @@ final class SmokeUITests: XCTestCase {
     func testAMealChosenInsideDescribeComesBackToTheSearch() {
         signedIn()
         openDinnerFromTheFoodLog()
-        app.buttons["hub-describe"].tap()
         let field = app.textFields["describeField"]
-        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        let describe = app.buttons["hub-describe"]
+        XCTAssertTrue(describe.waitForExistence(timeout: 5))
+        for _ in 0..<2 where !field.exists { // a tap while the sheet is still rising can be lost
+            if describe.isHittable { describe.tap() }
+            _ = field.waitForExistence(timeout: 3)
+        }
+        XCTAssertTrue(field.waitForExistence(timeout: 2))
         field.typeText("2 eggs and toast")
         app.buttons["estimateButton"].tap()
         XCTAssertTrue(app.buttons["logAll"].waitForExistence(timeout: 5))
