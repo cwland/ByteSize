@@ -53,4 +53,45 @@ final class BadgesTests: XCTestCase {
         XCTAssertEqual(badgeInfo("lost_10", units: .metric).name, "4.5 kg down")
         XCTAssertEqual(badgeInfo("lost_20", units: .metric).name, "9 kg down")
     }
+
+    // MARK: - Today polish (SPEC-02, 05, 06)
+
+    func testBarFillThresholds() {
+        XCTAssertEqual(barFill(calories: 1499, range: calories), .under)
+        XCTAssertEqual(barFill(calories: 1500, range: calories), .within)
+        XCTAssertEqual(barFill(calories: 2000, range: calories), .within)
+        XCTAssertEqual(barFill(calories: 2001, range: calories), .over)
+    }
+
+    func testDailyTotalsInTheWebsOrder() throws {
+        let rows = dailyTotals(try Fixtures.decodeDay(), units: .imperial)
+        XCTAssertEqual(rows.map(\.name), ["Calories", "Protein", "Carbs", "Fat", "Fiber", "Sugar", "Sodium", "Water"])
+        XCTAssertEqual(rows[0], TotalRow(name: "Calories", amount: "1,138", target: "1,500–2,000"))
+        XCTAssertEqual(rows[1], TotalRow(name: "Protein", amount: "97 g", target: "110–130 g"))
+        XCTAssertEqual(rows[2], TotalRow(name: "Carbs", amount: "80 g", target: "—"))
+        XCTAssertEqual(rows[6], TotalRow(name: "Sodium", amount: "0 mg", target: "—"))
+        XCTAssertEqual(rows[7], TotalRow(name: "Water", amount: "51 fl oz", target: "68–101 fl oz"))
+        XCTAssertEqual(dailyTotals(try Fixtures.decodeDay(), units: .metric)[7].amount, "1,500 ml")
+    }
+
+    func testDailyTotalsWithoutTargets() throws {
+        let rows = dailyTotals(try Fixtures.decodeDay(Fixtures.dayNoTargets), units: .metric)
+        XCTAssertEqual(Set(rows.map(\.target)), ["—"])
+    }
+
+    func testLogSummary() throws {
+        XCTAssertEqual(logSummary(try Fixtures.decodeDay()), LogSummary(eaten: "1,138 eaten", left: "362 left", protein: "Protein 97 / 110 g", fiber: "Fiber 0 / 25 g"))
+    }
+
+    func testLogSummaryAtTheMaxAndOver() throws {
+        let at = try Fixtures.decodeDay(Fixtures.day.replacingOccurrences(of: #""totals":{"calories":1138"#, with: #""totals":{"calories":2000"#))
+        XCTAssertEqual(logSummary(at).left, "0 left")
+        let over = try Fixtures.decodeDay(Fixtures.day.replacingOccurrences(of: #""totals":{"calories":1138"#, with: #""totals":{"calories":2120"#))
+        XCTAssertEqual(logSummary(over).left, "over by 120")
+    }
+
+    func testLogSummaryWithoutTargets() throws {
+        let s = logSummary(try Fixtures.decodeDay(Fixtures.dayNoTargets))
+        XCTAssertEqual(s, LogSummary(eaten: "1,138 eaten", left: nil, protein: nil, fiber: nil))
+    }
 }
