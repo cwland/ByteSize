@@ -176,12 +176,20 @@ Test `PortionModelTests.swift`, rewritten.
 - Modify `Logging/EstimateItemsView.swift`: tapping a row opens the wheel (unit column = the item's own servings);
   the stepper goes.
 
+- **Keep logging (Cory, 2026-11-19, SPEC-16):** after Log in Track Food or Scan Food, the action sheet stays open.
+  - Track Food: back to the search, with the field cleared and focused.
+  - Scan Food: back to the camera (`ScanModel.restart()`), including after a label was saved and logged.
+  - A short "Logged {name}" toast and the success haptic.
+  - Only Close leaves. (Photo and Describe still close after Log all.)
+
 Tests: FoodLogModelTests (update body keys `fraction, quantity, servingIndex, unit`), and UI tests.
 
 - [ ] **Step 1: Failing UI tests:**
   - `testTrackPrunesBySix`: in the stub, "Prunes" has servings "5 prunes" (40 g) and derived "1 prune". Track Food
     → "prunes" → set the wheels to 6 / — / "1 prune" → "About 180 calories" → Log → Food Log shows "Prunes".
   - `testEditEntryWithTheWheel`: Greek yogurt → wheels 3 / ½ → Save → the row shows "3½ × 1 cup".
+  - `testTrackFoodStaysOpenForTheNext`: log Banana → the search field is back (empty) and "Logged Banana" shows → search "prunes" → log → Close → Food Log shows both.
+  - `testScanReturnsToTheCamera`: type 0012345678905 → Log → the "Type a barcode" field / camera view is back with "Logged Banana".
   - `testBigAmountAsks`: 21 × banana → the "That's a lot" alert → Change → nothing logged.
 - [ ] Steps 2–5: RED → stub routes ("prunes" search) → GREEN for the full iOS suite → screenshots looked at →
   commit "ios: three-wheel amount picker and the big-amount check".
