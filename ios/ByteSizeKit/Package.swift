@@ -9,7 +9,7 @@ let package = Package(
     products: [.library(name: "ByteSizeKit", targets: ["ByteSizeKit"])],
     targets: [
         .target(name: "ByteSizeKit"),
-        .testTarget(name: "ByteSizeKitTests", dependencies: ["ByteSizeKit"]),
+        .testTarget(name: "ByteSizeKitTests", dependencies: ["ByteSizeKit"], resources: [.copy("Resources/amount-vectors.json")]),
     ],
     swiftLanguageModes: [.v6]
 )

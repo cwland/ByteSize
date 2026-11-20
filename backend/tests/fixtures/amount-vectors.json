@@ -1,0 +1,17 @@
+[
+  { "name": "two of the first serving", "servings": [{ "label": "1 bar", "grams": 40 }], "servingIndex": 0, "unit": "serving", "quantity": 2, "factor": 2 },
+  { "name": "another serving by weight", "servings": [{ "label": "1 bar", "grams": 40 }, { "label": "100 g", "grams": 100 }], "servingIndex": 1, "unit": "serving", "quantity": 1, "factor": 2.5 },
+  { "name": "another serving by volume", "servings": [{ "label": "1 cup", "ml": 240 }, { "label": "1 fl oz", "ml": 30 }], "servingIndex": 1, "unit": "serving", "quantity": 2, "factor": 0.25 },
+  { "name": "a counted unit with no weight", "servings": [{ "label": "12 crackers" }, { "label": "1 cracker", "per": 0.08333333333333333, "derived": true }], "servingIndex": 1, "unit": "serving", "quantity": 6, "factor": 0.5 },
+  { "name": "a counted unit by weight", "servings": [{ "label": "5 prunes", "grams": 40 }, { "label": "1 prune", "grams": 8, "derived": true }], "servingIndex": 1, "unit": "serving", "quantity": 6, "factor": 1.2 },
+  { "name": "grams", "servings": [{ "label": "1 bar", "grams": 40 }], "servingIndex": 0, "unit": "g", "quantity": 100, "factor": 2.5 },
+  { "name": "ounces", "servings": [{ "label": "1 oz", "grams": 28.349523125 }], "servingIndex": 0, "unit": "oz", "quantity": 3, "factor": 3 },
+  { "name": "millilitres", "servings": [{ "label": "1 cup", "ml": 240 }], "servingIndex": 0, "unit": "ml", "quantity": 120, "factor": 0.5 },
+  { "name": "fluid ounces", "servings": [{ "label": "1 fl oz", "ml": 29.5735295625 }], "servingIndex": 0, "unit": "fl_oz", "quantity": 2, "factor": 2 },
+  { "name": "cups", "servings": [{ "label": "1 cup", "ml": 236.5882365 }], "servingIndex": 0, "unit": "cup", "quantity": 2, "factor": 2 },
+  { "name": "tablespoons", "servings": [{ "label": "1 cup", "ml": 236.5882365 }], "servingIndex": 0, "unit": "tbsp", "quantity": 4, "factor": 0.25 },
+  { "name": "teaspoons", "servings": [{ "label": "1 tsp", "ml": 4.92892159375 }], "servingIndex": 0, "unit": "tsp", "quantity": 3, "factor": 3 },
+  { "name": "grams of a food with no weight", "servings": [{ "label": "1 piece" }], "servingIndex": 0, "unit": "g", "quantity": 10, "factor": null },
+  { "name": "cups of a food with only a weight", "servings": [{ "label": "1 bar", "grams": 40 }], "servingIndex": 0, "unit": "cup", "quantity": 1, "factor": null },
+  { "name": "a serving with nothing to compare", "servings": [{ "label": "1 bowl" }, { "label": "1 handful" }], "servingIndex": 1, "unit": "serving", "quantity": 1, "factor": null }
+]
