@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
-import { foodCache, logCombines, logEntries, userFoods, userSettings, users } from "../db/schema.js";
+import { foodCache, logCombines, logEntries, logTrash, userFoods, userSettings, users } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
 import { addDays, DAY, localDay, mealFor, MEALS, streak, suggestedFor, todayFor, userTimezone, type Meal } from "../lib/days.js";
@@ -44,6 +44,9 @@ export type LogEntry = {
 type Portion = { servingIndex: number; unit: Unit; quantity: number; fraction: number };
 
 const NOT_FOUND = "Entry not found";
+const TOO_LATE = "That's too late to undo";
+/** How long a deleted entry can be put back (iOS app's Undo) */
+const TRASH_MS = 10 * 60 * 1000;
 const CHANGED_SINCE = "This entry changed since — undo isn't possible";
 const QUICK_MEAL_HERE = "Log a quick meal with its own items";
 const RECENT_LIMIT = 30;
@@ -580,15 +583,48 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     return { entry: toEntry(updated) };
   });
 
+  // Delete: the row waits in the trash for TRASH_MS so it can be put back exactly (older trash of theirs is cleared)
   app.delete("/api/log/:id", async (req, reply) => {
     const userId = requireUser(req);
     const { id: entryId } = idParam.parse(req.params);
-    const gone = await db
-      .delete(logEntries)
-      .where(and(eq(logEntries.id, entryId), eq(logEntries.userId, userId)))
-      .returning({ id: logEntries.id });
-    if (!gone.length) throw new HttpError(404, NOT_FOUND);
+    const now = app.now();
+    await db.transaction(async (tx) => {
+      const gone = await tx
+        .delete(logEntries)
+        .where(and(eq(logEntries.id, entryId), eq(logEntries.userId, userId)))
+        .returning();
+      if (!gone.length) throw new HttpError(404, NOT_FOUND);
+      await tx.delete(logTrash).where(and(eq(logTrash.userId, userId), lt(logTrash.deletedAt, new Date(now.getTime() - TRASH_MS))));
+      await tx.insert(logTrash).values({ userId, entryId, row: gone[0] as unknown as Record<string, unknown>, deletedAt: now });
+    });
     return reply.status(204).send();
+  });
+
+  // Undo a delete (within TRASH_MS): the same row again, id and time included
+  app.post("/api/log/:id/restore", async (req) => {
+    const userId = requireUser(req);
+    const { id: entryId } = idParam.parse(req.params);
+    const now = app.now();
+    const row = await db.transaction(async (tx) => {
+      const [kept] = await tx
+        .select()
+        .from(logTrash)
+        .where(and(eq(logTrash.userId, userId), eq(logTrash.entryId, entryId), gte(logTrash.deletedAt, new Date(now.getTime() - TRASH_MS))))
+        .orderBy(desc(logTrash.deletedAt))
+        .limit(1)
+        .for("update");
+      if (!kept) throw new HttpError(404, TOO_LATE);
+      const [taken] = await tx.select({ id: logEntries.id }).from(logEntries).where(eq(logEntries.id, entryId));
+      if (taken) throw new HttpError(404, TOO_LATE);
+      const saved = kept.row as Row & { createdAt: string | Date; updatedAt: string | Date };
+      const [back] = await tx
+        .insert(logEntries)
+        .values({ ...saved, id: entryId, userId, createdAt: new Date(saved.createdAt), updatedAt: new Date(saved.updatedAt) })
+        .returning();
+      await tx.delete(logTrash).where(and(eq(logTrash.userId, userId), eq(logTrash.entryId, entryId)));
+      return back;
+    });
+    return { entry: toEntry(row) };
   });
 
   // Move (or copy) entries to a day and meal: every id must be the caller's, or nothing changes

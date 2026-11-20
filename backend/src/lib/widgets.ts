@@ -2,10 +2,15 @@
 // (frontend/src/components/dashboard/widgets.tsx) has the same ids and pages; backend/tests/widgets-sync.test.ts
 // checks the two agree. A page's layout may only name its own widgets. A widget may be offered on more than one page.
 export const LAYOUT_PAGES = ["dashboard", "goals"] as const;
-export type LayoutPage = (typeof LAYOUT_PAGES)[number];
+// Layouts kept for the native apps (iOS design §6.7): the iPhone Dashboard, one column of its own widgets
+// (ios/ByteSizeKit/…/DashboardWidget.swift; backend/tests/ios-widgets.test.ts checks they match). Not web pages.
+export const NATIVE_PAGES = ["ios"] as const;
+export const ALL_LAYOUT_PAGES = [...LAYOUT_PAGES, ...NATIVE_PAGES] as const;
+export type LayoutPage = (typeof ALL_LAYOUT_PAGES)[number];
 export const PAGE_WIDGETS: Record<LayoutPage, readonly string[]> = {
   dashboard: ["food", "budget", "water", "activity", "day-totals", "insights", "weight", "next-shot", "streak", "goal-date", "goals"],
   goals: ["your-plan", "goal-date", "weight-chart", "weekly-trends", "badges", "activity", "goals", "past-goals", "insights"],
+  ios: ["calendar", "overview", "water", "weight", "streak", "badges", "shots"],
 };
 /** The Dashboard's widgets (the page §28 started with) */
 export const WIDGET_IDS = PAGE_WIDGETS.dashboard;

@@ -3,12 +3,14 @@ import Foundation
 /// A fake server for tests: every request made through `HTTPStub.session` is answered by `HTTPStub.handler`
 /// and recorded in `HTTPStub.requests` (with its body).
 final class HTTPStub: URLProtocol, @unchecked Sendable {
-    enum Reply {
+    enum Reply: Sendable {
         case json(Int, String)
         case raw(Int, contentType: String, body: String)
         case fail(URLError.Code)
         /// Never answers (a server that's out of reach without failing fast).
         case hang
+        /// Answers after a pause (to test answers arriving out of order).
+        indirect case delayed(TimeInterval, Reply)
     }
 
     struct Recorded {
@@ -17,8 +19,21 @@ final class HTTPStub: URLProtocol, @unchecked Sendable {
         var json: [String: Any]? { body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } }
     }
 
-    nonisolated(unsafe) static var handler: (URLRequest) -> Reply = { _ in .json(404, #"{"error":"Not found"}"#) }
-    nonisolated(unsafe) static var requests: [Recorded] = []
+    // Requests can arrive on several threads at once (a store loading two things together): guard both with a lock
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var _handler: @Sendable (URLRequest) -> Reply = { _ in .json(404, #"{"error":"Not found"}"#) }
+    nonisolated(unsafe) private static var _requests: [Recorded] = []
+
+    /// Runs on URLSession's own threads: it must not touch main-actor state (hence @Sendable).
+    static var handler: @Sendable (URLRequest) -> Reply {
+        get { lock.withLock { _handler } }
+        set { lock.withLock { _handler = newValue } }
+    }
+
+    static var requests: [Recorded] {
+        get { lock.withLock { _requests } }
+        set { lock.withLock { _requests = newValue } }
+    }
 
     static var session: URLSession {
         let config = URLSessionConfiguration.ephemeral
@@ -37,8 +52,15 @@ final class HTTPStub: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
 
     override func startLoading() {
-        HTTPStub.requests.append(Recorded(request: request, body: request.httpBody ?? readStream(request.httpBodyStream)))
-        switch HTTPStub.handler(request) {
+        let recorded = Recorded(request: request, body: request.httpBody ?? readStream(request.httpBodyStream))
+        HTTPStub.lock.withLock { HTTPStub._requests.append(recorded) }
+        reply(HTTPStub.handler(request))
+    }
+
+    private func reply(_ answer: Reply) {
+        switch answer {
+        case .delayed(let seconds, let later):
+            DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { self.reply(later) }
         case .fail(let code):
             client?.urlProtocol(self, didFailWithError: URLError(code))
         case .hang:

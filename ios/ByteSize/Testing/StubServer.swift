@@ -3,7 +3,8 @@ import ByteSizeKit
 import Foundation
 
 /// A pretend ByteSize server for UI tests (launch argument -UITestStubServer). Debug builds only.
-/// Username "alex" with password "pw" signs in; anything else is a wrong password.
+/// Username "alex" with password "pw" signs in. Today has 1138 calories logged (362 to go of 1500–2000)
+/// and 500 ml of water; the log can be edited, moved, deleted and restored in memory.
 final class StubServer: URLProtocol, @unchecked Sendable {
     static let launchArgument = "-UITestStubServer"
 
@@ -29,35 +30,14 @@ final class StubServer: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
 
     override func startLoading() {
-        let (status, body) = answer()
-        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
+        let (status, body) = Self.data.answer(request, body: bodyJSON())
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: status == 204 ? [:] : ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
 
-    private func answer() -> (Int, String) {
-        switch request.url?.path() ?? "" {
-        case "/api/health":
-            return (200, #"{"ok":true,"db":true,"version":"stub"}"#)
-        case "/api/auth/status":
-            return (200, #"{"setupRequired":false,"passwords":true,"forgotPassword":true,"oauth":null}"#)
-        case "/api/auth/login":
-            let sent = bodyJSON()
-            if sent["username"] == "alex", sent["password"] == "pw" {
-                return (200, #"{"token":"stub-token","user":\#(Self.user)}"#)
-            }
-            return (401, #"{"error":"Wrong username or password"}"#)
-        case "/api/auth/me":
-            return (200, #"{"user":\#(Self.user)}"#)
-        case "/api/auth/logout":
-            return (200, #"{"ok":true}"#)
-        default:
-            return (404, #"{"error":"Not found"}"#)
-        }
-    }
-
-    private func bodyJSON() -> [String: String] {
+    private func bodyJSON() -> [String: Any] {
         var data = request.httpBody ?? Data()
         if data.isEmpty, let stream = request.httpBodyStream {
             stream.open()
@@ -69,7 +49,162 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 data.append(buffer, count: n)
             }
         }
-        return (try? JSONSerialization.jsonObject(with: data) as? [String: String]) ?? [:]
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
+    // MARK: - The pretend data
+
+    static let data = StubData()
+
+    final class StubData: @unchecked Sendable {
+        struct Entry {
+            var id: Int
+            var day: String
+            var meal: String
+            var name: String
+            var brand: String?
+            var icon: String
+            var unit: String
+            var quantity: Double
+            var fraction: Double
+            var serving: String
+            var perUnit: [String: Double] // nutrients for 1 × serving (or 1 ml of water)
+            var source: String
+
+            var nutrients: [String: Double] { perUnit.mapValues { $0 * quantity * fraction } }
+
+            var json: [String: Any] {
+                [
+                    "id": id, "day": day, "meal": meal, "name": name, "brand": brand as Any, "icon": icon, "servingIndex": 0,
+                    "unit": unit, "quantity": quantity, "fraction": fraction,
+                    "servings": [unit == "ml" ? ["label": "1 ml", "ml": 1] : ["label": serving]],
+                    "nutrients": nutrients, "aiEstimated": false, "source": source,
+                ]
+            }
+        }
+
+        private let lock = NSLock()
+        private var entries: [Entry]
+        private var trash: [Int: Entry] = [:]
+        private var nextId = 100
+        private var layout: [String]?
+
+        static var today: String {
+            let p = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+            return String(format: "%04d-%02d-%02d", p.year ?? 0, p.month ?? 0, p.day ?? 0)
+        }
+
+        init() {
+            let d = Self.today
+            entries = [
+                Entry(id: 11, day: d, meal: "breakfast", name: "Greek yogurt", brand: "Fage", icon: "🥣", unit: "serving", quantity: 2, fraction: 1, serving: "1 cup", perUnit: ["calories": 130, "protein_g": 18, "carbs_g": 6, "fat_g": 0], source: "cache"),
+                Entry(id: 12, day: d, meal: "lunch", name: "Turkey sandwich", brand: nil, icon: "🥪", unit: "serving", quantity: 1, fraction: 1, serving: "1 sandwich", perUnit: ["calories": 520, "protein_g": 35, "carbs_g": 48, "fat_g": 18, "fiber_g": 6], source: "user_food"),
+                Entry(id: 13, day: d, meal: "snacks", name: "Protein bar", brand: "Quest", icon: "🍫", unit: "serving", quantity: 1, fraction: 1, serving: "1 bar", perUnit: ["calories": 358, "protein_g": 30, "carbs_g": 22, "fat_g": 12, "fiber_g": 14], source: "cache"),
+                Entry(id: 14, day: d, meal: "supplements", name: "Water", brand: nil, icon: "💧", unit: "ml", quantity: 500, fraction: 1, serving: "1 ml", perUnit: ["water_ml": 1], source: "water"),
+            ]
+        }
+
+        func answer(_ req: URLRequest, body: [String: Any]) -> (Int, String) {
+            lock.withLock { route(req.httpMethod ?? "GET", req.url?.path() ?? "", req.url?.query() ?? "", body) }
+        }
+
+        private func json(_ value: Any) -> String {
+            String(data: (try? JSONSerialization.data(withJSONObject: value)) ?? Data("{}".utf8), encoding: .utf8) ?? "{}"
+        }
+
+        private func route(_ method: String, _ path: String, _ query: String, _ body: [String: Any]) -> (Int, String) {
+            let parts = path.split(separator: "/").map(String.init) // ["api", …]
+            switch (method, path) {
+            case ("GET", "/api/health"): return (200, #"{"ok":true,"db":true,"version":"stub"}"#)
+            case ("GET", "/api/auth/status"): return (200, #"{"setupRequired":false,"passwords":true,"forgotPassword":true,"oauth":null}"#)
+            case ("POST", "/api/auth/login"):
+                if body["username"] as? String == "alex", body["password"] as? String == "pw" {
+                    return (200, #"{"token":"stub-token","user":\#(StubServer.user)}"#)
+                }
+                return (401, #"{"error":"Wrong username or password"}"#)
+            case ("GET", "/api/auth/me"): return (200, #"{"user":\#(StubServer.user)}"#)
+            case ("POST", "/api/auth/logout"): return (200, #"{"ok":true}"#)
+            case ("GET", "/api/settings/me"): return (200, #"{"waterButtonsMl":[237,473],"weekStart":0,"glp1On":true}"#)
+            case ("GET", "/api/layouts/ios"):
+                return (200, layout.map { json(["layout": ["version": 1, "columns": [$0]]]) } ?? #"{"layout":null}"#)
+            case ("PUT", "/api/layouts/ios"):
+                layout = (body["columns"] as? [[String]])?.first ?? []
+                return (200, json(["layout": ["version": 1, "columns": [layout ?? []]]]))
+            case ("GET", "/api/weight"):
+                return (200, #"{"weighIns":[{"day":"2026-11-12","weightKg":83.5,"trendKg":83.6},{"day":"2026-11-19","weightKg":82.28,"trendKg":82.9}],"latest":{"day":"2026-11-19","weightKg":82.28},"goalKg":75}"#)
+            case ("GET", "/api/glp1"):
+                return (200, #"{"settings":{"medication":"tirzepatide","doseMg":5,"injectionWeekday":2},"lastShot":{"day":"2026-11-13","medication":"tirzepatide","doseMg":5,"site":"abdomen_left"},"nextDue":"2026-11-20","status":"upcoming","overdueDays":0,"suggestedSite":"abdomen_right"}"#)
+            case ("GET", "/api/badges"):
+                return (200, #"{"badges":[{"id":"first_weigh_in","earnedOn":"2026-11-02"},{"id":"lost_5","earnedOn":"2026-11-15"},{"id":"streak_7","earnedOn":"2026-11-10"}]}"#)
+            case ("GET", "/api/days/logged"):
+                return (200, json(["days": Array(Set(entries.map(\.day))).sorted()]))
+            case ("POST", "/api/log"):
+                let ml = (body["water_ml"] as? Double) ?? Double(body["water_ml"] as? Int ?? 0)
+                nextId += 1
+                let e = Entry(id: nextId, day: body["day"] as? String ?? Self.today, meal: "supplements", name: "Water", brand: nil, icon: "💧", unit: "ml", quantity: ml, fraction: 1, serving: "1 ml", perUnit: ["water_ml": 1], source: "water")
+                entries.append(e)
+                return (200, json(["entry": e.json]))
+            case ("POST", "/api/log/move"):
+                let ids = body["ids"] as? [Int] ?? []
+                let copy = body["copy"] as? Bool ?? false
+                var out: [[String: Any]] = []
+                for id in ids {
+                    guard let i = entries.firstIndex(where: { $0.id == id }) else { return (404, #"{"error":"Entry not found"}"#) }
+                    var e = entries[i]
+                    e.day = body["day"] as? String ?? e.day
+                    e.meal = body["meal"] as? String ?? e.meal
+                    if copy {
+                        nextId += 1
+                        e.id = nextId
+                        entries.append(e)
+                    } else {
+                        entries[i] = e
+                    }
+                    out.append(e.json)
+                }
+                return (200, json(["entries": out, "combined": []]))
+            default: break
+            }
+            // /api/day/:d
+            if method == "GET", parts.count == 3, parts[1] == "day" { return (200, json(dayView(parts[2]))) }
+            // /api/log/:id and /api/log/:id/restore
+            if parts.count >= 3, parts[1] == "log", let id = Int(parts[2]) {
+                if method == "PATCH", let i = entries.firstIndex(where: { $0.id == id }) {
+                    if let q = body["quantity"] as? Double { entries[i].quantity = q }
+                    if let f = body["fraction"] as? Double { entries[i].fraction = f }
+                    return (200, json(["entry": entries[i].json]))
+                }
+                if method == "DELETE", let i = entries.firstIndex(where: { $0.id == id }) {
+                    trash[id] = entries.remove(at: i)
+                    return (204, "")
+                }
+                if method == "POST", parts.count == 4, parts[3] == "restore" {
+                    guard let e = trash.removeValue(forKey: id) else { return (404, #"{"error":"That's too late to undo"}"#) }
+                    entries.append(e)
+                    entries.sort { $0.id < $1.id }
+                    return (200, json(["entry": e.json]))
+                }
+                return (404, #"{"error":"Entry not found"}"#)
+            }
+            if method == "PUT", path.hasPrefix("/api/weigh-ins/") || path.hasPrefix("/api/glp1/shots/") { return (200, #"{"ok":true}"#) }
+            return (404, #"{"error":"Not found"}"#)
+        }
+
+        private func dayView(_ day: String) -> [String: Any] {
+            let mine = entries.filter { $0.day == day }
+            func sum(_ list: [Entry]) -> [String: Double] {
+                list.reduce(into: [:]) { acc, e in for (k, v) in e.nutrients { acc[k, default: 0] += v } }
+            }
+            let meals = ["breakfast", "lunch", "dinner", "snacks", "supplements"].reduce(into: [String: Any]()) { acc, m in
+                let s = sum(mine.filter { $0.meal == m })
+                acc[m] = ["calories": s["calories"] ?? 0, "protein_g": s["protein_g"] ?? 0, "carbs_g": s["carbs_g"] ?? 0, "fat_g": s["fat_g"] ?? 0, "fiber_g": s["fiber_g"] ?? 0]
+            }
+            return [
+                "day": day, "entries": mine.map(\.json), "totals": sum(mine), "meals": meals,
+                "targets": ["calories": ["min": 1500, "max": 2000], "protein_g": ["min": 110, "max": 130], "fiber_g": ["min": 25, "max": 35], "water_ml": ["min": 2000, "max": 3000]],
+                "streak": 12,
+            ]
+        }
     }
 }
 #endif
