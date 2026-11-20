@@ -102,4 +102,42 @@ final class DayStoreTests: XCTestCase {
         await s.shiftWeek(-1)
         XCTAssertEqual(s.selected, "2026-11-11")
     }
+
+    func testAFailedSwitchDoesNotShowTheOldDayUnderTheNewDate() async {
+        serveDays()
+        let s = store()
+        await s.select("2026-11-18")
+        HTTPStub.handler = { _ in .fail(.notConnectedToInternet) }
+        await s.select("2026-11-19")
+        XCTAssertEqual(s.selected, "2026-11-19")
+        XCTAssertNil(s.day, "Wednesday's entries must not show under Thursday")
+        XCTAssertEqual(s.error, "Can't reach ByteSize at h.test")
+    }
+
+    func testFollowsTodayPastMidnight() async {
+        serveDays()
+        let clock = Clock(ISO8601DateFormatter().date(from: "2026-11-19T06:00:00Z")!) // Nov 18, 11 pm in Boise
+        let s = DayStore(api: api, timeZone: boise, now: { clock.now })
+        XCTAssertEqual(s.selected, "2026-11-18")
+        clock.now = ISO8601DateFormatter().date(from: "2026-11-19T14:00:00Z")! // Nov 19, 7 am
+        await s.dayMayHaveChanged()
+        XCTAssertEqual(s.selected, "2026-11-19")
+        XCTAssertEqual(s.day?.day, "2026-11-19")
+    }
+
+    func testStaysOnAnOlderDayTheyChose() async {
+        serveDays()
+        let clock = Clock(ISO8601DateFormatter().date(from: "2026-11-19T06:00:00Z")!)
+        let s = DayStore(api: api, timeZone: boise, now: { clock.now })
+        await s.select("2026-11-15")
+        clock.now = ISO8601DateFormatter().date(from: "2026-11-19T14:00:00Z")!
+        await s.dayMayHaveChanged()
+        XCTAssertEqual(s.selected, "2026-11-15")
+    }
+}
+
+/// A clock the test can move.
+final class Clock: @unchecked Sendable {
+    var now: Date
+    init(_ now: Date) { self.now = now }
 }
