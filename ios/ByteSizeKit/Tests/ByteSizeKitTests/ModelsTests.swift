@@ -87,5 +87,10 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(Units.imperial.kg(fromDisplay: 181.4), 82.28, accuracy: 0.01)
         XCTAssertEqual(Units.metric.kg(fromDisplay: 82.3), 82.3, accuracy: 0.0001)
         XCTAssertEqual(Units.imperial.weightUnit, "lb")
+        // water amounts as typed in the edit sheet
+        XCTAssertEqual(Units.imperial.waterValue(ml: 473), 16, accuracy: 0.01)
+        XCTAssertEqual(Units.imperial.ml(fromWaterDisplay: 12), 354.88, accuracy: 0.01)
+        XCTAssertEqual(Units.metric.waterValue(ml: 250), 250)
+        XCTAssertEqual(Units.metric.ml(fromWaterDisplay: 250), 250)
     }
 }
