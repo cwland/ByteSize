@@ -259,7 +259,11 @@ final class SmokeUITests: XCTestCase {
         app.navigationBars.buttons["Close"].firstMatch.tap()
         app.buttons["Food Log"].tap()
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "6 × 1 prune")).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        if !row.waitForExistence(timeout: 5), let dir = ProcessInfo.processInfo.environment["SHOTS_DIR"] {
+            shot("12b-food-log")
+            try? app.debugDescription.write(toFile: dir + "/12b-food-log.txt", atomically: true, encoding: .utf8)
+        }
+        XCTAssertTrue(row.exists)
     }
 
     func testTrackFoodStaysOpenForTheNext() {
