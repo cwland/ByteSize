@@ -184,4 +184,73 @@ final class SmokeUITests: XCTestCase {
         app.swipeUp()
         XCTAssertFalse(app.staticTexts["Badges"].exists, "the Badges card is gone")
     }
+
+    // MARK: - Round 3: logging food (the stub knows "Banana", barcode 0012345678905, and estimates "2 eggs and toast")
+
+    private func openAction(_ title: String) {
+        app.buttons["Quick add"].tap()
+        if !app.buttons[title].waitForExistence(timeout: 3) {
+            dismissSavePassword(timeout: 2)
+            app.buttons["Quick add"].tap()
+        }
+        XCTAssertTrue(app.buttons[title].waitForExistence(timeout: 3))
+        app.buttons[title].tap()
+    }
+
+    func testTrackFoodSearchAndLog() {
+        signedIn()
+        openAction("Track Food")
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        shot("7-track-food")
+        search.tap()
+        search.typeText("banana")
+        let row = app.buttons["food-Banana"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        let log = app.buttons["logButton"]
+        XCTAssertTrue(log.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["≈ 105"].exists, "the calorie preview")
+        shot("8-portion")
+        log.tap()
+        XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists && !self.app.searchFields.firstMatch.exists }, "both sheets close")
+        app.buttons["Food Log"].tap()
+        XCTAssertTrue(app.staticTexts["Banana"].waitForExistence(timeout: 5))
+    }
+
+    func testTypedBarcodeNotFoundOffersLabel() {
+        signedIn()
+        openAction("Scan Food")
+        // The simulator has no camera: say so, and offer typing
+        XCTAssertTrue(app.staticTexts["Camera isn't available — type the barcode instead"].waitForExistence(timeout: 5))
+        let field = app.textFields["barcodeField"]
+        field.tap()
+        field.typeText("0099999999999")
+        app.buttons["lookUpBarcode"].tap()
+        XCTAssertTrue(app.staticTexts["We don't know this barcode yet"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Choose a photo of the label"].exists, "the label can be read instead")
+        shot("9-scan-unknown")
+    }
+
+    func testDescribeLogsItems() {
+        signedIn()
+        openAction("Describe Food")
+        let field = app.textFields["describeField"].exists ? app.textFields["describeField"] : app.textViews["describeField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("2 eggs and toast")
+        app.buttons["estimateButton"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["item-Egg"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["item-Toast"].exists)
+        XCTAssertTrue(app.staticTexts["2 × 1 large egg · ≈ 144 cal"].exists)
+        shot("10-describe")
+        app.buttons["logAll"].tap()
+        XCTAssertTrue(waitUntil { !self.app.buttons["logAll"].exists }, "the sheet closes")
+        app.buttons["Food Log"].tap()
+        XCTAssertTrue(app.staticTexts["Egg"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Toast"].exists)
+        XCTAssertGreaterThanOrEqual(app.staticTexts.matching(identifier: "AI").count + app.staticTexts.matching(NSPredicate(format: "label == 'AI'")).count, 1, "marked AI")
+        shot("11-log-with-ai")
+    }
 }
+
