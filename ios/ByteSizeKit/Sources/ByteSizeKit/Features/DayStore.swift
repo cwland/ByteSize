@@ -87,11 +87,15 @@ public final class DayStore {
         return (-365...7).map { DayMath.add($0, to: t) }
     }
 
-    /// Within the strip, and not after today.
+    /// Within the strip: a year back to a week ahead (days ahead are for planning food, SPEC-17).
     public func canSelect(_ day: String) -> Bool {
         let t = today
-        return day >= DayMath.add(-365, to: t) && day <= t
+        return day >= DayMath.add(-365, to: t) && day <= DayMath.add(7, to: t)
     }
+
+    /// A day after today: food can be planned there, nothing else logged (SPEC-17).
+    public func isFuture(_ day: String) -> Bool { day > today }
+    public var selectedIsFuture: Bool { isFuture(selected) }
 
     /// A day changed elsewhere (a copy or move into it): don't show it from the cache again.
     public func invalidate(_ day: String) { cache[day] = nil }
