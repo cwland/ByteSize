@@ -210,7 +210,7 @@ final class SmokeUITests: XCTestCase {
         row.tap()
         let log = app.buttons["logButton"]
         XCTAssertTrue(log.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["≈ 105"].exists, "the calorie preview")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS '≈ 105'")).firstMatch.exists, "the calorie preview")
         shot("8-portion")
         log.tap()
         XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists && !self.app.searchFields.firstMatch.exists }, "both sheets close")
@@ -249,7 +249,8 @@ final class SmokeUITests: XCTestCase {
         app.buttons["Food Log"].tap()
         XCTAssertTrue(app.staticTexts["Egg"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Toast"].exists)
-        XCTAssertGreaterThanOrEqual(app.staticTexts.matching(identifier: "AI").count + app.staticTexts.matching(NSPredicate(format: "label == 'AI'")).count, 1, "marked AI")
+        // Each log row reads as one element: "Egg, AI estimated, …"
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Egg' AND label CONTAINS 'AI estimated'")).firstMatch.exists, "marked AI")
         shot("11-log-with-ai")
     }
 }
