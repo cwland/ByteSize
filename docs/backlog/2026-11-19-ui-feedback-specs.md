@@ -192,3 +192,16 @@ the next barcode. After logging a searched item, go back to the search. Only the
 
 **Acceptance:** scan → log → scan again without reopening Scan Food; search → log → search again without reopening Track Food.
 
+
+## Part 5: Added 2026-11-20
+
+### SPEC-17: iOS — pick days ahead on the day strip and calendar
+Cory (after 0.6.0): "I can't select future dates, they are greyed out."
+
+- The day strip and the month calendar let you pick the next 7 days (the days the strip already shows), so food can be
+  planned and pre-logged ahead. "Same as yesterday" works there too (the day before the picked day).
+- GLP-1 shots stay today or earlier (the server only accepts past and today's shots).
+- No server change: the food log already accepts future days.
+
+**Acceptance:** tomorrow's chip and date can be picked; food logged there shows on that day; Log shot still can't
+pick a future date.
