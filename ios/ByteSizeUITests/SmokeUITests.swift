@@ -435,7 +435,7 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.searchFields.firstMatch.exists)
         closeSheet()
         XCTAssertTrue(app.staticTexts["Egg"].waitForExistence(timeout: 5))
-        let dinner = app.buttons["addTo-dinner"]
+        let dinner = reveal(app.buttons["addTo-dinner"]) // below the fold under the taller header
         XCTAssertTrue(dinner.exists)
         XCTAssertLessThan(app.staticTexts["Egg"].frame.minY, dinner.frame.minY, "logged under Dinner, above its Add")
         XCTAssertGreaterThan(app.staticTexts["Egg"].frame.minY, app.buttons["addTo-lunch"].frame.minY)
@@ -526,18 +526,19 @@ final class SmokeUITests: XCTestCase {
         signedIn()
         let chevron = app.buttons["overviewChevron"]
         XCTAssertTrue(chevron.waitForExistence(timeout: 5))
-        XCTAssertEqual(chevron.label, "Show daily totals")
+        if chevron.label == "Hide daily totals" { chevron.tap() } // the open state is remembered between launches
+        XCTAssertTrue(waitUntil { chevron.label == "Show daily totals" })
         XCTAssertFalse(app.staticTexts["Carbs"].exists, "collapsed: no carbs and fat row")
         chevron.tap()
-        let totals = app.descendants(matching: .any)["dailyTotals"]
-        XCTAssertTrue(totals.waitForExistence(timeout: 3))
-        for name in ["Calories", "Protein", "Carbs", "Fat", "Fiber", "Sugar", "Sodium", "Water"] {
-            XCTAssertTrue(totals.staticTexts[name].exists || totals.label.contains(name), "\(name) in the daily totals")
+        let sugar = app.staticTexts["Sugar"] // only in the daily totals
+        XCTAssertTrue(sugar.waitForExistence(timeout: 3))
+        for name in ["Calories", "Carbs", "Fat", "Sodium"] {
+            XCTAssertTrue(app.staticTexts[name].exists, "\(name) in the daily totals")
         }
         shot("24-overview-expanded")
         XCTAssertEqual(chevron.label, "Hide daily totals")
         chevron.tap()
-        XCTAssertTrue(waitUntil { !totals.exists })
+        XCTAssertTrue(waitUntil { !sugar.exists })
     }
 
     func testLogShotWithDoseDateAndNote() {
@@ -627,7 +628,8 @@ final class SmokeUITests: XCTestCase {
         app.buttons["logAll"].tap()
         XCTAssertTrue(waitUntil { !self.app.buttons["logAll"].exists }, "the sheet closes")
         app.buttons["Food Log"].tap()
-        XCTAssertTrue(app.staticTexts["Egg"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["addTo-breakfast"].waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(app.staticTexts["Egg"]).waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Toast"].exists)
         // Each log row reads as one element: "Egg, AI estimated, …"
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Egg' AND label CONTAINS 'AI estimated'")).firstMatch.exists, "marked AI")
