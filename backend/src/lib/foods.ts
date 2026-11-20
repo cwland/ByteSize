@@ -40,6 +40,8 @@ export type FoodResult = {
   savedAt?: string | null;
   /** A FatSecret typed-search summary (calories, fat, carbs, protein only): fetched whole when opened or tracked. */
   summary?: boolean;
+  /** A correction (override): the database food it corrects. Absent on every other food. */
+  baseCacheId?: number;
 };
 export type FoodKind = "custom" | "override" | "recipe" | "quick_meal";
 export const COMPOUND_KINDS = ["recipe", "quick_meal"] as const;
@@ -94,7 +96,7 @@ export function toResult(row: CacheRow | UserFoodRow, kind: "cache" | "user_food
   const keys = Object.keys(nutrients);
   // Every value is an untouched AI guess → "ai"; anything the person typed or corrected → "mine"
   const allAi = keys.length > 0 && aiFields.length === keys.length;
-  return { ...base, aiFields, imageUrl: u.imagePath ? signImageUrl(photoUrl(u.imagePath)) : null, override: u.kind === "override", source: allAi ? "ai" : "mine", foodKind: foodKindOf(u.kind) };
+  return { ...base, aiFields, imageUrl: u.imagePath ? signImageUrl(photoUrl(u.imagePath)) : null, override: u.kind === "override", source: allAi ? "ai" : "mine", foodKind: foodKindOf(u.kind), ...(u.kind === "override" && u.baseCacheId ? { baseCacheId: u.baseCacheId } : {}) };
 }
 
 /** A stored user_foods.kind as FoodResult.foodKind (an AI estimate the person saved is one of their own foods). */

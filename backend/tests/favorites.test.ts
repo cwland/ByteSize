@@ -31,6 +31,17 @@ describe("favorites", () => {
     expect(list[0]).toMatchObject({ kind: "cache", id: banana.id, last: { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 } });
   });
 
+  it("a favorite shown as its correction says which database food it corrects", async () => {
+    const banana = await cached();
+    await t.api("PUT", "/api/foods/favorites", { food: { kind: "cache", id: banana.id } });
+    const fixed = (await t.api("POST", "/api/my-foods/override", { cacheId: banana.id, name: "Banana", servings: [{ label: "1 medium", grams: 118 }], nutrients: { calories: 110 } })).body.food;
+    const list = (await t.api("GET", "/api/foods/favorites")).body.foods;
+    expect(list[0]).toMatchObject({ kind: "user_food", id: fixed.id, baseCacheId: banana.id });
+    // a plain food doesn't carry one
+    const own = await mine();
+    expect(own.baseCacheId).toBeUndefined();
+  });
+
   it("bookmarking twice keeps one", async () => {
     const own = await mine();
     await t.api("PUT", "/api/foods/favorites", { food: { kind: "user_food", id: own.id } });
