@@ -27,6 +27,24 @@ enum Fixtures {
 }
 
 final class ModelsTests: XCTestCase {
+    func testEntryDecodesSourceRef() throws {
+        let base = #"{"id":1,"day":"2026-11-19","meal":"lunch","name":"Oatmeal","brand":null,"icon":"🥣","servingIndex":0,"unit":"serving","quantity":1,"fraction":1,"servings":[{"label":"1 cup"}],"nutrients":{"calories":150},"aiEstimated":false,"source":"cache""#
+        let with = try JSONDecoder().decode(LogEntry.self, from: Data((base + #","sourceRef":"cache:42"}"#).utf8))
+        XCTAssertEqual(with.sourceRef, "cache:42")
+        let without = try JSONDecoder().decode(LogEntry.self, from: Data((base + "}").utf8))
+        XCTAssertNil(without.sourceRef)
+    }
+
+    func testFoodDecodesLastAndBase() throws {
+        let base = #"{"kind":"user_food","id":9,"name":"Prunes","brand":null,"icon":"🍇","barcode":null,"servings":[{"label":"5 prunes","grams":40}],"nutrients":{"calories":150},"aiFields":[],"source":"mine","foodKind":"override""#
+        let with = try JSONDecoder().decode(Food.self, from: Data((base + #","last":{"servingIndex":1,"unit":"serving","quantity":6,"fraction":1},"baseCacheId":7}"#).utf8))
+        XCTAssertEqual(with.last, LastPortion(servingIndex: 1, unit: "serving", quantity: 6, fraction: 1))
+        XCTAssertEqual(with.baseCacheId, 7)
+        let without = try JSONDecoder().decode(Food.self, from: Data((base + "}").utf8))
+        XCTAssertNil(without.last)
+        XCTAssertNil(without.baseCacheId)
+    }
+
     func testDecodesADay() throws {
         let d = try Fixtures.decodeDay()
         XCTAssertEqual(d.day, "2026-11-19")

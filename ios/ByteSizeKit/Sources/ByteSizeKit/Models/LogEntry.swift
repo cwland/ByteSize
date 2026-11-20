@@ -37,6 +37,8 @@ public struct LogEntry: Codable, Identifiable, Equatable, Sendable {
     public let perServing: Nutrients?
     public let aiEstimated: Bool
     public let source: String
+    /// The food it came from ("cache:42", "user_food:9"); nil for AI estimates and water.
+    public let sourceRef: String?
 
     public var isWater: Bool { source == "water" }
     public var calories: Double { nutrients["calories"] }

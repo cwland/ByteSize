@@ -125,6 +125,14 @@ final class PortionModelTests: XCTestCase {
         XCTAssertEqual(p.previewCalories, 30)
     }
 
+    func testThePortionStartsAtTheLastAmount() throws {
+        let json = #"{"kind":"cache","id":42,"name":"Prunes","brand":null,"icon":"🍇","barcode":null,"servings":[{"label":"5 prunes","grams":40},{"label":"1 prune","grams":8,"derived":true}],"nutrients":{"calories":150},"aiFields":[],"source":"usda","foodKind":"custom","last":{"servingIndex":1,"unit":"serving","quantity":6,"fraction":1}}"#
+        let p = PortionModel(food: try JSONDecoder().decode(Food.self, from: Data(json.utf8)), meal: .lunch)
+        XCTAssertEqual(p.choice, .serving(1))
+        XCTAssertEqual(p.whole, 6)
+        XCTAssertEqual(p.previewCalories, 180)
+    }
+
     func testServingsOnlyForAIEstimates() {
         let p = PortionModel(name: "Egg", icon: "🥚", servings: [Serving(label: "1 large egg", grams: 50)], nutrients: Nutrients(["calories": 72]), meal: .breakfast, servingsOnly: true)
         XCTAssertEqual(p.choices.map(\.label), ["1 large egg"])

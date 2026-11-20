@@ -16,11 +16,30 @@ public struct Food: Codable, Identifiable, Hashable, Sendable {
     public let source: String
     /// "custom", "override", "recipe" or "quick_meal".
     public let foodKind: String?
+    /// The amount it was last logged at (recent, favorites, same as yesterday); absent elsewhere.
+    public let last: LastPortion?
+    /// A correction: the database food it corrects (so a favorite stored as that one is found).
+    public let baseCacheId: Int?
 
     public var ref: String { "\(kind):\(id)" }
     /// Culury recipes are tracked in the web app; a quick meal is logged item by item there too.
     public var isLoggable: Bool { kind != "culury" && foodKind != "quick_meal" }
     public var calories: Double { nutrients["calories"] }
+}
+
+/// An amount as the server stores it: `quantity` × `fraction` of serving `servingIndex` (unit "serving"), or of a unit.
+public struct LastPortion: Codable, Hashable, Sendable {
+    public let servingIndex: Int
+    public let unit: String
+    public let quantity: Double
+    public let fraction: Double
+
+    public init(servingIndex: Int, unit: String, quantity: Double, fraction: Double) {
+        self.servingIndex = servingIndex
+        self.unit = unit
+        self.quantity = quantity
+        self.fraction = fraction
+    }
 }
 
 /// What the AI read or estimated: a food that isn't saved anywhere (yet).
@@ -92,6 +111,8 @@ public struct BarcodeResult: Codable, Equatable, Sendable {
 }
 
 public struct FoodList: Codable, Equatable, Sendable { public let foods: [Food] }
+/// The favorites as stored ("cache:42", "user_food:9") after a bookmark change.
+public struct FavoriteRefs: Codable, Equatable, Sendable { public let refs: [String] }
 public struct FoodResponse: Codable, Equatable, Sendable { public let food: Food }
 
 public struct PlateResult: Codable, Equatable, Sendable { public let items: [EstimateItem] }

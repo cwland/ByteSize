@@ -39,7 +39,7 @@ struct ScanSheet: View {
         }
         .sheet(item: $portionFood, onDismiss: { model.restart() }) { food in
             // SPEC-16: after logging, back to the camera for the next barcode (Close leaves)
-            FoodPortionView(food: food, meal: track.meal, message: track.message) { food, portion in
+            FoodPortionView(food: food, meal: track.meal, message: track.message, favorites: track) { food, portion in
                 let ok = await track.log(food, portion: portion)
                 if ok { model.logged(food.name) }
                 return ok
