@@ -21,6 +21,24 @@ public enum FoodAPI {
         Endpoint("GET", "/api/foods/frequent", query: mealQuery(meal))
     }
 
+    /// L2: what was logged in `meal` the day before `day` (each food at that amount).
+    public static func sameAsYesterday(day: String, meal: Meal) -> Endpoint<FoodList> {
+        Endpoint("GET", "/api/foods/same-as-yesterday", query: [URLQueryItem(name: "day", value: day), URLQueryItem(name: "meal", value: meal.rawValue)])
+    }
+
+    /// L2: bookmarked foods, newest first.
+    public static func favorites() -> Endpoint<FoodList> { Endpoint("GET", "/api/foods/favorites") }
+
+    struct FavoriteBody: Encodable { let food: FoodRef }
+
+    public static func addFavorite(_ food: Food) -> Endpoint<FavoriteRefs> {
+        Endpoint("PUT", "/api/foods/favorites", json: FavoriteBody(food: FoodRef(kind: food.kind, id: food.id)))
+    }
+
+    public static func removeFavorite(kind: String, id: Int) -> Endpoint<FavoriteRefs> {
+        Endpoint("DELETE", "/api/foods/favorites/\(kind)/\(id)")
+    }
+
     private static func mealQuery(_ meal: Meal?) -> [URLQueryItem] {
         meal.map { [URLQueryItem(name: "meal", value: $0.rawValue)] } ?? []
     }

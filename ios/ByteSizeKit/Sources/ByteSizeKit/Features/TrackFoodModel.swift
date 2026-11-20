@@ -1,13 +1,28 @@
 import Foundation
 import Observation
 
-/// Track Food: search (or a typed barcode), recent and frequent foods for the meal, then log a portion.
+/// One of yesterday's entries in this meal (Same as yesterday), with the food behind it when there is one to open.
+public struct YesterdayItem: Identifiable, Equatable, Sendable {
+    public let entry: LogEntry
+    public let food: Food?
+    public var id: Int { entry.id }
+
+    public init(entry: LogEntry, food: Food?) {
+        self.entry = entry
+        self.food = food
+    }
+}
+
+/// Track Food: search (or a typed barcode); with the field empty, Same as yesterday, Favorites and Recently tracked
+/// for the meal (L2), each one tap from logged; then log a portion.
 @MainActor
 @Observable
 public final class TrackFoodModel {
     public var query = ""
+    /// What was logged in this meal the day before the day being looked at, exactly as logged.
+    public private(set) var yesterday: [YesterdayItem] = []
+    public private(set) var favorites: [Food] = []
     public private(set) var recent: [Food] = []
-    public private(set) var frequent: [Food] = []
     public private(set) var groups: [FoodGroup] = []
     public private(set) var searching = false
     public private(set) var message: String?
@@ -22,18 +37,32 @@ public final class TrackFoodModel {
 
     public static let unknownBarcode = "We don't know this barcode yet. Scan Food can read its label."
 
-    public init(api: APIClient, dayStore: DayStore, now: @escaping () -> Date = Date.init) {
+    /// `meal`: the meal it was opened for (a meal's Add in the Food Log); nil → the time of day's meal.
+    public init(api: APIClient, dayStore: DayStore, meal: Meal? = nil, now: @escaping () -> Date = Date.init) {
         self.api = api
         self.dayStore = dayStore
-        self.meal = Meal.suggested(at: now(), in: dayStore.zone)
+        self.meal = meal ?? Meal.suggested(at: now(), in: dayStore.zone)
     }
 
     public func load() async {
+        let day = dayStore.selected
+        let meal = meal
+        async let y = try? api.send(LogAPI.day(DayMath.add(-1, to: day)))
+        async let s = try? api.send(FoodAPI.sameAsYesterday(day: day, meal: meal))
+        async let f = try? api.send(FoodAPI.favorites())
         async let r = try? api.send(FoodAPI.recent(meal: meal))
-        async let f = try? api.send(FoodAPI.frequent(meal: meal))
-        let (recentList, frequentList) = await (r, f)
+        let (yesterdayDay, sameFoods, favoriteList, recentList) = await (y, s, f, r)
+        let foods = sameFoods?.foods ?? []
+        yesterday = (yesterdayDay?.entries ?? []).filter { $0.meal == meal }.map { entry in
+            YesterdayItem(entry: entry, food: entry.sourceRef.flatMap { ref in foods.first { Self.same($0, ref) } })
+        }
+        favorites = favoriteList?.foods ?? []
         recent = recentList?.foods ?? []
-        frequent = frequentList?.foods ?? []
+    }
+
+    /// The food stands for that stored ref: itself, or the database food it corrects.
+    static func same(_ food: Food, _ ref: String) -> Bool {
+        food.ref == ref || food.baseCacheId.map { "cache:\($0)" == ref } == true
     }
 
     /// A typed barcode: digits only, 8 to 14 of them.
@@ -74,6 +103,73 @@ public final class TrackFoodModel {
         } catch {
             guard mine == searchNumber else { return }
             groups = []
+            message = (error as? APIError)?.message ?? error.localizedDescription
+        }
+    }
+
+    /// +: logs the food at the amount it was last logged at (one of its serving when it never was).
+    public func quickLog(_ food: Food) async -> Bool {
+        guard food.isLoggable else { return false }
+        let last = food.last ?? LastPortion(servingIndex: 0, unit: "serving", quantity: 1, fraction: 1)
+        let unit = AmountUnit(rawValue: last.unit) ?? .serving
+        return await logged(food.name) {
+            _ = try await self.api.send(FoodAPI.log(food: food, day: self.dayStore.selected, meal: self.meal, servingIndex: last.servingIndex, unit: unit, quantity: last.quantity * last.fraction))
+        }
+    }
+
+    /// + on a Same as yesterday row: that entry, exactly as logged, copied into this day and meal.
+    public func copyYesterday(_ item: YesterdayItem) async -> Bool {
+        await copy([item.entry], name: item.entry.name)
+    }
+
+    /// Log all: every one of yesterday's entries for this meal.
+    public func logAllYesterday() async -> Bool {
+        guard !yesterday.isEmpty else { return false }
+        return await copy(yesterday.map(\.entry), name: yesterday.count == 1 ? yesterday[0].entry.name : "\(yesterday.count) foods")
+    }
+
+    private func copy(_ entries: [LogEntry], name: String) async -> Bool {
+        await logged(name) {
+            _ = try await self.api.send(LogAPI.move(ids: entries.map(\.id), day: self.dayStore.selected, meal: self.meal, copy: true))
+        }
+    }
+
+    private func logged(_ name: String, _ send: () async throws -> Void) async -> Bool {
+        do {
+            try await send()
+            message = nil
+            lastLogged = name
+            await dayStore.reload()
+            await load() // Recent changes
+            return true
+        } catch {
+            message = (error as? APIError)?.message ?? error.localizedDescription
+            return false
+        }
+    }
+
+    public func isFavorite(_ food: Food) -> Bool {
+        favorites.contains { fav in
+            fav.ref == food.ref || Self.same(fav, food.ref) || (fav.baseCacheId != nil && fav.baseCacheId == food.baseCacheId)
+        }
+    }
+
+    /// The bookmark: on → stored; off → removed (with the database food it corrects, which may be how it's stored).
+    /// Shown at once; put back with the message if the server says no.
+    public func toggleFavorite(_ food: Food) async {
+        let before = favorites
+        let wasOn = isFavorite(food)
+        favorites = wasOn ? favorites.filter { !($0.ref == food.ref || Self.same($0, food.ref) || ($0.baseCacheId != nil && $0.baseCacheId == food.baseCacheId)) } : [food] + favorites
+        do {
+            if wasOn {
+                _ = try await api.send(FoodAPI.removeFavorite(kind: food.kind, id: food.id))
+                if let base = food.baseCacheId { _ = try await api.send(FoodAPI.removeFavorite(kind: "cache", id: base)) }
+            } else {
+                _ = try await api.send(FoodAPI.addFavorite(food))
+            }
+            message = nil
+        } catch {
+            favorites = before
             message = (error as? APIError)?.message ?? error.localizedDescription
         }
     }
