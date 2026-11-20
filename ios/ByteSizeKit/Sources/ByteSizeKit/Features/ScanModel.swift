@@ -21,6 +21,8 @@ public final class ScanModel {
     public private(set) var step: Step = .scanning
     /// The barcode being worked on (kept through a failed label read, so it can be tried again).
     public private(set) var code: String?
+    /// Why the last save didn't work (shown on the review form, edits kept).
+    public private(set) var message: String?
 
     @ObservationIgnored private let api: APIClient
 
@@ -42,7 +44,7 @@ public final class ScanModel {
             let hit = try await api.send(FoodAPI.barcode(digits))
             step = hit.food.map(Step.found) ?? .notFound(digits)
         } catch {
-            step = .failed(Self.message(error))
+            step = .failed(Self.text(error))
         }
     }
 
@@ -60,7 +62,7 @@ public final class ScanModel {
         } catch APIError.server(503, _) {
             step = .failed(Self.needsPhotoAI)
         } catch {
-            step = .failed(Self.message(error))
+            step = .failed(Self.text(error))
         }
     }
 
@@ -68,20 +70,24 @@ public final class ScanModel {
     public func save(_ draft: AiDraft) async {
         guard let code else { return }
         step = .saving
+        message = nil
         do {
             let saved = try await api.send(FoodAPI.saveFood(draft, barcode: code))
             step = .saved(saved.food)
         } catch {
-            step = .failed(Self.message(error))
+            // Back to the form with what they typed, to fix and save again
+            message = Self.text(error)
+            step = .review(draft, barcode: code)
         }
     }
 
     public func restart() {
         step = .scanning
         code = nil
+        message = nil
     }
 
-    private static func message(_ error: Error) -> String {
+    private static func text(_ error: Error) -> String {
         (error as? APIError)?.message ?? error.localizedDescription
     }
 }

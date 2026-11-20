@@ -2,7 +2,7 @@ import Foundation
 
 /// Nutrient amounts keyed by the server's names (`calories`, `protein_g`, `water_ml`…). A missing or null
 /// nutrient reads as 0 (Cory's rule: unknown counts as zero).
-public struct Nutrients: Codable, Equatable, Sendable {
+public struct Nutrients: Codable, Hashable, Sendable {
     public let values: [String: Double]
 
     public init(_ values: [String: Double] = [:]) { self.values = values }
