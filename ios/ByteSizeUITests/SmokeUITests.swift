@@ -341,8 +341,9 @@ final class SmokeUITests: XCTestCase {
         app.buttons["logAllYesterday"].tap()
         XCTAssertTrue(label("Logged 2 foods").waitForExistence(timeout: 5))
         closeSheet()
-        XCTAssertTrue(app.staticTexts["Pasta"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Plate estimate"].exists)
+        // The Food Log's header (strip and summary) is taller now: Dinner's rows may be below the fold
+        XCTAssertTrue(app.staticTexts["Pasta"].waitForExistence(timeout: 5) || reveal(app.staticTexts["Pasta"]).exists)
+        XCTAssertTrue(reveal(app.staticTexts["Plate estimate"]).exists)
     }
 
     func testBookmarkMakesAFavorite() {
@@ -398,7 +399,8 @@ final class SmokeUITests: XCTestCase {
         app.buttons["quickAdd-Banana"].tap()
         XCTAssertTrue(label("Logged Banana").waitForExistence(timeout: 5))
         closeSheet()
-        let banana = app.staticTexts["Banana"]
+        XCTAssertTrue(app.buttons["addTo-breakfast"].waitForExistence(timeout: 5))
+        let banana = reveal(app.staticTexts["Banana"]) // Snacks is below the fold
         XCTAssertTrue(banana.waitForExistence(timeout: 5))
         XCTAssertGreaterThan(banana.frame.minY, app.buttons["addTo-dinner"].frame.minY, "under Snacks, after Dinner")
     }
