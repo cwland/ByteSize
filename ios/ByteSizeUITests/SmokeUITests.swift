@@ -262,6 +262,30 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5))
     }
 
+    func testTrackFoodStaysOpenForTheNext() {
+        signedIn()
+        trackSearch("banana", pick: "Banana")
+        app.buttons["logButton"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
+        // the second food, without leaving the search
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists })
+        search.tap()
+        search.typeText("prunes")
+        let prunes = app.buttons["food-Prunes"]
+        XCTAssertTrue(prunes.waitForExistence(timeout: 5))
+        prunes.tap()
+        XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5))
+        app.buttons["logButton"].tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Logged Prunes")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists })
+        app.navigationBars.buttons["Close"].firstMatch.tap()
+        app.buttons["Food Log"].tap()
+        XCTAssertTrue(app.staticTexts["Banana"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Prunes"].waitForExistence(timeout: 5))
+    }
+
     func testBigAmountAsks() {
         signedIn()
         trackSearch("banana", pick: "Banana")
