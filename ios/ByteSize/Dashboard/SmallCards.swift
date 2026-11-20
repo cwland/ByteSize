@@ -238,7 +238,10 @@ struct ShotSheet: View {
                     Button("Save") {
                         Task {
                             do {
-                                try await dashboard.logShot(site: site)
+                                guard let view = dashboard.glp1 else { return }
+                                let form = ShotForm(view: view, today: DayMath.string(Date(), in: .current))
+                                form.site = site
+                                try await dashboard.logShot(form)
                                 dismiss()
                             } catch {
                                 self.error = (error as? APIError)?.message ?? error.localizedDescription
