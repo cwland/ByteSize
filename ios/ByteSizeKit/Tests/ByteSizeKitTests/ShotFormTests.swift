@@ -71,6 +71,43 @@ final class ShotFormTests: XCTestCase {
         XCTAssertFalse(f.canSave)
     }
 
+    func testResavingAnUnchangedShotLeavesTheDoseOut() async throws {
+        serve()
+        let days = DayStore(api: api, timeZone: TimeZone(identifier: "America/Boise")!, now: { ISO8601DateFormatter().date(from: "2026-11-19T19:00:00Z")! })
+        let m = DashboardModel(api: api, dayStore: days, units: .imperial)
+        // settings say 10 mg (changed on the web since); the Nov 18 shot was 7.5 mg
+        let f = ShotForm(view: try view(dose: 10), today: "2026-11-19")
+        f.day = "2026-11-18"
+        XCTAssertFalse(f.becomesCurrentDose, "the day's own dose, unchanged, says nothing about the current one")
+        f.note = "itchy, then fine"
+        try await m.logShot(f)
+        let put = try XCTUnwrap(HTTPStub.requests.first { $0.request.httpMethod == "PUT" })
+        XCTAssertNil(put.json?["doseMg"], "left out: the server keeps the shot's dose and the current one")
+        XCTAssertNil(put.json?["doseUnit"])
+        XCTAssertEqual(put.json?["note"] as? String, "itchy, then fine")
+        f.doseMg = 12.5
+        XCTAssertTrue(f.becomesCurrentDose)
+    }
+
+    func testAClearedDoseFieldCantBeSaved() throws {
+        let f = ShotForm(view: try view(), today: "2026-11-19")
+        f.custom = true
+        f.doseText = ""
+        XCTAssertEqual(f.error, "Enter a dose")
+        XCTAssertFalse(f.canSave, "never the previous dose behind an empty field")
+        f.doseText = "3.5"
+        XCTAssertEqual(f.doseMg, 3.5)
+        XCTAssertTrue(f.canSave)
+        XCTAssertEqual(f.doseText, "3.5")
+    }
+
+    func testADoseReadsInItsUnit() throws {
+        let shot = try JSONDecoder().decode(Shot.self, from: Data(#"{"day":"2026-11-18","medication":"Compounded","doseMg":25,"doseUnit":"units","site":"arm_left","note":null}"#.utf8))
+        XCTAssertEqual(shot.doseText, "25 units")
+        let mg = try JSONDecoder().decode(Shot.self, from: Data(#"{"day":"2026-11-18","medication":"Zepbound","doseMg":7.5,"site":"arm_left"}"#.utf8))
+        XCTAssertEqual(mg.doseText, "7.5 mg")
+    }
+
     func testNoFutureDay() throws {
         let f = ShotForm(view: try view(), today: "2026-11-19")
         f.day = "2026-11-20"

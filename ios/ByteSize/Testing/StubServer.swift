@@ -249,6 +249,10 @@ final class StubServer: URLProtocol, @unchecked Sendable {
             default: break
             }
             // /api/day/:d
+            // Today polish: a day three days back that fails to load (the Food Log says so, with Retry)
+            if method == "GET", parts.count == 3, parts[1] == "day", parts[2] == Self.day(Calendar.current.date(byAdding: .day, value: -3, to: Date()) ?? Date()) {
+                return (500, #"{"error":"ByteSize didn't answer"}"#)
+            }
             if method == "GET", parts.count == 3, parts[1] == "day" { return (200, json(dayView(parts[2]))) }
             // /api/log/:id and /api/log/:id/restore
             if parts.count >= 3, parts[1] == "log", let id = Int(parts[2]) {
