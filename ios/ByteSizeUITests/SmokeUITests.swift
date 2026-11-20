@@ -454,6 +454,62 @@ final class SmokeUITests: XCTestCase {
         }
     }
 
+    // MARK: - Today polish: the day strip, the month calendar, the Food Log summary
+
+    private func dayString(_ offset: Int) -> String {
+        let d = Calendar.current.date(byAdding: .day, value: offset, to: Date())!
+        let p = Calendar.current.dateComponents([.year, .month, .day], from: d)
+        return String(format: "%04d-%02d-%02d", p.year!, p.month!, p.day!)
+    }
+
+    func testStripSelectsADayAndTheCalendarJumps() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        let header = app.buttons["dayHeader"]
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+        XCTAssertEqual(header.label, "Today")
+        let yesterday = app.buttons["day-\(dayString(-1))"]
+        XCTAssertTrue(yesterday.waitForExistence(timeout: 5))
+        yesterday.tap()
+        XCTAssertTrue(waitUntil { header.label != "Today" }, "the header shows the chosen day")
+        shot("21-strip")
+        header.tap()
+        XCTAssertTrue(app.datePickers["dayCalendar"].waitForExistence(timeout: 5))
+        shot("22-calendar")
+        app.buttons["todayInCalendar"].tap()
+        XCTAssertTrue(waitUntil { header.label == "Today" })
+    }
+
+    func testNoArrowsRemain() {
+        signedIn()
+        XCTAssertTrue(app.buttons["dayHeader"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Previous week"].exists)
+        XCTAssertFalse(app.buttons["Next week"].exists)
+        app.buttons["Food Log"].tap()
+        XCTAssertTrue(app.buttons["dayHeader"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Previous day"].exists)
+        XCTAssertFalse(app.buttons["Next day"].exists)
+    }
+
+    func testFoodLogSummaryShowsWhatsLeft() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        let summary = app.descendants(matching: .any)["logSummary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 5))
+        XCTAssertTrue(summary.label.contains("1,138 eaten"), summary.label)
+        XCTAssertTrue(summary.label.contains("862 left"), summary.label)
+        shot("23-log-summary")
+    }
+
+    func testTomorrowCantBeChosen() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        let tomorrow = app.buttons["day-\(dayString(1))"]
+        XCTAssertTrue(tomorrow.waitForExistence(timeout: 5))
+        XCTAssertFalse(tomorrow.isEnabled)
+        XCTAssertEqual(app.buttons["dayHeader"].label, "Today")
+    }
+
     func testBigAmountAsks() {
         signedIn()
         trackSearch("banana", pick: "Banana")
