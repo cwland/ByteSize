@@ -5,14 +5,19 @@ import SwiftUI
 /// Favorites and Recently tracked for the meal, each with a + that logs it at once; tapping a row opens the wheels.
 struct TrackFoodSheet: View {
     @Bindable var model: TrackFoodModel
+    /// The hub (SPEC-08): Photo, Scan and Describe open inside Track Food, in its meal.
+    let scan: ScanModel
+    @Bindable var estimate: EstimateModel
     let units: Units
     let close: () -> Void
     @State private var picked: Food?
+    @State private var hub: QuickAction?
     @State private var searchShown = true
     @Environment(\.palette) private var palette
 
     var body: some View {
         List {
+            hubButtons
             if let logged = model.lastLogged {
                 Label("Logged \(logged)", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(palette.color("success"))
@@ -48,6 +53,10 @@ struct TrackFoodSheet: View {
         .onChange(of: picked) { _, now in
             if now == nil, model.lastLogged != nil { searchShown = true } // back from logging: ready to type the next
         }
+        .navigationDestination(item: $hub) { action in hubScreen(action) }
+        // One meal for the whole hub: Photo and Describe use Track Food's, and a change there comes back
+        .onChange(of: hub) { _, now in if now == .photo || now == .describe { estimate.meal = model.meal } }
+        .onChange(of: estimate.meal) { _, meal in if hub != nil { model.meal = meal } }
         // Pushed, not a sheet: iOS won't open a sheet over an active search
         .navigationDestination(item: $picked) { food in
             // SPEC-16: after logging, back to an empty search for the next food (Close leaves)
@@ -55,6 +64,49 @@ struct TrackFoodSheet: View {
                 await model.log(food, portion: portion)
             }
         }
+    }
+
+    private var hubButtons: some View {
+        Section {
+            HStack(spacing: 12) {
+                ForEach([QuickAction.photo, .scan, .describe]) { action in
+                    Button { hub = action } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: action.systemImage).font(.title3)
+                            Text(action == .photo ? "Photo" : action == .scan ? "Scan" : "Describe").font(.caption.weight(.semibold))
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .foregroundStyle(palette.color("primary"))
+                        .background(palette.color("container"), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(action.title)
+                    .accessibilityIdentifier("hub-\(action.rawValue)")
+                }
+            }
+            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+            .listRowBackground(Color.clear)
+        }
+    }
+
+    /// Back to the search with "Logged …" (Photo, Describe); Scan stays on its camera (SPEC-16).
+    @ViewBuilder
+    private func hubScreen(_ action: QuickAction) -> some View {
+        let back: (String) -> Void = { name in
+            hub = nil
+            Task { await model.loggedElsewhere(name) }
+        }
+        Group {
+            switch action {
+            case .scan: ScanSheet(model: scan, track: model, close: { hub = nil })
+            case .photo: PhotoSheet(model: estimate, track: model, onLogged: back)
+            case .describe: DescribeSheet(model: estimate, onLogged: back)
+            case .track: EmptyView()
+            }
+        }
+        .navigationTitle(action.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Close", action: close) } } // leaves the whole sheet
     }
 
     /// Yesterday's entries in this meal, exactly as logged: + copies one, Log all copies them all.

@@ -90,10 +90,10 @@ private struct QuickActionSheet: View {
     @ViewBuilder
     private var content: some View {
         switch action {
-        case .track: TrackFoodSheet(model: track, units: units, close: close)
+        case .track: TrackFoodSheet(model: track, scan: scan, estimate: estimate, units: units, close: close)
         case .scan: ScanSheet(model: scan, track: track, close: close)
-        case .photo: PhotoSheet(model: estimate, track: track, close: close)
-        case .describe: DescribeSheet(model: estimate, close: close)
+        case .photo: PhotoSheet(model: estimate, track: track) { _ in close() }
+        case .describe: DescribeSheet(model: estimate) { _ in close() }
         }
     }
 }
