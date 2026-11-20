@@ -382,8 +382,13 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["logAll"].waitForExistence(timeout: 5))
         let picker = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Meal")).firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 3))
+        shot("20a-describe-before-meal")
         picker.tap()
+        sleep(1)
+        shot("20b-meal-menu")
         app.buttons["Snacks"].firstMatch.tap()
+        sleep(1)
+        shot("20c-after-snacks")
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Snacks")).firstMatch.waitForExistence(timeout: 3))
         // Back (not Close): the hub screen has both
         app.navigationBars.buttons.matching(NSPredicate(format: "label != %@", "Close")).firstMatch.tap()
