@@ -70,6 +70,24 @@ const foodBody = z.object({
   // §40b: a treat, paid from the weekly bank (never combined with the same food logged as a normal entry)
   treat: z.boolean().default(false),
 });
+// What the AI estimated (a plate photo, a description with several foods): logged as entries, never saved as foods
+const estimateItem = z
+  .object({
+    name: z.string().trim().min(1, "Name the food").max(200),
+    brand: z.string().trim().max(200).nullish(),
+    icon: z.string().max(16).nullish(),
+    servings: z.array(z.object({ label: z.string().trim().min(1).max(100), grams: z.number().positive().max(100000).optional(), ml: z.number().positive().max(100000).optional() })).min(1).max(20),
+    nutrients: z.record(z.string(), z.number().nonnegative().max(1000000)),
+    servingIndex: portionFields.servingIndex.default(0),
+    quantity: portionFields.quantity,
+    fraction: portionFields.fraction.default(1),
+  })
+  .refine((i) => i.servingIndex < i.servings.length, { message: "Choose a serving", path: ["servingIndex"] });
+const estimatesBody = z.object({
+  day: DAY.optional(),
+  meal: z.enum(MEALS).optional(),
+  items: z.array(estimateItem).min(1, "Add a food").max(12, "Log at most 12 foods at a time"),
+});
 const ESTIMATE_ONLY = "An estimate can only be sent for a Culury recipe without nutrition";
 const mealLogBody = z.object({ day: DAY.optional(), meal: z.enum(MEALS).optional(), foodId: id, items: itemList.optional() });
 const waterBody = z.object({
@@ -492,6 +510,42 @@ export default async function foodLogRoutes(app: FastifyInstance) {
       return { row: inserted, combined: grown?.combined };
     });
     return { entry: toEntry(row), ...(combined ? { combined } : {}) };
+  });
+
+  // AI-estimated foods: one new entry each (source "ai", no food behind it), all in one go
+  app.post("/api/log/estimates", async (req) => {
+    const userId = requireUser(req);
+    const b = estimatesBody.parse(req.body ?? {});
+    const now = app.now();
+    const timezone = await userTimezone(db, userId);
+    const day = b.day ?? localDay(timezone, now);
+    const meal = b.meal ?? (await mealNow(db, userId, timezone, now));
+    const values = b.items.map((i) => {
+      const perServing = cleanNutrients(i.nutrients);
+      const portion = { servingIndex: i.servingIndex, unit: "serving" as const, quantity: i.quantity, fraction: i.fraction };
+      return {
+        userId,
+        day,
+        meal,
+        name: i.name,
+        brand: i.brand || null,
+        icon: entryIcon(i.name, i.icon || "🍽️"),
+        source: "ai",
+        sourceRef: null,
+        ...portion,
+        perServing,
+        servings: i.servings,
+        nutrients: portionNutrients(perServing, i.servings, portion),
+        aiEstimated: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+    const rows = await db.transaction(async (tx) => {
+      await lockMeal(tx, userId, { day, meal });
+      return tx.insert(logEntries).values(values).returning();
+    });
+    return { entries: rows.map(toEntry) };
   });
 
   // A quick meal: one entry per item (or per adjusted item), each with its own snapshot, marked quick:<id>.
