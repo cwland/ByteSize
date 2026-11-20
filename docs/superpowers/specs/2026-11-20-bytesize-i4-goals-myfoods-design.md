@@ -1,6 +1,6 @@
 # ByteSize I4 — Goals & My Foods on iPhone (design)
 
-Date: 2026-11-20 · Status: approved by Cory (short design, 2026-11-20) · Sources: the iOS design
+Date: 2026-11-20 · Status: for Cory's approval (short design approved 2026-11-20; quick meals: option A) · Sources: the iOS design
 `2026-11-19-bytesize-ios-design.md` §2 and §6.4 (Goals, My Foods), backlog SPEC-17
 (`docs/backlog/2026-11-19-ui-feedback-specs.md`).
 
@@ -77,11 +77,13 @@ No changes. Routes used:
   `foodKind == "override"` on the phone, since the server has no override kind; "Foods" excludes overrides.
 
 ### 4.2 iPhone
-- `ByteSizeKit` models: `GoalsModel` (goals + targets + weight, range, delta list, log/delete weigh-in) and
-  `MyFoodsModel` (query, filter, sort, results, debounced search). Both unit-tested with the stub HTTP layer.
+- `ByteSizeKit` models: `GoalsModel` (goals + targets + weight, range, delta list, log/delete weigh-in), `MyFoodsModel`
+  (query, filter, sort, results, debounced search) and `QuickMealModel` (items, left out, amounts, total, Log all).
+  All unit-tested with the stub HTTP layer.
 - Weigh-ins logged or deleted here also refresh the Dashboard's weight card (shared reload, as the Dashboard does).
-- `DayStore.canSelect` allows today+7; the calendar's range goes to today+7; logging, quick log and Log all use the
-  selected day as now. Shot and weight pickers keep `...today`.
+- `DayStore.canSelect` allows today+7; the calendar's range goes to today+7; logging, quick log and Log all already send the
+  selected day. Shot and weight pickers keep `...today`; the Dashboard's water, weight and shot buttons check
+  `day > today`.
 - StubServer gains goals, targets, a weight series and a my-foods list (each kind, one override) for UI tests.
 
 ### 4.3 Testing
