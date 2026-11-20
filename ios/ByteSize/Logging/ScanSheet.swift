@@ -59,7 +59,7 @@ struct ScanSheet: View {
             if BarcodeScanner.isAvailable && !cameraFailed {
                 BarcodeScanner(onCode: { code in
                     Haptics.scanned()
-                    Task { await model.scanned(code) }
+                    Task { await model.scanned(code, fromCamera: true) }
                 }, onUnavailable: { cameraFailed = true })
                 .frame(height: 320)
                 .clipShape(RoundedRectangle(cornerRadius: 16))

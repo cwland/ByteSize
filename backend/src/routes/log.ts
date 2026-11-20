@@ -36,6 +36,7 @@ export type LogEntry = {
   fraction: number;
   servings: Serving[];
   nutrients: Nutrients;
+  perServing: Nutrients; // the food's own, unrounded: lets a client preview an edit exactly
   aiEstimated: boolean;
   source: string;
   sourceRef: string | null;
@@ -116,6 +117,7 @@ export function toEntry(r: Row): LogEntry {
     fraction: r.fraction,
     servings: r.servings as Serving[],
     nutrients: r.nutrients as Nutrients,
+    perServing: r.perServing as Nutrients,
     aiEstimated: r.aiEstimated,
     source: r.source,
     sourceRef: r.sourceRef,
