@@ -11,6 +11,7 @@ public struct WeighIn: Codable, Equatable, Sendable {
     public let day: String
     public let weightKg: Double
     public let trendKg: Double?
+    public let note: String?
 }
 
 public struct WeightPoint: Codable, Equatable, Sendable {
@@ -22,6 +23,16 @@ public struct WeightView: Codable, Equatable, Sendable {
     public let weighIns: [WeighIn]
     public let latest: WeightPoint?
     public let goalKg: Double?
+    public let start: WeightPoint?
+    public let trendKg: Double?
+    public let lostKg: Double?
+    public let goalDate: GoalDateView?
+}
+
+/// When the trend reaches the goal weight: `date` when the status is "ok".
+public struct GoalDateView: Codable, Equatable, Sendable {
+    public let status: String
+    public let date: String?
 }
 
 public struct Shot: Codable, Equatable, Sendable {
