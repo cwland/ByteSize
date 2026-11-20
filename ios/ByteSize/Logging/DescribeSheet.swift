@@ -4,7 +4,8 @@ import SwiftUI
 /// Describe Food: "2 eggs, toast and coffee" → the AI's list → adjust → Log all.
 struct DescribeSheet: View {
     @Bindable var model: EstimateModel
-    let close: () -> Void
+    /// After Log all: the (+) menu's sheet closes; inside Track Food it goes back to the search.
+    let onLogged: (String) -> Void
     @FocusState private var typing: Bool
     @Environment(\.palette) private var palette
 
@@ -30,7 +31,7 @@ struct DescribeSheet: View {
                 Section { Text(message).foregroundStyle(palette.color("error")).accessibilityIdentifier("describeMessage") }
             }
             if !model.items.isEmpty {
-                EstimateItemsView(model: model, onLogged: close)
+                EstimateItemsView(model: model, onLogged: onLogged)
             }
         }
         .onAppear { typing = true }

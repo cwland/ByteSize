@@ -8,7 +8,8 @@ struct RadialMenu: View {
     let shell: ShellModel
     @Environment(\.palette) private var palette
 
-    private let radius: Double = 120
+    /// Wide enough that no button or label overlaps its neighbour (four actions, labels up to "Describe Food").
+    private let radius: Double = 140
     private let buttonSize: CGFloat = 60
 
     var body: some View {
@@ -23,7 +24,7 @@ struct RadialMenu: View {
                     .accessibilityAddTraits(.isButton)
                     .transition(.opacity)
 
-                let offsets = radialOffsets(count: QuickAction.allCases.count, radius: radius, spreadDegrees: 130)
+                let offsets = radialOffsets(count: QuickAction.allCases.count, radius: radius, spreadDegrees: 150)
                 ForEach(Array(QuickAction.allCases.enumerated()), id: \.element) { index, action in
                     let point = CGSize(width: offsets[index].x, height: offsets[index].y)
                     actionButton(action)

@@ -38,15 +38,13 @@ final class TrackFoodModelTests: XCTestCase {
         return (TrackFoodModel(api: api, dayStore: days, now: { self.morning }), days)
     }
 
-    func testLoadFetchesRecentAndFrequentForTheSuggestedMeal() async {
+    func testLoadFetchesRecentForTheSuggestedMeal() async {
         serve()
         let (m, _) = model()
         XCTAssertEqual(m.meal, .breakfast)
         await m.load()
         XCTAssertEqual(m.recent.count, 1)
-        XCTAssertEqual(m.frequent.count, 2)
         XCTAssertEqual(requests("GET", "/api/foods/recent").first?.request.url?.query(), "meal=breakfast")
-        XCTAssertEqual(requests("GET", "/api/foods/frequent").first?.request.url?.query(), "meal=breakfast")
     }
 
     func testSearchNeedsTwoCharacters() async {

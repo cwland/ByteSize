@@ -5,7 +5,8 @@ import SwiftUI
 struct PhotoSheet: View {
     @Bindable var model: EstimateModel
     let track: TrackFoodModel
-    let close: () -> Void
+    /// After logging: the (+) menu's sheet closes; inside Track Food it goes back to the search.
+    let onLogged: (String) -> Void
     @State private var draft: AiDraft?
     @State private var read: AiDraft? // what the AI read, so values corrected on review aren't marked AI
     @State private var notHere: String?
@@ -23,7 +24,7 @@ struct PhotoSheet: View {
                     }
                 }
             } else if !model.items.isEmpty {
-                EstimateItemsView(model: model, onLogged: close)
+                EstimateItemsView(model: model, onLogged: onLogged)
             } else {
                 Section {
                     Text("A barcode, a Nutrition Facts label or a plate of food.")
@@ -40,9 +41,9 @@ struct PhotoSheet: View {
             }
         }
         .sheet(item: $portionFood) { food in
-            FoodPortionView(food: food, meal: model.meal, message: track.message) { food, portion in
+            FoodPortionView(food: food, meal: model.meal, message: track.message, favorites: track) { food, portion in
                 let ok = await track.log(food, portion: portion)
-                if ok { close() }
+                if ok { onLogged(food.name) }
                 return ok
             }
         }

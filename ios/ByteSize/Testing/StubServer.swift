@@ -73,6 +73,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
             var perUnit: [String: Double] // nutrients for 1 × serving (or 1 ml of water)
             var source: String
             var ai = false
+            var ref: String? = nil // the food it came from ("cache:50"); nil for AI estimates and water
 
             var nutrients: [String: Double] { perUnit.mapValues { $0 * quantity * fraction } }
 
@@ -81,7 +82,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                     "id": id, "day": day, "meal": meal, "name": name, "brand": brand as Any, "icon": icon, "servingIndex": 0,
                     "unit": unit, "quantity": quantity, "fraction": fraction,
                     "servings": [unit == "ml" ? ["label": "1 ml", "ml": 1] : ["label": serving]],
-                    "nutrients": nutrients, "aiEstimated": ai, "source": source,
+                    "nutrients": nutrients, "aiEstimated": ai, "source": source, "sourceRef": ref as Any,
                 ]
             }
         }
@@ -91,9 +92,14 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         private var trash: [Int: Entry] = [:]
         private var nextId = 100
         private var layout: [String]?
+        /// Bookmarked foods, newest first ("cache:42").
+        private var favoriteRefs: [String] = []
 
-        static var today: String {
-            let p = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        static var today: String { day(Date()) }
+        static var yesterday: String { day(Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()) }
+
+        private static func day(_ date: Date) -> String {
+            let p = Calendar.current.dateComponents([.year, .month, .day], from: date)
             return String(format: "%04d-%02d-%02d", p.year ?? 0, p.month ?? 0, p.day ?? 0)
         }
 
@@ -104,11 +110,19 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 Entry(id: 12, day: d, meal: "lunch", name: "Turkey sandwich", brand: nil, icon: "🥪", unit: "serving", quantity: 1, fraction: 1, serving: "1 sandwich", perUnit: ["calories": 520, "protein_g": 35, "carbs_g": 48, "fat_g": 18, "fiber_g": 6], source: "user_food"),
                 Entry(id: 13, day: d, meal: "snacks", name: "Protein bar", brand: "Quest", icon: "🍫", unit: "serving", quantity: 1, fraction: 1, serving: "1 bar", perUnit: ["calories": 358, "protein_g": 30, "carbs_g": 22, "fat_g": 12, "fiber_g": 14], source: "cache"),
                 Entry(id: 14, day: d, meal: "supplements", name: "Water", brand: nil, icon: "💧", unit: "ml", quantity: 500, fraction: 1, serving: "1 ml", perUnit: ["water_ml": 1], source: "water"),
+                // L2: yesterday's dinner, for Same as yesterday (a food, and an AI estimate with no food behind it)
+                Entry(id: 15, day: Self.yesterday, meal: "dinner", name: "Pasta", brand: nil, icon: "🍝", unit: "serving", quantity: 1, fraction: 1, serving: "1 cup", perUnit: ["calories": 220, "carbs_g": 43], source: "cache", ref: "cache:50"),
+                Entry(id: 17, day: Self.yesterday, meal: "lunch", name: "Broken bar", brand: nil, icon: "🍫", unit: "serving", quantity: 1, fraction: 1, serving: "1 bar", perUnit: ["calories": 200], source: "ai", ai: true),
+                Entry(id: 16, day: Self.yesterday, meal: "dinner", name: "Plate estimate", brand: nil, icon: "🍽️", unit: "serving", quantity: 1, fraction: 1, serving: "1 plate", perUnit: ["calories": 450], source: "ai", ai: true),
             ]
         }
 
         static let banana = #"{"kind":"cache","id":41,"name":"Banana","brand":null,"icon":"🍌","barcode":"0012345678905","servings":[{"label":"1 medium","grams":118},{"label":"100 g","grams":100}],"nutrients":{"calories":105,"protein_g":1.3,"carbs_g":27,"fiber_g":3.1},"aiFields":[],"imageUrl":null,"override":false,"source":"usda","foodKind":"custom"}"#
         static let prunes = #"{"kind":"cache","id":42,"name":"Prunes","brand":null,"icon":"🍇","barcode":null,"servings":[{"label":"5 prunes","grams":40},{"label":"1 prune","grams":8,"derived":true}],"nutrients":{"calories":150,"fiber_g":3},"aiFields":[],"imageUrl":null,"override":false,"source":"usda","foodKind":"custom"}"#
+        static let pasta = #"{"kind":"cache","id":50,"name":"Pasta","brand":null,"icon":"🍝","barcode":null,"servings":[{"label":"1 cup","grams":140}],"nutrients":{"calories":220,"carbs_g":43},"aiFields":[],"imageUrl":null,"override":false,"source":"usda","foodKind":"custom","last":{"servingIndex":0,"unit":"serving","quantity":1,"fraction":1}}"#
+        private static func food(_ ref: String) -> String? {
+            ["cache:41": banana, "cache:42": prunes, "cache:50": pasta][ref]
+        }
         static let egg = #"{"food":{"name":"Egg","brand":null,"category":"eggs","icon":"🥚","barcode":null,"servings":[{"label":"1 large egg","grams":50}],"nutrients":{"calories":72,"protein_g":6.3,"fat_g":4.8},"aiFields":["calories","protein_g","fat_g"],"source":"ai"},"servingIndex":0,"quantity":2}"#
         static let toast = #"{"food":{"name":"Toast","brand":null,"category":"bread","icon":"🍞","barcode":null,"servings":[{"label":"1 slice","grams":30}],"nutrients":{"calories":80,"carbs_g":15,"protein_g":3},"aiFields":["calories","carbs_g","protein_g"],"source":"ai"},"servingIndex":0,"quantity":1}"#
 
@@ -152,6 +166,18 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 return (200, #"{"groups":[{"source":"basic","label":"Basic foods","foods":[\#(food)]}],"errors":[],"searched":["basic"]}"#)
             case ("GET", "/api/foods/recent"): return (200, #"{"foods":[\#(Self.banana)]}"#)
             case ("GET", "/api/foods/frequent"): return (200, #"{"foods":[]}"#)
+            case ("GET", "/api/foods/same-as-yesterday"):
+                return (200, query.contains("meal=dinner") ? #"{"foods":[\#(Self.pasta)]}"# : #"{"foods":[]}"#)
+            case ("GET", "/api/foods/favorites"):
+                return (200, #"{"foods":[\#(favoriteRefs.compactMap(Self.food).joined(separator: ","))]}"#)
+            case ("PUT", "/api/foods/favorites"):
+                let food = body["food"] as? [String: Any] ?? [:]
+                let ref = "\(food["kind"] as? String ?? ""):\(food["id"] as? Int ?? 0)"
+                if !favoriteRefs.contains(ref) { favoriteRefs.insert(ref, at: 0) }
+                return (200, json(["refs": favoriteRefs]))
+            case ("DELETE", _) where path.hasPrefix("/api/foods/favorites/") && parts.count == 5:
+                favoriteRefs.removeAll { $0 == "\(parts[3]):\(parts[4])" }
+                return (200, json(["refs": favoriteRefs]))
             case ("POST", "/api/ai/estimate-items"):
                 return (200, #"{"items":[\#(Self.egg),\#(Self.toast)],"assumed":false}"#)
             case ("POST", "/api/photos/analyze"):
@@ -186,6 +212,8 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 let e = Entry(id: nextId, day: body["day"] as? String ?? Self.today, meal: "supplements", name: "Water", brand: nil, icon: "💧", unit: "ml", quantity: ml, fraction: 1, serving: "1 ml", perUnit: ["water_ml": 1], source: "water")
                 entries.append(e)
                 return (200, json(["entry": e.json]))
+            case ("POST", "/api/log/move") where (body["ids"] as? [Int] ?? []).contains(17):
+                return (400, #"{"error":"That entry can't be copied"}"#) // L2: a + that fails
             case ("POST", "/api/log/move"):
                 let ids = body["ids"] as? [Int] ?? []
                 let copy = body["copy"] as? Bool ?? false

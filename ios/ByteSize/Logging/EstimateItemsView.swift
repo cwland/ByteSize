@@ -4,7 +4,8 @@ import SwiftUI
 /// The foods the AI listed (Describe, plate photos): amounts to adjust, rows to remove, a meal, then Log all.
 struct EstimateItemsView: View {
     @Bindable var model: EstimateModel
-    let onLogged: () -> Void
+    /// After Log all: how many foods were logged ("2 foods") or the one food's name.
+    let onLogged: (String) -> Void
     @Environment(\.palette) private var palette
 
     @State private var editing: Int?
@@ -51,9 +52,10 @@ struct EstimateItemsView: View {
             }
             Button {
                 Task {
+                    let names = model.items.map(\.food.name)
                     if await model.logAll() {
                         Haptics.logged()
-                        onLogged()
+                        onLogged(names.count == 1 ? names[0] : "\(names.count) foods")
                     }
                 }
             } label: {

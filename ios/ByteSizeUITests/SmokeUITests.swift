@@ -296,6 +296,164 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Prunes"].waitForExistence(timeout: 5))
     }
 
+    // MARK: - L2: meals always there with Add; quick foods one tap away; the bookmark
+
+    private func label(_ text: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label ==[c] %@", text)).firstMatch
+    }
+
+    /// Scrolls up until the element is on screen and tappable (lists only build the rows they show).
+    private func reveal(_ element: XCUIElement) -> XCUIElement {
+        for _ in 0..<5 where !(element.exists && element.isHittable) {
+            app.swipeUp()
+        }
+        return element
+    }
+
+    private func openDinnerFromTheFoodLog() {
+        app.buttons["Food Log"].tap()
+        let add = app.buttons["addTo-dinner"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5), "an empty meal still shows, with its Add")
+        add.tap()
+        XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 5))
+    }
+
+    func testEmptyMealsHaveAddAndOpenInThatMeal() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        XCTAssertTrue(app.buttons["addTo-dinner"].waitForExistence(timeout: 5))
+        XCTAssertFalse(label("Nothing logged yet — tap + to track food").exists)
+        shot("15-food-log-add")
+        app.buttons["addTo-dinner"].tap()
+        let meal = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Dinner")).firstMatch
+        XCTAssertTrue(meal.waitForExistence(timeout: 5), "Track Food opens in Dinner")
+    }
+
+    func testPlusLogsFromSameAsYesterdayAndLogAll() {
+        signedIn()
+        openDinnerFromTheFoodLog()
+        XCTAssertTrue(label("Same as yesterday").waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["quickAdd-Pasta"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["quickAdd-Plate estimate"].exists)
+        shot("16-quick-sections")
+        app.buttons["quickAdd-Pasta"].tap()
+        XCTAssertTrue(label("Logged Pasta").waitForExistence(timeout: 5))
+        app.buttons["logAllYesterday"].tap()
+        XCTAssertTrue(label("Logged 2 foods").waitForExistence(timeout: 5))
+        closeSheet()
+        XCTAssertTrue(app.staticTexts["Pasta"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Plate estimate"].exists)
+    }
+
+    func testBookmarkMakesAFavorite() {
+        signedIn()
+        trackSearch("prunes", pick: "Prunes")
+        let bookmark = app.buttons["bookmark"]
+        XCTAssertTrue(bookmark.waitForExistence(timeout: 5))
+        XCTAssertEqual(bookmark.label, "Add to Favorites")
+        bookmark.tap()
+        XCTAssertTrue(waitUntil { bookmark.label == "Remove from Favorites" })
+        shot("17-bookmark")
+        app.navigationBars.buttons.element(boundBy: 0).tap() // Back to the search
+        let clear = app.searchFields.firstMatch.buttons["Clear text"]
+        if clear.waitForExistence(timeout: 3) { clear.tap() }
+        XCTAssertTrue(label("Favorites").waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["quickAdd-Prunes"].waitForExistence(timeout: 5))
+    }
+
+    func testAFailedQuickLogSaysSo() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        XCTAssertTrue(app.buttons["addTo-lunch"].waitForExistence(timeout: 5))
+        app.buttons["addTo-lunch"].tap()
+        XCTAssertTrue(app.buttons["quickAdd-Broken bar"].waitForExistence(timeout: 5))
+        app.buttons["quickAdd-Broken bar"].firstMatch.tap()
+        XCTAssertTrue(label("That entry can't be copied").waitForExistence(timeout: 5), "the error shows on the quick screen")
+    }
+
+    func testAMealChosenInsideDescribeComesBackToTheSearch() {
+        signedIn()
+        openDinnerFromTheFoodLog()
+        let field = app.textFields["describeField"]
+        let describe = app.buttons["hub-describe"]
+        XCTAssertTrue(describe.waitForExistence(timeout: 5))
+        for _ in 0..<2 where !field.exists { // a tap while the sheet is still rising can be lost
+            if describe.isHittable { describe.tap() }
+            _ = field.waitForExistence(timeout: 3)
+        }
+        XCTAssertTrue(field.waitForExistence(timeout: 2))
+        field.typeText("2 eggs and toast")
+        app.buttons["estimateButton"].tap()
+        XCTAssertTrue(app.buttons["logAll"].waitForExistence(timeout: 5))
+        let picker = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Meal")).firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 3))
+        picker.tap()
+        app.buttons["Snacks"].firstMatch.tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Snacks")).firstMatch.waitForExistence(timeout: 3))
+        // Back (not Close): the Describe Food bar has both, and other bars sit behind the sheet
+        app.navigationBars["Describe Food"].buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["hub-describe"].waitForExistence(timeout: 5), "back on the search, sheet still open")
+        XCTAssertTrue(app.buttons["Meal, Snacks"].exists || app.buttons.matching(NSPredicate(format: "label == %@", "Meal, Snacks")).firstMatch.exists, "the search is in Snacks now")
+        XCTAssertTrue(reveal(app.buttons["quickAdd-Banana"]).waitForExistence(timeout: 5))
+        app.buttons["quickAdd-Banana"].tap()
+        XCTAssertTrue(label("Logged Banana").waitForExistence(timeout: 5))
+        closeSheet()
+        let banana = app.staticTexts["Banana"]
+        XCTAssertTrue(banana.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(banana.frame.minY, app.buttons["addTo-dinner"].frame.minY, "under Snacks, after Dinner")
+    }
+
+    // MARK: - L2: Track Food is the hub for Photo, Scan and Describe; the (+) menu doesn't overlap
+
+    func testHubOpensScanInsideTrackFoodAndBack() {
+        signedIn()
+        openAction("Track Food")
+        XCTAssertTrue(app.buttons["hub-scan"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["hub-photo"].exists)
+        XCTAssertTrue(app.buttons["hub-describe"].exists)
+        shot("18-hub")
+        app.buttons["hub-scan"].tap()
+        XCTAssertTrue(app.textFields["barcodeField"].waitForExistence(timeout: 5) || app.otherElements["scanner"].exists)
+        app.navigationBars.buttons.element(boundBy: 0).tap() // Back
+        XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 5), "back on the search, the sheet still open")
+        XCTAssertTrue(app.buttons["hub-scan"].exists)
+    }
+
+    func testDescribeInTheHubLogsIntoTheChosenMealAndComesBack() {
+        signedIn()
+        openDinnerFromTheFoodLog()
+        app.buttons["hub-describe"].tap()
+        let field = app.textFields["describeField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText("2 eggs and toast")
+        app.buttons["estimateButton"].tap()
+        XCTAssertTrue(app.buttons["logAll"].waitForExistence(timeout: 5))
+        app.buttons["logAll"].tap()
+        XCTAssertTrue(label("Logged 2 foods").waitForExistence(timeout: 5), "back on the search")
+        XCTAssertTrue(app.searchFields.firstMatch.exists)
+        closeSheet()
+        XCTAssertTrue(app.staticTexts["Egg"].waitForExistence(timeout: 5))
+        let dinner = app.buttons["addTo-dinner"]
+        XCTAssertTrue(dinner.exists)
+        XCTAssertLessThan(app.staticTexts["Egg"].frame.minY, dinner.frame.minY, "logged under Dinner, above its Add")
+        XCTAssertGreaterThan(app.staticTexts["Egg"].frame.minY, app.buttons["addTo-lunch"].frame.minY)
+    }
+
+    func testQuickAddMenuButtonsDontOverlap() {
+        signedIn()
+        app.buttons["Quick add"].tap()
+        let titles = ["Track Food", "Scan Food", "Photo", "Describe Food"]
+        XCTAssertTrue(app.buttons["Describe Food"].waitForExistence(timeout: 3))
+        sleep(1) // the fan-out animation
+        shot("3-quick-add")
+        let frames = titles.map { app.buttons[$0].frame }
+        for i in frames.indices {
+            for j in frames.indices where j > i {
+                XCTAssertFalse(frames[i].intersects(frames[j]), "\(titles[i]) overlaps \(titles[j])")
+            }
+        }
+    }
+
     func testBigAmountAsks() {
         signedIn()
         trackSearch("banana", pick: "Banana")

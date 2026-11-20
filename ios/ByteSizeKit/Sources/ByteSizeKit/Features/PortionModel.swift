@@ -35,6 +35,16 @@ public final class PortionModel {
 
     public convenience init(food: Food, meal: Meal) {
         self.init(name: food.name, icon: food.icon, servings: food.servings, nutrients: food.nutrients, meal: meal)
+        // Recent, favorites, same as yesterday: start at the amount it was last logged at
+        if let last = food.last, let unit = AmountUnit(rawValue: last.unit) {
+            if unit == .serving {
+                guard food.servings.indices.contains(last.servingIndex) else { return }
+                choice = .serving(last.servingIndex)
+            } else {
+                choice = .unit(unit)
+            }
+            (whole, fraction) = Self.split(last.quantity * last.fraction)
+        }
     }
 
     /// A logged entry, to change its amount: the same unit and amount it was logged with.

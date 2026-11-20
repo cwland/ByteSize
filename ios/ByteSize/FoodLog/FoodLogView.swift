@@ -6,6 +6,8 @@ struct FoodLogView: View {
     let log: FoodLogModel
     let days: DayStore
     let units: Units
+    /// A meal's Add (SPEC-07): opens Track Food in that meal.
+    var add: (Meal) -> Void = { _ in }
     @Environment(\.palette) private var palette
     @State private var editing: LogEntry?
     @State private var moving: MoveRequest?
@@ -21,12 +23,6 @@ struct FoodLogView: View {
         List {
             Section { header }
                 .listRowBackground(Color.clear)
-            if log.sections.isEmpty, days.day != nil {
-                Section {
-                    Text("Nothing logged yet — tap + to track food")
-                        .foregroundStyle(palette.color("subtle"))
-                }
-            }
             ForEach(log.sections) { section in
                 Section {
                     ForEach(section.entries) { entry in
@@ -42,6 +38,13 @@ struct FoodLogView: View {
                                 Button { moving = MoveRequest(entry: entry, copy: false) } label: { Label("Move", systemImage: "arrow.right.circle") }
                                     .tint(palette.color("primary"))
                             }
+                    }
+                    if section.meal.addable {
+                        Button { add(section.meal) } label: {
+                            Label("Add to \(section.meal.title)", systemImage: "plus.circle.fill")
+                                .foregroundStyle(palette.color("primary"))
+                        }
+                        .accessibilityIdentifier("addTo-\(section.meal.rawValue)")
                     }
                 } header: {
                     HStack {

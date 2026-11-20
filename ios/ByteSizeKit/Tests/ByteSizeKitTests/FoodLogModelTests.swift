@@ -37,12 +37,25 @@ final class FoodLogModelTests: XCTestCase {
 
     private func entry(_ id: Int, in days: DayStore) throws -> LogEntry { try XCTUnwrap(days.day?.entries.first { $0.id == id }) }
 
-    func testSectionsInMealOrderSkippingEmptyMeals() async {
+    func testTheFourMealsAlwaysShowAndSupplementsWhenLogged() async {
         serve()
         let (m, _) = await model()
-        XCTAssertEqual(m.sections.map(\.meal), [.breakfast, .lunch, .supplements])
+        XCTAssertEqual(m.sections.map(\.meal), [.breakfast, .lunch, .dinner, .snacks, .supplements])
         XCTAssertEqual(m.sections[0].entries.map(\.id), [11])
         XCTAssertEqual(m.sections[0].totals?.calories, 260)
+        XCTAssertEqual(m.sections[2].entries, [], "dinner: empty")
+        XCTAssertNil(m.sections[2].totals)
+    }
+
+    func testAnEmptyDayStillShowsTheFourMeals() async {
+        serve()
+        HTTPStub.handler = { req in
+            (req.url?.path() ?? "").hasPrefix("/api/day/") ? .json(200, TrackFoodQuickTests.day("2026-11-19", [])) : .json(200, #"{"days":[]}"#)
+        }
+        let (m, _) = await model()
+        XCTAssertEqual(m.sections.map(\.meal), [.breakfast, .lunch, .dinner, .snacks])
+        XCTAssertTrue(Meal.lunch.addable)
+        XCTAssertFalse(Meal.supplements.addable)
     }
 
     func testUpdateSendsOnlyChangesAndReloads() async throws {

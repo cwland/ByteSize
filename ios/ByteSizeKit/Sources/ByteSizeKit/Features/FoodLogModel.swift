@@ -33,9 +33,11 @@ public final class FoodLogModel {
 
     public var sections: [MealSection] {
         guard let day = dayStore.day else { return [] }
+        // SPEC-07: the four meals always (each with its Add); supplements & water only when logged
         return Meal.allCases.compactMap { meal in
             let entries = day.entries.filter { $0.meal == meal }
-            return entries.isEmpty ? nil : MealSection(meal: meal, entries: entries, totals: day.totals(for: meal))
+            if entries.isEmpty { return meal.addable ? MealSection(meal: meal, entries: [], totals: nil) : nil }
+            return MealSection(meal: meal, entries: entries, totals: day.totals(for: meal))
         }
     }
 

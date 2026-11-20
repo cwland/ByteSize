@@ -16,6 +16,9 @@ public enum Meal: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// The four meals the Food Log always shows, each with its Add (SPEC-07); not supplements & water.
+    public var addable: Bool { self != .supplements }
+
     /// The meal for a time of day, using the server's default meal windows (settings-me DEFAULT_MEAL_WINDOWS):
     /// breakfast until 10:30, lunch until 14:30, snacks until 17:00, dinner until 21:00, snacks after.
     public static func suggested(at date: Date, in zone: TimeZone) -> Meal {

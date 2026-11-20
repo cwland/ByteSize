@@ -1,28 +1,39 @@
 import ByteSizeKit
 import SwiftUI
 
-/// Track Food: type to search (or a barcode's digits); recent and frequent foods for the meal when the field is empty.
+/// Track Food: type to search (or a barcode's digits). With the field empty (L2, SPEC-10): Same as yesterday,
+/// Favorites and Recently tracked for the meal, each with a + that logs it at once; tapping a row opens the wheels.
 struct TrackFoodSheet: View {
     @Bindable var model: TrackFoodModel
+    /// The hub (SPEC-08): Photo, Scan and Describe open inside Track Food, in its meal.
+    let scan: ScanModel
+    @Bindable var estimate: EstimateModel
+    let units: Units
     let close: () -> Void
     @State private var picked: Food?
+    @State private var hub: QuickAction?
     @State private var searchShown = true
     @Environment(\.palette) private var palette
 
     var body: some View {
         List {
+            hubButtons
             if let logged = model.lastLogged {
                 Label("Logged \(logged)", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(palette.color("success"))
                     .accessibilityIdentifier("loggedToast")
             }
             if model.query.trimmingCharacters(in: .whitespaces).count < 2 {
+                if let message = model.message {
+                    Text(message).foregroundStyle(palette.color("error")).accessibilityIdentifier("trackMessage")
+                }
                 Section {
                     MealPicker(meal: $model.meal)
                 }
-                foodSection("Recent", model.recent)
-                foodSection("Frequent", model.frequent)
-                if model.recent.isEmpty, model.frequent.isEmpty {
+                yesterdaySection
+                foodSection("Favorites", model.favorites, quick: true)
+                foodSection("Recently tracked", model.recent, quick: true)
+                if model.yesterday.isEmpty, model.favorites.isEmpty, model.recent.isEmpty {
                     Text("Foods you log show up here.").foregroundStyle(palette.color("subtle"))
                 }
             } else {
@@ -43,30 +54,128 @@ struct TrackFoodSheet: View {
         }
         .onChange(of: model.meal) { Task { await model.load() } }
         .onChange(of: picked) { _, now in
+            if now != nil { model.clearMessage() } // an old error isn't about the food being opened
             if now == nil, model.lastLogged != nil { searchShown = true } // back from logging: ready to type the next
         }
+        .navigationDestination(item: $hub) { action in hubScreen(action) }
+        // One meal for the whole hub: Photo and Describe use Track Food's, and a change there comes back
+        .onChange(of: hub) { _, now in if now == .photo || now == .describe { estimate.meal = model.meal } }
+        .onChange(of: estimate.meal) { _, meal in if hub != nil { model.meal = meal } }
         // Pushed, not a sheet: iOS won't open a sheet over an active search
         .navigationDestination(item: $picked) { food in
             // SPEC-16: after logging, back to an empty search for the next food (Close leaves)
-            FoodPortionView(food: food, meal: model.meal, pushed: true, message: model.message) { food, portion in
+            FoodPortionView(food: food, meal: model.meal, pushed: true, message: model.message, favorites: model) { food, portion in
                 await model.log(food, portion: portion)
             }
         }
     }
 
+    private var hubButtons: some View {
+        Section {
+            HStack(spacing: 12) {
+                ForEach([QuickAction.photo, .scan, .describe]) { action in
+                    Button { hub = action } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: action.systemImage).font(.title3)
+                            Text(action == .photo ? "Photo" : action == .scan ? "Scan" : "Describe").font(.caption.weight(.semibold))
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .foregroundStyle(palette.color("primary"))
+                        .background(palette.color("container"), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(action.title)
+                    .accessibilityIdentifier("hub-\(action.rawValue)")
+                }
+            }
+            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+            .listRowBackground(Color.clear)
+        }
+    }
+
+    /// Back to the search with "Logged …" (Photo, Describe); Scan stays on its camera (SPEC-16).
     @ViewBuilder
-    private func foodSection(_ title: String, _ foods: [Food]) -> some View {
+    private func hubScreen(_ action: QuickAction) -> some View {
+        let back: (String) -> Void = { name in
+            hub = nil
+            Task { await model.loggedElsewhere(name) }
+        }
+        Group {
+            switch action {
+            case .scan: ScanSheet(model: scan, track: model, close: { hub = nil })
+            case .photo: PhotoSheet(model: estimate, track: model, onLogged: back)
+            case .describe: DescribeSheet(model: estimate, onLogged: back)
+            case .track: EmptyView()
+            }
+        }
+        .navigationTitle(action.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Close", action: close) } } // leaves the whole sheet
+    }
+
+    /// Yesterday's entries in this meal, exactly as logged: + copies one, Log all copies them all.
+    @ViewBuilder
+    private var yesterdaySection: some View {
+        if !model.yesterday.isEmpty {
+            Section {
+                ForEach(model.yesterday) { item in
+                    HStack {
+                        Button {
+                            if let food = item.food, food.isLoggable { picked = food }
+                        } label: {
+                            FoodRow(icon: item.entry.icon, name: item.entry.name, brand: item.entry.brand,
+                                    detail: "\(item.entry.amountText(units: units)) · \(Int(item.entry.calories.rounded())) cal")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("food-\(item.entry.name)")
+                        quickAdd(item.entry.name) { await model.copyYesterday(item) }
+                    }
+                }
+            } header: {
+                HStack {
+                    Text("Same as yesterday")
+                    Spacer()
+                    Button("Log all") { Task { if await model.logAllYesterday() { Haptics.logged() } } }
+                        .font(.subheadline.bold())
+                        .textCase(nil)
+                        .accessibilityLabel("Log all of yesterday's \(model.meal.title)")
+                        .accessibilityIdentifier("logAllYesterday")
+                }
+            }
+        }
+    }
+
+    /// The + on a quick row: logs it now (at its last amount, or yesterday's entry as it was).
+    private func quickAdd(_ name: String, _ log: @escaping () async -> Bool) -> some View {
+        Button {
+            Task { if await log() { Haptics.logged() } }
+        } label: {
+            Image(systemName: "plus.circle.fill").font(.title2).foregroundStyle(palette.color("primary"))
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel("Log \(name)")
+        .accessibilityIdentifier("quickAdd-\(name)")
+    }
+
+    @ViewBuilder
+    private func foodSection(_ title: String, _ foods: [Food], quick: Bool = false) -> some View {
         if !foods.isEmpty {
             Section(title) {
                 ForEach(foods, id: \.ref) { food in
-                    Button {
-                        guard food.isLoggable else { return }
-                        picked = food
-                    } label: {
-                        FoodRow(food: food)
+                    HStack {
+                        Button {
+                            guard food.isLoggable else { return }
+                            picked = food
+                        } label: {
+                            FoodRow(food: food)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!food.isLoggable)
+                        .accessibilityIdentifier("food-\(food.name)")
+                        if quick, food.isLoggable {
+                            quickAdd(food.name) { await model.quickLog(food) }
+                        }
                     }
-                    .disabled(!food.isLoggable)
-                    .accessibilityIdentifier("food-\(food.name)")
                 }
             }
         }
