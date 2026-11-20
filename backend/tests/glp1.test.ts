@@ -18,14 +18,14 @@ const glp1 = async () => (await t.api("GET", "/api/glp1")).body;
 
 describe("GLP-1 settings and schedule", () => {
   it("starts empty", async () => {
-    expect(await glp1()).toEqual({ settings: null, lastShot: null, nextDue: null, status: "none", overdueDays: 0, suggestedSite: "abdomen_left", shots: [], doseHistory: [] });
+    expect(await glp1()).toEqual({ settings: null, lastShot: null, nextDue: null, status: "none", overdueDays: 0, suggestedSite: "abdomen_left", shots: [], doseHistory: [], medications: expect.any(Array) });
   });
 
   it("saves settings and validates them", async () => {
     const res = await setup();
     expect(res.status).toBe(200);
-    expect(res.body.settings).toEqual(mounjaro);
-    expect((await glp1()).settings).toEqual(mounjaro);
+    expect(res.body.settings).toEqual({ ...mounjaro, doseUnit: "mg", doseUnit: "mg" });
+    expect((await glp1()).settings).toEqual({ ...mounjaro, doseUnit: "mg", doseUnit: "mg" });
     for (const bad of [{ injectionWeekday: 7 }, { injectionWeekday: 1.5 }, { doseMg: 0 }, { doseMg: -1 }, { medication: "  " }]) {
       expect((await setup(bad)).status).toBe(400);
     }
@@ -72,12 +72,12 @@ describe("GLP-1 settings and schedule", () => {
     await setup();
     const res = await shot("2026-11-10", { site: "thigh_left", note: "  felt fine  " });
     expect(res.status).toBe(200);
-    expect(res.body.lastShot).toEqual({ day: "2026-11-10", medication: "Mounjaro", doseMg: 2.5, site: "thigh_left", note: "felt fine" });
+    expect(res.body.lastShot).toEqual({ day: "2026-11-10", medication: "Mounjaro", doseMg: 2.5, doseUnit: "mg", site: "thigh_left", note: "felt fine" });
     await shot("2026-11-03", { site: "abdomen_right" });
     expect((await glp1()).shots.map((s: any) => s.day)).toEqual(["2026-11-10", "2026-11-03"]);
     // the same day again replaces it
     await shot("2026-11-10", { site: "arm_left", note: "" });
-    expect((await glp1()).shots[0]).toEqual({ day: "2026-11-10", medication: "Mounjaro", doseMg: 2.5, site: "arm_left", note: null });
+    expect((await glp1()).shots[0]).toEqual({ day: "2026-11-10", medication: "Mounjaro", doseMg: 2.5, doseUnit: "mg", site: "arm_left", note: null });
     expect((await t.api("DELETE", "/api/glp1/shots/2026-11-10")).status).toBe(200);
     expect((await glp1()).shots.map((s: any) => s.day)).toEqual(["2026-11-03"]);
     expect((await t.api("DELETE", "/api/glp1/shots/2026-11-10")).status).toBe(404);
@@ -134,7 +134,7 @@ describe("GLP-1 settings and schedule", () => {
     const before = (await glp1()).doseHistory;
     await shot("2026-10-27", { site: "arm_left" }); // re-save the backdated shot with only a new site
     const g = await glp1();
-    expect(g.shots.find((s: any) => s.day === "2026-10-27")).toEqual({ day: "2026-10-27", medication: "Mounjaro", doseMg: 2.5, site: "arm_left", note: "first one" });
+    expect(g.shots.find((s: any) => s.day === "2026-10-27")).toEqual({ day: "2026-10-27", medication: "Mounjaro", doseMg: 2.5, doseUnit: "mg", site: "arm_left", note: "first one" });
     expect(g.doseHistory).toEqual(before);
     expect(g.settings.doseMg).toBe(5);
     // an empty note clears it
@@ -161,14 +161,14 @@ describe("GLP-1 settings and schedule", () => {
     await shot("2026-11-10", { doseMg: 5, medication: "Zepbound" });
     expect((await glp1()).settings).toMatchObject({ doseMg: 5, medication: "Zepbound" });
     await t.api("DELETE", "/api/glp1/shots/2026-11-10");
-    expect((await glp1()).settings).toEqual({ ...mounjaro, doseMg: 2.5, medication: "Mounjaro" });
+    expect((await glp1()).settings).toEqual({ ...mounjaro, doseUnit: "mg", doseMg: 2.5, medication: "Mounjaro" });
     // deleting an older shot leaves the current dose alone
     await shot("2026-11-10", { doseMg: 5 });
     await t.api("DELETE", "/api/glp1/shots/2026-11-03");
     expect((await glp1()).settings.doseMg).toBe(5);
     // the last one gone: settings stay as they were
     await t.api("DELETE", "/api/glp1/shots/2026-11-10");
-    expect((await glp1()).settings).toEqual({ ...mounjaro, doseMg: 5 });
+    expect((await glp1()).settings).toEqual({ ...mounjaro, doseUnit: "mg", doseMg: 5 });
   });
 });
 

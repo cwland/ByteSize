@@ -19,6 +19,7 @@ export const users = pgTable("users", {
   units: text("units").$type<"imperial" | "metric">().notNull().default("imperial"),
   timezone: text("timezone").notNull().default("America/Boise"), // decides where a day starts and ends
   setupDoneAt: timestamp("setup_done_at", { withTimezone: true }),
+  seenVersion: text("seen_version"), // the app version whose "What's new" was dismissed (W1)
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   // The OAuth / OpenID Connect identity linked to this account (Settings › Security › Link my account)
   oauthIssuer: text("oauth_issuer"),
@@ -453,6 +454,7 @@ export const glp1Settings = pgTable("glp1_settings", {
   userId: userRef().primaryKey(),
   medication: text("medication").notNull(),
   doseMg: doublePrecision("dose_mg").notNull(),
+  doseUnit: text("dose_unit").notNull().default("mg"), // mg, units or ml (W1: compounded doses)
   injectionWeekday: integer("injection_weekday").notNull(), // 0 = Sunday ... 6 = Saturday
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -466,6 +468,7 @@ export const glp1Shots = pgTable(
     day: date("day", { mode: "string" }).notNull(),
     medication: text("medication").notNull(),
     doseMg: doublePrecision("dose_mg").notNull(),
+    doseUnit: text("dose_unit").notNull().default("mg"),
     site: text("site").notNull(), // abdomen_left, abdomen_right, thigh_left, thigh_right, arm_left, arm_right
     note: text("note"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

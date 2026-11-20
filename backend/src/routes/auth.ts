@@ -106,6 +106,14 @@ export default async function authRoutes(app: FastifyInstance) {
     return { user: publicUser(user) };
   });
 
+  // W1: the app version whose "What's new" this person dismissed (so it shows once per version)
+  app.put("/api/auth/seen-version", async (req) => {
+    const userId = requireUser(req);
+    const { version } = z.object({ version: z.string().regex(/^\d{1,4}\.\d{1,4}\.\d{1,4}$/, "That isn't a version") }).parse(req.body ?? {});
+    await db.update(users).set({ seenVersion: version }).where(eq(users.id, userId));
+    return { seenVersion: version };
+  });
+
   // Change password. Signs out every other device; returns a fresh token for this one.
   app.post("/api/auth/password", async (req) => {
     requireUser(req);
