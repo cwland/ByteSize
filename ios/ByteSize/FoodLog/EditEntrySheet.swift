@@ -27,7 +27,7 @@ struct EditEntrySheet: View {
                         }
                     }
                 }
-                Section(entry.isWater ? "Amount (ml)" : "Amount") {
+                Section(entry.isWater ? "Amount (\(units.waterUnit))" : "Amount") {
                     TextField("Amount", text: $amount).keyboardType(.decimalPad)
                     if !entry.isWater, entry.unit == "serving", entry.servings.count > 1 {
                         Picker("Serving", selection: $serving) {
@@ -59,7 +59,9 @@ struct EditEntrySheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        guard let q = Double(amount.replacingOccurrences(of: ",", with: ".")) else { return }
+                        guard let typed = Double(amount.replacingOccurrences(of: ",", with: ".")) else { return }
+                        // water is typed in fl oz or ml; the server keeps ml
+                        let q = entry.isWater ? (units.ml(fromWaterDisplay: typed) * 10).rounded() / 10 : typed
                         Task {
                             await log.update(entry, quantity: q, fraction: fraction, servingIndex: serving)
                             dismiss()
@@ -69,7 +71,8 @@ struct EditEntrySheet: View {
                 }
             }
             .onAppear {
-                amount = entry.quantity.rounded() == entry.quantity ? String(Int(entry.quantity)) : String(entry.quantity)
+                let shown = entry.isWater ? (units.waterValue(ml: entry.quantity) * 10).rounded() / 10 : entry.quantity
+                amount = shown.rounded() == shown ? String(Int(shown)) : String(shown)
                 fraction = entry.fraction
                 serving = entry.servingIndex
             }

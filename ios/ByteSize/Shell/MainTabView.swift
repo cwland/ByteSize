@@ -7,6 +7,7 @@ struct MainTabView: View {
     let profile: ProfileModel
     let today: TodayModels
     @Environment(\.palette) private var palette
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -45,6 +46,10 @@ struct MainTabView: View {
             ProfileSheet(profile: profile)
         }
         .task { await today.load() }
+        // Back in the app (maybe the next morning): follow today if that's what was showing
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await today.days.dayMayHaveChanged() } }
+        }
     }
 
     @ViewBuilder

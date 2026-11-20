@@ -28,4 +28,10 @@ public enum Units: Sendable, Equatable {
     }
 
     public func kg(fromDisplay value: Double) -> Double { self == .metric ? value : value / Self.lbPerKg }
+
+    /// Water as typed in this unit (fl oz or ml), from the server's ml.
+    public func waterValue(ml: Double) -> Double { self == .metric ? ml : ml / Self.mlPerFlOz }
+
+    /// The server's ml from water typed in this unit.
+    public func ml(fromWaterDisplay value: Double) -> Double { self == .metric ? value : value * Self.mlPerFlOz }
 }

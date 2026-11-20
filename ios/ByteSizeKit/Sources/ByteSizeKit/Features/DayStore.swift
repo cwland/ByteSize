@@ -56,6 +56,7 @@ public final class DayStore {
     private let timeZone: TimeZone
     private let now: () -> Date
     private var latest = 0 // the newest load; older answers are dropped
+    private var lastToday: String
 
     public init(api: APIClient, timeZone: TimeZone, weekStart: Int = 0, now: @escaping () -> Date = Date.init) {
         self.api = api
@@ -63,6 +64,7 @@ public final class DayStore {
         self.weekStart = weekStart
         self.now = now
         selected = DayMath.string(now(), in: timeZone)
+        lastToday = selected
     }
 
     public var today: String { DayMath.string(now(), in: timeZone) }
@@ -77,8 +79,20 @@ public final class DayStore {
     }
 
     public func select(_ day: String) async {
+        // DAYNIL
         selected = day
+        lastToday = today
         await load()
+    }
+
+    /// When the app comes back (or a new day starts): if it was showing today and today has moved on, show the
+    /// new today. A day the person chose stays put.
+    public func dayMayHaveChanged() async {
+        let now = today
+        if selected == lastToday, now != lastToday {
+            await select(now)
+        }
+        lastToday = now
     }
 
     public func reload() async { await load() }
