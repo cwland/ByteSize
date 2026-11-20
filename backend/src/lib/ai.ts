@@ -654,6 +654,17 @@ export const LABEL_SYSTEM = [
   "Leave out every key the label doesn't show. A label value of 0 is 0; a value that isn't on the label is left out, never 0.",
   "Values are plain numbers only (no units, no ranges, no strings). Answer with JSON only.",
 ].join("\n");
+export const PLATE_SYSTEM = [
+  "You estimate the foods on a plate (or in a bowl, or on a table) from a photo, for a calorie and protein tracker.",
+  "List each separate food you can see once, with a usual US serving for it and how many of those servings are in the photo.",
+  `Nutrient keys: ${NUTRIENT_KEYS.join(", ")}. Units: calories in kcal, *_g in grams, *_mg in milligrams. Values are for one serving.`,
+  "Values are plain numbers only (no units, no ranges, no strings). Answer with JSON only.",
+].join("\n");
+export const PLATE_ASK =
+  `List the foods on this plate in the photo. ` +
+  `Answer as JSON: {"items": [{"name": string, "category": string, "servings": [{"label": string, "grams"?: number, "ml"?: number}], "nutrients": {<key>: number}, "quantity": number}]}. ` +
+  `servings[0] is a usual serving and the nutrients are for it; quantity is how many of servings[0] the photo shows (e.g. 1.5). ` +
+  `If there is no food in the photo, answer {"items": []}.`;
 export const LABEL_ASK =
   `Read the nutrition facts label in the photo. If another photo shows the front of the package, use it for the name and brand.\n\n` +
   `Answer as JSON: {"name": string, "brand": string | null, "category": string, "servings": [{"label": string, "grams"?: number, "ml"?: number}], "nutrients": {<key>: number}}. ` +

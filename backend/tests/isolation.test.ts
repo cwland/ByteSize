@@ -186,6 +186,14 @@ describe("per-user isolation", () => {
     expect((await a.as("GET", `/api/day/${day}`)).body.entries).toEqual(logged);
   });
 
+  it("AI-estimated foods are logged into the logger's own day only", async () => {
+    const { a, b } = await twoUsers(t);
+    const item = { name: "Egg", servings: [{ label: "1 egg", grams: 50 }], nutrients: { calories: 78 }, servingIndex: 0, quantity: 1 };
+    expect((await a.as("POST", "/api/log/estimates", { day: "2026-11-17", meal: "breakfast", items: [item] })).status).toBe(200);
+    expect((await b.as("GET", "/api/day/2026-11-17")).body.entries).toEqual([]);
+    expect((await a.as("GET", "/api/day/2026-11-17")).body.entries).toHaveLength(1);
+  });
+
   it("a user's logged days never include another user's entries", async () => {
     const { a, b } = await twoUsers(t);
     const food = (await a.as("POST", "/api/my-foods", { name: "Anna's toast", servings: [{ label: "1 slice", grams: 30 }], nutrients: { calories: 80 } })).body.food;

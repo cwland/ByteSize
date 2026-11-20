@@ -5,7 +5,7 @@ import { AiStopped } from "../lib/ai.js";
 import { logEvent } from "../lib/appLog.js";
 import { HttpError } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
-import { aiReady, estimateFood, fillGaps, lookupBarcode, searchFoods } from "../lib/foods.js";
+import { aiReady, estimateFood, estimateFoodItems, fillGaps, lookupBarcode, searchFoods } from "../lib/foods.js";
 import { refreshKept, refreshRateLimit } from "../lib/lookups.js";
 import { wholeKeptFood } from "../lib/restaurants/index.js";
 
@@ -69,6 +69,13 @@ export default async function foodRoutes(app: FastifyInstance) {
       .finally(() => out.end());
     // x-accel-buffering: nginx-style reverse proxies pass each line on at once instead of holding the answer back
     return reply.type("application/x-ndjson").header("cache-control", "no-store").header("x-accel-buffering", "no").send(out);
+  });
+
+  // Several foods from one description (iPhone app): plain JSON, no streaming
+  app.post("/api/ai/estimate-items", async (req) => {
+    const userId = requireUser(req);
+    const { text } = z.object({ text: z.string().trim().min(2, "Describe the food").max(500) }).parse(req.body ?? {});
+    return estimateFoodItems(app, userId, text);
   });
 
   app.post("/api/ai/fill-gaps", async (req) => {

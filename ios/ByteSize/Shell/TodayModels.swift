@@ -5,12 +5,14 @@ import Foundation
 /// set up with the account's timezone and units.
 @MainActor
 final class TodayModels {
+    let api: APIClient
     let days: DayStore
     let dashboard: DashboardModel
     let log: FoodLogModel
     let units: Units
 
     init(api: APIClient, user: User) {
+        self.api = api
         units = Units(user.units)
         let zone = user.timezone.flatMap(TimeZone.init(identifier:)) ?? .current
         days = DayStore(api: api, timeZone: zone)
