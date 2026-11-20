@@ -115,14 +115,14 @@ final class PortionModelTests: XCTestCase {
         let json = #"{"id":7,"day":"2026-11-18","meal":"lunch","name":"Rice","brand":null,"icon":"🍚","servingIndex":0,"unit":"g","quantity":1,"fraction":1,"servings":[{"label":"100 g","grams":100}],"nutrients":{"calories":3},"perServing":{"calories":349},"aiEstimated":false,"source":"user"}"#
         let p = PortionModel(entry: try JSONDecoder().decode(LogEntry.self, from: Data(json.utf8)))
         p.whole = 100
-        XCTAssertEqual(p.previewCalories, 349, accuracy: 1e-9)
+        XCTAssertEqual(p.previewCalories, 349)
     }
 
     func testAnEntryStoredAtZeroStillPreviews() throws {
         let json = #"{"id":8,"day":"2026-11-18","meal":"lunch","name":"Lettuce","brand":null,"icon":"🥬","servingIndex":0,"unit":"g","quantity":1,"fraction":1,"servings":[{"label":"100 g","grams":100}],"nutrients":{"calories":0},"perServing":{"calories":15},"aiEstimated":false,"source":"user"}"#
         let p = PortionModel(entry: try JSONDecoder().decode(LogEntry.self, from: Data(json.utf8)))
         p.whole = 200
-        XCTAssertEqual(p.previewCalories, 30, accuracy: 1e-9)
+        XCTAssertEqual(p.previewCalories, 30)
     }
 
     func testServingsOnlyForAIEstimates() {
