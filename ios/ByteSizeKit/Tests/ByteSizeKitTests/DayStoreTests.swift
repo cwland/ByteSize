@@ -81,7 +81,8 @@ final class DayStoreTests: XCTestCase {
         HTTPStub.requests = []
         await s.reload()
         XCTAssertEqual(s.day?.day, "2026-11-18")
-        XCTAssertEqual(HTTPStub.requests.first?.request.url?.path(), "/api/day/2026-11-18")
+        // the day and its week's logged days load together (either may go first)
+        XCTAssertTrue(HTTPStub.requests.contains { $0.request.url?.path() == "/api/day/2026-11-18" })
     }
 
     func testAFailedLoadKeepsWhatWasShown() async {
