@@ -747,6 +747,25 @@ export type AiDraft = Omit<FoodResult, "id" | "kind" | "foodKind"> & { category:
 export const AI_COULDNT_ESTIMATE = "The AI couldn't estimate that. Try again, or describe it differently.";
 export const AI_NO_IDEA = "Couldn't work out what that is. Try describing it differently.";
 
+/** One food of several the AI saw or read about (a plate photo, "2 eggs and toast"): a draft and how much of it. */
+export type EstimateItem = { food: AiDraft; servingIndex: number; quantity: number };
+export const MAX_ESTIMATE_ITEMS = 12;
+
+/** The usable items of an AI answer {"items": [...]}: each a draft with a positive amount (1 when missing), at most 12. */
+export function estimateItems(json: unknown): EstimateItem[] {
+  const list = (json as { items?: unknown } | null)?.items;
+  if (!Array.isArray(list)) return [];
+  const out: EstimateItem[] = [];
+  for (const raw of list) {
+    const food = aiDraft(raw);
+    if (!food) continue;
+    const q = Number((raw as { quantity?: unknown }).quantity);
+    out.push({ food, servingIndex: 0, quantity: Number.isFinite(q) && q > 0 && q <= 100 ? q : 1 });
+    if (out.length === MAX_ESTIMATE_ITEMS) break;
+  }
+  return out;
+}
+
 // assumed: the AI took the text to mean something worth confirming ("Did you mean Cheerios?"): interpretedAs
 export type Estimate = { food: AiDraft; assumed: boolean; interpretedAs?: string };
 
@@ -783,6 +802,38 @@ export async function estimateFood(app: FastifyInstance, userId: number, text: s
   const assumed = z.boolean().safeParse(json.assumed).data === true;
   const interpretedAs = z.string().trim().min(1).max(200).safeParse(json.interpretedAs).data;
   return assumed ? { food, assumed, interpretedAs: interpretedAs ?? food.name } : { food, assumed };
+}
+
+const ESTIMATE_ITEMS_ASK = (text: string) =>
+  [
+    `List the foods in this description: ${JSON.stringify(text)}`,
+    "",
+    "List each separate food once (\"2 eggs, toast and coffee\" is three foods), with a usual US serving for it and how many of those servings were eaten (2 eggs: quantity 2 of \"1 large egg\").",
+    "Assume the most likely foods the person meant: the text may misspell a food, write a brand name loosely, or leave words out. Only when nothing sensible fits, give up and answer {\"unknown\": true}.",
+    `Answer as JSON: {"items": [{"name": string, "brand": string | null, "category": string, "servings": [{"label": string, "grams"?: number, "ml"?: number}], "nutrients": {<key>: number}, "quantity": number}], "assumed": boolean, "interpretedAs"?: string}. servings[0] is the usual US serving and the nutrients are for it.`,
+    "Set assumed to true (and interpretedAs to what you took the text to mean) only when you changed or guessed what was typed: a misspelling, an unclear name, a guessed brand. Not when you only reworded clear words.",
+  ].join("\n");
+
+/** Describe it with several foods (iPhone app): one draft per food with its amount, and whether the AI had to assume. */
+export async function estimateFoodItems(app: FastifyInstance, userId: number, text: string): Promise<{ items: EstimateItem[]; assumed: boolean; interpretedAs?: string }> {
+  await aiReady(app);
+  let json: Record<string, unknown>;
+  try {
+    json = await askFood(app, userId, ESTIMATE_ITEMS_ASK(text), {});
+  } catch (err) {
+    if (err instanceof AiStopped || !(err instanceof AiError)) throw err;
+    throw new HttpError(502, AI_COULDNT_ESTIMATE);
+  }
+  if (json.unknown === true) throw new HttpError(422, AI_NO_IDEA);
+  const items = estimateItems(json);
+  if (!items.length) {
+    await logEvent(app.db, { category: "ai", level: "warning", source: "AI estimate", event: "The AI's food estimate couldn't be used", detail: JSON.stringify(json).slice(0, 600), userId });
+    throw new HttpError(502, AI_COULDNT_ESTIMATE);
+  }
+  countUsage(app, userId, "ai_estimates");
+  const assumed = z.boolean().safeParse(json.assumed).data === true;
+  const interpretedAs = z.string().trim().min(1).max(200).safeParse(json.interpretedAs).data;
+  return assumed ? { items, assumed, interpretedAs: interpretedAs ?? items.map((i) => i.food.name).join(", ") } : { items, assumed };
 }
 
 /** An AI answer as a draft food (every value AI-estimated); null when it isn't a food with at least one nutrient. */

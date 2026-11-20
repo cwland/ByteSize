@@ -25,12 +25,12 @@ public actor APIClient {
     }
 
     public func send<R>(_ endpoint: Endpoint<R>) async throws -> R {
-        var request = URLRequest(url: url(for: endpoint), timeoutInterval: 20)
+        var request = URLRequest(url: url(for: endpoint), timeoutInterval: endpoint.timeout)
         request.httpMethod = endpoint.method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body = endpoint.body {
             request.httpBody = body
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(endpoint.contentType ?? "application/json", forHTTPHeaderField: "Content-Type")
         }
         if let token = await token() {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -40,7 +40,9 @@ public actor APIClient {
         let response: URLResponse
         do {
             (data, response) = try await session.data(for: request)
-        } catch is URLError {
+        } catch let error as URLError {
+            // The caller gave up (a newer search, a closed screen): not an outage
+            if error.code == .cancelled || Task.isCancelled { throw CancellationError() }
             throw APIError.unreachable(host: base.host)
         }
         guard let http = response as? HTTPURLResponse else { throw APIError.notByteSize(host: base.host) }
