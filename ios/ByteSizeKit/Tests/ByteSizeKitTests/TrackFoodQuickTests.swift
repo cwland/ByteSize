@@ -182,7 +182,7 @@ final class TrackFoodQuickTests: XCTestCase {
         serve()
         let lunchDay = Self.day("2026-11-18", [Self.entry(70, "2026-11-18", "lunch", "Oatmeal", sourceRef: "cache:50"), Self.entry(72, "2026-11-18", "dinner", "Soup", sourceRef: "cache:60")])
         let previous = HTTPStub.handler
-        let calls = Counter()
+        let calls = CallCounter()
         HTTPStub.handler = { req in
             // The first (Lunch) load answers slowly; Dinner's answers at once
             if req.url?.path() == "/api/day/2026-11-18" { return calls.next() == 1 ? .delayed(0.4, .json(200, lunchDay)) : .json(200, lunchDay) }
@@ -228,7 +228,7 @@ final class TrackFoodQuickTests: XCTestCase {
 }
 
 /// Counts calls from the stub's handler (any thread).
-final class Counter: @unchecked Sendable {
+final class CallCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var n = 0
     func next() -> Int { lock.withLock { n += 1; return n } }
