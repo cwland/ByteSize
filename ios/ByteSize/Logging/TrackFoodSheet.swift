@@ -21,8 +21,8 @@ struct TrackFoodSheet: View {
                     MealPicker(meal: $model.meal)
                 }
                 foodSection("Recent", model.recent)
-                foodSection("Frequent", model.frequent)
-                if model.recent.isEmpty, model.frequent.isEmpty {
+                foodSection("Favorites", model.favorites)
+                if model.recent.isEmpty, model.favorites.isEmpty {
                     Text("Foods you log show up here.").foregroundStyle(palette.color("subtle"))
                 }
             } else {

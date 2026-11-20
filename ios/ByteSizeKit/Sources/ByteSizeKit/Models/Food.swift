@@ -111,6 +111,8 @@ public struct BarcodeResult: Codable, Equatable, Sendable {
 }
 
 public struct FoodList: Codable, Equatable, Sendable { public let foods: [Food] }
+/// The favorites as stored ("cache:42", "user_food:9") after a bookmark change.
+public struct FavoriteRefs: Codable, Equatable, Sendable { public let refs: [String] }
 public struct FoodResponse: Codable, Equatable, Sendable { public let food: Food }
 
 public struct PlateResult: Codable, Equatable, Sendable { public let items: [EstimateItem] }
