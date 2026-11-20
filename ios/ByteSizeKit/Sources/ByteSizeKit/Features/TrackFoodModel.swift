@@ -67,6 +67,8 @@ public final class TrackFoodModel {
                 groups = result.groups.filter { !$0.foods.isEmpty }
                 if groups.isEmpty { message = "Nothing found for “\(q)”" }
             }
+        } catch is CancellationError {
+            return // a newer keystroke took over: keep what's showing
         } catch {
             guard mine == searchNumber else { return }
             groups = []

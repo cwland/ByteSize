@@ -1,7 +1,7 @@
 import Foundation
 
 /// One way to measure a food (the first is what its nutrients are per).
-public struct Serving: Codable, Equatable, Sendable {
+public struct Serving: Codable, Hashable, Sendable {
     public let label: String
     public let grams: Double?
     public let ml: Double?

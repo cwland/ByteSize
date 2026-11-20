@@ -16,6 +16,9 @@ struct ScanSheet: View {
         Group {
             if case .review(let draft, _) = model.step {
                 Form {
+                    if let message = model.message {
+                        Section { Text(message).foregroundStyle(palette.color("error")) }
+                    }
                     LabelReview(draft: draft) { edited in await model.save(edited) }
                 }
             } else {

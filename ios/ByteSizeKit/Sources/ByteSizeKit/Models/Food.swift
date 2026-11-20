@@ -1,7 +1,7 @@
 import Foundation
 
 /// A food the server found (search, barcode, recent, My Foods): what it's called and what one serving holds.
-public struct Food: Codable, Identifiable, Equatable, Sendable {
+public struct Food: Codable, Identifiable, Hashable, Sendable {
     /// "cache" (a database food), "user_food" (the person's own) or "culury" (a Culury recipe).
     public let kind: String
     public let id: Int
