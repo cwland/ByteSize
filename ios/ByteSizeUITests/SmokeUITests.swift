@@ -210,7 +210,7 @@ final class SmokeUITests: XCTestCase {
         row.tap()
         let log = app.buttons["logButton"]
         XCTAssertTrue(log.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS '≈ 105'")).firstMatch.exists, "the calorie preview")
+        XCTAssertEqual(app.staticTexts["previewCalories"].label, "About 105 calories", "the calorie preview, at the top")
         shot("8-portion")
         log.tap()
         XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists && !self.app.searchFields.firstMatch.exists }, "both sheets close")

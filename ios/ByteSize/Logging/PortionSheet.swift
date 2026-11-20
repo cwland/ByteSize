@@ -18,6 +18,15 @@ struct PortionSheet: View {
                     HStack(spacing: 12) {
                         Text(portion.icon).font(.largeTitle)
                         Text(portion.name).font(.headline)
+                        Spacer()
+                        // ≈: the server's numbers rule once it's logged
+                        Text(portion.previewCalories.map { "≈ \($0) cal" } ?? "—")
+                            .font(.headline)
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                            .foregroundStyle(palette.color("subtle"))
+                            .accessibilityLabel(portion.previewCalories.map { "About \($0) calories" } ?? "Enter an amount")
+                            .accessibilityIdentifier("previewCalories")
                     }
                 }
                 Section("Amount") {
@@ -42,17 +51,8 @@ struct PortionSheet: View {
                 Section {
                     MealPicker(meal: $portion.meal)
                 }
-                Section {
-                    HStack {
-                        Text("Calories")
-                        Spacer()
-                        Text(portion.previewCalories.map { "≈ \($0)" } ?? "—")
-                            .monospacedDigit()
-                            .foregroundStyle(palette.color("subtle"))
-                    }
-                    if let message {
-                        Text(message).foregroundStyle(palette.color("error"))
-                    }
+                if let message {
+                    Section { Text(message).foregroundStyle(palette.color("error")) }
                 }
             }
             .navigationTitle("Track")
