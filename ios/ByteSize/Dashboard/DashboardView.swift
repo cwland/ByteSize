@@ -111,7 +111,7 @@ struct DashboardView: View {
                     for i in offsets.map({ dashboard.widgets[$0] }) { dashboard.remove(i) }
                 }
             } footer: {
-                Text("Drag to reorder. Swipe to remove.")
+                Text("Drag ≡ to reorder. Tap ⊖ to remove.")
             }
             if !dashboard.hidden.isEmpty {
                 Section {
