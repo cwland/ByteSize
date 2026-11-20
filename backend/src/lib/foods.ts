@@ -748,6 +748,25 @@ export const AI_COULDNT_ESTIMATE = "The AI couldn't estimate that. Try again, or
 export const AI_NO_IDEA = "Couldn't work out what that is. Try describing it differently.";
 
 // assumed: the AI took the text to mean something worth confirming ("Did you mean Cheerios?"): interpretedAs
+/** One food of several the AI saw or read about (a plate photo, "2 eggs and toast"): a draft and how much of it. */
+export type EstimateItem = { food: AiDraft; servingIndex: number; quantity: number };
+export const MAX_ESTIMATE_ITEMS = 12;
+
+/** The usable items of an AI answer {"items": [...]}: each a draft with a positive amount (1 when missing), at most 12. */
+export function estimateItems(json: unknown): EstimateItem[] {
+  const list = (json as { items?: unknown } | null)?.items;
+  if (!Array.isArray(list)) return [];
+  const out: EstimateItem[] = [];
+  for (const raw of list) {
+    const food = aiDraft(raw);
+    if (!food) continue;
+    const q = Number((raw as { quantity?: unknown }).quantity);
+    out.push({ food, servingIndex: 0, quantity: Number.isFinite(q) && q > 0 && q <= 100 ? q : 1 });
+    if (out.length === MAX_ESTIMATE_ITEMS) break;
+  }
+  return out;
+}
+
 export type Estimate = { food: AiDraft; assumed: boolean; interpretedAs?: string };
 
 const ESTIMATE_ASK = (text: string) =>
