@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
-import { foodCache, logCombines, logEntries, logTrash, userFoods, userSettings, users } from "../db/schema.js";
+import { favorites, foodCache, logCombines, logEntries, logTrash, userFoods, userSettings, users } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
 import { addDays, DAY, localDay, mealFor, MEALS, streak, suggestedFor, todayFor, userTimezone, type Meal } from "../lib/days.js";
@@ -211,7 +211,7 @@ function lastPerFood(db: Db, userId: number, opts: { since?: string; meal?: Meal
 const ONE_MEAL: Portion = { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 };
 
 /** Resolves source refs to the current foods (archived or missing ones are skipped), each with its last portion; quick:<id> = that quick meal, 1 meal. */
-async function resolveFoods(db: Db, userId: number, picks: { ref: string | null; entry: Row }[]) {
+async function resolveFoods(db: Db, userId: number, picks: { ref: string | null; entry?: Row }[]) {
   const ids = (kind: string) => picks.map((p) => p.ref!.split(":")).filter(([k]) => k === kind).map(([, v]) => Number(v));
   const cacheIds = ids("cache");
   const userIds = [...ids("user_food"), ...ids("quick")];
@@ -235,7 +235,7 @@ async function resolveFoods(db: Db, userId: number, picks: { ref: string | null;
     ...mine.map((r) => [`user_food:${r.id}`, toResult(r, "user_food")] as const),
     ...mine.filter((r) => r.kind === "quick_meal").map((r) => [`quick:${r.id}`, toResult(r, "user_food")] as const),
     // Culury recipes are never copied: they come back as last logged (the entry's snapshot)
-    ...picks.filter((p) => p.ref!.startsWith("culury:")).map((p) => [p.ref!, culurySnapshot(p.entry)] as const),
+    ...picks.filter((p) => p.ref!.startsWith("culury:") && p.entry).map((p) => [p.ref!, culurySnapshot(p.entry!)] as const),
   ]);
   // In the order given (newest or most used first); a food reached twice (itself and via its database
   // original) appears once, at its first place
@@ -244,7 +244,8 @@ async function resolveFoods(db: Db, userId: number, picks: { ref: string | null;
     const food = found.get(ref!);
     if (!food || seen.has(`${food.kind}:${food.id}`)) return [];
     seen.add(`${food.kind}:${food.id}`);
-    const last = ref!.startsWith("quick:") ? ONE_MEAL : { servingIndex: entry.servingIndex, unit: entry.unit as Unit, quantity: entry.quantity, fraction: entry.fraction };
+    // No entry (a favorite never logged): one of its serving
+    const last = ref!.startsWith("quick:") || !entry ? ONE_MEAL : { servingIndex: entry.servingIndex, unit: entry.unit as Unit, quantity: entry.quantity, fraction: entry.fraction };
     return [{ ...food, last }];
   });
 }
@@ -782,6 +783,53 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     const { meal } = mealQuery.parse(req.query ?? {});
     const picks = await lastPerFood(db, userId, { meal }).orderBy(desc(sql`last_id`)).limit(RECENT_LIMIT);
     return { foods: await resolveFoods(db, userId, picks) };
+  });
+
+  // L2 (SPEC-10): what was logged in a meal the day before the given day, each with its amount, in log order
+  app.get("/api/foods/same-as-yesterday", async (req) => {
+    const userId = requireUser(req);
+    const q = z.object({ day: DAY, meal: z.enum(MEALS, { error: "Choose a meal" }) }).parse(req.query ?? {});
+    const rows = await db
+      .select()
+      .from(logEntries)
+      .where(and(eq(logEntries.userId, userId), eq(logEntries.day, addDays(q.day, -1)), eq(logEntries.meal, q.meal), isNotNull(logEntries.sourceRef)))
+      .orderBy(asc(logEntries.id));
+    return { foods: await resolveFoods(db, userId, rows.map((entry) => ({ ref: entry.sourceRef, entry }))) };
+  });
+
+  // L2 (SPEC-10): Favorites — bookmarked foods (a cached food or the person's own), newest first
+  const favoriteRefs = async (userId: number) =>
+    (await db.select().from(favorites).where(eq(favorites.userId, userId)).orderBy(desc(favorites.createdAt), desc(favorites.id))).map((f) =>
+      f.cacheId ? `cache:${f.cacheId}` : `user_food:${f.userFoodId}`
+    );
+  const favoriteBody = z.object({ food: z.object({ kind: z.enum(["cache", "user_food"]), id }) });
+
+  app.get("/api/foods/favorites", async (req) => {
+    const userId = requireUser(req);
+    return { foods: await resolveFoods(db, userId, (await favoriteRefs(userId)).map((ref) => ({ ref }))) };
+  });
+
+  app.put("/api/foods/favorites", async (req) => {
+    const userId = requireUser(req);
+    const { food } = favoriteBody.parse(req.body ?? {});
+    // Only a food that exists, and for one's own foods only one's own (not archived)
+    const [found] =
+      food.kind === "cache"
+        ? await db.select({ id: foodCache.id }).from(foodCache).where(eq(foodCache.id, food.id))
+        : await db.select({ id: userFoods.id }).from(userFoods).where(and(eq(userFoods.id, food.id), eq(userFoods.userId, userId), eq(userFoods.archived, false)));
+    if (!found) throw new HttpError(404, "Food not found");
+    await db
+      .insert(favorites)
+      .values({ userId, ...(food.kind === "cache" ? { cacheId: food.id } : { userFoodId: food.id }), createdAt: app.now() })
+      .onConflictDoNothing();
+    return { refs: await favoriteRefs(userId) };
+  });
+
+  app.delete("/api/foods/favorites/:kind/:id", async (req) => {
+    const userId = requireUser(req);
+    const p = z.object({ kind: z.enum(["cache", "user_food"]), id: z.coerce.number().int().positive().max(2147483647) }).parse(req.params);
+    await db.delete(favorites).where(and(eq(favorites.userId, userId), p.kind === "cache" ? eq(favorites.cacheId, p.id) : eq(favorites.userFoodId, p.id)));
+    return { refs: await favoriteRefs(userId) };
   });
 
   // The 20 foods logged most often in the last 60 days (ties: the one used last first); ?meal= as above

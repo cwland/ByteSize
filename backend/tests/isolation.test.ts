@@ -194,6 +194,19 @@ describe("per-user isolation", () => {
     expect((await a.as("GET", "/api/day/2026-11-17")).body.entries).toHaveLength(1);
   });
 
+  it("a user's favorites and same-as-yesterday are their own (L2)", async () => {
+    const { a, b } = await twoUsers(t);
+    const food = (await a.as("POST", "/api/my-foods", { name: "Anna's toast", servings: [{ label: "1 slice", grams: 30 }], nutrients: { calories: 80 } })).body.food;
+    expect((await a.as("PUT", "/api/foods/favorites", { food: { kind: "user_food", id: food.id } })).status).toBe(200);
+    await a.as("POST", "/api/log", { day: "2026-11-18", meal: "breakfast", food: { kind: "user_food", id: food.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
+    expect((await b.as("GET", "/api/foods/favorites")).body.foods).toEqual([]);
+    expect((await b.as("PUT", "/api/foods/favorites", { food: { kind: "user_food", id: food.id } })).status).toBe(404);
+    await b.as("DELETE", `/api/foods/favorites/user_food/${food.id}`);
+    expect((await b.as("GET", "/api/foods/same-as-yesterday?day=2026-11-19&meal=breakfast")).body.foods).toEqual([]);
+    expect((await a.as("GET", "/api/foods/favorites")).body.foods).toHaveLength(1);
+    expect((await a.as("GET", "/api/foods/same-as-yesterday?day=2026-11-19&meal=breakfast")).body.foods).toHaveLength(1);
+  });
+
   it("a user's logged days never include another user's entries", async () => {
     const { a, b } = await twoUsers(t);
     const food = (await a.as("POST", "/api/my-foods", { name: "Anna's toast", servings: [{ label: "1 slice", grams: 30 }], nutrients: { calories: 80 } })).body.food;

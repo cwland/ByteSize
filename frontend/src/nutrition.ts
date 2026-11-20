@@ -17,6 +17,7 @@ export function amountFactor(servings: Serving[], servingIndex: number, unit: Un
     if (s.grams && base.grams) return (quantity * s.grams) / base.grams;
     if (s.ml && base.ml) return (quantity * s.ml) / base.ml;
     if (servingIndex === 0) return quantity;
+    if (s.per && s.per > 0) return quantity * s.per;
     throw fail();
   }
   if (GRAMS[unit] !== undefined) {

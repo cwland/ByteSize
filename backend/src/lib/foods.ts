@@ -17,6 +17,7 @@ import { fatsecretInUse } from "./restaurants/index.js";
 import { SourceError, type SourceFood } from "./foodSources/types.js";
 import { usdaByBarcode, usdaSearch } from "./foodSources/usda.js";
 import { countUsage } from "./usage.js";
+import { withMeasures } from "./measures.js";
 import { NUTRIENT_KEYS, withLiquidVolumes, type NutrientKey, type Nutrients, type Serving } from "./nutrients.js";
 import { linkPhoto, photoForFood, photoUrl, signImageUrl } from "./photos.js";
 
@@ -83,7 +84,7 @@ export function toResult(row: CacheRow, kind: "cache"): FoodResult;
 export function toResult(row: UserFoodRow, kind: "user_food"): FoodResult;
 export function toResult(row: CacheRow | UserFoodRow, kind: "cache" | "user_food"): FoodResult {
   const nutrients = (row.nutrients ?? {}) as Nutrients;
-  const base = { kind, id: row.id, name: row.name, brand: row.brand, icon: iconFor(row.category, row.name), barcode: row.barcode, servings: withLiquidVolumes(row.servings as Serving[], row.category, row.name), nutrients };
+  const base = { kind, id: row.id, name: row.name, brand: row.brand, icon: iconFor(row.category, row.name), barcode: row.barcode, servings: withMeasures(withLiquidVolumes(row.servings as Serving[], row.category, row.name), row.name), nutrients };
   if (kind === "cache") {
     const c = row as CacheRow;
     return { ...base, aiFields: [], imageUrl: signImageUrl(c.imageUrl), override: false, source: CACHE_SOURCES.has(c.source) ? (c.source as FoodResult["source"]) : "off", foodKind: "custom", savedAt: c.fetchedAt.toISOString(), summary: (c.raw as { summary?: unknown } | null)?.summary === true };
@@ -545,7 +546,8 @@ export const foodFields = z.object({
   name: z.string().trim().min(1, "Give the food a name").max(200),
   brand: z.string().trim().max(200).nullable().optional(),
   barcode: z.string().trim().max(40).nullable().optional(),
-  servings: z.array(serving).min(1, "Add at least one serving").max(20),
+  // A unit worked out on lookup ("1 prune") is never saved: it's worked out again next time
+  servings: z.preprocess((v) => (Array.isArray(v) ? v.filter((s) => !(s && typeof s === "object" && (s as { derived?: unknown }).derived === true)) : v), z.array(serving).min(1, "Add at least one serving").max(20)),
   nutrients: nutrientsSchema,
   category: z.string().trim().max(100).nullable().optional(),
   aiFields: z.array(z.enum(NUTRIENT_KEYS)).max(NUTRIENT_KEYS.length).optional(),
