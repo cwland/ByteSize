@@ -170,3 +170,18 @@ Add a **Compounded** option that reveals:
 - Custom dose and unit (e.g. 3.5 mg or 25 units)
 
 **Acceptance:** each standard GLP-1 shows its dose tiers; Compounded allows a custom name and dose.
+
+## Part 4: Added later on 2026-11-19
+
+### SPEC-15: Web — "What's new" popup and version in the corner (like Culury)
+Cory: "a popup like Culury whenever a new version is loaded … show the most recent changes. Also add the version
+number to the left bottom and when users click on the version they can see the changes."
+
+- When someone opens the web app after a new version was deployed, a popup shows the most recent changes (once per
+  version per person), the way Culury does it.
+- The version number shows in the bottom-left corner; clicking it opens the list of changes (the latest first,
+  earlier versions below).
+- Needs a real version per build (today `/api/health` reports `0.1.0` for every build) and a changelog kept in the
+  repo that the build ships with.
+
+**Acceptance:** after a deploy, the first visit shows what changed; the corner version always opens the change list.
