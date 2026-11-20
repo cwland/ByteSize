@@ -9,15 +9,21 @@ final class TodayModels {
     let days: DayStore
     let dashboard: DashboardModel
     let log: FoodLogModel
+    let goals: GoalsModel
     let units: Units
 
     init(api: APIClient, user: User) {
         self.api = api
-        units = Units(user.units)
+        let units = Units(user.units)
         let zone = user.timezone.flatMap(TimeZone.init(identifier:)) ?? .current
-        days = DayStore(api: api, timeZone: zone)
-        dashboard = DashboardModel(api: api, dayStore: days, units: units)
+        let days = DayStore(api: api, timeZone: zone)
+        let dashboard = DashboardModel(api: api, dayStore: days, units: units)
+        self.units = units
+        self.days = days
+        self.dashboard = dashboard
         log = FoodLogModel(api: api, dayStore: days)
+        // A weigh-in logged or deleted on the Goals tab also updates the Dashboard's weight card
+        goals = GoalsModel(api: api, dayStore: days, units: units) { await dashboard.reloadWeight() }
     }
 
     func load() async {

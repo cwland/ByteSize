@@ -47,6 +47,9 @@ public final class GoalsModel {
         self.weightChanged = weightChanged
     }
 
+    /// The account's today: weigh-ins can be logged for it or an earlier day.
+    public var today: String { dayStore.today }
+
     public func load() async {
         async let g = api.send(GoalsAPI.goals())
         async let t = api.send(GoalsAPI.targets())
