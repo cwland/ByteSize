@@ -27,6 +27,19 @@ final class ShellModelTests: XCTestCase {
         XCTAssertEqual(m.activeAction, .scan)
     }
 
+    func testOpeningTrackFoodInAMeal() {
+        let m = ShellModel()
+        m.toggleMenu()
+        m.open(.track, meal: .lunch)
+        XCTAssertFalse(m.menuOpen)
+        XCTAssertEqual(m.activeAction, .track)
+        XCTAssertEqual(m.activeMeal, .lunch)
+        m.activeAction = nil
+        XCTAssertNil(m.activeMeal, "the next open without a meal goes by the time of day")
+        m.choose(.scan)
+        XCTAssertNil(m.activeMeal)
+    }
+
     func testCloseMenu() {
         let m = ShellModel()
         m.toggleMenu()
