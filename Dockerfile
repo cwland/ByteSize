@@ -7,6 +7,8 @@ WORKDIR /src/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
+# The iOS theme parity test (type-checked by the build) imports the shared generator script
+COPY scripts/ /src/scripts/
 RUN npm run build
 
 # ---- API (compiled once, on the build machine; the output is plain JavaScript) ----
