@@ -5,11 +5,17 @@ public struct Serving: Codable, Hashable, Sendable {
     public let label: String
     public let grams: Double?
     public let ml: Double?
+    /// How many of servings[0] one of this is, for a counted unit with no weight ("1 cracker" of "12 crackers").
+    public let per: Double?
+    /// Worked out by the server from the food's servings ("1 prune" from "5 prunes"); never saved on a food.
+    public let derived: Bool?
 
-    public init(label: String, grams: Double? = nil, ml: Double? = nil) {
+    public init(label: String, grams: Double? = nil, ml: Double? = nil, per: Double? = nil, derived: Bool? = nil) {
         self.label = label
         self.grams = grams
         self.ml = ml
+        self.per = per
+        self.derived = derived
     }
 }
 
