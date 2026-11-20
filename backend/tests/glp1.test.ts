@@ -24,8 +24,8 @@ describe("GLP-1 settings and schedule", () => {
   it("saves settings and validates them", async () => {
     const res = await setup();
     expect(res.status).toBe(200);
-    expect(res.body.settings).toEqual({ ...mounjaro, doseUnit: "mg", doseUnit: "mg" });
-    expect((await glp1()).settings).toEqual({ ...mounjaro, doseUnit: "mg", doseUnit: "mg" });
+    expect(res.body.settings).toEqual({ ...mounjaro, doseUnit: "mg" });
+    expect((await glp1()).settings).toEqual({ ...mounjaro, doseUnit: "mg" });
     for (const bad of [{ injectionWeekday: 7 }, { injectionWeekday: 1.5 }, { doseMg: 0 }, { doseMg: -1 }, { medication: "  " }]) {
       expect((await setup(bad)).status).toBe(400);
     }
