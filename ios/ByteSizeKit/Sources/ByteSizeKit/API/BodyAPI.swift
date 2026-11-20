@@ -28,13 +28,24 @@ public struct Shot: Codable, Equatable, Sendable {
     public let day: String
     public let medication: String
     public let doseMg: Double
+    /// "mg", "units" or "ml" (servers before 0.2 don't send it: mg)
+    public let doseUnit: String?
     public let site: String
+    public let note: String?
 }
 
 public struct Glp1Settings: Codable, Equatable, Sendable {
     public let medication: String
     public let doseMg: Double
+    public let doseUnit: String?
     public let injectionWeekday: Int
+}
+
+/// A standard GLP-1 medication and its dose steps (mg), as the server lists them (W1).
+public struct Glp1Medication: Codable, Equatable, Sendable {
+    public let name: String
+    public let ingredient: String
+    public let doses: [Double]
 }
 
 /// GET /api/glp1: status is none / upcoming / due / overdue.
@@ -45,6 +56,9 @@ public struct Glp1View: Codable, Equatable, Sendable {
     public let status: String
     public let overdueDays: Int
     public let suggestedSite: String
+    /// Recent shots, newest first.
+    public let shots: [Shot]?
+    public let medications: [Glp1Medication]?
 }
 
 public struct BadgeItem: Codable, Equatable, Sendable {
@@ -78,9 +92,10 @@ public enum BodyAPI {
 
     public static func glp1() -> Endpoint<Glp1View> { Endpoint("GET", "/api/glp1") }
 
-    struct ShotBody: Encodable { let site: String; let doseMg: Double? }
-    public static func logShot(day: String, site: String, doseMg: Double? = nil) -> Endpoint<Empty> {
-        Endpoint("PUT", "/api/glp1/shots/\(day)", json: ShotBody(site: site, doseMg: doseMg))
+    struct ShotBody: Encodable { let site: String; let doseMg: Double?; let doseUnit: String?; let note: String? }
+    /// One shot per day; an empty note clears the day's note, a left-out one keeps it.
+    public static func logShot(day: String, site: String, doseMg: Double? = nil, doseUnit: String? = nil, note: String? = nil) -> Endpoint<Empty> {
+        Endpoint("PUT", "/api/glp1/shots/\(day)", json: ShotBody(site: site, doseMg: doseMg, doseUnit: doseUnit, note: note))
     }
 
     public static func badges() -> Endpoint<BadgesView> { Endpoint("GET", "/api/badges") }

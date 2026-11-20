@@ -105,8 +105,9 @@ public final class DashboardModel {
     }
 
     /// Today's shot (shots are logged for today, whichever day is on screen).
-    public func logShot(site: String) async throws {
-        _ = try await api.send(BodyAPI.logShot(day: dayStore.today, site: site))
+    /// SPEC-11: the shot as the form has it (dose, date, site, notes).
+    public func logShot(_ form: ShotForm) async throws {
+        _ = try await api.send(BodyAPI.logShot(day: form.day, site: form.site, doseMg: form.doseMg, doseUnit: form.doseUnit, note: form.note))
         await loadGlp1()
     }
 
