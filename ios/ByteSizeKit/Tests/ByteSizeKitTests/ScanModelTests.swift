@@ -4,7 +4,7 @@ import XCTest
 @MainActor
 final class ScanModelTests: XCTestCase {
     private let api = APIClient(base: ServerAddress("https://h.test")!, token: { "t" }, session: HTTPStub.session)
-    private static let saved = #"{"kind":"user_food","id":9,"name":"Wheat crackers","brand":"Acme","icon":"🍘","barcode":"0099999999999","servings":[{"label":"2 crackers","grams":30}],"nutrients":{"calories":140},"aiFields":["calories"],"imageUrl":null,"override":false,"source":"mine","foodKind":"custom"}"#
+    private nonisolated static let saved = #"{"kind":"user_food","id":9,"name":"Wheat crackers","brand":"Acme","icon":"🍘","barcode":"0099999999999","servings":[{"label":"2 crackers","grams":30}],"nutrients":{"calories":140},"aiFields":["calories"],"imageUrl":null,"override":false,"source":"mine","foodKind":"custom"}"#
 
     /// A server that knows 0012345678905, and 0099999999999 only once a food has been saved for it.
     private func serve(label: HTTPStub.Reply = .json(200, #"{"photoIds":["p1"],"draft":\#(FoodFixtures.draft),"errors":[],"labelReading":true}"#), lookup: HTTPStub.Reply? = nil) {
