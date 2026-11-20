@@ -171,8 +171,11 @@ export const SITES = ["abdomen_left", "abdomen_right", "thigh_left", "thigh_righ
 export type Site = (typeof SITES)[number];
 export const SIDE_EFFECTS = ["nausea", "low_appetite", "fatigue", "constipation", "diarrhea", "heartburn", "headache"] as const;
 export type SideEffect = (typeof SIDE_EFFECTS)[number];
-export type Glp1Settings = { medication: string; doseMg: number; injectionWeekday: number /* 0 = Sunday */ };
-export type Shot = { day: string; medication: string; doseMg: number; site: Site; note: string | null };
+// W1: a dose's unit (a compounded dose can be in units or ml); the standard medications come from the server
+export type DoseUnit = "mg" | "units" | "ml";
+export type Medication = { name: string; ingredient: string; doses: number[] };
+export type Glp1Settings = { medication: string; doseMg: number; doseUnit?: DoseUnit; injectionWeekday: number /* 0 = Sunday */ };
+export type Shot = { day: string; medication: string; doseMg: number; doseUnit?: DoseUnit; site: Site; note: string | null };
 export type Glp1View = {
   settings: Glp1Settings | null;
   lastShot: Shot | null;
@@ -182,6 +185,7 @@ export type Glp1View = {
   suggestedSite: Site;
   shots: Shot[]; // newest first
   doseHistory: { day: string; doseMg: number; medication: string }[]; // oldest first; the first shot and every change
+  medications?: Medication[];
 };
 export type SideEffectDay = { day: string; effects: Partial<Record<SideEffect, 1 | 2 | 3>>; note: string | null };
 export type AfterInjection = { enough: boolean; days: { offset: number; avgCalories: number | null; avgProtein: number | null; daysCounted: number }[] };
