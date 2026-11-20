@@ -109,6 +109,13 @@ public final class EstimateModel {
         items[i].quantity = q
     }
 
+    /// The wheel's choice for one item: which of its servings and how many.
+    public func setPortion(servingIndex: Int, quantity: Double, at i: Int) {
+        guard items.indices.contains(i), items[i].food.servings.indices.contains(servingIndex), quantity > 0, quantity.isFinite else { return }
+        items[i].servingIndex = servingIndex
+        items[i].quantity = quantity
+    }
+
     public func remove(at i: Int) {
         guard items.indices.contains(i) else { return }
         items.remove(at: i)

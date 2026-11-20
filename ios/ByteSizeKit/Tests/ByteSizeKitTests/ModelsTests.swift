@@ -93,4 +93,16 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(Units.metric.waterValue(ml: 250), 250)
         XCTAssertEqual(Units.metric.ml(fromWaterDisplay: 250), 250)
     }
+
+    func testAmountsReadInFractionsLikeTheWheel() throws {
+        func entry(_ unit: String, _ q: Double) throws -> LogEntry {
+            try JSONDecoder().decode(LogEntry.self, from: Data(#"{"id":1,"day":"2026-11-20","meal":"lunch","name":"Rice","brand":null,"icon":"🍚","servingIndex":0,"unit":"\#(unit)","quantity":\#(q),"fraction":1,"servings":[{"label":"1 cup","grams":158}],"nutrients":{"calories":1},"aiEstimated":false,"source":"cache"}"#.utf8))
+        }
+        XCTAssertEqual(try entry("serving", 2.5).amountText(units: .imperial), "2½ × 1 cup")
+        XCTAssertEqual(try entry("serving", 0.375).amountText(units: .imperial), "⅜ × 1 cup")
+        XCTAssertEqual(try entry("cup", 1.75).amountText(units: .imperial), "1¾ cup")
+        XCTAssertEqual(try entry("g", 150.5).amountText(units: .imperial), "150.5 g")
+        XCTAssertEqual(try entry("serving", 1.3).amountText(units: .imperial), "1.3 × 1 cup")
+    }
 }
+

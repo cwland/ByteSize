@@ -45,14 +45,26 @@ public struct LogEntry: Codable, Identifiable, Equatable, Sendable {
         let base: String
         if unit == "serving" {
             let label = servings.indices.contains(servingIndex) ? servings[servingIndex].label : "serving"
-            base = quantity == 1 && fraction != 1 ? label : "\(Self.number(quantity)) × \(label)"
+            base = quantity == 1 && fraction != 1 ? label : "\(Self.count(quantity)) × \(label)"
         } else {
-            base = "\(Self.number(quantity)) \(Self.unitNames[unit] ?? unit)"
+            let amount = unit == "g" || unit == "ml" ? Self.number(quantity) : Self.count(quantity)
+            base = "\(amount) \(Self.unitNames[unit] ?? unit)"
         }
         return fraction == 1 ? base : "\(Self.fractionText(fraction)) × \(base)"
     }
 
     static let unitNames = ["g": "g", "oz": "oz", "ml": "ml", "fl_oz": "fl oz", "cup": "cup", "tbsp": "tbsp", "tsp": "tsp"]
+
+    /// 2.5 → "2½", 0.375 → "⅜" (the wheel's fractions); anything else as a number.
+    static func count(_ v: Double) -> String {
+        let whole = (v + 0.001).rounded(.down)
+        let rest = v - whole
+        if abs(rest) < 0.001 { return String(Int(whole)) }
+        if let f = AmountMath.fractions.dropFirst().first(where: { abs($0.value - rest) < 0.001 }) {
+            return whole == 0 ? f.label : "\(Int(whole))\(f.label)"
+        }
+        return number(v)
+    }
 
     static func number(_ v: Double) -> String {
         v.rounded() == v ? String(Int(v)) : String(format: "%g", (v * 100).rounded() / 100)

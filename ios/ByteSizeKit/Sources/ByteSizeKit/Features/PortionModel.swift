@@ -21,13 +21,16 @@ public final class PortionModel {
     public var fraction: Double = 0
     public var choice: UnitChoice = .serving(0)
     public var meal: Meal
+    /// AI estimates are logged in their own servings only (POST /api/log/estimates takes no unit).
+    public let servingsOnly: Bool
 
-    public init(name: String, icon: String, servings: [Serving], nutrients: Nutrients, meal: Meal) {
+    public init(name: String, icon: String, servings: [Serving], nutrients: Nutrients, meal: Meal, servingsOnly: Bool = false) {
         self.name = name
         self.icon = icon
         self.servings = servings
         self.nutrients = nutrients
         self.meal = meal
+        self.servingsOnly = servingsOnly
     }
 
     public convenience init(food: Food, meal: Meal) {
@@ -66,7 +69,7 @@ public final class PortionModel {
     /// Every unit this food can be measured in, labelled.
     public var choices: [(choice: UnitChoice, label: String)] {
         var out = servings.enumerated().map { (UnitChoice.serving($0.offset), $0.element.label) }
-        guard let base = servings.first else { return out }
+        guard let base = servings.first, !servingsOnly else { return out }
         if (base.grams ?? 0) > 0 { out += [AmountUnit.g, .oz].map { (UnitChoice.unit($0), $0.label) } }
         if (base.ml ?? 0) > 0 { out += [AmountUnit.ml, .fl_oz, .cup, .tbsp, .tsp].map { (UnitChoice.unit($0), $0.label) } }
         return out

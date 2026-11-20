@@ -37,9 +37,10 @@ struct ScanSheet: View {
             }
         }
         .sheet(item: $portionFood, onDismiss: { model.restart() }) { food in
+            // SPEC-16: after logging, back to the camera for the next barcode (Close leaves)
             FoodPortionView(food: food, meal: track.meal, message: track.message) { food, portion in
                 let ok = await track.log(food, portion: portion)
-                if ok { close() }
+                if ok { model.logged(food.name) }
                 return ok
             }
         }
@@ -49,6 +50,11 @@ struct ScanSheet: View {
     private var stepView: some View {
         switch model.step {
         case .scanning:
+            if let logged = model.lastLogged {
+                Label("Logged \(logged)", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(palette.color("success"))
+                    .accessibilityIdentifier("loggedToast")
+            }
             if BarcodeScanner.isAvailable {
                 BarcodeScanner { code in
                     Haptics.scanned()
