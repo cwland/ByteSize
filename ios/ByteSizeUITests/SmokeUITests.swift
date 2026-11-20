@@ -158,7 +158,9 @@ final class SmokeUITests: XCTestCase {
         app.buttons["½"].tap()
         shot("10-edit-entry")
         app.buttons["Save"].tap()
-        XCTAssertTrue(app.staticTexts["Fage · ½ × 2 × 1 cup"].waitForExistence(timeout: 5))
+        // the row reads as one combined label ("Greek yogurt, Fage · ½ × 2 × 1 cup, 130")
+        let halved = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "½ × 2 × 1 cup")).firstMatch
+        XCTAssertTrue(halved.waitForExistence(timeout: 5))
     }
 
     func testEditDashboardLayout() {
@@ -169,7 +171,8 @@ final class SmokeUITests: XCTestCase {
         let badges = app.descendants(matching: .any).matching(identifier: "edit-badges").firstMatch
         XCTAssertTrue(badges.waitForExistence(timeout: 3))
         shot("11-dashboard-edit")
-        badges.swipeLeft()
+        // edit mode shows a red ⊖ before each row: tap it (left of the row's label), then Delete
+        badges.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5)).withOffset(CGVector(dx: -55, dy: 0)).tap()
         let delete = app.buttons["Delete"].firstMatch
         XCTAssertTrue(delete.waitForExistence(timeout: 3))
         delete.tap()
