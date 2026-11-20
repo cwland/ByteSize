@@ -7,7 +7,7 @@ final class ScanModelTests: XCTestCase {
     private nonisolated static let saved = #"{"kind":"user_food","id":9,"name":"Wheat crackers","brand":"Acme","icon":"🍘","barcode":"0099999999999","servings":[{"label":"2 crackers","grams":30}],"nutrients":{"calories":140},"aiFields":["calories"],"imageUrl":null,"override":false,"source":"mine","foodKind":"custom"}"#
 
     /// A server that knows 0012345678905, and 0099999999999 only once a food has been saved for it.
-    private func serve(label: HTTPStub.Reply = .json(200, #"{"photoIds":["p1"],"draft":\#(FoodFixtures.draft),"errors":[],"labelReading":true}"#), lookup: HTTPStub.Reply? = nil) {
+    private func serve(save: HTTPStub.Reply = .json(200, #"{"food":\#(ScanModelTests.saved)}"#), label: HTTPStub.Reply = .json(200, #"{"photoIds":["p1"],"draft":\#(FoodFixtures.draft),"errors":[],"labelReading":true}"#), lookup: HTTPStub.Reply? = nil) {
         HTTPStub.requests = []
         HTTPStub.handler = { req in
             let path = req.url?.path() ?? ""
@@ -17,7 +17,7 @@ final class ScanModelTests: XCTestCase {
             case ("GET", "/api/foods/barcode/0099999999999"):
                 return .json(200, savedYet ? #"{"code":"0099999999999","food":\#(ScanModelTests.saved),"errors":[]}"# : #"{"code":"0099999999999","food":null,"errors":[]}"#)
             case ("POST", "/api/photos/analyze"): return label
-            case ("POST", "/api/my-foods"): return .json(200, #"{"food":\#(ScanModelTests.saved)}"#)
+            case ("POST", "/api/my-foods"): return save
             default: return .json(404, #"{"error":"Not found"}"#)
             }
         }
@@ -113,4 +113,17 @@ final class ScanModelTests: XCTestCase {
         XCTAssertEqual(m.step, .scanning)
         XCTAssertNil(m.code)
     }
+
+    func testAFailedSaveKeepsTheEditsToTryAgain() async throws {
+        serve(save: .json(400, #"{"error":"Invalid request","details":[{"path":"name","message":"Give the food a name"}]}"#))
+        let m = ScanModel(api: api)
+        await m.scanned("0099999999999")
+        await m.readLabel(jpeg: Data([1]))
+        guard case .review(var draft, _) = m.step else { return XCTFail("\(m.step)") }
+        draft.nutrients = Nutrients(["calories": 150])
+        await m.save(draft)
+        XCTAssertEqual(m.step, .review(draft, barcode: "0099999999999"), "back to the form, edits kept")
+        XCTAssertEqual(m.message, "Give the food a name")
+    }
 }
+

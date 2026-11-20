@@ -132,4 +132,20 @@ final class TrackFoodModelTests: XCTestCase {
         XCTAssertFalse(ok)
         XCTAssertTrue(requests("POST", "/api/log").isEmpty)
     }
+
+    func testATypedLetterCancellingTheLastSearchShowsNoError() async {
+        serve(search: { $0 == "bana" ? .delayed(2, .json(200, FoodFixtures.search)) : .json(200, FoodFixtures.search) })
+        let (m, _) = model()
+        m.query = "ban"
+        await m.search()
+        XCTAssertEqual(m.groups.count, 2)
+        m.query = "bana"
+        let typing = Task { await m.search() }
+        try? await Task.sleep(for: .milliseconds(100))
+        typing.cancel() // the view's .task(id: query) does this on the next keystroke
+        await typing.value
+        XCTAssertNil(m.message, "no false 'can't reach' message")
+        XCTAssertEqual(m.groups.count, 2, "the last results stay up")
+    }
 }
+
