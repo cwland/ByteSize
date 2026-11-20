@@ -17,10 +17,10 @@ public enum LogAPI {
         Endpoint("POST", "/api/log", json: WaterBody(water_ml: ml, day: day))
     }
 
-    struct PatchBody: Encodable { let quantity: Double?; let fraction: Double?; let servingIndex: Int? }
+    struct PatchBody: Encodable { let quantity: Double?; let fraction: Double?; let servingIndex: Int?; let unit: String? }
     /// Only the given fields change.
-    public static func update(id: Int, quantity: Double?, fraction: Double?, servingIndex: Int?) -> Endpoint<EntryResponse> {
-        Endpoint("PATCH", "/api/log/\(id)", json: PatchBody(quantity: quantity, fraction: fraction, servingIndex: servingIndex))
+    public static func update(id: Int, quantity: Double?, fraction: Double?, servingIndex: Int?, unit: AmountUnit? = nil) -> Endpoint<EntryResponse> {
+        Endpoint("PATCH", "/api/log/\(id)", json: PatchBody(quantity: quantity, fraction: fraction, servingIndex: servingIndex, unit: unit?.rawValue))
     }
 
     public static func delete(id: Int) -> Endpoint<Empty> { Endpoint("DELETE", "/api/log/\(id)") }

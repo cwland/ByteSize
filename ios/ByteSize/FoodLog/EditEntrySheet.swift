@@ -1,8 +1,8 @@
 import ByteSizeKit
 import SwiftUI
 
-/// Change how much: the amount, a fraction (¼ ⅓ ½ ¾ all), and which serving. Water: just the amount.
-/// (Changing the meal is Move.)
+/// Change how much. A food: the three-wheel amount (L1) — whole | fraction | unit, the units it was logged in plus
+/// what the food offers; water: the amount typed in fl oz or ml. (Changing the meal is Move.)
 struct EditEntrySheet: View {
     let entry: LogEntry
     let units: Units
@@ -10,10 +10,15 @@ struct EditEntrySheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.palette) private var palette
     @State private var amount = ""
-    @State private var fraction = 1.0
-    @State private var serving = 0
+    @State private var portion: PortionModel
+    @State private var askingBig = false
 
-    static let fractions: [Double] = [0.25, 1.0 / 3, 0.5, 0.75, 1]
+    init(entry: LogEntry, units: Units, log: FoodLogModel) {
+        self.entry = entry
+        self.units = units
+        self.log = log
+        _portion = State(initialValue: PortionModel(entry: entry))
+    }
 
     var body: some View {
         NavigationStack {
@@ -25,57 +30,61 @@ struct EditEntrySheet: View {
                             Text(entry.name).font(.headline)
                             if let brand = entry.brand { Text(brand).font(.caption).foregroundStyle(.secondary) }
                         }
+                        Spacer()
+                        if !entry.isWater {
+                            Text(portion.previewCalories.map { "≈ \($0) cal" } ?? "—")
+                                .font(.headline).monospacedDigit()
+                                .foregroundStyle(palette.color("subtle"))
+                                .accessibilityLabel(portion.previewCalories.map { "About \($0) calories" } ?? "Enter an amount")
+                                .accessibilityIdentifier("previewCalories")
+                        }
                     }
                 }
-                Section(entry.isWater ? "Amount (\(units.waterUnit))" : "Amount") {
-                    TextField("Amount", text: $amount).keyboardType(.decimalPad)
-                    if !entry.isWater, entry.unit == "serving", entry.servings.count > 1 {
-                        Picker("Serving", selection: $serving) {
-                            ForEach(entry.servings.indices, id: \.self) { Text(entry.servings[$0].label).tag($0) }
-                        }
-                    } else if !entry.isWater, entry.unit == "serving", let only = entry.servings.first {
-                        LabeledContent("Serving", value: only.label)
+                if entry.isWater {
+                    Section("Amount (\(units.waterUnit))") {
+                        TextField("Amount", text: $amount).keyboardType(.decimalPad)
                     }
-                }
-                if !entry.isWater {
-                    Section("Portion") {
-                        HStack {
-                            ForEach(Self.fractions, id: \.self) { f in
-                                let on = abs(fraction - f) < 0.001
-                                Button(f == 1 ? "All" : LogEntry.fractionText(f)) { fraction = f }
-                                    .buttonStyle(.plain)
-                                    .frame(maxWidth: .infinity, minHeight: 36)
-                                    .background(on ? palette.color("primary") : palette.color("pressed"), in: RoundedRectangle(cornerRadius: 8))
-                                    .foregroundStyle(palette.color(on ? "on-primary" : "ink"))
-                                    .accessibilityAddTraits(on ? .isSelected : [])
-                            }
-                        }
+                } else {
+                    Section("Amount") {
+                        AmountWheel(portion: portion)
                     }
                 }
             }
             .navigationTitle("Edit")
             .navigationBarTitleDisplayMode(.inline)
+            .alert(BigAmount.question(calories: portion.previewCalories ?? 0, name: entry.name), isPresented: $askingBig) {
+                Button("Change", role: .cancel) {}
+                Button("Log it") { save() }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        guard let typed = Double(amount.replacingOccurrences(of: ",", with: ".")) else { return }
-                        // water is typed in fl oz or ml; the server keeps ml
-                        let q = entry.isWater ? (units.ml(fromWaterDisplay: typed) * 10).rounded() / 10 : typed
-                        Task {
-                            await log.update(entry, quantity: q, fraction: fraction, servingIndex: serving)
-                            dismiss()
-                        }
+                        if !entry.isWater, portion.isBig { askingBig = true } else { save() }
                     }
-                    .disabled(Double(amount.replacingOccurrences(of: ",", with: ".")) == nil)
+                    .disabled(entry.isWater ? typedWater == nil : !portion.canLog)
+                    .accessibilityIdentifier("saveEntry")
                 }
             }
             .onAppear {
-                let shown = entry.isWater ? (units.waterValue(ml: entry.quantity) * 10).rounded() / 10 : entry.quantity
+                let shown = (units.waterValue(ml: entry.quantity) * 10).rounded() / 10
                 amount = shown.rounded() == shown ? String(Int(shown)) : String(shown)
-                fraction = entry.fraction
-                serving = entry.servingIndex
             }
+        }
+    }
+
+    private var typedWater: Double? { Double(amount.replacingOccurrences(of: ",", with: ".")).flatMap { $0 > 0 ? $0 : nil } }
+
+    private func save() {
+        Task {
+            if entry.isWater {
+                guard let typed = typedWater else { return }
+                // water is typed in fl oz or ml; the server keeps ml
+                await log.update(entry, quantity: (units.ml(fromWaterDisplay: typed) * 10).rounded() / 10, fraction: 1, servingIndex: entry.servingIndex)
+            } else {
+                await log.update(entry, portion: portion)
+            }
+            dismiss()
         }
     }
 }

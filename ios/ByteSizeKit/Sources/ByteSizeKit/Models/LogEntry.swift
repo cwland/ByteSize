@@ -5,11 +5,17 @@ public struct Serving: Codable, Hashable, Sendable {
     public let label: String
     public let grams: Double?
     public let ml: Double?
+    /// How many of servings[0] one of this is, for a counted unit with no weight ("1 cracker" of "12 crackers").
+    public let per: Double?
+    /// Worked out by the server from the food's servings ("1 prune" from "5 prunes"); never saved on a food.
+    public let derived: Bool?
 
-    public init(label: String, grams: Double? = nil, ml: Double? = nil) {
+    public init(label: String, grams: Double? = nil, ml: Double? = nil, per: Double? = nil, derived: Bool? = nil) {
         self.label = label
         self.grams = grams
         self.ml = ml
+        self.per = per
+        self.derived = derived
     }
 }
 
@@ -27,6 +33,8 @@ public struct LogEntry: Codable, Identifiable, Equatable, Sendable {
     public let fraction: Double
     public let servings: [Serving]
     public let nutrients: Nutrients
+    /// The food's own nutrients per servings[0], unrounded (servers before 0.4 don't send it).
+    public let perServing: Nutrients?
     public let aiEstimated: Bool
     public let source: String
 
@@ -39,14 +47,26 @@ public struct LogEntry: Codable, Identifiable, Equatable, Sendable {
         let base: String
         if unit == "serving" {
             let label = servings.indices.contains(servingIndex) ? servings[servingIndex].label : "serving"
-            base = quantity == 1 && fraction != 1 ? label : "\(Self.number(quantity)) × \(label)"
+            base = quantity == 1 && fraction != 1 ? label : "\(Self.count(quantity)) × \(label)"
         } else {
-            base = "\(Self.number(quantity)) \(Self.unitNames[unit] ?? unit)"
+            let amount = unit == "g" || unit == "ml" ? Self.number(quantity) : Self.count(quantity)
+            base = "\(amount) \(Self.unitNames[unit] ?? unit)"
         }
         return fraction == 1 ? base : "\(Self.fractionText(fraction)) × \(base)"
     }
 
     static let unitNames = ["g": "g", "oz": "oz", "ml": "ml", "fl_oz": "fl oz", "cup": "cup", "tbsp": "tbsp", "tsp": "tsp"]
+
+    /// 2.5 → "2½", 0.375 → "⅜" (the wheel's fractions); anything else as a number.
+    static func count(_ v: Double) -> String {
+        let whole = (v + 0.001).rounded(.down)
+        let rest = v - whole
+        if abs(rest) < 0.001 { return String(Int(whole)) }
+        if let f = AmountMath.fractions.dropFirst().first(where: { abs($0.value - rest) < 0.001 }) {
+            return whole == 0 ? f.label : "\(Int(whole))\(f.label)"
+        }
+        return number(v)
+    }
 
     static func number(_ v: Double) -> String {
         v.rounded() == v ? String(Int(v)) : String(format: "%g", (v * 100).rounded() / 100)

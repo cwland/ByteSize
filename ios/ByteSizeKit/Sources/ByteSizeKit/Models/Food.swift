@@ -65,7 +65,7 @@ public struct EstimateItem: Codable, Equatable, Sendable {
     }
 
     /// Calories for the amount (≈: the server's numbers rule once logged).
-    public var calories: Double { food.calories * quantity }
+    public var calories: Double { food.calories * (AmountMath.factor(food.servings, servingIndex: servingIndex, unit: .serving, quantity: quantity) ?? quantity) }
 }
 
 public struct SourceError: Codable, Equatable, Sendable {

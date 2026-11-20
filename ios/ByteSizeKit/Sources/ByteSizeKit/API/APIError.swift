@@ -10,11 +10,14 @@ public enum APIError: Error, Equatable, Sendable {
     case unreachable(host: String)
     /// Something answered, but not ByteSize (a Wi-Fi sign-in page, a proxy error page).
     case notByteSize(host: String)
+    /// An AI call (photo, estimate) ran past its long wait: the server is there, the AI was slow.
+    case aiTimedOut
 
     public var message: String {
         switch self {
         case .unauthorized(let m), .server(_, let m): m
         case .unreachable(let host), .notByteSize(let host): "Can't reach ByteSize at \(host)"
+        case .aiTimedOut: "The AI took too long — try again"
         }
     }
 }

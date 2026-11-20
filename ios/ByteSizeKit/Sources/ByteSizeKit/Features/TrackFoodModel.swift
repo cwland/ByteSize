@@ -11,6 +11,8 @@ public final class TrackFoodModel {
     public private(set) var groups: [FoodGroup] = []
     public private(set) var searching = false
     public private(set) var message: String?
+    /// The food just logged ("Logged Banana"); the search is cleared for the next one (SPEC-16).
+    public private(set) var lastLogged: String?
     /// The meal new portions start in (the time of day's meal, in the account's timezone).
     public var meal: Meal
 
@@ -78,10 +80,14 @@ public final class TrackFoodModel {
 
     /// Logs the portion on the day being looked at; the day reloads. False (with a message) when the server says no.
     public func log(_ food: Food, portion: PortionModel) async -> Bool {
-        guard let quantity = portion.quantity, portion.canLog else { return false }
+        guard portion.canLog else { return false }
         do {
-            _ = try await api.send(FoodAPI.log(food: food, day: dayStore.selected, meal: portion.meal, servingIndex: portion.servingIndex, quantity: quantity, fraction: portion.fraction))
+            _ = try await api.send(FoodAPI.log(food: food, day: dayStore.selected, meal: portion.meal, servingIndex: portion.servingIndex, unit: portion.unit, quantity: portion.quantity))
             message = nil
+            lastLogged = food.name
+            meal = portion.meal // the next food starts in the same meal
+            query = ""
+            groups = []
             await dayStore.reload()
             return true
         } catch {

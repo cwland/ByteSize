@@ -52,7 +52,7 @@ final class FoodAPITests: XCTestCase {
     func testLogSendsExactlyTheLogFields() async throws {
         HTTPStub.routes(["/api/log": .json(200, #"{"entry":{"id":20,"day":"2026-11-18","meal":"lunch","name":"Banana","brand":null,"icon":"🍌","servingIndex":0,"unit":"serving","quantity":1.5,"fraction":0.5,"servings":[{"label":"1 medium","grams":118}],"nutrients":{"calories":78.75},"aiEstimated":false,"source":"cache"}}"#)])
         let banana = try JSONDecoder().decode(Food.self, from: Data(FoodFixtures.banana.utf8))
-        let r = try await api.send(FoodAPI.log(food: banana, day: "2026-11-18", meal: .lunch, servingIndex: 0, quantity: 1.5, fraction: 0.5))
+        let r = try await api.send(FoodAPI.log(food: banana, day: "2026-11-18", meal: .lunch, servingIndex: 0, quantity: 1.5))
         XCTAssertEqual(r.entry.id, 20)
         let body = try XCTUnwrap(sent().json)
         XCTAssertEqual(body.keys.sorted(), ["day", "food", "fraction", "meal", "quantity", "servingIndex", "unit"])
@@ -155,5 +155,29 @@ final class FoodAPITests: XCTestCase {
             XCTAssertTrue(error is CancellationError, "\(error)")
         }
     }
-}
 
+    func testValuesThePersonCorrectedAreNotMarkedAI() async throws {
+        HTTPStub.routes(["/api/my-foods": .json(200, #"{"food":\#(FoodFixtures.banana)}"#)])
+        let read = try JSONDecoder().decode(AiDraft.self, from: Data(FoodFixtures.draft.utf8)) // calories 140, protein 3, fat 5
+        var fixed = read
+        fixed.nutrients = Nutrients(["calories": 150, "protein_g": 3, "fat_g": 5, "fiber_g": 2])
+        _ = try await api.send(FoodAPI.saveFood(fixed, barcode: nil, original: read))
+        XCTAssertEqual(sent().json?["aiFields"] as? [String], ["fat_g", "protein_g"]) // calories corrected, fiber typed in
+    }
+
+    func testASlowAIAnswerSaysSo() async {
+        HTTPStub.routes(["/api/ai/estimate-items": .fail(.timedOut), "/api/foods/search": .fail(.timedOut)])
+        do {
+            _ = try await api.send(FoodAPI.estimateItems("a sandwich"))
+            XCTFail("should fail")
+        } catch {
+            XCTAssertEqual((error as? APIError)?.message, "The AI took too long — try again")
+        }
+        do {
+            _ = try await api.send(FoodAPI.search("bread"))
+            XCTFail("should fail")
+        } catch {
+            XCTAssertEqual((error as? APIError)?.message, "Can't reach ByteSize at h.test", "an ordinary call that times out is still unreachable")
+        }
+    }
+}
