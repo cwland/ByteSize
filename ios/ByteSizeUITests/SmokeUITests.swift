@@ -510,6 +510,16 @@ final class SmokeUITests: XCTestCase {
         XCTAssertEqual(app.buttons["dayHeader"].label, "Today")
     }
 
+    func testAFailedDayShowsWhyInTheFoodLog() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        let chip = app.buttons["day-\(dayString(-3))"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 5))
+        chip.tap()
+        XCTAssertTrue(label("ByteSize didn't answer").waitForExistence(timeout: 5), "not a silently empty day")
+        XCTAssertTrue(app.buttons["retryDay"].exists)
+    }
+
     func testOverviewExpandsToDailyTotals() {
         signedIn()
         let chevron = app.buttons["overviewChevron"]

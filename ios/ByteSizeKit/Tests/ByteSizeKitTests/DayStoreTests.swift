@@ -201,6 +201,20 @@ final class DayStoreTests: XCTestCase {
         XCTAssertTrue(s.canSelect("2026-11-19"))
     }
 
+    func testTodayIsObservedSoTheStripMovesWhileOnAnOlderDay() async {
+        serveDays()
+        let clock = Clock(ISO8601DateFormatter().date(from: "2026-11-19T06:00:00Z")!) // Nov 18, 11 pm in Denver
+        let s = DayStore(api: api, timeZone: denver, now: { clock.now })
+        await s.select("2026-11-10")
+        let changed = Flag()
+        withObservationTracking { _ = s.stripDays; _ = s.isToday } onChange: { changed.set() }
+        clock.now = ISO8601DateFormatter().date(from: "2026-11-19T14:00:00Z")! // Nov 19, 7 am
+        await s.dayMayHaveChanged()
+        XCTAssertTrue(changed.value, "views showing the strip must redraw: Nov 19 is choosable now")
+        XCTAssertEqual(s.selected, "2026-11-10")
+        XCTAssertTrue(s.canSelect("2026-11-19"))
+    }
+
     func testFollowsTodayPastMidnight() async {
         serveDays()
         let clock = Clock(ISO8601DateFormatter().date(from: "2026-11-19T06:00:00Z")!) // Nov 18, 11 pm in Denver
@@ -227,4 +241,12 @@ final class DayStoreTests: XCTestCase {
 final class Clock: @unchecked Sendable {
     var now: Date
     init(_ now: Date) { self.now = now }
+}
+
+/// Set from an observation callback (any thread).
+final class Flag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var on = false
+    func set() { lock.withLock { on = true } }
+    var value: Bool { lock.withLock { on } }
 }
