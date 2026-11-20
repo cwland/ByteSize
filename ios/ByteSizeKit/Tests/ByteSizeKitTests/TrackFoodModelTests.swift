@@ -80,8 +80,8 @@ final class TrackFoodModelTests: XCTestCase {
     }
 
     func testTheLastSearchWins() async {
-        let slow = #"{"groups":[{"source":"basic","label":"Old","foods":[]}],"errors":[]}"#
-        let fast = #"{"groups":[{"source":"basic","label":"New","foods":[]}],"errors":[]}"#
+        let slow = #"{"groups":[{"source":"basic","label":"Old","foods":[\#(FoodFixtures.banana)]}],"errors":[]}"#
+        let fast = #"{"groups":[{"source":"basic","label":"New","foods":[\#(FoodFixtures.banana)]}],"errors":[]}"#
         serve(search: { $0 == "ban" ? .delayed(0.4, .json(200, slow)) : .json(200, fast) })
         let (m, _) = model()
         m.query = "ban"
