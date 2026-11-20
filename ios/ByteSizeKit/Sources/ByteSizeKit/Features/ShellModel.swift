@@ -58,7 +58,11 @@ public enum QuickAction: String, CaseIterable, Identifiable, Sendable {
 public final class ShellModel {
     public private(set) var tab: AppTab = .dashboard
     public private(set) var menuOpen = false
-    public var activeAction: QuickAction?
+    public var activeAction: QuickAction? {
+        didSet { if activeAction == nil { activeMeal = nil } }
+    }
+    /// The meal the action was opened for (a meal's Add in the Food Log); nil → the time of day's meal.
+    public private(set) var activeMeal: Meal?
     public var profileOpen = false
 
     public init() {}
@@ -71,8 +75,11 @@ public final class ShellModel {
     public func toggleMenu() { menuOpen.toggle() }
     public func closeMenu() { menuOpen = false }
 
-    public func choose(_ action: QuickAction) {
+    public func choose(_ action: QuickAction) { open(action, meal: nil) }
+
+    public func open(_ action: QuickAction, meal: Meal? = nil) {
         menuOpen = false
+        activeMeal = meal
         activeAction = action
     }
 }
