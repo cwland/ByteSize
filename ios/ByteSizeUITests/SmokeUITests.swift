@@ -209,7 +209,13 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
         let log = app.buttons["logButton"]
-        XCTAssertTrue(log.waitForExistence(timeout: 5))
+        if !log.waitForExistence(timeout: 5) {
+            shot("8-after-tap")
+            if let dir = ProcessInfo.processInfo.environment["SHOTS_DIR"] {
+                try? app.debugDescription.write(toFile: dir + "/8-after-tap.txt", atomically: true, encoding: .utf8)
+            }
+        }
+        XCTAssertTrue(log.exists)
         XCTAssertEqual(app.staticTexts["previewCalories"].label, "About 105 calories", "the calorie preview, at the top")
         shot("8-portion")
         log.tap()
