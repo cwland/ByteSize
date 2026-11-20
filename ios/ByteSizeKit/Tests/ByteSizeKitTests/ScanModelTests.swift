@@ -137,4 +137,15 @@ final class ScanModelTests: XCTestCase {
         await m.scanned("0012345678905") // the next one
         guard case .found = m.step else { return XCTFail("\(m.step)") }
     }
+
+    func testSavingAnEditedLabelMarksOnlyWhatTheAIRead() async throws {
+        serve()
+        let m = ScanModel(api: api)
+        await m.scanned("0099999999999")
+        await m.readLabel(jpeg: Data([1]))
+        guard case .review(var draft, _) = m.step else { return XCTFail("\(m.step)") }
+        draft.nutrients = Nutrients(["calories": 150, "protein_g": 3, "fat_g": 5])
+        await m.save(draft)
+        XCTAssertEqual(HTTPStub.requests.last?.json?["aiFields"] as? [String], ["fat_g", "protein_g"])
+    }
 }
