@@ -100,7 +100,7 @@ final class TrackFoodModelTests: XCTestCase {
         let food = try JSONDecoder().decode(Food.self, from: Data(FoodFixtures.banana.utf8))
         let portion = PortionModel(food: food, meal: .breakfast)
         portion.meal = .dinner
-        portion.quantityText = "2"
+        portion.whole = 2
         portion.fraction = 0.5
         let reloadsBefore = requests("GET", "/api/day/2026-11-17").count
         let ok = await m.log(food, portion: portion)
@@ -108,8 +108,9 @@ final class TrackFoodModelTests: XCTestCase {
         let body = try XCTUnwrap(requests("POST", "/api/log").last?.json)
         XCTAssertEqual(body["day"] as? String, "2026-11-17")
         XCTAssertEqual(body["meal"] as? String, "dinner")
-        XCTAssertEqual(body["quantity"] as? Double, 2)
-        XCTAssertEqual(body["fraction"] as? Double, 0.5)
+        XCTAssertEqual(body["quantity"] as? Double, 2.5)
+        XCTAssertEqual(body["fraction"] as? Double, 1)
+        XCTAssertEqual(body["unit"] as? String, "serving")
         XCTAssertEqual(requests("GET", "/api/day/2026-11-17").count, reloadsBefore + 1, "the day reloads")
     }
 
@@ -127,7 +128,7 @@ final class TrackFoodModelTests: XCTestCase {
         let (m, _) = model()
         let food = try JSONDecoder().decode(Food.self, from: Data(FoodFixtures.banana.utf8))
         let portion = PortionModel(food: food, meal: .lunch)
-        portion.quantityText = "0"
+        portion.whole = 0
         let ok = await m.log(food, portion: portion)
         XCTAssertFalse(ok)
         XCTAssertTrue(requests("POST", "/api/log").isEmpty)
@@ -146,6 +147,20 @@ final class TrackFoodModelTests: XCTestCase {
         await typing.value
         XCTAssertNil(m.message, "no false 'can't reach' message")
         XCTAssertEqual(m.groups.count, 2, "the last results stay up")
+    }
+
+    func testGramsAreSentAsGrams() async throws {
+        serve()
+        let (m, _) = model()
+        let food = try JSONDecoder().decode(Food.self, from: Data(FoodFixtures.banana.utf8))
+        let portion = PortionModel(food: food, meal: .lunch)
+        portion.choice = .unit(.g)
+        portion.whole = 150
+        _ = await m.log(food, portion: portion)
+        let body = try XCTUnwrap(requests("POST", "/api/log").last?.json)
+        XCTAssertEqual(body["unit"] as? String, "g")
+        XCTAssertEqual(body["quantity"] as? Double, 150)
+        XCTAssertEqual(body["servingIndex"] as? Int, 0)
     }
 }
 

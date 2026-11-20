@@ -31,14 +31,15 @@ public enum FoodAPI {
         let meal: String
         let food: FoodRef
         let servingIndex: Int
-        let unit = "serving"
+        let unit: String
         let quantity: Double
         let fraction: Double
     }
 
-    /// Logs a found food in its own servings.
-    public static func log(food: Food, day: String, meal: Meal, servingIndex: Int, quantity: Double, fraction: Double) -> Endpoint<EntryResponse> {
-        Endpoint("POST", "/api/log", json: LogBody(day: day, meal: meal.rawValue, food: FoodRef(kind: food.kind, id: food.id), servingIndex: servingIndex, quantity: quantity, fraction: fraction))
+    /// Logs a found food: an amount of one of its servings, or of a weight/volume unit (fraction is always 1: the
+    /// wheel's fraction is part of the quantity, as the web sends it).
+    public static func log(food: Food, day: String, meal: Meal, servingIndex: Int, unit: AmountUnit = .serving, quantity: Double) -> Endpoint<EntryResponse> {
+        Endpoint("POST", "/api/log", json: LogBody(day: day, meal: meal.rawValue, food: FoodRef(kind: food.kind, id: food.id), servingIndex: servingIndex, unit: unit.rawValue, quantity: quantity, fraction: 1))
     }
 
     struct EstimateLogItem: Encodable {

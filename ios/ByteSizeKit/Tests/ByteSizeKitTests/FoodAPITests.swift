@@ -52,7 +52,7 @@ final class FoodAPITests: XCTestCase {
     func testLogSendsExactlyTheLogFields() async throws {
         HTTPStub.routes(["/api/log": .json(200, #"{"entry":{"id":20,"day":"2026-11-18","meal":"lunch","name":"Banana","brand":null,"icon":"🍌","servingIndex":0,"unit":"serving","quantity":1.5,"fraction":0.5,"servings":[{"label":"1 medium","grams":118}],"nutrients":{"calories":78.75},"aiEstimated":false,"source":"cache"}}"#)])
         let banana = try JSONDecoder().decode(Food.self, from: Data(FoodFixtures.banana.utf8))
-        let r = try await api.send(FoodAPI.log(food: banana, day: "2026-11-18", meal: .lunch, servingIndex: 0, quantity: 1.5, fraction: 0.5))
+        let r = try await api.send(FoodAPI.log(food: banana, day: "2026-11-18", meal: .lunch, servingIndex: 0, quantity: 1.5))
         XCTAssertEqual(r.entry.id, 20)
         let body = try XCTUnwrap(sent().json)
         XCTAssertEqual(body.keys.sorted(), ["day", "food", "fraction", "meal", "quantity", "servingIndex", "unit"])

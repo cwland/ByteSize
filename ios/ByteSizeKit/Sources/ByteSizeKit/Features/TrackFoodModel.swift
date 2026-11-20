@@ -78,9 +78,9 @@ public final class TrackFoodModel {
 
     /// Logs the portion on the day being looked at; the day reloads. False (with a message) when the server says no.
     public func log(_ food: Food, portion: PortionModel) async -> Bool {
-        guard let quantity = portion.quantity, portion.canLog else { return false }
+        guard portion.canLog else { return false }
         do {
-            _ = try await api.send(FoodAPI.log(food: food, day: dayStore.selected, meal: portion.meal, servingIndex: portion.servingIndex, quantity: quantity, fraction: portion.fraction))
+            _ = try await api.send(FoodAPI.log(food: food, day: dayStore.selected, meal: portion.meal, servingIndex: portion.servingIndex, unit: portion.unit, quantity: portion.quantity))
             message = nil
             await dayStore.reload()
             return true
