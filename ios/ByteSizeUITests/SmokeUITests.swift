@@ -296,6 +296,63 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Prunes"].waitForExistence(timeout: 5))
     }
 
+    // MARK: - L2: meals always there with Add; quick foods one tap away; the bookmark
+
+    private func label(_ text: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label ==[c] %@", text)).firstMatch
+    }
+
+    private func openDinnerFromTheFoodLog() {
+        app.buttons["Food Log"].tap()
+        let add = app.buttons["addTo-dinner"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5), "an empty meal still shows, with its Add")
+        add.tap()
+        XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 5))
+    }
+
+    func testEmptyMealsHaveAddAndOpenInThatMeal() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        XCTAssertTrue(app.buttons["addTo-dinner"].waitForExistence(timeout: 5))
+        XCTAssertFalse(label("Nothing logged yet — tap + to track food").exists)
+        shot("15-food-log-add")
+        app.buttons["addTo-dinner"].tap()
+        let meal = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Dinner")).firstMatch
+        XCTAssertTrue(meal.waitForExistence(timeout: 5), "Track Food opens in Dinner")
+    }
+
+    func testPlusLogsFromSameAsYesterdayAndLogAll() {
+        signedIn()
+        openDinnerFromTheFoodLog()
+        XCTAssertTrue(label("Same as yesterday").waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["quickAdd-Pasta"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["quickAdd-Plate estimate"].exists)
+        shot("16-quick-sections")
+        app.buttons["quickAdd-Pasta"].tap()
+        XCTAssertTrue(label("Logged Pasta").waitForExistence(timeout: 5))
+        app.buttons["logAllYesterday"].tap()
+        XCTAssertTrue(label("Logged 2 foods").waitForExistence(timeout: 5))
+        closeSheet()
+        XCTAssertTrue(app.staticTexts["Pasta"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Plate estimate"].exists)
+    }
+
+    func testBookmarkMakesAFavorite() {
+        signedIn()
+        trackSearch("prunes", pick: "Prunes")
+        let bookmark = app.buttons["bookmark"]
+        XCTAssertTrue(bookmark.waitForExistence(timeout: 5))
+        XCTAssertEqual(bookmark.label, "Add to Favorites")
+        bookmark.tap()
+        XCTAssertTrue(waitUntil { bookmark.label == "Remove from Favorites" })
+        shot("17-bookmark")
+        app.navigationBars.buttons.element(boundBy: 0).tap() // Back to the search
+        let clear = app.searchFields.firstMatch.buttons["Clear text"]
+        if clear.waitForExistence(timeout: 3) { clear.tap() }
+        XCTAssertTrue(label("Favorites").waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["quickAdd-Prunes"].waitForExistence(timeout: 5))
+    }
+
     func testBigAmountAsks() {
         signedIn()
         trackSearch("banana", pick: "Banana")
