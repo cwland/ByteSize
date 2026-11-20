@@ -113,12 +113,12 @@ final class MyFoodsModelTests: XCTestCase {
     func testLogSendsTheSelectedDay() async throws {
         serve { _ in .json(200, MyFoodFixtures.list()) }
         let (m, days) = model()
-        await days.select("2026-11-21")
+        await days.select("2026-11-17")
         let food = try JSONDecoder().decode(Food.self, from: Data(MyFoodFixtures.food(1, "Oat bars").utf8))
         let ok = await m.log(food, portion: PortionModel(food: food, meal: .lunch))
         XCTAssertTrue(ok)
         let post = HTTPStub.requests.first { $0.request.httpMethod == "POST" && $0.request.url?.path() == "/api/log" }
-        XCTAssertEqual(post?.json?["day"] as? String, "2026-11-21")
+        XCTAssertEqual(post?.json?["day"] as? String, "2026-11-17")
         XCTAssertEqual(post?.json?["meal"] as? String, "lunch")
     }
 }
