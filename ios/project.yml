@@ -33,6 +33,8 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: ByteSize
         INFOPLIST_KEY_NSCameraUsageDescription: ByteSize uses the camera to scan barcodes and photograph food and nutrition labels.
         INFOPLIST_KEY_NSHealthShareUsageDescription: ByteSize reads your weight, steps and workouts from Apple Health.
+        # Apple requires this one too for any HealthKit app, even one that only reads (TestFlight upload refused without it)
+        INFOPLIST_KEY_NSHealthUpdateUsageDescription: ByteSize only reads from Apple Health; it doesn't save anything there.
         CODE_SIGN_ENTITLEMENTS: ByteSize/ByteSize.entitlements
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
