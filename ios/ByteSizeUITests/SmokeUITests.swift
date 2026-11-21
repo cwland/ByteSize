@@ -50,6 +50,24 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Sign in"].waitForExistence(timeout: 5), "back on sign-in")
     }
 
+    /// I6: a passkey and the server's OAuth provider are offered beside the password (the sheets themselves need a
+    /// real phone and a real Authentik; the model is tested with fakes).
+    func testSignInOffersAPasskeyAndAuthentik() {
+        let server = app.textFields["serverField"]
+        XCTAssertTrue(server.waitForExistence(timeout: 5))
+        server.tap()
+        server.typeText("stub.test")
+        let username = app.textFields["usernameField"]
+        for _ in 0..<3 where !username.exists {
+            app.buttons["Continue"].firstMatch.tap()
+            _ = username.waitForExistence(timeout: 3)
+        }
+        XCTAssertTrue(app.buttons["passkeySignIn"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["oauthSignIn"].label, "Sign in with Authentik")
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "coming to the app soon")).firstMatch.exists)
+        shot("i6-sign-in")
+    }
+
     func testWrongPassword() {
         signIn(password: "wrong")
         let error = app.staticTexts["signInError"]
