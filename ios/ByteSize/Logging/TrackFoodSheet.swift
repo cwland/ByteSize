@@ -70,9 +70,12 @@ struct TrackFoodSheet: View {
             .padding(.bottom, 4)
             .background(palette.color("page"))
         }
+        // Focus is set when the search screen is back on screen: a request made while it's still sliding back in is
+        // ignored. First open, or back from logging somewhere (SPEC-16): ready to type. Back without logging: left down.
         .onAppear {
-            guard !focusedOnce else { return }
+            guard !focusedOnce || justLogged else { return }
             focusedOnce = true
+            justLogged = false
             searchFocused = true
         }
         .task { await model.load() }
@@ -88,19 +91,11 @@ struct TrackFoodSheet: View {
                 model.clearMessage() // an old error isn't about the food being opened
                 searchFocused = false // back without logging: the keyboard stays down (TF2)
             }
-            if now == nil, justLogged { // back from logging: ready to type the next
-                justLogged = false
-                searchFocused = true
-            }
         }
         .navigationDestination(item: $hub) { action in hubScreen(action) }
         // One meal for the whole hub: Photo and Describe use Track Food's, and a change there comes back
         .onChange(of: hub) { _, now in
             if now != nil { searchFocused = false } // leaving: SwiftUI would hand the focus back on return (TF2)
-            if now == nil, justLogged { // logged in Photo or Describe: ready for the next food
-                justLogged = false
-                searchFocused = true
-            }
             if now == .photo || now == .describe { estimate.meal = model.meal }
         }
         .onChange(of: estimate.meal) { _, meal in if hub != nil { model.meal = meal } }
