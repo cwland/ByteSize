@@ -22,7 +22,8 @@ struct GoalsView: View {
         .scrollContentBackground(.hidden)
         .background(palette.color("page"))
         .refreshable { await model.load() }
-        .task { if !model.loaded { await model.load() } }
+        // Every time the tab opens: a weigh-in from the Dashboard, a new day or a change on the web shows up
+        .task { await model.load() }
         .overlay(alignment: .bottom) {
             if let message = model.message {
                 MessageBanner(text: message) { model.clearMessage() }.padding(.bottom, 8)

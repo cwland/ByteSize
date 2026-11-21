@@ -59,17 +59,18 @@ public final class MyFoodsModel {
     public private(set) var foods: [Food] = []
     public private(set) var loaded = false
     public private(set) var message: String?
-    /// The meal new portions start in (the time of day's meal).
-    public var meal: Meal
+    /// The meal new portions start in: the time of day's meal, worked out when it's used (the model lives all session).
+    public var meal: Meal { Meal.suggested(at: now(), in: dayStore.zone) }
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let dayStore: DayStore
     @ObservationIgnored private var loadNumber = 0
+    @ObservationIgnored private let now: () -> Date
 
     public init(api: APIClient, dayStore: DayStore, now: @escaping () -> Date = Date.init) {
         self.api = api
         self.dayStore = dayStore
-        meal = Meal.suggested(at: now(), in: dayStore.zone)
+        self.now = now
     }
 
     /// What to say when the list is empty (nil when it isn't).
