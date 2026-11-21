@@ -68,7 +68,8 @@ and web, goals and badges included) without typing anything. This round only **r
   - Typed workouts and `PATCH` are unchanged.
 - Steps (`PUT /api/steps/:day` with `source: "health"`) already exist and already upsert the day's Health total
   (that total is Health's to keep up to date); no change. Future days are refused by all three routes.
-- Export (`lib/exportData.ts`) lists both new tables; backups pick them up from the schema.
+- Backups pick up both new tables from the schema. The CSV export (the person's readable data) is unchanged: the skip
+  tables are bookkeeping. *(Changed while planning.)*
 
 ### 4.2 iPhone
 - **ByteSizeKit**
@@ -117,7 +118,7 @@ and web, goals and badges included) without typing anything. This round only **r
 - Server (Vitest): health weigh-in on an empty day saves; on a day with a weigh-in or a skipped day is skipped and
   changes nothing; deleting a weigh-in marks the day; a manual weigh-in clears the mark; a Health workout sent again
   after he edited it (type, minutes, note) is skipped and his edits stay; a deleted Health workout sent again is
-  skipped; a typed workout is unaffected; future days refused; export includes both skip tables.
+  skipped; a typed workout is unaffected; future days refused.
 - Kit: first-of-day pick; windows (first sync 30 days, later from last sync − 2 days, steps 7 days); workout type
   mapping and rounding; nothing in the future; a failed send keeps `lastSynced`; switches off → nothing read.
 - UI: Profile → turn Weight on → Sync now → "1 weigh-in" and the Dashboard weight card shows the Health weight.
