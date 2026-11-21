@@ -27,10 +27,12 @@ public final class QuickMealEditorModel {
             name = detail.name ?? ""
             items = (detail.items ?? []).map(EditItem.init)
             message = nil
+            loaded = true // only a loaded form can be edited and saved (review I-1)
+        } catch is CancellationError {
+            return // the screen went away mid-load: the next appearance tries again
         } catch {
             message = FoodEditorModel.errorText(error)
         }
-        loaded = true
     }
 
     /// A quick meal can't hold another quick meal.
@@ -51,6 +53,7 @@ public final class QuickMealEditorModel {
     public var total: Nutrients { EditItem.sum(items) }
 
     public func save() async -> Food? {
+        guard loaded else { return nil } // never save an unloaded form over the real one
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { message = "Give the meal a name"; return nil }
         guard !items.isEmpty else { message = "Add at least one food"; return nil }

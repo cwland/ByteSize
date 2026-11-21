@@ -39,10 +39,12 @@ public final class RecipeEditorModel {
             items = (detail.items ?? []).map(EditItem.init)
             loadedAs = key
             message = nil
+            loaded = true // only a loaded form can be edited and saved (review I-1)
+        } catch is CancellationError {
+            return // the screen went away mid-load: the next appearance tries again
         } catch {
             message = FoodEditorModel.errorText(error)
         }
-        loaded = true
     }
 
     /// Ingredients can't be quick meals, or this recipe.
@@ -88,6 +90,7 @@ public final class RecipeEditorModel {
     }
 
     public func save() async -> Food? {
+        guard loaded else { return nil } // never save an unloaded form over the real one
         notice = nil
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         let w = weight.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")

@@ -26,6 +26,8 @@ public final class FoodPickerModel {
         let q = query.trimmingCharacters(in: .whitespaces)
         guard q.count >= 2 else {
             results = []
+            message = nil
+            searching = false
             return
         }
         searching = true
@@ -35,6 +37,8 @@ public final class FoodPickerModel {
             guard mine == searchNumber else { return }
             results = out.groups.flatMap(\.foods).filter { ($0.kind == "cache" || $0.kind == "user_food") && allowed($0) }
             message = results.isEmpty ? "Nothing found" : nil
+        } catch is CancellationError {
+            return // a newer keystroke took over (review I-3)
         } catch {
             guard mine == searchNumber else { return }
             message = (error as? APIError)?.message ?? error.localizedDescription

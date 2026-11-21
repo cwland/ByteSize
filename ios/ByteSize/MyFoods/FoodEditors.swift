@@ -26,6 +26,10 @@ struct FoodEditorView: View {
 
     var body: some View {
         Form {
+            // Next to Save (top), not under the nutrients (review I-2)
+            if let message = model.message {
+                Section { Text(message).foregroundStyle(palette.color("error")).accessibilityIdentifier("editorMessage") }
+            }
             Section("Food") {
                 TextField("Name", text: $model.name).accessibilityIdentifier("foodName")
                 TextField("Brand (optional)", text: $model.brand)
@@ -66,9 +70,6 @@ struct FoodEditorView: View {
                     Button("Fill gaps with AI", systemImage: "sparkles") { Task { await model.fillGaps() } }
                         .disabled(model.busy)
                 }
-            }
-            if let message = model.message {
-                Section { Text(message).foregroundStyle(palette.color("error")).accessibilityIdentifier("editorMessage") }
             }
         }
         .navigationTitle(model.isNew ? "New food" : "Edit food")
@@ -170,6 +171,8 @@ struct RecipeEditorView: View {
 
     var body: some View {
         Form {
+            EditorMessages(message: model.message, notice: model.notice)
+            if model.loaded {
             Section { TextField("Name, like Chili", text: $model.name).accessibilityIdentifier("recipeName") }
             ItemsSection(title: "Ingredients", addTitle: "Add ingredient", items: model.items, onAmount: { route = .amount($0) }, onRemove: { model.remove(at: $0) }, onAdd: { route = .pick })
             Section {
@@ -191,7 +194,11 @@ struct RecipeEditorView: View {
                     Text(model.changed ? "Save your changes first" : "Recalculate uses the ingredients' foods as they are now, in case their numbers changed.")
                 }
             }
-            EditorMessages(message: model.message, notice: model.notice)
+            } else if model.message == nil {
+                Section { ProgressView() }
+            } else {
+                Section { Button("Try again") { Task { await model.load() } } }
+            }
         }
         .navigationTitle(model.id == nil ? "New recipe" : "Edit recipe")
         .navigationBarTitleDisplayMode(.inline)
@@ -231,10 +238,16 @@ struct QuickMealEditorView: View {
 
     var body: some View {
         Form {
-            Section { TextField("Name, like Usual breakfast", text: $model.name).accessibilityIdentifier("mealName") }
-            ItemsSection(title: "Foods", addTitle: "Add food", items: model.items, onAmount: { route = .amount($0) }, onRemove: { model.remove(at: $0) }, onAdd: { route = .pick })
-            TotalsSection(title: "Total", n: model.total)
             EditorMessages(message: model.message, notice: nil)
+            if model.loaded {
+                Section { TextField("Name, like Usual breakfast", text: $model.name).accessibilityIdentifier("mealName") }
+                ItemsSection(title: "Foods", addTitle: "Add food", items: model.items, onAmount: { route = .amount($0) }, onRemove: { model.remove(at: $0) }, onAdd: { route = .pick })
+                TotalsSection(title: "Total", n: model.total)
+            } else if model.message == nil {
+                Section { ProgressView() }
+            } else {
+                Section { Button("Try again") { Task { await model.load() } } }
+            }
         }
         .navigationTitle(model.id == nil ? "New quick meal" : "Edit quick meal")
         .navigationBarTitleDisplayMode(.inline)
