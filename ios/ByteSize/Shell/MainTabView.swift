@@ -37,12 +37,20 @@ struct MainTabView: View {
                 .presentationDetents([.large])
         }
         .sheet(isPresented: $shell.profileOpen) {
-            ProfileSheet(profile: profile)
+            ProfileSheet(profile: profile, health: today.health) { await today.dashboard.reloadWeight() }
         }
-        .task { await today.load() }
-        // Back in the app (maybe the next morning): follow today if that's what was showing
+        .task {
+            await today.load()
+            await today.syncHealth()
+        }
+        // Back in the app (maybe the next morning): follow today if that's what was showing, and read Health
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await today.days.dayMayHaveChanged() } }
+            if phase == .active {
+                Task {
+                    await today.days.dayMayHaveChanged()
+                    await today.syncHealth()
+                }
+            }
         }
         // …and at midnight while the app stays open
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in

@@ -53,6 +53,6 @@ struct RootView: View {
 
     private func startToday(_ user: User) {
         guard let api = session.api else { return }
-        today = TodayModels(api: api, user: user)
+        today = TodayModels(api: api, user: user, account: "\(session.server?.host ?? "")|\(user.id)")
     }
 }
