@@ -141,4 +141,10 @@ public final class MyFoodsModel {
     }
 
     public func clearNotice() { notice = nil }
+
+    // R2: the editors, with this model's server
+    public func foodEditor(_ food: Food?) -> FoodEditorModel { FoodEditorModel(api: api, food: food) }
+    public func recipeEditor(id: Int?) -> RecipeEditorModel { RecipeEditorModel(api: api, id: id) }
+    public func mealEditor(id: Int?) -> QuickMealEditorModel { QuickMealEditorModel(api: api, id: id) }
+    public func picker(allowed: @escaping (Food) -> Bool) -> FoodPickerModel { FoodPickerModel(api: api, allowed: allowed) }
 }

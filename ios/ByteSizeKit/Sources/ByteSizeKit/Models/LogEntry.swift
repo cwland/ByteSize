@@ -9,13 +9,16 @@ public struct Serving: Codable, Hashable, Sendable {
     public let per: Double?
     /// Worked out by the server from the food's servings ("1 prune" from "5 prunes"); never saved on a food.
     public let derived: Bool?
+    /// The ml is worked out from the grams (≈ 1 g per ml), not measured.
+    public let approx: Bool?
 
-    public init(label: String, grams: Double? = nil, ml: Double? = nil, per: Double? = nil, derived: Bool? = nil) {
+    public init(label: String, grams: Double? = nil, ml: Double? = nil, per: Double? = nil, derived: Bool? = nil, approx: Bool? = nil) {
         self.label = label
         self.grams = grams
         self.ml = ml
         self.per = per
         self.derived = derived
+        self.approx = approx
     }
 }
 
