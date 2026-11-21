@@ -62,8 +62,9 @@ struct PhotoButtons: View {
             #if DEBUG
             // UI tests: the simulator has no camera, so a pretend photo stands in (the stub server reads it)
             if StubServer.isOn {
-                Button("Use test photo") { onJPEG(Data(Self.testPlatePhoto.utf8)) }.accessibilityIdentifier("testPhoto")
-                Button("Use test barcode photo") { onJPEG(Data(Self.testBarcodePhoto.utf8)) }.accessibilityIdentifier("testBarcodePhoto")
+                // Bordered: in a Form row, plain buttons would all fire on any tap
+                Button("Use test photo") { onJPEG(Data(Self.testPlatePhoto.utf8)) }.buttonStyle(.bordered).accessibilityIdentifier("testPhoto")
+                Button("Use test barcode photo") { onJPEG(Data(Self.testBarcodePhoto.utf8)) }.buttonStyle(.bordered).accessibilityIdentifier("testBarcodePhoto")
             }
             #endif
         }

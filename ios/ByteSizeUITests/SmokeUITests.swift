@@ -1080,7 +1080,6 @@ final class SmokeUITests: XCTestCase {
         openAction("Photo")
         XCTAssertTrue(app.buttons["testPhoto"].waitForExistence(timeout: 5))
         app.buttons["testPhoto"].tap()
-        sleep(3); shot("dbg-photo")
         XCTAssertTrue(app.descendants(matching: .any)["item-Toast"].waitForExistence(timeout: 5))
     }
 
