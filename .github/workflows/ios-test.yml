@@ -1,0 +1,36 @@
+name: iOS tests
+
+# Any push or pull request that touches the iPhone app: logic tests, then an unsigned simulator build.
+on:
+  push:
+    branches: ["**"]
+    paths: ["ios/**", ".github/workflows/ios-*.yml"]
+  pull_request:
+    paths: ["ios/**", ".github/workflows/ios-*.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use the newest Xcode 27
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_27*.app | grep -vi beta | sort -V | tail -1)"
+          xcodebuild -version
+      - name: Release-tag script tests
+        run: bash ios/scripts/ci-version.test.sh
+      - name: ByteSizeKit tests
+        working-directory: ios/ByteSizeKit
+        run: swift test
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Build the app for the simulator
+        working-directory: ios
+        run: |
+          xcodegen generate
+          xcodebuild build -project ByteSize.xcodeproj -scheme ByteSize \
+            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
