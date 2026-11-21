@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { MET } from "../src/lib/activity.js";
+import { workoutSkips } from "../src/db/schema.js";
 
 // §40b: steps and workouts (typed, or sent by the phone), and workout calories in the plan.
 let t: TestApp;
@@ -117,12 +118,48 @@ describe("workouts", () => {
     expect(res.body.workout.day).toBe(TODAY);
   });
 
-  it("Health workouts need the phone's id; sending the same id again updates it instead of adding another", async () => {
+  it("Health workouts need the phone's id; sending the same id again changes nothing (ByteSize wins)", async () => {
     expect((await workout({ source: "health" })).status).toBe(400);
-    const first = (await workout({ source: "health", externalId: "HK-1", type: "cycling", minutes: 40, calories: 350 })).body.workout;
-    const again = (await workout({ source: "health", externalId: "HK-1", type: "cycling", minutes: 42, calories: 362 })).body.workout;
-    expect(again.id).toBe(first.id);
-    expect((await activity()).workouts).toEqual([expect.objectContaining({ externalId: "HK-1", minutes: 42, calories: 362, source: "health" })]);
+    const first = await workout({ source: "health", externalId: "HK-1", type: "cycling", minutes: 40, calories: 350 });
+    expect(first.body.skipped).toBe(false);
+    const again = await workout({ source: "health", externalId: "HK-1", type: "cycling", minutes: 42, calories: 362 });
+    expect(again.body.skipped).toBe(true);
+    expect(again.body.workout.id).toBe(first.body.workout.id);
+    expect((await activity()).workouts).toEqual([expect.objectContaining({ externalId: "HK-1", minutes: 40, calories: 350, source: "health" })]);
+  });
+
+  it("a Health workout sent again keeps his edits", async () => {
+    const hk = (await workout({ source: "health", externalId: "HK-2", type: "walk", minutes: 30, calories: 120 })).body.workout;
+    await t.api("PATCH", `/api/workouts/${hk.id}`, { type: "hike", minutes: 45, note: "Table Rock" });
+    const again = await workout({ source: "health", externalId: "HK-2", type: "walk", minutes: 30, calories: 120 });
+    expect(again.body.skipped).toBe(true);
+    expect((await activity()).workouts).toEqual([expect.objectContaining({ id: hk.id, type: "hike", minutes: 45, note: "Table Rock", calories: 120 })]);
+  });
+
+  it("a deleted Health workout isn't brought back", async () => {
+    const hk = (await workout({ source: "health", externalId: "HK-3" })).body.workout;
+    expect((await t.api("DELETE", `/api/workouts/${hk.id}`)).status).toBe(204);
+    const again = await workout({ source: "health", externalId: "HK-3" });
+    expect(again.status).toBe(200);
+    expect(again.body).toEqual({ workout: null, skipped: true });
+    expect((await activity()).workouts).toEqual([]);
+  });
+
+  it("a typed workout is unaffected: two posts make two rows, and deleting one marks nothing", async () => {
+    const a = (await workout({ minutes: 10 })).body;
+    await workout({ minutes: 10 });
+    expect(a.skipped).toBe(false);
+    expect((await activity()).workouts).toHaveLength(2);
+    await t.api("DELETE", `/api/workouts/${a.workout.id}`);
+    expect(await t.db.select().from(workoutSkips)).toEqual([]);
+  });
+
+  it("deleted Health workouts are per person", async () => {
+    const hk = (await workout({ source: "health", externalId: "HK-4" })).body.workout;
+    await t.api("DELETE", `/api/workouts/${hk.id}`);
+    const other = await t.createUser("sam");
+    t.setToken(other.token);
+    expect((await workout({ source: "health", externalId: "HK-4" })).body.skipped).toBe(false);
   });
 
   it("a typed workout never matches or re-sources a Health one: externalId is for Health sends only", async () => {

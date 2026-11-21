@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
-import { activitySteps, userBody, workoutCalorieModes, workouts } from "../db/schema.js";
+import { activitySteps, userBody, workoutCalorieModes, workoutSkips, workouts } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
 import { addDays, DAY, todayFor } from "../lib/days.js";
@@ -144,14 +144,22 @@ export default async function activityRoutes(app: FastifyInstance) {
     await notFuture(userId, day);
     const now = app.now();
     const fields = { day, type: b.type, minutes: b.minutes, calories: b.calories ?? null, note: b.note || null, source: b.source, updatedAt: now };
-    const [row] = b.externalId
-      ? await db
-          .insert(workouts)
-          .values({ userId, ...fields, externalId: b.externalId, createdAt: now })
-          .onConflictDoUpdate({ target: [workouts.userId, workouts.externalId], targetWhere: sql`${workouts.externalId} is not null`, set: fields })
-          .returning()
-      : await db.insert(workouts).values({ userId, ...fields, createdAt: now }).returning();
-    return { workout: toWorkout(row) };
+    if (!b.externalId) {
+      const [row] = await db.insert(workouts).values({ userId, ...fields, createdAt: now }).returning();
+      return { workout: toWorkout(row), skipped: false };
+    }
+    // From Health, insert only (I5): one already here keeps his edits; one he deleted stays deleted
+    const externalId = b.externalId;
+    const [skip] = await db.select({ id: workoutSkips.id }).from(workoutSkips).where(and(eq(workoutSkips.userId, userId), eq(workoutSkips.externalId, externalId)));
+    if (skip) return { workout: null, skipped: true };
+    const [row] = await db
+      .insert(workouts)
+      .values({ userId, ...fields, externalId, createdAt: now })
+      .onConflictDoNothing({ target: [workouts.userId, workouts.externalId], where: sql`${workouts.externalId} is not null` })
+      .returning();
+    if (row) return { workout: toWorkout(row), skipped: false };
+    const [existing] = await db.select().from(workouts).where(and(eq(workouts.userId, userId), eq(workouts.externalId, externalId)));
+    return { workout: existing ? toWorkout(existing) : null, skipped: true };
   });
 
   app.patch("/api/workouts/:id", async (req) => {
@@ -172,10 +180,16 @@ export default async function activityRoutes(app: FastifyInstance) {
   app.delete("/api/workouts/:id", async (req, reply) => {
     const userId = requireUser(req);
     const { id } = idParam.parse(req.params);
-    const gone = await db
-      .delete(workouts)
-      .where(and(eq(workouts.id, id), eq(workouts.userId, userId)))
-      .returning({ id: workouts.id });
+    const gone = await db.transaction(async (tx) => {
+      const rows = await tx
+        .delete(workouts)
+        .where(and(eq(workouts.id, id), eq(workouts.userId, userId)))
+        .returning({ id: workouts.id, externalId: workouts.externalId });
+      // A Health workout he deleted isn't brought back by the next sync
+      const ext = rows[0]?.externalId;
+      if (ext) await tx.insert(workoutSkips).values({ userId, externalId: ext }).onConflictDoNothing();
+      return rows;
+    });
     if (!gone.length) throw new HttpError(404, NOT_FOUND);
     return reply.status(204).send();
   });
