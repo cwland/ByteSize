@@ -279,6 +279,10 @@ final class QuickMealModelTests: XCTestCase {
         }
     }
 
+    private func myFoods() -> MyFoodsModel {
+        MyFoodsModel(api: api, dayStore: DayStore(api: api, timeZone: denver, now: { self.noon }), now: { self.noon })
+    }
+
     final class DeleteState: @unchecked Sendable {
         var current: [String]
         init(list: [String]) { current = list }
@@ -286,7 +290,7 @@ final class QuickMealModelTests: XCTestCase {
 
     func testDeleteRemovesAndSaysRemoved() async throws {
         serveDelete(.json(200, #"{"archived":false}"#), list: [MyFoodFixtures.food(7, "Oat bars"), MyFoodFixtures.food(8, "Granola")])
-        let (m, _) = model()
+        let m = myFoods()
         await m.load()
         await m.delete(m.foods[0])
         XCTAssertEqual(HTTPStub.requests.filter { $0.request.httpMethod == "DELETE" }.count, 1)
@@ -299,7 +303,7 @@ final class QuickMealModelTests: XCTestCase {
 
     func testDeleteInUseSaysHidden() async {
         serveDelete(.json(200, #"{"archived":true}"#), list: [MyFoodFixtures.food(7, "Oat bars")])
-        let (m, _) = model()
+        let m = myFoods()
         await m.load()
         await m.delete(m.foods[0])
         XCTAssertEqual(m.notice, "Hidden (it's in use)")
@@ -308,7 +312,7 @@ final class QuickMealModelTests: XCTestCase {
 
     func testDeleteFailureShowsTheError() async {
         serveDelete(.json(500, #"{"error":"Something went wrong"}"#), list: [MyFoodFixtures.food(7, "Oat bars")])
-        let (m, _) = model()
+        let m = myFoods()
         await m.load()
         await m.delete(m.foods[0])
         XCTAssertNil(m.notice)
@@ -318,7 +322,7 @@ final class QuickMealModelTests: XCTestCase {
 
     func testSavedSaysSavedAndReloads() async {
         serveDelete(.json(200, #"{"archived":false}"#), list: [MyFoodFixtures.food(8, "Granola")])
-        let (m, _) = model()
+        let m = myFoods()
         await m.saved()
         XCTAssertEqual(m.notice, "Saved")
         XCTAssertEqual(m.foods.map(\.name), ["Granola"])
