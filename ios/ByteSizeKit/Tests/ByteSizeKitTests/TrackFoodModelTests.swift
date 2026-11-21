@@ -9,7 +9,9 @@ final class TrackFoodModelTests: XCTestCase {
     private let morning = ISO8601DateFormatter().date(from: "2026-11-19T15:00:00Z")!
     private static let entry = #"{"entry":{"id":30,"day":"2026-11-17","meal":"breakfast","name":"Banana","brand":null,"icon":"🍌","servingIndex":0,"unit":"serving","quantity":1,"fraction":1,"servings":[{"label":"1 medium","grams":118}],"nutrients":{"calories":105},"aiEstimated":false,"source":"cache"}}"#
 
-    private func serve(search: @escaping @Sendable (String) -> HTTPStub.Reply = { _ in .json(200, FoodFixtures.search) }, log: HTTPStub.Reply = .json(200, TrackFoodModelTests.entry)) {
+    private func serve(search: @escaping @Sendable (String) -> HTTPStub.Reply = { _ in .json(200, FoodFixtures.search) }, log: HTTPStub.Reply = .json(200, TrackFoodModelTests.entry),
+                       recipe: HTTPStub.Reply = .json(200, #"{"food":\#(FoodFixtures.culury),"hasNutrition":true,"outdated":false}"#),
+                       estimate: HTTPStub.Reply = .json(200, #"{"items":[\#(FoodFixtures.toast)],"assumed":false}"#)) {
         HTTPStub.requests = []
         HTTPStub.handler = { req in
             let path = req.url?.path() ?? ""
@@ -24,6 +26,8 @@ final class TrackFoodModelTests: XCTestCase {
             case ("GET", "/api/foods/barcode/0012345678905"): return .json(200, #"{"code":"0012345678905","food":\#(FoodFixtures.banana),"errors":[]}"#)
             case ("GET", "/api/foods/barcode/0099999999999"): return .json(200, #"{"code":"0099999999999","food":null,"errors":[]}"#)
             case ("POST", "/api/log"): return log
+            case ("GET", "/api/culury/recipes/7"): return recipe
+            case ("POST", "/api/ai/estimate-items"): return estimate
             default: return .json(404, #"{"error":"Not found"}"#)
             }
         }
@@ -104,6 +108,94 @@ final class TrackFoodModelTests: XCTestCase {
         m.query = "0099999999999"
         await m.search()
         XCTAssertNil(m.found, "an unknown barcode")
+    }
+
+    // MARK: Culury recipes on the phone (tests for what shipped untested in #14)
+
+    private static let chili = try! JSONDecoder().decode(Food.self, from: Data(FoodFixtures.culury.utf8))
+    private static func chiliWith(_ nutrients: String, grams: Bool = true) -> String {
+        FoodFixtures.culury.replacingOccurrences(of: #""nutrients":{"calories":400}"#, with: #""nutrients":\#(nutrients)"#)
+            .replacingOccurrences(of: #"[{"label":"1 bowl"}]"#, with: grams ? #"[{"label":"1 bowl","grams":60}]"# : #"[{"label":"1 bowl"}]"#)
+    }
+
+    func testCuluryRecipesAreLoggableHere() {
+        XCTAssertTrue(Self.chili.isLoggable)
+        XCTAssertTrue(Self.chili.isCulury)
+    }
+
+    func testARecipeIsReadLiveBeforeItOpens() async {
+        serve(recipe: .json(200, #"{"food":\#(Self.chiliWith(#"{"calories":450}"#)),"hasNutrition":true,"outdated":false}"#))
+        let (m, _) = model()
+        let opened = await m.openRecipe(Self.chili)
+        XCTAssertEqual(opened.calories, 450, "Culury's numbers now, not the search's copy")
+        XCTAssertNil(m.recipeNote)
+        XCTAssertFalse(m.recipeNeedsEstimate)
+    }
+
+    func testAnOutOfDateRecipeSaysSo() async {
+        serve(recipe: .json(200, #"{"food":\#(FoodFixtures.culury),"hasNutrition":true,"outdated":true}"#))
+        let (m, _) = model()
+        _ = await m.openRecipe(Self.chili)
+        XCTAssertEqual(m.recipeNote, "Culury's nutrition for this recipe may be out of date.")
+    }
+
+    func testCuluryDownUsesTheCopyInHand() async {
+        serve(recipe: .json(502, #"{"error":"Culury didn't answer"}"#))
+        let (m, _) = model()
+        let opened = await m.openRecipe(Self.chili)
+        XCTAssertEqual(opened, Self.chili)
+        XCTAssertEqual(m.recipeNote, "Culury is unavailable — using the last logged version")
+    }
+
+    func testOtherFoodsOpenAsTheyAre() async {
+        serve()
+        let (m, _) = model()
+        let banana = try! JSONDecoder().decode(Food.self, from: Data(FoodFixtures.banana.utf8))
+        let opened = await m.openRecipe(banana)
+        XCTAssertEqual(opened, banana)
+        XCTAssertNil(m.recipeNote)
+        XCTAssertTrue(requests("GET", "/api/culury/recipes/41").isEmpty)
+    }
+
+    func testARecipeWithoutNutritionIsEstimatedAndLoggedWithIt() async throws {
+        // The recipe's bowl weighs 60 g; the AI's toast is 80 cal per 30 g slice → 160 cal per bowl
+        serve(recipe: .json(200, #"{"food":\#(Self.chiliWith("{}")),"hasNutrition":false,"outdated":false}"#))
+        let (m, _) = model()
+        let opened = await m.openRecipe(Self.chili)
+        XCTAssertTrue(m.recipeNeedsEstimate)
+        XCTAssertEqual(m.recipeNote, "Culury has no nutrition for this recipe. Estimate it, or track it as unknown.")
+        let maybe = await m.estimateRecipe(opened)
+        let estimated = try XCTUnwrap(maybe)
+        XCTAssertEqual(estimated.calories, 160)
+        XCTAssertFalse(m.recipeNeedsEstimate)
+        XCTAssertEqual(requests("POST", "/api/ai/estimate-items").last?.json?["text"] as? String, "1 serving of Chili (60 g)")
+        let portion = PortionModel(food: estimated, meal: .dinner)
+        _ = await m.log(estimated, portion: portion)
+        let body = try XCTUnwrap(requests("POST", "/api/log").last?.json)
+        XCTAssertEqual((body["nutrients"] as? [String: Double])?["calories"], 160, "the estimate goes with the entry")
+        XCTAssertEqual((body["food"] as? [String: Any])?["kind"] as? String, "culury")
+    }
+
+    func testOtherFoodsNeverSendNutrients() async throws {
+        serve()
+        let (m, _) = model()
+        let banana = try! JSONDecoder().decode(Food.self, from: Data(FoodFixtures.banana.utf8))
+        _ = await m.log(banana, portion: PortionModel(food: banana, meal: .breakfast))
+        XCTAssertNil(try XCTUnwrap(requests("POST", "/api/log").last?.json)["nutrients"])
+    }
+
+    /// TF2: the chips belong to the answer on screen — a cleared or shortened search hides them at once, not after
+    /// the 300 ms pause before the next search.
+    func testTheAnswerGoesTheMomentTheSearchIsCleared() async {
+        serve()
+        let (m, _) = model()
+        m.query = "banana"
+        await m.search()
+        XCTAssertNotNil(m.answer)
+        m.query = "b"
+        XCTAssertNil(m.answer)
+        m.query = ""
+        XCTAssertNil(m.answer)
     }
 
     func testTypedBarcodeUsesTheBarcodeRoute() async {
