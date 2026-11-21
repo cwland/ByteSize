@@ -25,7 +25,7 @@ final class FoodAPITests: XCTestCase {
         XCTAssertEqual(banana.servings[0], Serving(label: "1 medium", grams: 118))
         XCTAssertEqual(banana.nutrients["calories"], 105)
         XCTAssertTrue(banana.isLoggable)
-        XCTAssertFalse(r.groups[1].foods[0].isLoggable) // Culury recipes are tracked in the web app
+        XCTAssertTrue(r.groups[1].foods[0].isLoggable) // Culury recipes are tracked on the phone too
         XCTAssertEqual(r.errors.first?.message, "USDA didn't answer")
         XCTAssertEqual(r.suggestion, "Banana")
     }

@@ -18,7 +18,7 @@ iOS app and the web app. Each item can be built and tested on its own. Not yet s
 
 **Status (2026-11-20):** done — SPEC-01, 09, 16 (L1, 0.3–0.4), SPEC-07, 08, 10 (L2, 0.5), SPEC-02–06, 11, 12
 (Today polish, 0.6), SPEC-14, 15 (W1, 0.2), SPEC-17 (I4, 0.7); the Food Log day strip matching the Dashboard (I5, 0.8).
-Open — SPEC-13 (iPad, parked by Cory), SPEC-18, SPEC-19, SPEC-20.
+Open — SPEC-13 (iPad, parked by Cory), SPEC-18, SPEC-19, SPEC-20, SPEC-21.
 
 ---
 
@@ -254,3 +254,14 @@ cards run off both sides: Maintenance slides under the left side rail and Vigoro
 
 **Acceptance:** at any window width every visible plan card is whole and none sits under the side rail; ‹ and › move
 through all five; the recommended plan is in view when the page opens.
+
+### SPEC-21: iOS — Describe Food: a clear button for the text
+Cory: on Describe Food there should be a way to clear what you typed instead of holding backspace.
+
+- An ⓧ clear button inside the describe field (as Track Food's search has), shown only when there is text; one tap
+  empties it and keeps the keyboard up so the next description can be typed.
+- Clearing also clears the last estimate's list, so the screen is ready for a new description (builder's call
+  whether to keep the list until the next Estimate instead — as long as the two never mismatch).
+- Labelled "Clear description" for VoiceOver.
+
+**Acceptance:** after typing or estimating, one tap on ⓧ empties the describe field; nothing else needs backspacing.

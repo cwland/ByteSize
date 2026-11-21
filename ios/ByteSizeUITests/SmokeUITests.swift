@@ -285,6 +285,23 @@ final class SmokeUITests: XCTestCase {
         XCTAssertEqual(search.frame.width, width, accuracy: 0.5, "the search never shrinks after the screen is up")
     }
 
+    /// The mockup (option B): slim Photo · Scan · Describe buttons, snug under the search, the search snug under the title.
+    func testTrackFoodTopIsSnugLikeTheMockup() {
+        signedIn()
+        openAction("Track Food")
+        let search = app.textFields["trackSearch"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        let photo = app.buttons["hub-photo"]
+        XCTAssertTrue(photo.waitForExistence(timeout: 3))
+        let bar = app.navigationBars["Track Food"]
+        shot("tf-3-snug")
+        XCTAssertLessThanOrEqual(photo.frame.height, 48, "slim buttons, icon beside the word")
+        // the text field sits inside a 44 pt box (~11 pt above and below it)
+        XCTAssertLessThanOrEqual(photo.frame.minY - search.frame.maxY, 24, "the tools sit right under the search")
+        XCTAssertLessThanOrEqual(search.frame.minY - bar.frame.maxY, 28, "the search sits right under the title")
+        XCTAssertEqual(photo.frame.minY, app.buttons["hub-describe"].frame.minY, accuracy: 1, "one row")
+    }
+
     func testSourceChipsFilterTheResults() {
         signedIn()
         openAction("Track Food")

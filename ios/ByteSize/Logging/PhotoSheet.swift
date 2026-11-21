@@ -65,7 +65,7 @@ struct PhotoSheet: View {
 
     private func openPortion(_ food: Food) {
         guard food.isLoggable else {
-            notHere = "\(food.name): track Culury recipes and quick meals in the web app"
+            notHere = "\(food.name): log quick meals from My Foods"
             return
         }
         portionFood = food
