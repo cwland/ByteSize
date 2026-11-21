@@ -271,7 +271,9 @@ export default async function oauthRoutes(app: FastifyInstance) {
         ? // The iPhone app: Safari's sheet closes on bytesize://oauth (ticket, or the reason it failed)
           reply.redirect(`bytesize://oauth?${new URLSearchParams(params.oauth_error ? { error: params.oauth_error } : params)}`)
         : reply.redirect(`${origin}/#${path}?${new URLSearchParams(params)}`);
-    if (!flow || flow.expiresAt <= now) return reply.redirect(`/#/?${new URLSearchParams({ oauth_error: "That sign-in took too long or was already used. Try again." })}`);
+    const tooLong = "That sign-in took too long or was already used. Try again.";
+    if (!flow) return reply.redirect(`/#/?${new URLSearchParams({ oauth_error: tooLong })}`);
+    if (flow.expiresAt <= now) return back(flow.appOrigin, "/", { oauth_error: tooLong }); // the phone's goes back to the app
     const fromCookie = cookieOf(req, cookieName(flow.state));
     reply.header("set-cookie", flowCookie(flow.state, "", flow.appOrigin, 0)); // used: cleared
     const fail = async (message: string, logReason: string): Promise<FastifyReply> => {

@@ -36,15 +36,16 @@ final class PasskeySheet: NSObject, PasskeyAuthorizer, ASAuthorizationController
     }
 
     nonisolated func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
-        MainActor.assumeIsolated {
-            guard let credential = authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
-                finish(.failure(SignInCancelled()))
-                return
-            }
-            finish(.success(PasskeyAssertion(credentialID: credential.credentialID, clientDataJSON: credential.rawClientDataJSON,
-                                             authenticatorData: credential.rawAuthenticatorData ?? Data(), signature: credential.signature ?? Data(),
-                                             userID: credential.userID)))
+        // Only plain Data crosses into the main actor (the credential object isn't Sendable)
+        let result: Result<PasskeyAssertion, Error>
+        if let credential = authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion {
+            result = .success(PasskeyAssertion(credentialID: credential.credentialID, clientDataJSON: credential.rawClientDataJSON,
+                                               authenticatorData: credential.rawAuthenticatorData ?? Data(), signature: credential.signature ?? Data(),
+                                               userID: credential.userID))
+        } else {
+            result = .failure(SignInCancelled())
         }
+        MainActor.assumeIsolated { finish(result) }
     }
 
     nonisolated func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
@@ -68,24 +69,34 @@ final class PasskeySheet: NSObject, PasskeyAuthorizer, ASAuthorizationController
 @MainActor
 final class WebSignInSheet: NSObject, WebAuthSession, ASWebAuthenticationPresentationContextProviding {
     private var session: ASWebAuthenticationSession?
+    private var waiting: CheckedContinuation<URL, Error>?
 
     func open(_ url: URL, callbackScheme: String) async throws -> URL {
         try await withCheckedThrowingContinuation { continuation in
+            waiting = continuation
             let session = ASWebAuthenticationSession(url: url, callbackURLScheme: callbackScheme) { [weak self] back, error in
-                MainActor.assumeIsolated { self?.session = nil }
+                let result: Result<URL, Error>
                 if let back {
-                    continuation.resume(returning: back)
+                    result = .success(back)
                 } else if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin {
-                    continuation.resume(throwing: SignInCancelled())
+                    result = .failure(SignInCancelled())
                 } else {
-                    continuation.resume(throwing: error ?? SignInCancelled())
+                    result = .failure(error ?? SignInCancelled())
                 }
+                MainActor.assumeIsolated { self?.finish(result) }
             }
             session.presentationContextProvider = self
             session.prefersEphemeralWebBrowserSession = false // Authentik can remember you between sign-ins
             self.session = session
-            if !session.start() { continuation.resume(throwing: SignInCancelled()) }
+            if !session.start() { finish(.failure(SignInCancelled())) }
         }
+    }
+
+    /// Resumes the caller exactly once, whichever of start()'s failure and the completion handler comes first.
+    private func finish(_ result: Result<URL, Error>) {
+        waiting?.resume(with: result)
+        waiting = nil
+        session = nil
     }
 
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {

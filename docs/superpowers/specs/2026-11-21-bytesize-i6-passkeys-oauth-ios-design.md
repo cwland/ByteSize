@@ -29,8 +29,10 @@ already does passkeys and OAuth (Authentik). I6 brings both to the phone, as the
 
 ## What gets built
 - Server: AASA route; `client`/`appKey` on OAuth start, `client` and `app_key_hash` columns on `oauth_flows` and
-  `app_key_hash` on `oauth_tickets` (migration 0029); callback/finish rules above; the sign-in options answer
-  gains `passkeys: true|false` (passkeys usable from this host: HTTPS and allowed by `PASSKEY_ORIGINS`).
+  `app_key_hash` on `oauth_tickets` (migration 0029); callback/finish rules above. (Ruling, after review: no
+  `passkeys` flag in the sign-in options — the app shows the passkey button only for an https address on the standard
+  port, the only kind Apple's passkeys work with; a server whose `PASSKEY_ORIGINS` excludes the address still answers
+  with its own message.)
 - iPhone (Kit): `PasskeyAPI.loginOptions/verify` with the Origin header; `OAuthAPI.start(appKey)/finish(ticket,
   appKey)`; `SignInModel` gains `signInWithPasskey(using:)` and `signInWithOAuth(using:)` driven by small protocols
   (`PasskeyAuthorizer`, `WebAuthSession`) so the model is tested without Apple's sheets.
