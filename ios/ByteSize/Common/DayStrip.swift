@@ -5,6 +5,8 @@ import SwiftUI
 /// calendar), and a row of days that scrolls and snaps one day at a time, the chosen one centred. A year back to a
 /// week ahead; days after today are shown, not chosen. Logged days have a dot.
 struct DayStrip: View {
+    static let visibleDays = 7
+    static let spacing: CGFloat = 4
     let days: DayStore
     @Environment(\.palette) private var palette
     @State private var position: String?
@@ -25,7 +27,7 @@ struct DayStrip: View {
             .accessibilityIdentifier("dayHeader")
 
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 4) {
+                LazyHStack(spacing: Self.spacing) {
                     ForEach(days.stripDays, id: \.self) { chip($0) }
                 }
                 .scrollTargetLayout()
@@ -33,6 +35,7 @@ struct DayStrip: View {
             .scrollTargetBehavior(.viewAligned)
             .scrollPosition(id: $position, anchor: .center)
             .frame(height: 60)
+            .accessibilityIdentifier("dayStripRow")
             .onAppear { position = days.selected }
             .onChange(of: days.selected) { _, day in withAnimation(.easeInOut(duration: 0.2)) { position = day } }
             .onChange(of: position) { _, day in
@@ -56,12 +59,14 @@ struct DayStrip: View {
                     .frame(width: 5, height: 5)
                     .opacity(days.loggedDays.contains(day) ? 1 : 0)
             }
-            .frame(width: 44, height: 56)
+            .frame(maxWidth: .infinity, minHeight: 56, maxHeight: 56)
             .background(selected ? palette.color("primary") : .clear, in: RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(today && !selected ? palette.color("primary") : .clear))
             .opacity(choosable ? 1 : 0.35)
         }
         .buttonStyle(.plain)
+        // Exactly a seventh of the row (spacing included), so the strip always shows seven whole days, never a cut-off one
+        .containerRelativeFrame(.horizontal, count: Self.visibleDays, spacing: Self.spacing)
         .disabled(!choosable)
         .accessibilityLabel(DayText.long(day) + (days.loggedDays.contains(day) ? ", logged" : ""))
         .accessibilityAddTraits(selected ? .isSelected : [])
