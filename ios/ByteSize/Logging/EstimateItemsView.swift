@@ -32,7 +32,7 @@ struct EstimateItemsView: View {
                 }
                 .accessibilityIdentifier("item-\(item.food.name)")
                 .swipeActions {
-                    Button(role: .destructive) { model.remove(at: i) } label: { Label("Remove", systemImage: "trash") }
+                    Button(role: .destructive) { model.toggle(at: i) } label: { Label("Remove", systemImage: "trash") }
                 }
             }
         }
@@ -53,7 +53,7 @@ struct EstimateItemsView: View {
             Button {
                 Task {
                     let names = model.items.map(\.food.name)
-                    if await model.logAll() {
+                    if await model.logSelected() {
                         Haptics.logged()
                         onLogged(names.count == 1 ? names[0] : "\(names.count) foods")
                     }
@@ -62,7 +62,7 @@ struct EstimateItemsView: View {
                 HStack { Spacer(); Text("Log all").bold(); Spacer() }
             }
             .disabled(model.items.isEmpty || model.busy)
-            .accessibilityIdentifier("logAll")
+            .accessibilityIdentifier("logSelected")
         }
     }
 }

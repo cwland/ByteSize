@@ -35,6 +35,10 @@ struct CameraPicker: UIViewControllerRepresentable {
 
 /// "Take photo" (when there's a camera) and "Choose photo": either way, a JPEG ready to upload.
 struct PhotoButtons: View {
+    #if DEBUG
+    static let testPlatePhoto = "STUB-PLATE"
+    static let testBarcodePhoto = "STUB-BARCODE"
+    #endif
     var takeTitle = "Take photo"
     var chooseTitle = "Choose photo"
     let onJPEG: (Data) -> Void
@@ -55,6 +59,13 @@ struct PhotoButtons: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
+            #if DEBUG
+            // UI tests: the simulator has no camera, so a pretend photo stands in (the stub server reads it)
+            if StubServer.isOn {
+                Button("Use test photo") { onJPEG(Data(Self.testPlatePhoto.utf8)) }.accessibilityIdentifier("testPhoto")
+                Button("Use test barcode photo") { onJPEG(Data(Self.testBarcodePhoto.utf8)) }.accessibilityIdentifier("testBarcodePhoto")
+            }
+            #endif
         }
         .fullScreenCover(isPresented: $cameraOpen) {
             CameraPicker { image in

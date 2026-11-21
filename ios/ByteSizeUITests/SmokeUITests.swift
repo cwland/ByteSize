@@ -362,8 +362,8 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("2 eggs and toast")
         app.buttons["estimateButton"].tap()
-        XCTAssertTrue(app.buttons["logAll"].waitForExistence(timeout: 5))
-        app.buttons["logAll"].tap()
+        XCTAssertTrue(app.buttons["logSelected"].waitForExistence(timeout: 5))
+        app.buttons["logSelected"].tap()
         XCTAssertTrue(label("Logged 2 foods").waitForExistence(timeout: 5))
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "back on the search, ready to type")
     }
@@ -554,7 +554,7 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 2))
         field.typeText("2 eggs and toast")
         app.buttons["estimateButton"].tap()
-        XCTAssertTrue(app.buttons["logAll"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["logSelected"].waitForExistence(timeout: 5))
         let picker = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Meal")).firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 3))
         picker.tap()
@@ -603,8 +603,8 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("2 eggs and toast")
         app.buttons["estimateButton"].tap()
-        XCTAssertTrue(app.buttons["logAll"].waitForExistence(timeout: 5))
-        app.buttons["logAll"].tap()
+        XCTAssertTrue(app.buttons["logSelected"].waitForExistence(timeout: 5))
+        app.buttons["logSelected"].tap()
         XCTAssertTrue(label("Logged 2 foods").waitForExistence(timeout: 5), "back on the search")
         XCTAssertTrue(app.textFields["trackSearch"].waitForExistence(timeout: 5))
         closeSheet()
@@ -820,10 +820,10 @@ final class SmokeUITests: XCTestCase {
         field.tap()
         field.typeText("2 eggs and toast")
         app.buttons["estimateButton"].tap()
-        XCTAssertTrue(app.buttons["logAll"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["logSelected"].waitForExistence(timeout: 5))
         app.buttons["Clear description"].tap()
         XCTAssertTrue(waitUntil { (field.value as? String ?? "").isEmpty || field.value as? String == field.placeholderValue })
-        XCTAssertTrue(waitUntil { !self.app.buttons["logAll"].exists }, "the old list goes too")
+        XCTAssertTrue(waitUntil { !self.app.buttons["logSelected"].exists }, "the old list goes too")
     }
 
     func testDescribeLogsItems() {
@@ -838,8 +838,8 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["item-Toast"].exists)
         XCTAssertTrue(app.staticTexts["2 × 1 large egg · ≈ 144 cal"].exists)
         shot("10-describe")
-        app.buttons["logAll"].tap()
-        XCTAssertTrue(waitUntil { !self.app.buttons["logAll"].exists }, "the sheet closes")
+        app.buttons["logSelected"].tap()
+        XCTAssertTrue(waitUntil { !self.app.buttons["logSelected"].exists }, "the sheet closes")
         app.buttons["Food Log"].tap()
         XCTAssertTrue(app.buttons["addTo-breakfast"].waitForExistence(timeout: 5))
         XCTAssertTrue(reveal(app.staticTexts["Egg"]).waitForExistence(timeout: 5))
@@ -1060,5 +1060,99 @@ final class SmokeUITests: XCTestCase {
         assertWholeChips("Dashboard after a swipe")
         app.buttons["Food Log"].tap()
         assertWholeChips("Food Log")
+    }
+
+    // MARK: - R1 results screen
+
+    private func describeTwoFoods() {
+        signedIn()
+        openAction("Describe Food")
+        let field = app.textFields["describeField"].exists ? app.textFields["describeField"] : app.textViews["describeField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("2 eggs and toast")
+        app.buttons["estimateButton"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["item-Toast"].waitForExistence(timeout: 5))
+    }
+
+    private func photoTwoFoods() {
+        signedIn()
+        openAction("Photo")
+        XCTAssertTrue(app.buttons["testPhoto"].waitForExistence(timeout: 5))
+        app.buttons["testPhoto"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["item-Toast"].waitForExistence(timeout: 5))
+    }
+
+    /// The owner's bug: from the (+) menu, a found food's amount screen closed at once, and the (+) sheet with it.
+    private func assertAmountStaysOpen() {
+        app.descendants(matching: .any)["item-Toast"].tap()
+        let done = app.buttons["amountDone"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        sleep(2)
+        XCTAssertTrue(done.exists, "the amount screen stays open")
+        done.tap()
+        XCTAssertTrue(app.buttons["logSelected"].waitForExistence(timeout: 5), "back on the results, (+) sheet still up")
+        XCTAssertTrue(app.descendants(matching: .any)["item-Egg"].exists)
+    }
+
+    func testDescribeAmountStaysOpenFromThePlusMenu() {
+        describeTwoFoods()
+        assertAmountStaysOpen()
+    }
+
+    func testPhotoAmountStaysOpenFromThePlusMenu() {
+        photoTwoFoods()
+        assertAmountStaysOpen()
+    }
+
+    func testUncheckedFoodIsNotLogged() {
+        describeTwoFoods()
+        let toast = app.buttons["check-Toast"]
+        XCTAssertTrue(toast.waitForExistence(timeout: 3))
+        XCTAssertTrue(toast.isSelected, "found foods start checked")
+        toast.tap()
+        XCTAssertTrue(waitUntil { !toast.isSelected })
+        XCTAssertTrue(app.staticTexts["≈ 144 cal"].exists, "the total leaves Toast out")
+        app.buttons["check-Egg"].tap()
+        XCTAssertFalse(app.buttons["logSelected"].isEnabled, "nothing checked: nothing to log")
+        app.buttons["check-Egg"].tap()
+        app.buttons["logSelected"].tap()
+        XCTAssertTrue(waitUntil { !self.app.buttons["logSelected"].exists }, "the sheet closes")
+        app.buttons["Food Log"].tap()
+        XCTAssertTrue(reveal(app.staticTexts["Egg"]).waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Toast"].exists, "unchecked: not logged")
+    }
+
+    func testRetakePhotoClearsTheList() {
+        photoTwoFoods()
+        app.buttons["retakePhoto"].tap()
+        XCTAssertTrue(app.buttons["testPhoto"].waitForExistence(timeout: 5), "the photo choices again")
+        XCTAssertFalse(app.descendants(matching: .any)["item-Toast"].exists)
+    }
+
+    func testTakeAnotherPhotoFromABarcodePhoto() {
+        signedIn()
+        openAction("Photo")
+        XCTAssertTrue(app.buttons["testBarcodePhoto"].waitForExistence(timeout: 5))
+        app.buttons["testBarcodePhoto"].tap()
+        XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["again"].label, "Take another photo")
+        app.buttons["again"].tap()
+        XCTAssertTrue(app.buttons["testPhoto"].waitForExistence(timeout: 5))
+    }
+
+    func testScanAgainGoesBackToTheCamera() {
+        signedIn()
+        openAction("Scan Food")
+        let field = app.textFields["barcodeField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("0012345678905")
+        app.buttons["lookUpBarcode"].tap()
+        XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["again"].label, "Scan again")
+        app.buttons["again"].tap()
+        XCTAssertTrue(app.textFields["barcodeField"].waitForExistence(timeout: 5), "back to the camera")
+        XCTAssertFalse(app.buttons["logButton"].exists)
     }
 }

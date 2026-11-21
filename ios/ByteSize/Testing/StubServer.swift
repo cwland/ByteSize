@@ -32,14 +32,16 @@ final class StubServer: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
 
     override func startLoading() {
-        let (status, body) = Self.data.answer(request, body: bodyJSON())
+        let raw = bodyData()
+        let json = (try? JSONSerialization.jsonObject(with: raw) as? [String: Any]) ?? [:]
+        let (status, body) = Self.data.answer(request, body: json, raw: String(decoding: raw, as: UTF8.self))
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: status == 204 ? [:] : ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
 
-    private func bodyJSON() -> [String: Any] {
+    private func bodyData() -> Data {
         var data = request.httpBody ?? Data()
         if data.isEmpty, let stream = request.httpBodyStream {
             stream.open()
@@ -51,7 +53,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 data.append(buffer, count: n)
             }
         }
-        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        return data
     }
 
     // MARK: - The pretend data
@@ -162,7 +164,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         static let egg = #"{"food":{"name":"Egg","brand":null,"category":"eggs","icon":"🥚","barcode":null,"servings":[{"label":"1 large egg","grams":50}],"nutrients":{"calories":72,"protein_g":6.3,"fat_g":4.8},"aiFields":["calories","protein_g","fat_g"],"source":"ai"},"servingIndex":0,"quantity":2}"#
         static let toast = #"{"food":{"name":"Toast","brand":null,"category":"bread","icon":"🍞","barcode":null,"servings":[{"label":"1 slice","grams":30}],"nutrients":{"calories":80,"carbs_g":15,"protein_g":3},"aiFields":["calories","carbs_g","protein_g"],"source":"ai"},"servingIndex":0,"quantity":1}"#
 
-        func answer(_ req: URLRequest, body: [String: Any]) -> (Int, String) {
+        func answer(_ req: URLRequest, body: [String: Any], raw: String = "") -> (Int, String) {
             lock.withLock { route(req.httpMethod ?? "GET", req.url?.path() ?? "", req.url?.query() ?? "", body) }
         }
 
@@ -250,6 +252,8 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 return (200, json(["refs": favoriteRefs]))
             case ("POST", "/api/ai/estimate-items"):
                 return (200, #"{"items":[\#(Self.egg),\#(Self.toast)],"assumed":false}"#)
+            case ("POST", "/api/photos/analyze") where raw.contains(PhotoButtons.testBarcodePhoto):
+                return (200, #"{"photoIds":["stub-photo"],"barcode":"0012345678905","food":\#(Self.banana),"errors":[],"labelReading":true}"#)
             case ("POST", "/api/photos/analyze"):
                 return (200, #"{"photoIds":["stub-photo"],"plate":{"items":[\#(Self.egg),\#(Self.toast)]},"errors":[],"labelReading":true}"#)
             case ("POST", "/api/log/estimates"):
