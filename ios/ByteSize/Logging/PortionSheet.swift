@@ -30,6 +30,16 @@ struct PortionSheet: View {
     @State private var logging = false
     @State private var askingBig = false
 
+    private var logButton: some View {
+        Button {
+            if portion.isBig { askingBig = true } else { log() }
+        } label: {
+            Text("Log").bold().frame(maxWidth: again == nil ? nil : .infinity)
+        }
+        .disabled(!portion.canLog || logging)
+        .accessibilityIdentifier("logButton")
+    }
+
     private func log() {
         logging = true
         Task {
@@ -94,11 +104,6 @@ struct PortionSheet: View {
                 Section {
                     MealPicker(meal: $portion.meal)
                 }
-                if let again {
-                    Section {
-                        Button(again.title, action: again.action).accessibilityIdentifier("again")
-                    }
-                }
                 if let message {
                     Section { Text(message).foregroundStyle(palette.color("error")) }
                 }
@@ -122,13 +127,26 @@ struct PortionSheet: View {
                         .accessibilityIdentifier("bookmark")
                     }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Log") {
-                        if portion.isBig { askingBig = true } else { log() }
+                // From a scan or photo, Log sits at the bottom with "Scan again" (owner's ask); elsewhere, in the bar
+                if again == nil {
+                    ToolbarItem(placement: .confirmationAction) { logButton.bold() }
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                if let again {
+                    VStack(spacing: 10) {
+                        logButton
+                            .frame(maxWidth: .infinity)
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                        Button(action: again.action) { Text(again.title).frame(maxWidth: .infinity) }
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
+                            .accessibilityIdentifier("again")
                     }
-                    .bold()
-                    .disabled(!portion.canLog || logging)
-                    .accessibilityIdentifier("logButton")
+                    .padding(.horizontal)
+                    .padding(.vertical, 10)
+                    .background(palette.color("page"))
                 }
             }
     }

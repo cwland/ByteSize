@@ -100,7 +100,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         /// Bookmarked foods, newest first ("cache:42").
         private var favoriteRefs: [String] = []
         /// I4: weigh-ins (oldest first), kept as the Goals tab logs and deletes them.
-        private var weighIns: [(day: String, kg: Double)] = [(StubData.offset(-60), 88.0), (StubData.offset(-7), 83.5), (StubData.offset(-1), 82.28)]
+        private var weighIns: [(day: String, kg: Double)] = [(StubData.offset(-60), 88.0), (StubData.offset(-30), 86.0), (StubData.offset(-21), 85.2), (StubData.offset(-14), 84.4), (StubData.offset(-7), 83.5), (StubData.offset(-1), 82.28)]
 
         /// I4: My Foods — (id, name, icon, foodKind, calories per serving, serving label).
         static let seedFoods: [MyFood] = [
