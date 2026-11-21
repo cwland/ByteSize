@@ -1,3 +1,5 @@
-// Copy to Local.xcconfig (git-ignored) and set your Apple team id to run on a device.
+// Copy to Local.xcconfig (git-ignored) and fill in your own values.
 DEVELOPMENT_TEAM = ABCDE12345
 CODE_SIGN_STYLE = Automatic
+// Your ByteSize server's host name, without https://. Used for passkey sign-in.
+PASSKEY_DOMAIN = bytesize.example.com

@@ -6,3 +6,6 @@ data/
 Claude outputs/
 *.tsbuildinfo
 .worktrees/
+# Private design notes and backlog stay on your own machine
+docs/superpowers/
+docs/backlog/

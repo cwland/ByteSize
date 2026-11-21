@@ -1,2 +1,4 @@
-// Shared settings. Local.xcconfig (git-ignored) holds DEVELOPMENT_TEAM for device builds.
+// Shared settings. Local.xcconfig (git-ignored) holds DEVELOPMENT_TEAM for device builds
+// and PASSKEY_DOMAIN, the address of your ByteSize server (for passkey sign-in).
+PASSKEY_DOMAIN = bytesize.example.com
 #include? "Local.xcconfig"

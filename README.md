@@ -183,4 +183,3 @@ npm test                          # backend (real Postgres test DB) + frontend
 
 Every push to GitHub runs the tests; pushes to `main` publish `ghcr.io/cwland/bytesize:latest` (linux/amd64).
 
-Design and plans: `docs/superpowers/specs/` and `docs/superpowers/plans/`.
