@@ -194,6 +194,16 @@ final class SignInModelTests: XCTestCase {
         XCTAssertNil(m.oauthLabel)
     }
 
+    /// Apple signs a passkey for https://<host> (no port): only offered where it can work.
+    func testNoPasskeyButtonOnAnOddPort() async {
+        HTTPStub.routes(["/api/health": health, "/api/auth/status": statusOK])
+        let (m, _) = model()
+        m.serverText = "https://h.test:8443"
+        await m.connect()
+        XCTAssertEqual(m.step, .credentials)
+        XCTAssertFalse(m.showsPasskey)
+    }
+
     func testSignInWithAPasskey() async throws {
         let (m, s) = await connected()
         HTTPStub.routes([
