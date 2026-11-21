@@ -1168,4 +1168,106 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.textFields["barcodeField"].waitForExistence(timeout: 5), "back to the camera")
         XCTAssertFalse(app.buttons["logButton"].exists)
     }
+
+    // MARK: - R2 My foods editing
+
+    private func signedInMyFoods() {
+        signedIn()
+        app.buttons["My Foods"].tap()
+        XCTAssertTrue(app.buttons["myFood-201"].waitForExistence(timeout: 5))
+    }
+
+    func testDeleteAFoodFromMyFoods() {
+        signedInMyFoods()
+        app.buttons["myFood-201"].swipeLeft()
+        app.buttons["Delete"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Delete Oat bars?"].waitForExistence(timeout: 3), "asks first, in the website's words")
+        app.sheets.buttons["Delete"].firstMatch.exists ? app.sheets.buttons["Delete"].firstMatch.tap() : app.buttons.matching(identifier: "Delete").element(boundBy: 0).tap()
+        XCTAssertTrue(app.descendants(matching: .any)["myFoodsNotice"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Removed"].exists || app.descendants(matching: .any)["myFoodsNotice"].label.contains("Removed"))
+        XCTAssertTrue(waitUntil { !self.app.buttons["myFood-201"].exists }, "gone from the list")
+    }
+
+    private func newFromMenu(_ title: String) {
+        app.buttons["newMenu"].tap()
+        XCTAssertTrue(app.buttons[title].waitForExistence(timeout: 3))
+        app.buttons[title].tap()
+    }
+
+    private func type(_ id: String, _ text: String, clear: Bool = false) {
+        let field = app.textFields[id]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), id)
+        field.tap()
+        if clear, let old = field.value as? String, !old.isEmpty {
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count))
+        }
+        field.typeText(text)
+    }
+
+    func testNewFoodFromMyFoods() {
+        signedInMyFoods()
+        newFromMenu("New food")
+        XCTAssertTrue(app.navigationBars["New food"].waitForExistence(timeout: 5))
+        type("foodName", "Granola")
+        type("servingLabel", "1 cup", clear: true)
+        let calories = reveal(app.textFields["nutrient-calories"])
+        calories.tap()
+        calories.typeText("200")
+        app.buttons["saveFood"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["myFoodsNotice"].waitForExistence(timeout: 5), "Saved")
+        XCTAssertTrue(app.staticTexts["Granola"].waitForExistence(timeout: 5))
+    }
+
+    func testEditAFoodsName() {
+        signedInMyFoods()
+        app.buttons["myFood-201"].swipeLeft()
+        app.buttons["Edit"].firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Edit food"].waitForExistence(timeout: 5))
+        type("foodName", "Oat squares", clear: true)
+        app.buttons["saveFood"].tap()
+        XCTAssertTrue(app.staticTexts["Oat squares"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Oat bars"].exists)
+    }
+
+    func testNewRecipeWithAnIngredient() {
+        signedInMyFoods()
+        newFromMenu("New recipe")
+        XCTAssertTrue(app.navigationBars["New recipe"].waitForExistence(timeout: 5))
+        type("recipeName", "Banana bowl")
+        app.buttons["addItem"].tap()
+        type("pickerSearch", "ban")
+        XCTAssertTrue(app.buttons["pick-Banana"].waitForExistence(timeout: 5))
+        app.buttons["pick-Banana"].tap()
+        XCTAssertTrue(app.buttons["addPicked"].waitForExistence(timeout: 5))
+        app.buttons["addPicked"].tap()
+        XCTAssertTrue(app.buttons["editItem-Banana"].waitForExistence(timeout: 5), "back on the recipe with the ingredient")
+        app.buttons["saveRecipe"].tap()
+        XCTAssertTrue(app.staticTexts["Banana bowl"].waitForExistence(timeout: 5))
+    }
+
+    func testEditQuickMealRemovesAFood() {
+        signedInMyFoods()
+        app.buttons["myFood-204"].swipeLeft()
+        app.buttons["Edit"].firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Edit quick meal"].waitForExistence(timeout: 5))
+        let coffee = app.buttons["editItem-Coffee"]
+        XCTAssertTrue(coffee.waitForExistence(timeout: 5))
+        coffee.swipeLeft()
+        app.buttons["Remove"].firstMatch.tap()
+        XCTAssertTrue(waitUntil { !coffee.exists })
+        app.buttons["saveMeal"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["myFoodsNotice"].waitForExistence(timeout: 5), "Saved, back on the list")
+    }
+
+    /// Review I-2: Save is at the top, so its message must show there, not under 13 nutrient rows.
+    func testFoodEditorMessageShowsNearSave() {
+        signedInMyFoods()
+        newFromMenu("New food")
+        XCTAssertTrue(app.buttons["saveFood"].waitForExistence(timeout: 5))
+        app.buttons["saveFood"].tap()
+        let message = app.staticTexts["editorMessage"]
+        XCTAssertTrue(message.waitForExistence(timeout: 3))
+        XCTAssertEqual(message.label, "Give the food a name")
+        XCTAssertTrue(message.isHittable, "on screen without scrolling")
+    }
 }

@@ -15,6 +15,16 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.12.0",
+    date: "2026-11-21",
+    title: "My foods on iPhone",
+    added: [
+      "iPhone: swipe a food in My foods to edit or delete it. Deleting one that's been logged or used hides it instead, as on the web.",
+      "iPhone: + in My foods makes a new food, recipe or quick meal.",
+      "iPhone: the food, recipe and quick meal editors from the web — servings, nutrients and Fill gaps with AI; ingredients, servings, weight, notes and Recalculate; a quick meal's foods.",
+    ],
+  },
+  {
     version: "0.11.0",
     date: "2026-11-21",
     title: "Photo and Describe results",

@@ -30,3 +30,13 @@ public struct Nutrients: Codable, Hashable, Sendable {
         for (k, v) in values { try c.encode(v, forKey: Key(stringValue: k)) }
     }
 }
+
+extension Nutrients {
+    /// The 13 nutrients a food can say, in the website's order and words (FoodForm's NUTRIENT_LABELS).
+    public static let keys: [(key: String, label: String)] = [
+        ("calories", "Calories"), ("protein_g", "Protein (g)"), ("fiber_g", "Fiber (g)"), ("carbs_g", "Carbs (g)"), ("fat_g", "Fat (g)"),
+        ("saturated_fat_g", "Saturated fat (g)"), ("sugar_g", "Sugar (g)"), ("added_sugar_g", "Added sugar (g)"),
+        ("sugar_alcohol_g", "Sugar alcohol (g)"), ("sodium_mg", "Sodium (mg)"), ("potassium_mg", "Potassium (mg)"),
+        ("magnesium_mg", "Magnesium (mg)"), ("water_ml", "Water (ml)"),
+    ]
+}

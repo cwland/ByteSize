@@ -262,4 +262,69 @@ final class QuickMealModelTests: XCTestCase {
         let items = try XCTUnwrap(sent?["items"] as? [[String: Any]])
         XCTAssertEqual(items[0]["quantity"] as? Double ?? 0, 1.375, accuracy: 0.001)
     }
+
+    // MARK: - R2 delete
+
+    private func serveDelete(_ reply: HTTPStub.Reply, list: [String]) {
+        let state = DeleteState(list: list)
+        HTTPStub.requests = []
+        HTTPStub.handler = { req in
+            switch (req.httpMethod ?? "", req.url?.path() ?? "") {
+            case ("GET", "/api/my-foods"): return .json(200, #"{"foods":[\#(state.current.joined(separator: ","))]}"#)
+            case ("DELETE", "/api/my-foods/7"):
+                if case .json(200, _) = reply { state.current = Array(state.current.dropFirst()) }
+                return reply
+            default: return .json(404, #"{"error":"Not found"}"#)
+            }
+        }
+    }
+
+    private func myFoods() -> MyFoodsModel {
+        MyFoodsModel(api: api, dayStore: DayStore(api: api, timeZone: denver, now: { self.noon }), now: { self.noon })
+    }
+
+    final class DeleteState: @unchecked Sendable {
+        var current: [String]
+        init(list: [String]) { current = list }
+    }
+
+    func testDeleteRemovesAndSaysRemoved() async throws {
+        serveDelete(.json(200, #"{"archived":false}"#), list: [MyFoodFixtures.food(7, "Oat bars"), MyFoodFixtures.food(8, "Granola")])
+        let m = myFoods()
+        await m.load()
+        await m.delete(m.foods[0])
+        XCTAssertEqual(HTTPStub.requests.filter { $0.request.httpMethod == "DELETE" }.count, 1)
+        XCTAssertEqual(m.notice, "Removed")
+        XCTAssertEqual(m.foods.map(\.name), ["Granola"])
+        XCTAssertNil(m.message)
+        m.clearNotice()
+        XCTAssertNil(m.notice)
+    }
+
+    func testDeleteInUseSaysHidden() async {
+        serveDelete(.json(200, #"{"archived":true}"#), list: [MyFoodFixtures.food(7, "Oat bars")])
+        let m = myFoods()
+        await m.load()
+        await m.delete(m.foods[0])
+        XCTAssertEqual(m.notice, "Hidden (it's in use)")
+        XCTAssertEqual(m.foods, [])
+    }
+
+    func testDeleteFailureShowsTheError() async {
+        serveDelete(.json(500, #"{"error":"Something went wrong"}"#), list: [MyFoodFixtures.food(7, "Oat bars")])
+        let m = myFoods()
+        await m.load()
+        await m.delete(m.foods[0])
+        XCTAssertNil(m.notice)
+        XCTAssertEqual(m.message, "Something went wrong")
+        XCTAssertEqual(m.foods.count, 1)
+    }
+
+    func testSavedSaysSavedAndReloads() async {
+        serveDelete(.json(200, #"{"archived":false}"#), list: [MyFoodFixtures.food(8, "Granola")])
+        let m = myFoods()
+        await m.saved()
+        XCTAssertEqual(m.notice, "Saved")
+        XCTAssertEqual(m.foods.map(\.name), ["Granola"])
+    }
 }

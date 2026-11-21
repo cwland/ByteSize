@@ -6,6 +6,10 @@ import SwiftUI
 struct MyFoodsView: View {
     @Bindable var model: MyFoodsModel
     @Environment(\.palette) private var palette
+    /// The food waiting for "Delete <name>?".
+    @State private var deleting: Food?
+    /// The editor open (New or Edit); buttons, since a NavigationLink in a menu or swipe action doesn't push.
+    @State private var editing: MyFoodsRoute?
 
     var body: some View {
         List {
@@ -48,6 +52,12 @@ struct MyFoodsView: View {
                 ForEach(model.foods) { food in
                     NavigationLink(value: food) { row(food) }
                         .accessibilityIdentifier("myFood-\(food.id)")
+                        // R2: tapping still logs; swipe for Delete
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) { deleting = food } label: { Label("Delete", systemImage: "trash") }
+                            Button { editing = .edit(food) } label: { Label("Edit", systemImage: "pencil") }
+                                .tint(palette.color("primary"))
+                        }
                 }
             }
         }
@@ -58,6 +68,18 @@ struct MyFoodsView: View {
         .refreshable { await model.load() }
         .task { if !model.loaded { await model.load() } }
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                // R2: New food / New recipe / New quick meal, as the website's buttons
+                Menu {
+                    Button("New food") { editing = .food(nil) }
+                    Button("New recipe") { editing = .recipe(nil) }
+                    Button("New quick meal") { editing = .meal(nil) }
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("New")
+                .accessibilityIdentifier("newMenu")
+            }
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
                     Picker("Sort", selection: $model.sort) {
@@ -71,6 +93,14 @@ struct MyFoodsView: View {
             }
         }
         .onChange(of: model.sort) { Task { await model.load() } }
+        .navigationDestination(item: $editing) { route in
+            let saved = { Task { await model.saved() } }
+            switch route {
+            case .food(let food): FoodEditorView(model: model.foodEditor(food)) { _ = saved() }
+            case .recipe(let id): RecipeEditorView(model: model.recipeEditor(id: id), picker: model.picker) { _ = saved() }
+            case .meal(let id): QuickMealEditorView(model: model.mealEditor(id: id), picker: model.picker) { _ = saved() }
+            }
+        }
         .navigationDestination(for: Food.self) { food in
             if food.foodKind == "quick_meal" {
                 QuickMealView(model: model.quickMeal(food))
@@ -83,7 +113,16 @@ struct MyFoodsView: View {
         .overlay(alignment: .bottom) {
             if let message = model.message {
                 MessageBanner(text: message) {}.padding(.bottom, 8)
+            } else if let notice = model.notice {
+                NoticeBanner(text: notice) { model.clearNotice() }.padding(.bottom, 8)
             }
+        }
+        // The website's wording (MyFoodsPage)
+        .confirmationDialog(deleting.map { "Delete \($0.name)?" } ?? "", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible, presenting: deleting) { food in
+            Button("Delete", role: .destructive) { Task { await model.delete(food) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("If it's been logged or is part of a recipe or meal, it's hidden instead, so your log stays as it is.")
         }
     }
 
