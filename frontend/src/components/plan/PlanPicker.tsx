@@ -35,6 +35,25 @@ export default function PlanPicker({ data, onSelected, onOwnTargets }: { data: P
   const [busy, setBusy] = useState(false);
   const strip = useRef<HTMLDivElement>(null);
   const last = data.plans.length - 1;
+  // While the picker's own (smooth) scroll is on its way, its scroll events say nothing about where the person is:
+  // they'd pull the current plan back to the old view (review fix). Settled at scrollend, or after a moment.
+  const settling = useRef<number | null>(null);
+  const settle = () => {
+    if (settling.current !== null) window.clearTimeout(settling.current);
+    settling.current = window.setTimeout(() => (settling.current = null), 800);
+  };
+  useEffect(() => {
+    const el = strip.current;
+    const done = () => {
+      if (settling.current !== null) window.clearTimeout(settling.current);
+      settling.current = null;
+    };
+    el?.addEventListener("scrollend", done);
+    return () => {
+      el?.removeEventListener("scrollend", done);
+      if (settling.current !== null) window.clearTimeout(settling.current);
+    };
+  }, []);
 
   const measure = () => {
     const el = strip.current;
@@ -48,7 +67,10 @@ export default function PlanPicker({ data, onSelected, onOwnTargets }: { data: P
     const el = strip.current;
     const target = el?.children[from] as HTMLElement | undefined;
     const zero = (el?.children[0] as HTMLElement | undefined)?.offsetLeft ?? 0;
-    if (el && target) el.scrollTo?.({ left: target.offsetLeft - zero, behavior: smooth ? "smooth" : "auto" });
+    if (el && target) {
+      if (smooth) settle();
+      el.scrollTo?.({ left: target.offsetLeft - zero, behavior: smooth ? "smooth" : "auto" });
+    }
     setFit(n);
     setFirst(from);
     setCurrent(cur);
@@ -68,7 +90,7 @@ export default function PlanPicker({ data, onSelected, onOwnTargets }: { data: P
   // After a swipe: the card at the strip's start leads; on a phone (one card) it's the current one
   const onScroll = () => {
     const el = strip.current;
-    if (!el || !el.clientWidth) return;
+    if (!el || !el.clientWidth || settling.current !== null) return;
     const cards = Array.from(el.children) as HTMLElement[];
     const zero = cards[0]?.offsetLeft ?? 0;
     const lead = cards.reduce((best, c, i) => (Math.abs(c.offsetLeft - zero - el.scrollLeft) < Math.abs(cards[best].offsetLeft - zero - el.scrollLeft) ? i : best), 0);

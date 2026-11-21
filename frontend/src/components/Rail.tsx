@@ -51,11 +51,13 @@ export default function Rail({ page }: { page: Page }) {
 }
 
 // SPEC-23: the avatar opens the account menu (as in Culury): who's signed in, Profile & security, Sign out, and
-// Sign out everywhere (asks first). Escape or a click outside closes it.
+// Sign out everywhere (asks first). A plain disclosure (a link and buttons you Tab through), not an ARIA menu.
+// Escape, a click outside or Tab-ing out closes it.
 function AccountMenu() {
   const { user, signOut, signOutEverywhere } = useSession();
   const [open, setOpen] = useState(false);
   const [asking, setAsking] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const avatar = useRef<HTMLButtonElement>(null);
 
@@ -82,12 +84,17 @@ function AccountMenu() {
   const itemClass = "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left font-medium hover:bg-pressed";
 
   return (
-    <div ref={box} className="relative">
+    <div
+      ref={box}
+      className="relative"
+      onBlur={(e) => {
+        if (open && !box.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
+      }}
+    >
       <button
         ref={avatar}
         type="button"
         aria-label="Account menu"
-        aria-haspopup="menu"
         aria-expanded={open}
         title={name}
         onClick={() => setOpen((o) => !o)}
@@ -96,22 +103,21 @@ function AccountMenu() {
         {initialsOf(user)}
       </button>
       {open && (
-        <div role="menu" aria-label="Account" className="absolute bottom-0 left-full z-40 ml-3 w-64 rounded-2xl bg-container p-2 shadow-xl ring-1 ring-line">
+        <div role="group" aria-label="Account" className="absolute bottom-0 left-full z-40 ml-3 w-64 rounded-2xl bg-container p-2 shadow-xl ring-1 ring-line">
           <div className="border-b border-line px-3 pt-2 pb-3">
             <p className="truncate font-bold">{name}</p>
             {under && <p className="truncate text-sm text-subtle">{under}</p>}
           </div>
           <div className="flex flex-col pt-2">
-            <a role="menuitem" href="#/settings/profile" onClick={() => setOpen(false)} className={itemClass}>
+            <a href="#/settings/profile" onClick={() => setOpen(false)} className={itemClass}>
               <User aria-hidden="true" className="size-5 text-subtle" />
               Profile & security
             </a>
-            <button role="menuitem" type="button" onClick={signOut} className={itemClass}>
+            <button type="button" onClick={signOut} className={itemClass}>
               <LogOut aria-hidden="true" className="size-5 text-subtle" />
               Sign out
             </button>
             <button
-              role="menuitem"
               type="button"
               onClick={() => {
                 setOpen(false);
@@ -130,12 +136,28 @@ function AccountMenu() {
           title="Sign out everywhere?"
           text="This browser and every other device signed in to ByteSize will need to sign in again."
           confirmLabel="Sign out everywhere"
-          onCancel={() => setAsking(false)}
-          onConfirm={() => {
+          onCancel={() => {
             setAsking(false);
-            void signOutEverywhere();
+            avatar.current?.focus();
+          }}
+          onConfirm={async () => {
+            try {
+              await signOutEverywhere();
+            } catch (e) {
+              setAsking(false);
+              setFailed(`Couldn't sign out everywhere: ${(e as Error).message}`);
+              avatar.current?.focus();
+            }
           }}
         />
+      )}
+      {failed && (
+        <div role="alert" className="absolute bottom-0 left-full z-40 ml-3 w-64 rounded-2xl bg-error-subtle p-3 text-sm text-error shadow-xl">
+          <p>{failed}</p>
+          <button type="button" onClick={() => setFailed(null)} className="mt-2 font-semibold underline">
+            OK
+          </button>
+        </div>
       )}
     </div>
   );
