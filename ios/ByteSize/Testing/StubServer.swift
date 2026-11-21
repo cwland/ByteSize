@@ -154,6 +154,8 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         static let banana = #"{"kind":"cache","id":41,"name":"Banana","brand":null,"icon":"🍌","barcode":"0012345678905","servings":[{"label":"1 medium","grams":118},{"label":"100 g","grams":100}],"nutrients":{"calories":105,"protein_g":1.3,"carbs_g":27,"fiber_g":3.1},"aiFields":[],"imageUrl":null,"override":false,"source":"usda","foodKind":"custom"}"#
         static let prunes = #"{"kind":"cache","id":42,"name":"Prunes","brand":null,"icon":"🍇","barcode":null,"servings":[{"label":"5 prunes","grams":40},{"label":"1 prune","grams":8,"derived":true}],"nutrients":{"calories":150,"fiber_g":3},"aiFields":[],"imageUrl":null,"override":false,"source":"usda","foodKind":"custom"}"#
         static let pasta = #"{"kind":"cache","id":50,"name":"Pasta","brand":null,"icon":"🍝","barcode":null,"servings":[{"label":"1 cup","grams":140}],"nutrients":{"calories":220,"carbs_g":43},"aiFields":[],"imageUrl":null,"override":false,"source":"usda","foodKind":"custom","last":{"servingIndex":0,"unit":"serving","quantity":1,"fraction":1}}"#
+        /// Only in Basic, which is off by default: shows once its chip is turned on.
+        static let bananaChips = #"{"kind":"cache","id":43,"name":"Banana chips","brand":null,"icon":"🍌","barcode":null,"servings":[{"label":"1 oz","grams":28}],"nutrients":{"calories":147},"aiFields":[],"imageUrl":null,"override":false,"source":"basic","foodKind":"custom"}"#
         private static func food(_ ref: String) -> String? {
             ["cache:41": banana, "cache:42": prunes, "cache:50": pasta][ref]
         }
@@ -228,8 +230,10 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 return (200, json(["days": Array(Set(entries.map(\.day))).sorted()]))
             case ("GET", "/api/foods/search"):
                 let q = query.lowercased()
+                // USDA has the food; Basic (off by default) has Banana chips for "ban"
                 let food = q.contains("ban") ? Self.banana : q.contains("prun") ? Self.prunes : ""
-                return (200, #"{"groups":[{"source":"basic","label":"Basic foods","foods":[\#(food)]}],"errors":[],"searched":["basic"]}"#)
+                let basic = q.contains("ban") ? Self.bananaChips : ""
+                return (200, #"{"groups":[{"source":"basic","label":"Basic foods","foods":[\#(basic)]},{"source":"usda","label":"USDA","foods":[\#(food)]}],"errors":[],"searched":["mine","basic","usda"]}"#)
             case ("GET", "/api/foods/recent"): return (200, #"{"foods":[\#(Self.banana)]}"#)
             case ("GET", "/api/foods/frequent"): return (200, #"{"foods":[]}"#)
             case ("GET", "/api/foods/same-as-yesterday"):

@@ -78,11 +78,13 @@ private struct QuickActionSheet: View {
     @State private var estimate: EstimateModel
 
     let units: Units
+    let sources: SourceFilter
 
     init(action: QuickAction, meal: Meal?, today: TodayModels, close: @escaping () -> Void) {
         self.action = action
         self.close = close
         units = today.units
+        sources = today.sources
         _track = State(initialValue: TrackFoodModel(api: today.api, dayStore: today.days, meal: meal))
         _scan = State(initialValue: ScanModel(api: today.api))
         _estimate = State(initialValue: EstimateModel(api: today.api, dayStore: today.days))
@@ -104,7 +106,7 @@ private struct QuickActionSheet: View {
     @ViewBuilder
     private var content: some View {
         switch action {
-        case .track: TrackFoodSheet(model: track, scan: scan, estimate: estimate, units: units, close: close)
+        case .track: TrackFoodSheet(model: track, sources: sources, scan: scan, estimate: estimate, units: units, close: close)
         case .scan: ScanSheet(model: scan, track: track, close: close)
         case .photo: PhotoSheet(model: estimate, track: track) { _ in close() }
         case .describe: DescribeSheet(model: estimate) { _ in close() }
