@@ -54,6 +54,7 @@ struct TrackFoodSheet: View {
             }
         }
         .listSectionSpacing(8)
+        .contentMargins(.top, 4, for: .scrollContent)
         .onAppear { searchFocused = true }
         .task { await model.load() }
         .task(id: model.query) {
@@ -156,10 +157,11 @@ struct TrackFoodSheet: View {
                 .pickerStyle(.menu)
                 .labelsHidden()
                 .tint(palette.color("ink"))
-                .accessibilityLabel("Meal")
+                .accessibilityLabel("Meal, \(model.meal.title)") // as the meal pickers elsewhere read
             }
             .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 0))
             .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
             if sources.open, let found = model.found {
                 let chips = sources.view(of: found).chips
                 if !chips.isEmpty {

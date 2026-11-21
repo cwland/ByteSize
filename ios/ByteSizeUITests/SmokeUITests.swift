@@ -231,7 +231,7 @@ final class SmokeUITests: XCTestCase {
         // SPEC-16: back to the search for the next food; Close leaves
         XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["logButton"].exists)
-        XCTAssertTrue(app.textFields["trackSearch"].exists)
+        XCTAssertTrue(app.textFields["trackSearch"].waitForExistence(timeout: 5))
         closeSheet()
         app.buttons["Food Log"].tap()
         XCTAssertTrue(app.staticTexts["Banana"].waitForExistence(timeout: 5))
@@ -500,7 +500,7 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["logAll"].waitForExistence(timeout: 5))
         app.buttons["logAll"].tap()
         XCTAssertTrue(label("Logged 2 foods").waitForExistence(timeout: 5), "back on the search")
-        XCTAssertTrue(app.textFields["trackSearch"].exists)
+        XCTAssertTrue(app.textFields["trackSearch"].waitForExistence(timeout: 5))
         closeSheet()
         XCTAssertTrue(app.staticTexts["Egg"].waitForExistence(timeout: 5))
         let dinner = reveal(app.buttons["addTo-dinner"]) // below the fold under the taller header
