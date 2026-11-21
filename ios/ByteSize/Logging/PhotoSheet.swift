@@ -12,6 +12,7 @@ struct PhotoSheet: View {
     @State private var notHere: String?
     @State private var portionFood: Food?
     @State private var reading = false
+    @State private var editing: EstimatePick?
     @Environment(\.palette) private var palette
 
     var body: some View {
@@ -24,7 +25,7 @@ struct PhotoSheet: View {
                     }
                 }
             } else if !model.items.isEmpty {
-                EstimateItemsView(model: model, onLogged: onLogged)
+                EstimateItemsView(model: model, editing: $editing, onLogged: onLogged)
             } else {
                 Section {
                     Text("A barcode, a Nutrition Facts label or a plate of food.")
@@ -40,6 +41,7 @@ struct PhotoSheet: View {
                 Section { Text(message).foregroundStyle(palette.color("error")).accessibilityIdentifier("photoMessage") }
             }
         }
+        .estimateAmount($editing, model: model)
         .sheet(item: $portionFood) { food in
             FoodPortionView(food: food, meal: model.meal, message: track.message, favorites: track) { food, portion in
                 let ok = await track.log(food, portion: portion)

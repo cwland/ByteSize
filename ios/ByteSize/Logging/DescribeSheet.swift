@@ -7,6 +7,7 @@ struct DescribeSheet: View {
     /// After Log all: the (+) menu's sheet closes; inside Track Food it goes back to the search.
     let onLogged: (String) -> Void
     @FocusState private var typing: Bool
+    @State private var editing: EstimatePick?
     @Environment(\.palette) private var palette
 
     var body: some View {
@@ -44,9 +45,10 @@ struct DescribeSheet: View {
                 Section { Text(message).foregroundStyle(palette.color("error")).accessibilityIdentifier("describeMessage") }
             }
             if !model.items.isEmpty {
-                EstimateItemsView(model: model, onLogged: onLogged)
+                EstimateItemsView(model: model, editing: $editing, onLogged: onLogged)
             }
         }
+        .estimateAmount($editing, model: model)
         .onAppear { typing = true }
     }
 }
