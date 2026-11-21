@@ -1090,9 +1090,22 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(done.waitForExistence(timeout: 5))
         sleep(2)
         XCTAssertTrue(done.exists, "the amount screen stays open")
+        app.pickerWheels.element(boundBy: 0).adjust(toPickerWheelValue: "2")
         done.tap()
         XCTAssertTrue(app.buttons["logSelected"].waitForExistence(timeout: 5), "back on the results, (+) sheet still up")
         XCTAssertTrue(app.descendants(matching: .any)["item-Egg"].exists)
+        XCTAssertTrue(app.staticTexts["2 × 1 slice · ≈ 160 cal"].waitForExistence(timeout: 3), "the new amount shows")
+    }
+
+    /// Review: Describe's keyboard came back every time the pushed amount screen closed.
+    func testDescribeKeyboardStaysDownAfterTheAmountScreen() {
+        describeTwoFoods()
+        XCTAssertTrue(waitUntil { !self.app.keyboards.firstMatch.exists }, "Estimate puts the keyboard away")
+        app.descendants(matching: .any)["item-Toast"].tap()
+        XCTAssertTrue(app.buttons["amountDone"].waitForExistence(timeout: 5))
+        app.buttons["amountDone"].tap()
+        XCTAssertTrue(app.buttons["logSelected"].waitForExistence(timeout: 5))
+        XCTAssertFalse(waitUntil(timeout: 1.5) { self.app.keyboards.firstMatch.exists }, "the keyboard stays down")
     }
 
     func testDescribeAmountStaysOpenFromThePlusMenu() {
