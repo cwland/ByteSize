@@ -1,4 +1,4 @@
-import { favorites, weighInSkips } from "../src/db/schema.js";
+import { favorites, weighInSkips, workoutSkips } from "../src/db/schema.js";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -140,6 +140,7 @@ async function seed() {
   // L2: a favorite of each kind (a kept food and one of the person's own)
   await t.db.insert(favorites).values([{ userId: a.id, cacheId: cache.id }, { userId: a.id, userFoodId: custom.id }]);
   await t.db.insert(weighInSkips).values({ userId: a.id, day: "2026-11-10" });
+  await t.db.insert(workoutSkips).values({ userId: a.id, externalId: "HK-gone" });
   const [recipe] = await t.db.insert(userFoods).values({ userId: a.id, kind: "recipe", name: "Overnight oats", servings: [{ label: "1 serving" }], nutrients: { calories: 360 }, recipeServings: 2, servingGrams: null }).returning();
   await t.db.insert(recipeItems).values([
     { recipeId: recipe.id, position: 0, foodKind: "cache", foodId: cache.id, unit: "g", quantity: 80, snapshot: { name: "Oats", brand: null, icon: "🥣", foodKind: "cache", nutrients: { calories: 300 }, perServing: { calories: 150 }, servings: [], aiFields: [] } },

@@ -449,6 +449,18 @@ export const weighIns = pgTable(
   (t) => [uniqueIndex("weigh_ins_user_day_idx").on(t.userId, t.day)]
 );
 
+// I5: Apple Health workouts the person deleted (by Health id), so a re-sync doesn't bring them back
+export const workoutSkips = pgTable(
+  "workout_skips",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    externalId: text("external_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("workout_skips_user_external_idx").on(t.userId, t.externalId)]
+);
+
 // I5: days whose weigh-in the person deleted, so Apple Health doesn't fill them again (a typed weigh-in clears the mark)
 export const weighInSkips = pgTable(
   "weigh_in_skips",
