@@ -16,6 +16,10 @@ iOS app and the web app. Each item can be built and tested on its own. Not yet s
 - **SPEC-11, SPEC-14** are GLP-1 shot logging on iOS and web; the dose lists should come from one shared table.
 - **SPEC-12, SPEC-13**: Profile/Settings divider and iPad layout.
 
+**Status (2026-11-20):** done — SPEC-01, 09, 16 (L1, 0.3–0.4), SPEC-07, 08, 10 (L2, 0.5), SPEC-02–06, 11, 12
+(Today polish, 0.6), SPEC-14, 15 (W1, 0.2), SPEC-17 (I4, 0.7); the Food Log day strip matching the Dashboard (I5, 0.8).
+Open — SPEC-13 (iPad, parked by Cory), SPEC-18, SPEC-19, SPEC-20.
+
 ---
 
 ## Part 1: Shared core architecture (iOS & Web)
@@ -235,3 +239,18 @@ the others are folded below, each opening with a ›.
 
 **Acceptance:** opening What's new shows the current version's card in full and every earlier version as a folded
 row with its change count and date; a › opens it.
+
+### SPEC-20: Web — plan picker as a carousel with ‹ › arrows, never under the side rail
+Cory (screenshot `2026-11-20-spec-20-plan-picker.png`): on "Choose your plan" (Goals › change plan) the five plan
+cards run off both sides: Maintenance slides under the left side rail and Vigorous is cut off at the right edge.
+
+- Today (`frontend/src/components/plan/PlanPicker.tsx`) phones get a swipe carousel, but from 768 px the cards sit in a
+  3- then 5-column grid that overflows the content area on the wide layout.
+- Make it a carousel at every width. Show only as many whole cards as fit in the content area (never a sliver, never
+  behind the rail): 1 on a phone, 2–3 on a tablet, up to 5 when they genuinely fit.
+- A ‹ arrow on the left and a › arrow on the right step one card at a time; an arrow greys out at the ends. Swipe,
+  the dots and the arrow keys keep working.
+- It still opens with the recommended plan (or the current one) in view, highlighted as today.
+
+**Acceptance:** at any window width every visible plan card is whole and none sits under the side rail; ‹ and › move
+through all five; the recommended plan is in view when the page opens.

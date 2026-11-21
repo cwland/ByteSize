@@ -103,6 +103,15 @@ public struct SearchResult: Codable, Equatable, Sendable {
     public let groups: [FoodGroup]
     public let errors: [SourceError]
     public let suggestion: String?
+    /// The sources a typed search asked (pill order); nil from a barcode or an older server.
+    public let searched: [String]?
+
+    public init(groups: [FoodGroup], errors: [SourceError], suggestion: String? = nil, searched: [String]? = nil) {
+        self.groups = groups
+        self.errors = errors
+        self.suggestion = suggestion
+        self.searched = searched
+    }
 }
 
 public struct BarcodeResult: Codable, Equatable, Sendable {

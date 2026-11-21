@@ -209,7 +209,7 @@ final class SmokeUITests: XCTestCase {
     func testTrackFoodSearchAndLog() {
         signedIn()
         openAction("Track Food")
-        let search = app.searchFields.firstMatch
+        let search = app.textFields["trackSearch"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         shot("7-track-food")
         search.tap()
@@ -231,10 +231,10 @@ final class SmokeUITests: XCTestCase {
         // SPEC-16: back to the search for the next food; Close leaves
         XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["logButton"].exists)
-        XCTAssertTrue(app.searchFields.firstMatch.exists)
+        XCTAssertTrue(app.textFields["trackSearch"].waitForExistence(timeout: 5))
         closeSheet()
         app.buttons["Food Log"].tap()
-        XCTAssertTrue(app.staticTexts["Banana"].waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(app.staticTexts["Banana"]).waitForExistence(timeout: 5), "late in the day it's in Snacks, below the fold")
     }
 
     /// Close on a sheet that stays open after logging; a tap during the pop back to the search can be lost.
@@ -249,7 +249,7 @@ final class SmokeUITests: XCTestCase {
 
     /// Search inside an open Track Food sheet and open a result's amount screen.
     private func trackSearchHere(_ text: String, pick name: String) {
-        let search = app.searchFields.firstMatch
+        let search = app.textFields["trackSearch"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.tap()
         search.typeText(text)
@@ -261,7 +261,7 @@ final class SmokeUITests: XCTestCase {
 
     private func trackSearch(_ text: String, pick name: String) {
         openAction("Track Food")
-        let search = app.searchFields.firstMatch
+        let search = app.textFields["trackSearch"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.tap()
         search.typeText(text)
@@ -269,6 +269,57 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
         XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5))
+    }
+
+    // MARK: - Track Food top: tools by the search, collapsible sources
+
+    func testCloseIsThereFromTheStartAndTheSearchKeepsItsWidth() {
+        signedIn()
+        openAction("Track Food")
+        let search = app.textFields["trackSearch"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars.buttons["Close"].firstMatch.exists, "Close is built with the screen")
+        let width = search.frame.width
+        shot("tf-1-open")
+        Thread.sleep(forTimeInterval: 1.5)
+        XCTAssertEqual(search.frame.width, width, accuracy: 0.5, "the search never shrinks after the screen is up")
+    }
+
+    func testSourceChipsFilterTheResults() {
+        signedIn()
+        openAction("Track Food")
+        let search = app.textFields["trackSearch"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("banana")
+        XCTAssertTrue(app.buttons["food-Banana"].waitForExistence(timeout: 5), "USDA is on")
+        XCTAssertFalse(app.buttons["food-Banana chips"].exists, "Basic is off by default")
+        XCTAssertFalse(app.buttons["sourceHint"].exists, "USDA found one")
+        let toggle = app.buttons["sourcesToggle"]
+        XCTAssertTrue(toggle.label.contains("2 OF 3"), toggle.label)
+        toggle.tap()
+        let basic = app.buttons["source-basic"]
+        XCTAssertTrue(basic.waitForExistence(timeout: 3))
+        shot("tf-2-sources-open")
+        basic.tap()
+        XCTAssertTrue(app.buttons["food-Banana chips"].waitForExistence(timeout: 3))
+        app.buttons["source-usda"].tap()
+        XCTAssertTrue(waitUntil { !self.app.buttons["food-Banana"].exists })
+        XCTAssertTrue(app.buttons["food-Banana chips"].exists)
+    }
+
+    func testSourcesRowRemembersOpen() {
+        signedIn()
+        openAction("Track Food")
+        let toggle = app.buttons["sourcesToggle"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        XCTAssertEqual(toggle.value as? String, "closed", "starts collapsed")
+        toggle.tap()
+        XCTAssertTrue(waitUntil { toggle.value as? String == "open" })
+        closeSheet()
+        openAction("Track Food")
+        XCTAssertTrue(app.buttons["sourcesToggle"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["sourcesToggle"].value as? String, "open")
     }
 
     func testTrackPrunesBySix() {
@@ -281,12 +332,12 @@ final class SmokeUITests: XCTestCase {
         shot("12-prunes-wheel")
         app.buttons["logButton"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["trackSearch"].waitForExistence(timeout: 5))
         XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists })
         closeSheet()
         app.buttons["Food Log"].tap()
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "6 × 1 prune")).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(row).waitForExistence(timeout: 5))
     }
 
     func testTrackFoodStaysOpenForTheNext() {
@@ -295,7 +346,7 @@ final class SmokeUITests: XCTestCase {
         app.buttons["logButton"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
         // the second food, without leaving the search
-        let search = app.searchFields.firstMatch
+        let search = app.textFields["trackSearch"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists })
         search.tap()
@@ -309,8 +360,8 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists })
         closeSheet()
         app.buttons["Food Log"].tap()
-        XCTAssertTrue(app.staticTexts["Banana"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Prunes"].waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(app.staticTexts["Banana"]).waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(app.staticTexts["Prunes"]).waitForExistence(timeout: 5))
     }
 
     // MARK: - L2: meals always there with Add; quick foods one tap away; the bookmark
@@ -332,7 +383,7 @@ final class SmokeUITests: XCTestCase {
         let add = app.buttons["addTo-dinner"]
         XCTAssertTrue(add.waitForExistence(timeout: 5), "an empty meal still shows, with its Add")
         add.tap()
-        XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["trackSearch"].waitForExistence(timeout: 5))
     }
 
     func testEmptyMealsHaveAddAndOpenInThatMeal() {
@@ -373,7 +424,7 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(waitUntil { bookmark.label == "Remove from Favorites" })
         shot("17-bookmark")
         app.navigationBars.buttons.element(boundBy: 0).tap() // Back to the search
-        let clear = app.searchFields.firstMatch.buttons["Clear text"]
+        let clear = app.buttons["Clear search"]
         if clear.waitForExistence(timeout: 3) { clear.tap() }
         XCTAssertTrue(label("Favorites").waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["quickAdd-Prunes"].waitForExistence(timeout: 5))
@@ -411,7 +462,12 @@ final class SmokeUITests: XCTestCase {
         // Back (not Close): the Describe Food bar has both, and other bars sit behind the sheet
         app.navigationBars["Describe Food"].buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.buttons["hub-describe"].waitForExistence(timeout: 5), "back on the search, sheet still open")
-        XCTAssertTrue(app.buttons["Meal, Snacks"].exists || app.buttons.matching(NSPredicate(format: "label == %@", "Meal, Snacks")).firstMatch.exists, "the search is in Snacks now")
+        let meal = app.descendants(matching: .any)["trackMeal"]
+        let inSnacks = waitUntil { meal.exists && (meal.label.contains("Snacks") || (meal.value as? String ?? "").contains("Snacks")) }
+        if !inSnacks, let dir = ProcessInfo.processInfo.environment["SHOTS_DIR"] {
+            try? app.debugDescription.write(toFile: dir + "/meal-tree.txt", atomically: true, encoding: .utf8)
+        }
+        XCTAssertTrue(inSnacks, "the search is in Snacks now")
         XCTAssertTrue(reveal(app.buttons["quickAdd-Banana"]).waitForExistence(timeout: 5))
         app.buttons["quickAdd-Banana"].tap()
         XCTAssertTrue(label("Logged Banana").waitForExistence(timeout: 5))
@@ -434,7 +490,7 @@ final class SmokeUITests: XCTestCase {
         app.buttons["hub-scan"].tap()
         XCTAssertTrue(app.textFields["barcodeField"].waitForExistence(timeout: 5) || app.otherElements["scanner"].exists)
         app.navigationBars.buttons.element(boundBy: 0).tap() // Back
-        XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 5), "back on the search, the sheet still open")
+        XCTAssertTrue(app.textFields["trackSearch"].waitForExistence(timeout: 5), "back on the search, the sheet still open")
         XCTAssertTrue(app.buttons["hub-scan"].exists)
     }
 
@@ -449,7 +505,7 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["logAll"].waitForExistence(timeout: 5))
         app.buttons["logAll"].tap()
         XCTAssertTrue(label("Logged 2 foods").waitForExistence(timeout: 5), "back on the search")
-        XCTAssertTrue(app.searchFields.firstMatch.exists)
+        XCTAssertTrue(app.textFields["trackSearch"].waitForExistence(timeout: 5))
         closeSheet()
         XCTAssertTrue(app.staticTexts["Egg"].waitForExistence(timeout: 5))
         let dinner = reveal(app.buttons["addTo-dinner"]) // below the fold under the taller header
