@@ -15,6 +15,14 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.12.1",
+    date: "2026-11-21",
+    changed: [
+      "iPhone: on a scanned or photographed food's Track screen, Log and Scan again (or Take another photo) sit at the bottom.",
+      "iPhone: the weight history on Goals shows your last 5 weigh-ins; Show all opens the rest.",
+    ],
+  },
+  {
     version: "0.12.0",
     date: "2026-11-21",
     title: "My foods on iPhone",

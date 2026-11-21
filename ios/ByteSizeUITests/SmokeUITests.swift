@@ -1303,7 +1303,10 @@ final class SmokeUITests: XCTestCase {
         XCTAssertEqual(toggle.label, "Show all 6 weigh-ins")
         XCTAssertTrue(app.descendants(matching: .any)["history-\(dayString(-30))"].exists, "the fifth newest shows")
         XCTAssertFalse(app.descendants(matching: .any)["history-\(dayString(-60))"].exists, "the sixth waits")
+        shot("dbg-before")
         toggle.tap()
+        sleep(1)
+        shot("dbg-after")
         XCTAssertTrue(reveal(app.descendants(matching: .any)["history-\(dayString(-60))"]).waitForExistence(timeout: 3))
         XCTAssertEqual(reveal(app.buttons["historyToggle"]).label, "Show fewer")
     }
