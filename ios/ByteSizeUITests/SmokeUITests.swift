@@ -821,4 +821,22 @@ final class SmokeUITests: XCTestCase {
         search.typeText("oat")
         XCTAssertTrue(waitUntil { self.app.buttons["myFood-201"].exists && !self.app.buttons["myFood-203"].exists })
     }
+
+    // MARK: - I5 Apple Health
+
+    func testHealthSwitchSyncsAWeighIn() {
+        app.terminate()
+        app.launchArguments.append("-UITestFakeHealth")
+        app.launch()
+        signedIn()
+        app.buttons["Profile"].firstMatch.tap()
+        let weight = app.switches["health-weight"]
+        XCTAssertTrue(reveal(weight).waitForExistence(timeout: 5))
+        weight.switches.firstMatch.tap()
+        let status = app.descendants(matching: .any)["healthStatus"]
+        XCTAssertTrue(waitUntil(timeout: 8) { status.exists && status.label.contains("1 weigh-in") }, status.exists ? status.label : "no status")
+        shot("41-health")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(waitUntil(timeout: 8) { self.label("176.4 lb").exists }, "the Dashboard weight card shows the Health weigh-in")
+    }
 }
