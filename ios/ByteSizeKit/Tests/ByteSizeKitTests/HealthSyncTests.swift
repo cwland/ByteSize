@@ -279,4 +279,15 @@ final class HealthSyncTests: XCTestCase {
         await s.syncNow()
         XCTAssertTrue(HTTPStub.requests.isEmpty)
     }
+
+    func testABackgroundSyncUsesTheSavedSwitches() async {
+        serve()
+        let store = FakeHealthStore()
+        let s = sync(store, account: "h|1")
+        await s.setOn(.weight, true)
+        // a cold start in the background knows who and what, without the app's screens
+        XCTAssertEqual(HealthSync.lastAccount(defaults), "h|1")
+        XCTAssertEqual(HealthSync.savedOn(account: "h|1", defaults: defaults), [.weight])
+        XCTAssertEqual(HealthSync.savedOn(account: "h|2", defaults: defaults), [])
+    }
 }
