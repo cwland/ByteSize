@@ -11,9 +11,11 @@ final class TodayModels {
     let log: FoodLogModel
     let goals: GoalsModel
     let myFoods: MyFoodsModel
+    let health: HealthSync
     let units: Units
 
-    init(api: APIClient, user: User) {
+    /// `account`: the server and user, so Health switches belong to this sign-in.
+    init(api: APIClient, user: User, account: String) {
         self.api = api
         let units = Units(user.units)
         let zone = user.timezone.flatMap(TimeZone.init(identifier:)) ?? .current
@@ -26,6 +28,28 @@ final class TodayModels {
         // A weigh-in logged or deleted on the Goals tab also updates the Dashboard's weight card
         goals = GoalsModel(api: api, dayStore: days, units: units) { await dashboard.reloadWeight() }
         myFoods = MyFoodsModel(api: api, dayStore: days)
+        health = HealthSync(api: api, dayStore: days, store: Self.healthStore, defaults: Self.healthDefaults, account: account)
+    }
+
+    private static var healthStore: HealthStore {
+        #if DEBUG
+        if UITestHealthStore.isOn { return UITestHealthStore() }
+        #endif
+        return HealthKitStore.shared
+    }
+
+    private static var healthDefaults: UserDefaults {
+        #if DEBUG
+        if StubServer.isOn { return UserDefaults(suiteName: "com.cwland.bytesize.uitests") ?? .standard }
+        #endif
+        return .standard
+    }
+
+    /// Health first (it may add a weigh-in), then the Dashboard's weight.
+    func syncHealth() async {
+        guard health.anyOn else { return }
+        await health.syncNow()
+        await dashboard.reloadWeight()
     }
 
     func load() async {
