@@ -154,6 +154,15 @@ describe("workouts", () => {
     expect(await t.db.select().from(workoutSkips)).toEqual([]);
   });
 
+  it("a Health workout sent while he deletes it doesn't come back", async () => {
+    for (let i = 0; i < 15; i++) {
+      const id = `HK-race-${i}`;
+      const hk = (await workout({ source: "health", externalId: id })).body.workout;
+      await Promise.all([t.api("DELETE", `/api/workouts/${hk.id}`), workout({ source: "health", externalId: id }), workout({ source: "health", externalId: id })]);
+      expect((await activity()).workouts.filter((w: { externalId: string }) => w.externalId === id)).toEqual([]);
+    }
+  });
+
   it("deleted Health workouts are per person", async () => {
     const hk = (await workout({ source: "health", externalId: "HK-4" })).body.workout;
     await t.api("DELETE", `/api/workouts/${hk.id}`);

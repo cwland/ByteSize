@@ -148,18 +148,22 @@ export default async function activityRoutes(app: FastifyInstance) {
       const [row] = await db.insert(workouts).values({ userId, ...fields, createdAt: now }).returning();
       return { workout: toWorkout(row), skipped: false };
     }
-    // From Health, insert only (I5): one already here keeps his edits; one he deleted stays deleted
+    // From Health, insert only (I5): one already here keeps his edits; one he deleted stays deleted. The person's
+    // row is locked (as DELETE does) so a send racing a delete can't bring the workout back.
     const externalId = b.externalId;
-    const [skip] = await db.select({ id: workoutSkips.id }).from(workoutSkips).where(and(eq(workoutSkips.userId, userId), eq(workoutSkips.externalId, externalId)));
-    if (skip) return { workout: null, skipped: true };
-    const [row] = await db
-      .insert(workouts)
-      .values({ userId, ...fields, externalId, createdAt: now })
-      .onConflictDoNothing({ target: [workouts.userId, workouts.externalId], where: sql`${workouts.externalId} is not null` })
-      .returning();
-    if (row) return { workout: toWorkout(row), skipped: false };
-    const [existing] = await db.select().from(workouts).where(and(eq(workouts.userId, userId), eq(workouts.externalId, externalId)));
-    return { workout: existing ? toWorkout(existing) : null, skipped: true };
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`select 1 from users where id = ${userId} for update`);
+      const [skip] = await tx.select({ id: workoutSkips.id }).from(workoutSkips).where(and(eq(workoutSkips.userId, userId), eq(workoutSkips.externalId, externalId)));
+      if (skip) return { workout: null, skipped: true };
+      const [row] = await tx
+        .insert(workouts)
+        .values({ userId, ...fields, externalId, createdAt: now })
+        .onConflictDoNothing({ target: [workouts.userId, workouts.externalId], where: sql`${workouts.externalId} is not null` })
+        .returning();
+      if (row) return { workout: toWorkout(row), skipped: false };
+      const [existing] = await tx.select().from(workouts).where(and(eq(workouts.userId, userId), eq(workouts.externalId, externalId)));
+      return { workout: existing ? toWorkout(existing) : null, skipped: true };
+    });
   });
 
   app.patch("/api/workouts/:id", async (req) => {
@@ -181,6 +185,7 @@ export default async function activityRoutes(app: FastifyInstance) {
     const userId = requireUser(req);
     const { id } = idParam.parse(req.params);
     const gone = await db.transaction(async (tx) => {
+      await tx.execute(sql`select 1 from users where id = ${userId} for update`);
       const rows = await tx
         .delete(workouts)
         .where(and(eq(workouts.id, id), eq(workouts.userId, userId)))

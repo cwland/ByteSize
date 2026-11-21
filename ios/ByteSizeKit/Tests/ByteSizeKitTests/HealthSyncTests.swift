@@ -290,4 +290,56 @@ final class HealthSyncTests: XCTestCase {
         XCTAssertEqual(HealthSync.savedOn(account: "h|1", defaults: defaults), [.weight])
         XCTAssertEqual(HealthSync.savedOn(account: "h|2", defaults: defaults), [])
     }
+
+    func testABadReadingDoesntBlockTheRest() async {
+        serve()
+        let store = FakeHealthStore()
+        store.weightList = [
+            HealthWeight(date: iso("2026-11-16T14:00:00Z"), kg: 20, fromByteSize: false), // a child on the scale
+            HealthWeight(date: iso("2026-11-17T14:00:00Z"), kg: 400, fromByteSize: false),
+            HealthWeight(date: iso("2026-11-18T14:00:00Z"), kg: 80, fromByteSize: false),
+        ]
+        store.workoutList = [HealthWorkout(id: "LONG", start: iso("2026-11-17T15:00:00Z"), seconds: 30 * 3600, activeCalories: 900, activity: .walking, fromByteSize: false)]
+        let s = sync(store)
+        await s.setOn(.weight, true)
+        await s.setOn(.workouts, true)
+        XCTAssertEqual(sent("PUT", "/api/weigh-ins/").map { $0.request.url!.path() }, ["/api/weigh-ins/2026-11-18"])
+        XCTAssertEqual(sent("POST", "/api/workouts").first?.json?["minutes"] as? Int, 1440)
+        XCTAssertNotNil(s.lastSynced(for: .weight))
+        XCTAssertNil(s.message)
+    }
+
+    func testAnItemTheServerRefusesIsSkippedNotRetriedForever() async {
+        HTTPStub.requests = []
+        HTTPStub.handler = { req in
+            let path = req.url?.path() ?? ""
+            if path == "/api/weigh-ins/2026-11-17" { return .json(400, #"{"error":"Enter a weight between 30 and 350 kg"}"#) }
+            return .json(200, #"{"weighIn":null,"skipped":false}"#)
+        }
+        let store = FakeHealthStore()
+        store.weightList = [
+            HealthWeight(date: iso("2026-11-17T14:00:00Z"), kg: 81, fromByteSize: false),
+            HealthWeight(date: iso("2026-11-18T14:00:00Z"), kg: 80, fromByteSize: false),
+        ]
+        let s = sync(store)
+        await s.setOn(.weight, true)
+        XCTAssertEqual(sent("PUT", "/api/weigh-ins/").count, 2, "the day after the refused one is still sent")
+        XCTAssertEqual(s.lastSynced(for: .weight), noon, "a refused item doesn't freeze the window")
+        XCTAssertEqual(s.result, "1 weigh-in")
+    }
+
+    func testTurningOffElsewhereStopsASyncInProgress() async {
+        let defaults = self.defaults!
+        HTTPStub.requests = []
+        HTTPStub.handler = { req in
+            // the background copy (or Profile) turns Weight off while the first day is being sent
+            defaults.set(false, forKey: "health.h|1.on.weight")
+            return .json(200, #"{"weighIn":null,"skipped":false}"#)
+        }
+        let store = FakeHealthStore()
+        store.weightList = (10...18).map { HealthWeight(date: iso("2026-11-\($0)T14:00:00Z"), kg: 80, fromByteSize: false) }
+        let s = sync(store)
+        await s.setOn(.weight, true)
+        XCTAssertEqual(sent("PUT", "/api/weigh-ins/").count, 1)
+    }
 }

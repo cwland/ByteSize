@@ -839,4 +839,20 @@ final class SmokeUITests: XCTestCase {
         app.buttons["Done"].tap()
         XCTAssertTrue(waitUntil(timeout: 8) { self.label("176.4 lb").exists }, "the Dashboard weight card shows the Health weigh-in")
     }
+
+    func testTheDayStripSitsTheSameOnDashboardAndFoodLog() {
+        signedIn()
+        let header = app.buttons["dayHeader"]
+        let chip = app.buttons["day-\(dayString(0))"]
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+        let onDashboard = (header.frame, chip.frame)
+        app.buttons["Food Log"].tap()
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 3) { chip.exists })
+        shot("42-strip-food-log")
+        XCTAssertEqual(header.frame.minY, onDashboard.0.minY, accuracy: 1, "the header doesn't drop between tabs")
+        XCTAssertEqual(chip.frame.minY, onDashboard.1.minY, accuracy: 1)
+        XCTAssertEqual(chip.frame.height, onDashboard.1.height, accuracy: 1)
+        XCTAssertEqual(header.frame.midX, onDashboard.0.midX, accuracy: 1)
+    }
 }
