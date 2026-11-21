@@ -1,45 +1,50 @@
 import ByteSizeKit
 import SwiftUI
 
-/// The foods the AI listed (Describe, plate photos): amounts to adjust, rows to remove, a meal, then Log all.
+/// The foods the AI listed (Describe, plate photos): each checked to start; uncheck what you don't want, tap a food
+/// for its amount, pick a meal, then Log selected.
 struct EstimateItemsView: View {
     @Bindable var model: EstimateModel
-    /// After Log all: how many foods were logged ("2 foods") or the one food's name.
+    /// The food whose amount screen is open: pushed by the screen holding this list (a sheet here closed itself).
+    @Binding var editing: EstimatePick?
+    /// After logging: how many foods were logged ("2 foods") or the one food's name.
     let onLogged: (String) -> Void
     @Environment(\.palette) private var palette
-
-    @State private var editing: Int?
 
     var body: some View {
         Section("What the AI found") {
             ForEach(Array(model.items.enumerated()), id: \.offset) { i, item in
-                // Tap: the amount wheel, in this food's own servings (L1)
-                Button { editing = i } label: {
-                    HStack(spacing: 12) {
-                        Text(item.food.icon).font(.title2)
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 6) {
-                                Text(item.food.name).foregroundStyle(palette.color("ink"))
-                                AIChip()
-                            }
-                            Text("\(LabelReview.number(item.quantity)) × \(item.food.servings.indices.contains(item.servingIndex) ? item.food.servings[item.servingIndex].label : "serving") · ≈ \(Int(item.calories.rounded())) cal")
-                                .font(.caption)
-                                .foregroundStyle(palette.color("subtle"))
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(palette.color("subtle"))
+                let on = model.selected.indices.contains(i) && model.selected[i]
+                HStack(spacing: 12) {
+                    Button { model.toggle(at: i) } label: {
+                        Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                            .font(.title2)
+                            .foregroundStyle(on ? palette.color("primary") : palette.color("subtle"))
                     }
-                }
-                .accessibilityIdentifier("item-\(item.food.name)")
-                .swipeActions {
-                    Button(role: .destructive) { model.remove(at: i) } label: { Label("Remove", systemImage: "trash") }
-                }
-            }
-        }
-        .sheet(item: Binding(get: { editing.map(ItemIndex.init) }, set: { editing = $0?.id })) { pick in
-            if model.items.indices.contains(pick.id) {
-                ItemAmountSheet(item: model.items[pick.id]) { servingIndex, quantity in
-                    model.setPortion(servingIndex: servingIndex, quantity: quantity, at: pick.id)
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Include \(item.food.name)")
+                    .accessibilityAddTraits(on ? .isSelected : [])
+                    .accessibilityIdentifier("check-\(item.food.name)")
+                    // The rest of the row: the amount wheel, in this food's own servings (L1)
+                    Button { editing = EstimatePick(id: i) } label: {
+                        HStack(spacing: 12) {
+                            Text(item.food.icon).font(.title2).opacity(on ? 1 : 0.5)
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text(item.food.name).foregroundStyle(palette.color(on ? "ink" : "subtle"))
+                                    AIChip()
+                                }
+                                Text("\(LabelReview.number(item.quantity)) × \(item.food.servings.indices.contains(item.servingIndex) ? item.food.servings[item.servingIndex].label : "serving") · ≈ \(Int(item.calories.rounded())) cal")
+                                    .font(.caption)
+                                    .foregroundStyle(palette.color("subtle"))
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(palette.color("subtle"))
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier("item-\(item.food.name)")
                 }
             }
         }
@@ -52,25 +57,40 @@ struct EstimateItemsView: View {
             }
             Button {
                 Task {
-                    let names = model.items.map(\.food.name)
-                    if await model.logAll() {
+                    let names = model.items.indices.filter { model.selected[$0] }.map { model.items[$0].food.name }
+                    if await model.logSelected() {
                         Haptics.logged()
                         onLogged(names.count == 1 ? names[0] : "\(names.count) foods")
                     }
                 }
             } label: {
-                HStack { Spacer(); Text("Log all").bold(); Spacer() }
+                HStack { Spacer(); Text("Log selected").bold(); Spacer() }
             }
-            .disabled(model.items.isEmpty || model.busy)
-            .accessibilityIdentifier("logAll")
+            .disabled(!model.canLog)
+            .accessibilityIdentifier("logSelected")
         }
     }
 }
 
-private struct ItemIndex: Identifiable { let id: Int }
+/// Which found food's amount screen is open.
+struct EstimatePick: Identifiable, Hashable { let id: Int }
+
+extension View {
+    /// The amount screen for a found food, pushed onto the screen holding the list.
+    func estimateAmount(_ editing: Binding<EstimatePick?>, model: EstimateModel) -> some View {
+        navigationDestination(item: editing) { pick in
+            if model.items.indices.contains(pick.id) {
+                ItemAmountScreen(item: model.items[pick.id]) { servingIndex, quantity in
+                    model.setPortion(servingIndex: servingIndex, quantity: quantity, at: pick.id)
+                }
+            }
+        }
+    }
+}
 
 /// One AI-listed food's amount on the wheel (its own servings only: estimates are logged in their servings).
-private struct ItemAmountSheet: View {
+/// Pushed: Back leaves it unchanged, Done keeps the new amount.
+private struct ItemAmountScreen: View {
     @State private var portion: PortionModel
     let onDone: (Int, Double) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -84,32 +104,28 @@ private struct ItemAmountSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    HStack {
-                        Text(portion.icon).font(.largeTitle)
-                        Text(portion.name).font(.headline)
-                        Spacer()
-                        Text(portion.previewCalories.map { "≈ \($0) cal" } ?? "—").monospacedDigit()
-                    }
+        Form {
+            Section {
+                HStack {
+                    Text(portion.icon).font(.largeTitle)
+                    Text(portion.name).font(.headline)
+                    Spacer()
+                    Text(portion.previewCalories.map { "≈ \($0) cal" } ?? "—").monospacedDigit()
                 }
-                Section("Amount") { AmountWheel(portion: portion) }
             }
-            .navigationTitle("Amount")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        onDone(portion.servingIndex, portion.quantity)
-                        dismiss()
-                    }
-                    .disabled(!portion.canLog)
-                    .accessibilityIdentifier("amountDone")
+            Section("Amount") { AmountWheel(portion: portion) }
+        }
+        .navigationTitle("Amount")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done") {
+                    onDone(portion.servingIndex, portion.quantity)
+                    dismiss()
                 }
+                .disabled(!portion.canLog)
+                .accessibilityIdentifier("amountDone")
             }
         }
-        .presentationDetents([.medium])
     }
 }

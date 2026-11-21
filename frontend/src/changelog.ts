@@ -15,6 +15,18 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.11.0",
+    date: "2026-11-21",
+    title: "Photo and Describe results",
+    added: [
+      "iPhone: every food Photo or Describe finds has a checkbox. Uncheck the ones you don't want, then Log selected.",
+      "iPhone: Retake photo under a photo's results, Take another photo on a photographed barcode or label, and Scan again on a scanned food.",
+    ],
+    fixed: [
+      "iPhone: tapping a found food to change its amount no longer closes the screen straight away (from the + menu).",
+    ],
+  },
+  {
     version: "0.10.0",
     date: "2026-11-21",
     title: "Passkeys and Authentik on iPhone",

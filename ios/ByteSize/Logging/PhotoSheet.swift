@@ -12,6 +12,7 @@ struct PhotoSheet: View {
     @State private var notHere: String?
     @State private var portionFood: Food?
     @State private var reading = false
+    @State private var editing: EstimatePick?
     @Environment(\.palette) private var palette
 
     var body: some View {
@@ -24,7 +25,12 @@ struct PhotoSheet: View {
                     }
                 }
             } else if !model.items.isEmpty {
-                EstimateItemsView(model: model, onLogged: onLogged)
+                EstimateItemsView(model: model, editing: $editing, onLogged: onLogged)
+                Section {
+                    // R1: the AI got it wrong — the photo choices again
+                    Button("Retake photo", systemImage: "camera.rotate") { model.clearItems() }
+                        .accessibilityIdentifier("retakePhoto")
+                }
             } else {
                 Section {
                     Text("A barcode, a Nutrition Facts label or a plate of food.")
@@ -40,8 +46,11 @@ struct PhotoSheet: View {
                 Section { Text(message).foregroundStyle(palette.color("error")).accessibilityIdentifier("photoMessage") }
             }
         }
-        .sheet(item: $portionFood) { food in
-            FoodPortionView(food: food, meal: model.meal, message: track.message, favorites: track) { food, portion in
+        .estimateAmount($editing, model: model)
+        // Pushed, not a sheet (R1): a sheet over this one could close both
+        .navigationDestination(item: $portionFood) { food in
+            FoodPortionView(food: food, meal: model.meal, pushed: true, message: track.message, favorites: track,
+                            again: PortionSheet.Again(title: "Take another photo") { portionFood = nil }) { food, portion in
                 let ok = await track.log(food, portion: portion)
                 if ok { onLogged(food.name) }
                 return ok
