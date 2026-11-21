@@ -12,10 +12,23 @@ struct DescribeSheet: View {
     var body: some View {
         Form {
             Section {
-                TextField("e.g. 2 eggs, toast and coffee", text: $model.text, axis: .vertical)
-                    .lineLimit(2...5)
-                    .focused($typing)
-                    .accessibilityIdentifier("describeField")
+                HStack(alignment: .top, spacing: 8) {
+                    TextField("e.g. 2 eggs, toast and coffee", text: $model.text, axis: .vertical)
+                        .lineLimit(2...5)
+                        .focused($typing)
+                        .accessibilityIdentifier("describeField")
+                    // SPEC-21: one tap clears it (and the last list); the keyboard stays up for the next
+                    if !model.text.isEmpty {
+                        Button {
+                            model.clearDescription()
+                            typing = true
+                        } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(palette.color("subtle"))
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Clear description")
+                    }
+                }
                 Button {
                     typing = false
                     Task { await model.describe() }

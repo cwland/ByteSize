@@ -15,6 +15,24 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.9.0",
+    date: "2026-11-21",
+    title: "Tidier menus and What's new",
+    added: [
+      "Your initials at the bottom of the side rail open an account menu: Profile & security, Sign out, and Sign out everywhere.",
+      "What's new shows this version in full, grouped into Added, Changed and Fixed, with earlier updates folded below — tap one to open it.",
+      "The plan picker has ‹ and › arrows to step through the plans.",
+      "iPhone: Describe Food has a clear button in the text box.",
+    ],
+    changed: [
+      "Settings sits with the other pages in the side rail, and Users comes right after Profile.",
+      "The version number lives in the bottom-left corner of the side rail.",
+    ],
+    fixed: [
+      "The plan cards never slide under the side rail or get cut off at the edge: only whole cards show.",
+    ],
+  },
+  {
     version: "0.8.1",
     date: "2026-11-20",
     title: "Track Food on iPhone",
