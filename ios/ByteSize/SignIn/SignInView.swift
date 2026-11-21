@@ -142,6 +142,24 @@ struct SignInView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
+            // I6: a passkey made on the web at this address, or the server's OAuth provider
+            if model.showsPasskey || model.oauthLabel != nil {
+                if model.showsPasswordForm {
+                    Text("or").font(.footnote).foregroundStyle(palette.color("muted")).frame(maxWidth: .infinity)
+                }
+                if model.showsPasskey {
+                    secondaryButton("Sign in with a passkey", systemImage: "person.badge.key") {
+                        await model.signInWithPasskey(using: PasskeySheet())
+                    }
+                    .accessibilityIdentifier("passkeySignIn")
+                }
+                if let provider = model.oauthLabel {
+                    secondaryButton("Sign in with \(provider)", systemImage: "arrow.up.forward.app") {
+                        await model.signInWithOAuth(using: WebSignInSheet())
+                    }
+                    .accessibilityIdentifier("oauthSignIn")
+                }
+            }
         }
         .onAppear { focus = model.username.isEmpty ? .username : .password }
     }
@@ -165,6 +183,20 @@ struct SignInView: View {
                 .background(palette.color("page"), in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(palette.color("strong")))
         }
+    }
+
+    private func secondaryButton(_ title: String, systemImage: String, action: @escaping () async -> Void) -> some View {
+        Button {
+            Task { await action() }
+        } label: {
+            Label(title, systemImage: systemImage)
+                .fontWeight(.semibold)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .foregroundStyle(palette.color("ink"))
+                .background(palette.color("page"), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(palette.color("strong")))
+        }
+        .disabled(model.busy)
     }
 
     private func primaryButton(_ title: String, enabled: Bool, action: @escaping () async -> Void) -> some View {

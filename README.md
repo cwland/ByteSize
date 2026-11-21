@@ -45,6 +45,11 @@ the admin adds everyone else in Settings › Users.
 - Health check: `GET /health` → `{"ok":true,"db":true,"version":"…"}`.
 - Behind Nginx Proxy Manager / Traefik: proxy to port 4100. Passkeys need `https://` (or `localhost`);
   set `PASSKEY_ORIGINS=https://bytesize.example.com` to allow only your address.
+- iPhone app passkeys: set `IOS_APP_ID` to your Apple Team ID and the app's bundle ID
+  (`ABCDE12345.com.cwland.bytesize`; the Team ID is in Xcode › Signing & Capabilities). The server then serves
+  `/.well-known/apple-app-site-association`, which the proxy must pass through. The app's Associated Domains
+  entitlement names the host (`webcredentials:<your host>`); change it in `ios/ByteSize/ByteSize.entitlements`
+  if your address differs. Passkeys are created on the web and work on the phone at the same address.
 
 ### Backups
 

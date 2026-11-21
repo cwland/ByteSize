@@ -93,7 +93,8 @@ final class SignInModelTests: XCTestCase {
         m.serverText = "h.test"
         await m.connect()
         XCTAssertFalse(m.showsPasswordForm)
-        XCTAssertEqual(m.error, "This server signs in with Authentik. That's coming to the app soon — use the web app for now.")
+        XCTAssertNil(m.error, "I6: no more \"coming soon\" — the Authentik button is there")
+        XCTAssertEqual(m.oauthLabel, "Authentik")
     }
 
     func testCanSignIn() async {
@@ -180,5 +181,150 @@ final class SignInModelTests: XCTestCase {
         let (m, s) = model()
         await s.restore()
         XCTAssertEqual(m.notice, "You were signed out")
+    }
+
+    // MARK: - I6: passkeys and Authentik on the phone
+
+    private func login() -> HTTPStub.Reply { .json(200, #"{"token":"tok-1","user":\#(userJSON)}"#) }
+    private func recorded(_ path: String) -> [HTTPStub.Recorded] { HTTPStub.requests.filter { $0.request.url?.path() == path } }
+
+    func testThePasskeyButtonShowsAndOAuthOnlyWhenOffered() async {
+        let (m, _) = await connected()
+        XCTAssertTrue(m.showsPasskey)
+        XCTAssertNil(m.oauthLabel)
+    }
+
+    /// Apple signs a passkey for https://<host> (no port): only offered where it can work.
+    func testNoPasskeyButtonOnAnOddPort() async {
+        HTTPStub.routes(["/api/health": health, "/api/auth/status": statusOK])
+        let (m, _) = model()
+        m.serverText = "https://h.test:8443"
+        await m.connect()
+        XCTAssertEqual(m.step, .credentials)
+        XCTAssertFalse(m.showsPasskey)
+    }
+
+    func testSignInWithAPasskey() async throws {
+        let (m, s) = await connected()
+        HTTPStub.routes([
+            "/api/passkeys/login/options": .json(200, #"{"challengeId":"c-1","options":{"challenge":"AQID","rpId":"h.test","allowCredentials":[],"userVerification":"preferred"}}"#),
+            "/api/passkeys/login/verify": login(),
+        ])
+        let fake = FakePasskeys(.success(PasskeyAssertion(credentialID: Data([9, 9]), clientDataJSON: Data("{}".utf8), authenticatorData: Data([1]), signature: Data([2]), userID: Data([3]))))
+        await m.signInWithPasskey(using: fake)
+        XCTAssertNil(m.error)
+        XCTAssertEqual(fake.asked?.challenge, Data([1, 2, 3]), "the server's challenge, base64url-decoded")
+        XCTAssertEqual(fake.asked?.relyingParty, "h.test")
+        for path in ["/api/passkeys/login/options", "/api/passkeys/login/verify"] {
+            XCTAssertEqual(recorded(path).last?.request.value(forHTTPHeaderField: "Origin"), "https://h.test", "the origin Apple signs: \(path)")
+        }
+        let body = try XCTUnwrap(recorded("/api/passkeys/login/verify").last?.json)
+        XCTAssertEqual(body["challengeId"] as? String, "c-1")
+        let response = try XCTUnwrap(body["response"] as? [String: Any])
+        XCTAssertEqual(response["id"] as? String, "CQk")
+        XCTAssertEqual(response["rawId"] as? String, "CQk")
+        XCTAssertEqual(response["type"] as? String, "public-key")
+        let inner = try XCTUnwrap(response["response"] as? [String: Any])
+        XCTAssertEqual(inner["clientDataJSON"] as? String, "e30")
+        XCTAssertEqual(inner["authenticatorData"] as? String, "AQ")
+        XCTAssertEqual(inner["signature"] as? String, "Ag")
+        XCTAssertEqual(inner["userHandle"] as? String, "Aw")
+        guard case .signedIn = s.state else { return XCTFail("signed in") }
+    }
+
+    func testCancellingThePasskeySheetIsQuiet() async {
+        let (m, s) = await connected()
+        HTTPStub.routes(["/api/passkeys/login/options": .json(200, #"{"challengeId":"c-1","options":{"challenge":"AQID","rpId":"h.test"}}"#)])
+        await m.signInWithPasskey(using: FakePasskeys(.failure(SignInCancelled())))
+        XCTAssertNil(m.error)
+        XCTAssertTrue(recorded("/api/passkeys/login/verify").isEmpty)
+        if case .signedIn = s.state { XCTFail("not signed in") }
+    }
+
+    func testAPasskeyTheServerRefusesSaysWhy() async {
+        let (m, _) = await connected()
+        HTTPStub.routes([
+            "/api/passkeys/login/options": .json(200, #"{"challengeId":"c-1","options":{"challenge":"AQID","rpId":"h.test"}}"#),
+            "/api/passkeys/login/verify": .json(401, #"{"error":"This passkey isn't set up here."}"#),
+        ])
+        await m.signInWithPasskey(using: FakePasskeys(.success(PasskeyAssertion(credentialID: Data([1]), clientDataJSON: Data(), authenticatorData: Data(), signature: Data(), userID: nil))))
+        XCTAssertEqual(m.error, "This passkey isn't set up here.")
+    }
+
+    private func oauthServer() async -> (SignInModel, SessionStore) {
+        HTTPStub.routes(["/api/health": health, "/api/auth/status": .json(200, #"{"setupRequired":false,"passwords":true,"forgotPassword":false,"oauth":{"label":"Authentik"}}"#)])
+        let (m, s) = model()
+        m.serverText = "h.test"
+        await m.connect()
+        return (m, s)
+    }
+
+    func testSignInWithAuthentik() async throws {
+        let (m, s) = await oauthServer()
+        HTTPStub.routes([
+            "/api/auth/oauth/start": .json(200, #"{"url":"https://auth.test/authorize?x=1"}"#),
+            "/api/auth/oauth/finish": login(),
+        ])
+        let web = FakeWebAuth(.success(URL(string: "bytesize://oauth?ticket=T-1")!))
+        await m.signInWithOAuth(using: web)
+        XCTAssertNil(m.error)
+        XCTAssertEqual(web.opened?.url.absoluteString, "https://auth.test/authorize?x=1")
+        XCTAssertEqual(web.opened?.scheme, "bytesize")
+        let start = try XCTUnwrap(recorded("/api/auth/oauth/start").last)
+        XCTAssertEqual(start.json?["client"] as? String, "ios")
+        let key = try XCTUnwrap(start.json?["appKey"] as? String)
+        XCTAssertGreaterThanOrEqual(key.count, 43)
+        XCTAssertEqual(start.request.value(forHTTPHeaderField: "Origin"), "https://h.test")
+        let finish = try XCTUnwrap(recorded("/api/auth/oauth/finish").last?.json)
+        XCTAssertEqual(finish["ticket"] as? String, "T-1")
+        XCTAssertEqual(finish["appKey"] as? String, key, "only this app's key swaps the ticket")
+        guard case .signedIn = s.state else { return XCTFail("signed in") }
+    }
+
+    func testAuthentikSaysWhyItFailed() async {
+        let (m, _) = await oauthServer()
+        HTTPStub.routes(["/api/auth/oauth/start": .json(200, #"{"url":"https://auth.test/authorize"}"#)])
+        await m.signInWithOAuth(using: FakeWebAuth(.success(URL(string: "bytesize://oauth?error=This%20sign-in%20isn%27t%20linked")!)))
+        XCTAssertEqual(m.error, "This sign-in isn't linked")
+        XCTAssertTrue(recorded("/api/auth/oauth/finish").isEmpty)
+    }
+
+    func testClosingAuthentikIsQuiet() async {
+        let (m, _) = await oauthServer()
+        HTTPStub.routes(["/api/auth/oauth/start": .json(200, #"{"url":"https://auth.test/authorize"}"#)])
+        await m.signInWithOAuth(using: FakeWebAuth(.failure(SignInCancelled())))
+        XCTAssertNil(m.error)
+    }
+
+    func testEveryAuthentikSignInGetsAFreshKey() async throws {
+        let (m, _) = await oauthServer()
+        HTTPStub.routes(["/api/auth/oauth/start": .json(200, #"{"url":"https://auth.test/authorize"}"#)])
+        await m.signInWithOAuth(using: FakeWebAuth(.failure(SignInCancelled())))
+        await m.signInWithOAuth(using: FakeWebAuth(.failure(SignInCancelled())))
+        let keys = recorded("/api/auth/oauth/start").compactMap { $0.json?["appKey"] as? String }
+        XCTAssertEqual(keys.count, 2)
+        XCTAssertNotEqual(keys[0], keys[1])
+    }
+}
+
+@MainActor
+private final class FakePasskeys: PasskeyAuthorizer {
+    let result: Result<PasskeyAssertion, Error>
+    var asked: (challenge: Data, relyingParty: String)?
+    init(_ result: Result<PasskeyAssertion, Error>) { self.result = result }
+    func assert(challenge: Data, relyingParty: String) async throws -> PasskeyAssertion {
+        asked = (challenge, relyingParty)
+        return try result.get()
+    }
+}
+
+@MainActor
+private final class FakeWebAuth: WebAuthSession {
+    let result: Result<URL, Error>
+    var opened: (url: URL, scheme: String)?
+    init(_ result: Result<URL, Error>) { self.result = result }
+    func open(_ url: URL, callbackScheme: String) async throws -> URL {
+        opened = (url, callbackScheme)
+        return try result.get()
     }
 }

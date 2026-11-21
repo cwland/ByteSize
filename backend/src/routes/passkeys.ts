@@ -67,8 +67,19 @@ function take(id: string, purpose: Pending["purpose"]) {
   return p;
 }
 
+// I6: the iPhone app's ID as Apple knows it, "TEAMID.bundle.id" (e.g. ABCDE12345.com.cwland.bytesize)
+const IOS_APP_ID = /^[A-Z0-9]{10}\.[A-Za-z0-9.-]+$/;
+
 export default async function passkeyRoutes(app: FastifyInstance) {
   const { db } = app;
+
+  // Apple lets the iPhone app use this site's passkeys only when the site names the app here (webcredentials).
+  // Set IOS_APP_ID on the server to turn it on; served at the site's root, so the reverse proxy must pass /.well-known.
+  app.get("/.well-known/apple-app-site-association", async (_req, reply) => {
+    const id = (process.env.IOS_APP_ID ?? "").trim();
+    if (!IOS_APP_ID.test(id)) return reply.status(404).send({ error: "Not found" });
+    return reply.type("application/json").send({ webcredentials: { apps: [id] } });
+  });
 
   // ---------- managing them (signed in) ----------
 

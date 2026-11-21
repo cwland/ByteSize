@@ -35,6 +35,9 @@ public actor APIClient {
         if let token = await token() {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
+        if endpoint.sendsOrigin, let scheme = base.url.scheme, let host = base.url.host() {
+            request.setValue("\(scheme)://\(host)\(base.url.port.map { ":\($0)" } ?? "")", forHTTPHeaderField: "Origin")
+        }
 
         let data: Data
         let response: URLResponse

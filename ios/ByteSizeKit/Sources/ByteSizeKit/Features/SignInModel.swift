@@ -49,6 +49,14 @@ public final class SignInModel {
     public var canSignIn: Bool { !trimmedUsername.isEmpty && !password.isEmpty && !busy }
     public var showsPasswordForm: Bool { options?.passwords ?? true }
     public var showsForgotPassword: Bool { options?.forgotPassword ?? false }
+    /// I6: passkeys made on the web at this address sign in here too (Apple's sheet says if there are none).
+    /// Apple signs a passkey for https://<host> on the standard port, so an odd port can't use them.
+    public var showsPasskey: Bool {
+        guard options != nil, let url = address?.url else { return false }
+        return url.scheme == "https" && (url.port == nil || url.port == 443)
+    }
+    /// I6: the server's OAuth provider ("Authentik"), when it offers one.
+    public var oauthLabel: String? { options?.oauth?.label }
 
     /// For a remembered server: fetch what it offers (Forgot password etc.).
     public func load() async {
@@ -87,6 +95,56 @@ public final class SignInModel {
         } catch {
             self.error = (error as? APIError)?.message ?? error.localizedDescription
             password = ""
+        }
+    }
+
+    // MARK: - I6: passkey and OAuth
+
+    /// Apple's passkey sheet with the server's challenge; the signed answer goes back to the server.
+    public func signInWithPasskey(using authorizer: PasskeyAuthorizer) async {
+        guard let address, !busy else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            let api = session.client(for: address)
+            let options = try await api.send(Auth.passkeyOptions())
+            guard let challenge = Base64URL.decode(options.options.challenge) else { throw APIError.server(status: 400, message: "The server's passkey challenge didn't make sense. Try again.") }
+            let assertion = try await authorizer.assert(challenge: challenge, relyingParty: options.options.rpId)
+            let login = try await api.send(Auth.passkeyVerify(challengeId: options.challengeId, assertion: assertion))
+            session.adopt(login, server: address)
+            error = nil
+        } catch is SignInCancelled {
+            error = nil
+        } catch {
+            self.error = (error as? APIError)?.message ?? error.localizedDescription
+        }
+    }
+
+    /// The server's OAuth provider in Safari's sheet; it comes back to bytesize://oauth with a one-time ticket that
+    /// only this sign-in's own random key can swap for a login.
+    public func signInWithOAuth(using web: WebAuthSession) async {
+        guard let address, !busy else { return }
+        busy = true
+        defer { busy = false }
+        let key = Base64URL.randomKey()
+        do {
+            let api = session.client(for: address)
+            let start = try await api.send(Auth.oauthStart(appKey: key))
+            guard let url = URL(string: start.url) else { throw APIError.server(status: 502, message: "The sign-in address didn't make sense. Try again.") }
+            let back = try await web.open(url, callbackScheme: "bytesize")
+            let items = URLComponents(url: back, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            if let reason = items.first(where: { $0.name == "error" })?.value {
+                error = reason
+                return
+            }
+            guard let ticket = items.first(where: { $0.name == "ticket" })?.value else { throw APIError.server(status: 400, message: "That sign-in didn't finish. Try again.") }
+            let login = try await api.send(Auth.oauthFinish(ticket: ticket, appKey: key))
+            session.adopt(login, server: address)
+            error = nil
+        } catch is SignInCancelled {
+            error = nil
+        } catch {
+            self.error = (error as? APIError)?.message ?? error.localizedDescription
         }
     }
 
@@ -143,12 +201,8 @@ public final class SignInModel {
             serverVersion = health.version
             options = status
             step = .credentials
-            if !status.passwords {
-                let how = status.oauth.map { "This server signs in with \($0.label)." } ?? "This server doesn't allow password sign-in."
-                error = "\(how) That's coming to the app soon — use the web app for now."
-            } else {
-                error = nil
-            }
+            // No passwords here: the passkey and OAuth buttons are the way in (I6)
+            error = nil
         } catch {
             self.error = (error as? APIError)?.message ?? error.localizedDescription
         }
