@@ -722,6 +722,24 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(waitUntil { !oldest.exists }, "the weigh-in is gone")
     }
 
+    func testADashboardWeighInShowsOnGoals() {
+        signedIn()
+        openGoals() // loaded once before the weigh-in
+        app.buttons["Dashboard"].tap()
+        reveal(app.buttons["Log weight"]).tap()
+        let field = app.textFields["Weight"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        let current = field.value as? String ?? ""
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + "177")
+        app.buttons["Save"].tap()
+        XCTAssertTrue(waitUntil { !field.exists })
+        openGoals()
+        let row = reveal(app.descendants(matching: .any)["history-\(dayString(0))"])
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil { row.label.contains("177.0 lb") }, row.label)
+    }
+
     func testLogWeightUsesTodayEvenWhenTomorrowIsPicked() {
         signedIn()
         app.buttons["Food Log"].tap()
