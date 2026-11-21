@@ -123,16 +123,42 @@ final class DayStoreTests: XCTestCase {
         XCTAssertEqual(s.stripDays.count, 373)
         XCTAssertTrue(s.canSelect("2026-11-19"))
         XCTAssertTrue(s.canSelect("2025-11-19"))
-        XCTAssertFalse(s.canSelect("2026-11-20"), "tomorrow is shown, not chosen")
+        XCTAssertTrue(s.canSelect("2026-11-20"), "tomorrow can be chosen to pre-log food")
+        XCTAssertTrue(s.canSelect("2026-11-26"))
+        XCTAssertFalse(s.canSelect("2026-11-27"))
         XCTAssertFalse(s.canSelect("2025-11-18"))
     }
 
-    func testAFutureDayIsntSelected() async {
+    func testADayPastTheStripIsntSelected() async {
         serveDays()
         let s = store()
-        await s.select("2026-11-21")
+        await s.select("2026-11-27")
         XCTAssertEqual(s.selected, "2026-11-19")
-        XCTAssertFalse(HTTPStub.requests.contains { $0.request.url?.path() == "/api/day/2026-11-21" })
+        XCTAssertFalse(HTTPStub.requests.contains { $0.request.url?.path() == "/api/day/2026-11-27" })
+    }
+
+    func testTomorrowIsFuture() async {
+        serveDays()
+        let s = store()
+        XCTAssertTrue(s.isFuture("2026-11-20"))
+        XCTAssertFalse(s.isFuture("2026-11-19"))
+        XCTAssertFalse(s.selectedIsFuture)
+        await s.select("2026-11-21")
+        XCTAssertEqual(s.selected, "2026-11-21")
+        XCTAssertTrue(s.selectedIsFuture)
+    }
+
+    func testRolloverMakesTomorrowToday() async {
+        serveDays()
+        let clock = Clock(ISO8601DateFormatter().date(from: "2026-11-19T19:00:00Z")!) // Nov 19, noon in Boise
+        let s = DayStore(api: api, timeZone: boise, now: { clock.now })
+        await s.select("2026-11-20")
+        XCTAssertTrue(s.selectedIsFuture)
+        XCTAssertFalse(s.canSelect("2026-11-27"))
+        clock.now = ISO8601DateFormatter().date(from: "2026-11-20T15:00:00Z")! // Nov 20, 8 am
+        await s.dayMayHaveChanged()
+        XCTAssertFalse(s.selectedIsFuture)
+        XCTAssertTrue(s.canSelect("2026-11-27"))
     }
 
     func testSwitchingToALoadedDayShowsItAtOnce() async {

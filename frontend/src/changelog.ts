@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.7.0",
+    date: "2026-11-20",
+    title: "Goals and My Foods on iPhone",
+    changes: [
+      "iPhone: the Goals tab shows your targets and active goals, a weight chart (1W, 1M, 3M, All) with your trend, and every weigh-in with its change. Log weight from there, or swipe one away.",
+      "iPhone: the My Foods tab lists your foods, corrections, recipes and quick meals, with search, filters and sorting. Tap one to log it; a quick meal lets you leave items out or change amounts before Log all.",
+      "iPhone: the day strip and calendar reach a week ahead, so you can plan and pre-log food. Water, weight and shots wait for the day.",
+    ],
+  },
+  {
     version: "0.6.0",
     date: "2026-11-20",
     title: "Today on iPhone",

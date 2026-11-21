@@ -89,6 +89,7 @@ public final class DashboardModel {
 
     /// Water for the day being looked at.
     public func addWater(ml: Int) async {
+        guard !dayStore.selectedIsFuture else { return } // that day hasn't happened yet
         do {
             _ = try await api.send(LogAPI.water(ml: ml, day: dayStore.selected))
             message = nil
@@ -118,6 +119,9 @@ public final class DashboardModel {
     public func clearMessage() { message = nil }
 
     // MARK: - private
+
+    /// After a weigh-in changes elsewhere (the Goals tab).
+    public func reloadWeight() async { await loadWeight() }
 
     private func loadWeight() async {
         weight = try? await api.send(BodyAPI.weight(from: DayMath.add(-Self.weightDays, to: dayStore.today)))
