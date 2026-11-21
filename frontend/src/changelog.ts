@@ -10,6 +10,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.8.1",
+    date: "2026-11-20",
+    title: "Track Food on iPhone",
+    changes: [
+      "iPhone: Photo, Scan and Describe sit right under the search in Track Food, and Close is there as soon as it opens.",
+      "iPhone: pick which sources a search shows (My foods, FatSecret, Basic, USDA, Open Food Facts, Culury), as on the web — tap “Show results from” to open the chips; your picks are remembered.",
+      "iPhone: the day strip never shows a day cut off at the edge.",
+    ],
+  },
+  {
     version: "0.8.0",
     date: "2026-11-20",
     title: "Apple Health",
