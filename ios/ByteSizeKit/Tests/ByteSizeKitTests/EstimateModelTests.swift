@@ -65,6 +65,20 @@ final class EstimateModelTests: XCTestCase {
         XCTAssertNil(m.message)
     }
 
+    /// Review fix: ⓧ while an estimate is still coming back — the old answer must not land under an empty field.
+    func testClearingDuringAnEstimateDropsItsAnswer() async throws {
+        serve(estimate: .delayed(0.3, .json(200, EstimateModelTests.twoItems)))
+        let (m, _) = model()
+        m.text = "2 eggs and toast"
+        let pending = Task { await m.describe() }
+        try await Task.sleep(for: .milliseconds(50))
+        m.clearDescription()
+        await pending.value
+        XCTAssertEqual(m.text, "")
+        XCTAssertEqual(m.items, [], "the field and the list never mismatch")
+        XCTAssertFalse(m.busy)
+    }
+
     func testAGuessIsShown() async {
         serve(estimate: .json(200, #"{"items":[\#(FoodFixtures.toast)],"assumed":true,"interpretedAs":"Cheerios"}"#))
         let (m, _) = model()
