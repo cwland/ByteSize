@@ -18,7 +18,7 @@ iOS app and the web app. Each item can be built and tested on its own. Not yet s
 
 **Status (2026-11-20):** done — SPEC-01, 09, 16 (L1, 0.3–0.4), SPEC-07, 08, 10 (L2, 0.5), SPEC-02–06, 11, 12
 (Today polish, 0.6), SPEC-14, 15 (W1, 0.2), SPEC-17 (I4, 0.7); the Food Log day strip matching the Dashboard (I5, 0.8).
-Open — SPEC-13 (iPad, parked by Cory), SPEC-18, SPEC-19, SPEC-20, SPEC-21.
+Open — SPEC-13 (iPad, parked by Cory), SPEC-18, SPEC-19, SPEC-20, SPEC-21, SPEC-22, SPEC-23.
 
 ---
 
@@ -265,3 +265,38 @@ Cory: on Describe Food there should be a way to clear what you typed instead of 
 - Labelled "Clear description" for VoiceOver.
 
 **Acceptance:** after typing or estimating, one tap on ⓧ empties the describe field; nothing else needs backspacing.
+
+### SPEC-22: Web — Settings: Users right after Profile
+Cory: in the web app's Settings, move Users to the right of Profile.
+
+- Today the tabs run Profile, API keys, Security, Integrations, Cached data, Email, Data, App info, **Users**, Logs
+  (`TABS` in `frontend/src/components/settings/SettingsPage.tsx`).
+- New order: Profile, **Users**, API keys, Security, Integrations, Cached data, Email, Data, App info, Logs.
+- Users stays admin-only: someone who isn't an admin sees Profile, then API keys, as today.
+- The `#/settings/users` address is unchanged.
+
+**Acceptance:** an admin sees Users as the second tab, right after Profile; nothing else moves.
+
+## Part 6: Added 2026-11-21
+
+### SPEC-23: Web — account menu from the avatar (like Culury), Sign out out of Settings
+Cory (screenshot `2026-11-21-spec-23-user-menu.png`, from Culury): instead of Sign out living in the Settings menu, the
+avatar at the bottom of the side rail opens a user menu like Culury's.
+
+- Today the rail's initials avatar (`frontend/src/components/Rail.tsx`) is a link to `#/settings/profile`, and Sign out
+  is a row in Settings (`SettingsPage.tsx`); "Sign out everywhere else" is in Settings › Security.
+- Tapping the avatar opens a small popover beside it (like Culury's):
+  - Header: the person's name, and their email (or username when there's no email) underneath, then a divider.
+  - **Profile & security** (person icon) → Settings › Profile.
+  - **Sign out** (sign-out icon).
+  - **Sign out everywhere** (sign-out icon, in the error colour) → signs out this browser and every other session
+    (asks to confirm first).
+  - Culury's "Getting started" has no ByteSize page yet — leave it out (or add it when a getting-started page exists).
+- The Sign out row leaves the Settings menu. Security keeps "Sign out everywhere else" (other devices only).
+- Closes on Escape, a click outside, or choosing an item; keyboard reachable; the avatar has an accessible name
+  ("Account menu"). The version number stays under the avatar (SPEC-18).
+- Phone layout (no rail): the same menu from the account avatar/button there, or keep Sign out where the phone layout
+  shows it today — builder's call, as long as Sign out is always reachable.
+
+**Acceptance:** on a wide screen, clicking the avatar at the bottom of the rail shows name and email, Profile & security,
+Sign out and Sign out everywhere; Settings no longer has a Sign out row.
