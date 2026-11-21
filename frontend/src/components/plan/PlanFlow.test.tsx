@@ -113,8 +113,6 @@ describe("plan flow", () => {
       expect(card("Steady")).toHaveAttribute("data-current", "true");
       expect(screen.getByRole("button", { name: "Show Steady" })).toHaveAttribute("aria-current", "true");
       expect(scrollTo).toHaveBeenCalled();
-      // No side arrows: swiping, the dots and the keyboard move between plans
-      expect(screen.queryByRole("button", { name: "Next plan" })).not.toBeInTheDocument();
 
       const user = userEvent.setup();
       scrollTo.mockClear();
@@ -135,6 +133,40 @@ describe("plan flow", () => {
     } finally {
       delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
     }
+  });
+
+  // SPEC-20: ‹ › arrows step one plan at a time, greyed at the ends; the cards stay in the page (never under the rail)
+  it("‹ and › step through the plans and grey out at the ends", async () => {
+    const scrollTo = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, writable: true, value: scrollTo });
+    try {
+      fakeServer({ "GET /api/body": () => ({ body: bodyA }), "GET /api/plans": () => plansA });
+      renderWithSession(<PlanFlow onDone={vi.fn()} />);
+      const card = (name: string) => screen.getByRole("group", { name });
+      await screen.findByRole("group", { name: "Steady" });
+      const prev = screen.getByRole("button", { name: "Previous plan" });
+      const next = screen.getByRole("button", { name: "Next plan" });
+      const user = userEvent.setup();
+      await user.click(next);
+      expect(card("Accelerated")).toHaveAttribute("data-current", "true");
+      await user.click(next);
+      expect(card("Vigorous")).toHaveAttribute("data-current", "true");
+      expect(next).toBeDisabled();
+      expect(prev).toBeEnabled();
+      for (let i = 0; i < 4; i++) await user.click(prev);
+      expect(card("Maintenance")).toHaveAttribute("data-current", "true");
+      expect(prev).toBeDisabled();
+      expect(scrollTo).toHaveBeenCalled();
+    } finally {
+      delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
+    }
+  });
+
+  it("the cards stay inside the page: no break-out past the side rail", async () => {
+    fakeServer({ "GET /api/body": () => ({ body: bodyA }), "GET /api/plans": () => plansA });
+    renderWithSession(<PlanFlow onDone={vi.fn()} />);
+    const strip = await screen.findByRole("region", { name: "Plans" });
+    for (let el: HTMLElement | null = strip; el; el = el.parentElement) expect(el.className).not.toMatch(/left-1\/2|translate-x|100vw/);
   });
 
   it("no safe plan shows the care-team message and own-targets button", async () => {
