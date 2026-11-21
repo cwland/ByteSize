@@ -18,6 +18,12 @@ struct PortionSheet: View {
     var note: String?
     /// "Estimate with AI" for a Culury recipe with no nutrition (nil hides it).
     var estimate: (() async -> Void)?
+    /// Take another photo / Scan again: the AI or the scan got it wrong (R1).
+    struct Again {
+        let title: String
+        let action: () -> Void
+    }
+    var again: Again?
     @State private var estimating = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.palette) private var palette
@@ -87,6 +93,11 @@ struct PortionSheet: View {
                 }
                 Section {
                     MealPicker(meal: $portion.meal)
+                }
+                if let again {
+                    Section {
+                        Button(again.title, action: again.action).accessibilityIdentifier("again")
+                    }
                 }
                 if let message {
                     Section { Text(message).foregroundStyle(palette.color("error")) }
@@ -187,10 +198,12 @@ struct FoodPortionView: View {
     /// Where the bookmark lives (Track Food's favorites); nil hides it.
     var favorites: TrackFoodModel?
     let log: (Food, PortionModel) async -> Bool
+    var again: PortionSheet.Again?
     @State private var portion: PortionModel
     private let meal: Meal
 
-    init(food: Food, meal: Meal, pushed: Bool = false, message: String? = nil, favorites: TrackFoodModel? = nil, log: @escaping (Food, PortionModel) async -> Bool) {
+    init(food: Food, meal: Meal, pushed: Bool = false, message: String? = nil, favorites: TrackFoodModel? = nil, again: PortionSheet.Again? = nil, log: @escaping (Food, PortionModel) async -> Bool) {
+        self.again = again
         _food = State(initialValue: food)
         self.meal = meal
         self.pushed = pushed
@@ -222,6 +235,6 @@ struct FoodPortionView: View {
     var body: some View {
         // The model's message read here, so a failed bookmark or log shows while this screen is open
         PortionSheet(portion: portion, onLog: { await log(food, portion) }, message: favorites?.message ?? message, pushed: pushed, bookmark: bookmark,
-                     note: food.isCulury ? favorites?.recipeNote : nil, estimate: estimate)
+                     note: food.isCulury ? favorites?.recipeNote : nil, estimate: estimate, again: again)
     }
 }
