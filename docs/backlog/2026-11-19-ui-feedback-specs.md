@@ -205,3 +205,33 @@ Cory (after 0.6.0): "I can't select future dates, they are greyed out."
 
 **Acceptance:** tomorrow's chip and date can be picked; food logged there shows on that day; Log shot still can't
 pick a future date.
+
+### SPEC-18: Web — version number pinned to the bottom-left corner
+Cory (after 0.8.0, screenshot `2026-11-20-spec-18-version-corner.png`): the version should sit in the bottom-left
+corner. Today it is the last thing in the page content (after the Dashboard's cards), so on the wide layout it floats
+mid-screen beside the side rail instead of in the corner.
+
+- Wide layout: the version sits at the bottom of the side rail (below Settings and the account avatar), always in the
+  bottom-left corner whatever the page's length.
+- Phone layout: keep it at the end of the page (no rail there), or fix it bottom-left above the tab bar — builder's
+  call, as long as it never covers content.
+- Still opens What's new; still says "v0.8.0".
+
+**Acceptance:** on a wide screen the version is in the bottom-left corner on every page, short or long; clicking it
+opens What's new.
+
+### SPEC-19: Web — What's new: latest version open, earlier ones folded (like YAHD2)
+Cory (screenshot `2026-11-20-spec-19-whats-new.png`): in the What's new popup the newest version is shown in full and
+the others are folded below, each opening with a ›.
+
+- Header: "What's new", "ByteSize v0.8.0 · Nov 20, 2026", close ×.
+- The current version in its own card: version, a "Current version" chip, the date on the right, its title, then its
+  changes grouped under **Added** and **Fixed** (and **Changed** if needed), each with its own icon and colour.
+- Below, "EARLIER UPDATES": one row per earlier version — › chevron, version, title, "N changes · date" on the right;
+  tapping a row opens it in place to show its changes.
+- The changelog entries gain a kind per change (added / fixed / changed) so they can be grouped; existing entries are
+  sorted into those kinds.
+- The popup after an update still shows the versions you haven't seen open, and the rest folded.
+
+**Acceptance:** opening What's new shows the current version's card in full and every earlier version as a folded
+row with its change count and date; a › opens it.
