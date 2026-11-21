@@ -33,6 +33,7 @@ struct DayStrip: View {
             .scrollTargetBehavior(.viewAligned)
             .scrollPosition(id: $position, anchor: .center)
             .frame(height: 60)
+            .accessibilityIdentifier("dayStripRow")
             .onAppear { position = days.selected }
             .onChange(of: days.selected) { _, day in withAnimation(.easeInOut(duration: 0.2)) { position = day } }
             .onChange(of: position) { _, day in
