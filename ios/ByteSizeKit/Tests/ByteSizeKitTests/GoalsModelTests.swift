@@ -85,6 +85,28 @@ final class GoalsModelTests: XCTestCase {
         XCTAssertNil(changes[3])
     }
 
+    /// Owner: the last 5 weigh-ins show; the rest after "Show all".
+    func testHistoryShowsTheLastFiveUntilExpanded() async {
+        let seven = (1...7).map { #"{"day":"2026-11-0\#($0)","weightKg":\#(90 - Double($0)),"trendKg":90,"note":null}"# }.joined(separator: ",")
+        serve(weight: { GoalsModelTests.weight("[\(seven)]") })
+        let m = model()
+        await m.load()
+        XCTAssertFalse(m.showAllHistory)
+        XCTAssertEqual(m.shownHistory.map(\.day), ["2026-11-07", "2026-11-06", "2026-11-05", "2026-11-04", "2026-11-03"])
+        XCTAssertEqual(m.hiddenHistoryCount, 2)
+        m.showAllHistory = true
+        XCTAssertEqual(m.shownHistory.count, 7)
+        XCTAssertEqual(m.hiddenHistoryCount, 0)
+    }
+
+    func testFiveOrFewerWeighInsHideNothing() async {
+        serve()
+        let m = model()
+        await m.load()
+        XCTAssertEqual(m.shownHistory.count, 4)
+        XCTAssertEqual(m.hiddenHistoryCount, 0)
+    }
+
     private func decode(_ json: String) throws -> Goal { try JSONDecoder().decode(Goal.self, from: Data(json.utf8)) }
 
     func testProgressText() throws {
