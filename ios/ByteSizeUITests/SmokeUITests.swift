@@ -62,9 +62,13 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(server.waitForExistence(timeout: 5))
         server.tap()
         server.typeText("stub.test")
-        app.buttons["Continue"].tap()
-
+        // A freshly booted simulator can show the keyboard's own first-run tip, which has a Continue too: tap until
+        // the sign-in form moves on
         let username = app.textFields["usernameField"]
+        for _ in 0..<3 where !username.exists {
+            app.buttons["Continue"].firstMatch.tap()
+            _ = username.waitForExistence(timeout: 3)
+        }
         XCTAssertTrue(username.waitForExistence(timeout: 5))
         username.tap()
         username.typeText("cory")
