@@ -106,7 +106,8 @@ public final class TrackFoodModel {
                 let result = try await api.send(FoodAPI.search(q))
                 guard mine == searchNumber else { return }
                 groups = result.groups.filter { !$0.foods.isEmpty }
-                found = groups.isEmpty ? nil : SearchResult(groups: groups, errors: result.errors, suggestion: result.suggestion, searched: result.searched)
+                // Kept even when nothing was found: a source that failed still shows on its chip
+                found = SearchResult(groups: groups, errors: result.errors, suggestion: result.suggestion, searched: result.searched)
                 if groups.isEmpty { message = "Nothing found for “\(q)”" }
             }
         } catch is CancellationError {
