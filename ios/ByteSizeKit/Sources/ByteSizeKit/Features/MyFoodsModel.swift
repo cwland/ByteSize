@@ -59,6 +59,8 @@ public final class MyFoodsModel {
     public private(set) var foods: [Food] = []
     public private(set) var loaded = false
     public private(set) var message: String?
+    /// "Removed", "Hidden (it's in use)" or "Saved": the last change made here.
+    public private(set) var notice: String?
     /// The meal new portions start in: the time of day's meal, worked out when it's used (the model lives all session).
     public var meal: Meal { Meal.suggested(at: now(), in: dayStore.zone) }
 
@@ -118,4 +120,25 @@ public final class MyFoodsModel {
             return false
         }
     }
+
+    /// The website's rule: the server deletes a food never logged or used, and hides one that is.
+    public func delete(_ food: Food) async {
+        do {
+            let out = try await api.send(MyFoodsAPI.delete(id: food.id))
+            message = nil
+            notice = out.archived ? "Hidden (it's in use)" : "Removed"
+            await load()
+        } catch {
+            notice = nil
+            message = (error as? APIError)?.message ?? error.localizedDescription
+        }
+    }
+
+    /// Back from an editor after Save.
+    public func saved() async {
+        notice = "Saved"
+        await load()
+    }
+
+    public func clearNotice() { notice = nil }
 }

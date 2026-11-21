@@ -103,12 +103,14 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         private var weighIns: [(day: String, kg: Double)] = [(StubData.offset(-60), 88.0), (StubData.offset(-7), 83.5), (StubData.offset(-1), 82.28)]
 
         /// I4: My Foods — (id, name, icon, foodKind, calories per serving, serving label).
-        static let myFoods: [(id: Int, name: String, icon: String, kind: String, calories: Double, serving: String)] = [
+        static let seedFoods: [(id: Int, name: String, icon: String, kind: String, calories: Double, serving: String)] = [
             (201, "Oat bars", "🍪", "custom", 190, "1 bar"),
             (202, "Banana (mine)", "🍌", "override", 100, "1 medium"),
             (203, "Chili", "🍲", "recipe", 410, "1 bowl"),
             (204, "Usual breakfast", "🍳", "quick_meal", 229, "1 meal"),
         ]
+        /// R2: My Foods as edited and deleted in this run.
+        private var myFoods = StubData.seedFoods
         /// The quick meal's items: (name, icon, calories per serving, quantity).
         static let breakfastItems: [(name: String, icon: String, calories: Double, quantity: Double)] = [("Eggs", "🥚", 72, 2), ("Toast", "🍞", 80, 1), ("Coffee", "☕️", 5, 1)]
 
@@ -271,15 +273,19 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 let items = URLComponents(string: "x?\(query)")?.queryItems ?? []
                 let q = (items.first { $0.name == "q" }?.value ?? "").lowercased()
                 let kind = items.first { $0.name == "kind" }?.value ?? "all"
-                let list = Self.myFoods.filter { f in
+                let list = myFoods.filter { f in
                     (q.isEmpty || f.name.lowercased().contains(q)) && (kind == "all" || (kind == "foods" && (f.kind == "custom" || f.kind == "override")) || (kind == "recipes" && f.kind == "recipe") || (kind == "meals" && f.kind == "quick_meal"))
                 }
                 return (200, #"{"foods":[\#(list.map(Self.myFoodJSON).joined(separator: ","))]}"#)
+            case ("DELETE", _) where path.hasPrefix("/api/my-foods/") && parts.count == 3:
+                let id = Int(parts[2]) ?? 0
+                myFoods.removeAll { $0.id == id }
+                return (200, json(["archived": id == 204])) // the quick meal has been logged: hidden
             case ("GET", "/api/my-foods/204"):
                 let items = Self.breakfastItems.enumerated().map { i, it in
                     #"{"food":{"kind":"cache","id":\#(300 + i)},"foodKind":"custom","name":"\#(it.name)","brand":null,"icon":"\#(it.icon)","imageUrl":null,"servingIndex":0,"unit":"serving","quantity":\#(it.quantity),"fraction":1,"servings":[{"label":"1 serving","grams":50}],"perServing":{"calories":\#(it.calories)},"nutrients":{"calories":\#(it.calories * it.quantity)},"available":true}"#
                 }
-                let base = String(Self.myFoodJSON(Self.myFoods[3]).dropLast())
+                let base = String(Self.myFoodJSON(StubData.seedFoods[3]).dropLast())
                 return (200, #"{"food":\#(base),"notes":null,"items":[\#(items.joined(separator: ","))],"recipeServings":null,"servingGrams":null}}"#)
             case ("POST", "/api/log/meal"):
                 let sent = body["items"] as? [[String: Any]] ?? []
@@ -296,7 +302,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 return (200, json(["entries": out, "combined": []]))
             case ("POST", "/api/log") where (body["food"] as? [String: Any])?["kind"] as? String == "user_food":
                 let id = (body["food"] as? [String: Any])?["id"] as? Int ?? 0
-                guard let f = Self.myFoods.first(where: { $0.id == id }) else { return (404, #"{"error":"Food not found"}"#) }
+                guard let f = myFoods.first(where: { $0.id == id }) else { return (404, #"{"error":"Food not found"}"#) }
                 nextId += 1
                 let e = Entry(id: nextId, day: body["day"] as? String ?? Self.today, meal: body["meal"] as? String ?? "snacks", name: f.name, brand: nil, icon: f.icon, unit: "serving", quantity: (body["quantity"] as? Double) ?? 1, fraction: 1, serving: f.serving, perUnit: ["calories": f.calories], source: "user_food", ref: "user_food:\(id)")
                 entries.append(e)

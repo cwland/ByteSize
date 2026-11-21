@@ -24,6 +24,8 @@ public struct MealItem: Codable, Equatable, Sendable {
     public let available: Bool
 }
 
+public struct Archived: Decodable, Sendable { public let archived: Bool }
+
 /// Only the items are needed: the list already carries the food.
 public struct MyFoodDetail: Codable, Equatable, Sendable { public let items: [MealItem]? }
 public struct MyFoodDetailResponse: Codable, Equatable, Sendable { public let food: MyFoodDetail }
@@ -46,6 +48,9 @@ public enum MyFoodsAPI {
     }
 
     public static func detail(id: Int) -> Endpoint<MyFoodDetailResponse> { Endpoint("GET", "/api/my-foods/\(id)") }
+
+    /// Deleted when never logged or used; otherwise archived (hidden) so the log stays as it is.
+    public static func delete(id: Int) -> Endpoint<Archived> { Endpoint("DELETE", "/api/my-foods/\(id)") }
 
     struct MealBody: Encodable { let foodId: Int; let day: String; let meal: String; let items: [MealItemBody] }
     public static func logMeal(foodId: Int, day: String, meal: Meal, items: [MealItemBody]) -> Endpoint<EntriesResponse> {

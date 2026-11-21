@@ -1168,4 +1168,23 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.textFields["barcodeField"].waitForExistence(timeout: 5), "back to the camera")
         XCTAssertFalse(app.buttons["logButton"].exists)
     }
+
+    // MARK: - R2 My foods editing
+
+    private func openMyFoods() {
+        signedIn()
+        app.buttons["My Foods"].tap()
+        XCTAssertTrue(app.buttons["myFood-201"].waitForExistence(timeout: 5))
+    }
+
+    func testDeleteAFoodFromMyFoods() {
+        openMyFoods()
+        app.buttons["myFood-201"].swipeLeft()
+        app.buttons["Delete"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Delete Oat bars?"].waitForExistence(timeout: 3), "asks first, in the website's words")
+        app.sheets.buttons["Delete"].firstMatch.exists ? app.sheets.buttons["Delete"].firstMatch.tap() : app.buttons.matching(identifier: "Delete").element(boundBy: 0).tap()
+        XCTAssertTrue(app.descendants(matching: .any)["myFoodsNotice"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Removed"].exists || app.descendants(matching: .any)["myFoodsNotice"].label.contains("Removed"))
+        XCTAssertTrue(waitUntil { !self.app.buttons["myFood-201"].exists }, "gone from the list")
+    }
 }

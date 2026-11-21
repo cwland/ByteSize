@@ -43,6 +43,26 @@ struct MessageBanner: View {
     }
 }
 
+/// A success line ("Saved", "Removed") with a close button.
+struct NoticeBanner: View {
+    let text: String
+    var onClose: () -> Void
+    @Environment(\.palette) private var palette
+
+    var body: some View {
+        HStack {
+            Label(text, systemImage: "checkmark.circle.fill").font(.subheadline).accessibilityIdentifier("myFoodsNotice")
+            Spacer()
+            Button(action: onClose) { Image(systemName: "xmark") }
+                .accessibilityLabel("Dismiss")
+        }
+        .foregroundStyle(palette.color("ink"))
+        .padding(12)
+        .background(palette.color("success-subtle"), in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal)
+    }
+}
+
 enum DayText {
     /// "Thursday, Nov 19"
     static func long(_ day: String) -> String {

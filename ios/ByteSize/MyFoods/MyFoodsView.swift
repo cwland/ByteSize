@@ -6,6 +6,8 @@ import SwiftUI
 struct MyFoodsView: View {
     @Bindable var model: MyFoodsModel
     @Environment(\.palette) private var palette
+    /// The food waiting for "Delete <name>?".
+    @State private var deleting: Food?
 
     var body: some View {
         List {
@@ -48,6 +50,10 @@ struct MyFoodsView: View {
                 ForEach(model.foods) { food in
                     NavigationLink(value: food) { row(food) }
                         .accessibilityIdentifier("myFood-\(food.id)")
+                        // R2: tapping still logs; swipe for Delete
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) { deleting = food } label: { Label("Delete", systemImage: "trash") }
+                        }
                 }
             }
         }
@@ -83,7 +89,16 @@ struct MyFoodsView: View {
         .overlay(alignment: .bottom) {
             if let message = model.message {
                 MessageBanner(text: message) {}.padding(.bottom, 8)
+            } else if let notice = model.notice {
+                NoticeBanner(text: notice) { model.clearNotice() }.padding(.bottom, 8)
             }
+        }
+        // The website's wording (MyFoodsPage)
+        .confirmationDialog(deleting.map { "Delete \($0.name)?" } ?? "", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible, presenting: deleting) { food in
+            Button("Delete", role: .destructive) { Task { await model.delete(food) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("If it's been logged or is part of a recipe or meal, it's hidden instead, so your log stays as it is.")
         }
     }
 
