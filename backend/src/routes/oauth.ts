@@ -205,7 +205,7 @@ export default async function oauthRoutes(app: FastifyInstance) {
 
   // ---------- the flow ----------
 
-  async function begin(req: FastifyRequest, reply: FastifyReply, purpose: "login" | "link", userId?: number) {
+  async function begin(req: FastifyRequest, reply: FastifyReply, purpose: "login" | "link", userId?: number, phone?: { appKey: string }) {
     const s = await getOAuth(db);
     if (!oauthReady(s)) throw new HttpError(400, "OAuth sign-in isn't set up.");
     const origin = await appOrigin(req);
@@ -231,14 +231,32 @@ export default async function oauthRoutes(app: FastifyInstance) {
       nonce,
       ...(purpose === "link" ? { prompt: "login" } : {}),
     });
-    await db.insert(oauthFlows).values({ state, purpose, userId: userId ?? null, verifier, nonce, redirectUri, appOrigin: origin, expiresAt: new Date(now.getTime() + FLOW_MS) });
-    reply.header("set-cookie", flowCookie(state, sha256(state), origin, FLOW_MS / 1000));
+    await db.insert(oauthFlows).values({
+      state,
+      purpose,
+      userId: userId ?? null,
+      verifier,
+      nonce,
+      redirectUri,
+      appOrigin: origin,
+      client: phone ? "ios" : "web",
+      appKeyHash: phone ? sha256(`appkey:${phone.appKey}`) : null,
+      expiresAt: new Date(now.getTime() + FLOW_MS),
+    });
+    // The web page's flow belongs to its browser (a cookie); the iPhone app's to its key (Safari's sheet has no cookie)
+    if (!phone) reply.header("set-cookie", flowCookie(state, sha256(state), origin, FLOW_MS / 1000));
     return { url: authUrl.href };
   }
 
+  // client "ios" (I6): the iPhone app, with a random key of its own (43+ characters, e.g. 32 random bytes in base64url)
+  const startBody = z.union([
+    z.object({ client: z.literal("ios"), appKey: z.string().min(43, "The app's key is too short").max(200) }),
+    z.object({ client: z.literal("web").optional() }).passthrough(),
+  ]);
   app.post("/api/auth/oauth/start", async (req, reply) => {
     checkLockout(req);
-    return begin(req, reply, "login");
+    const body = startBody.parse(req.body ?? {});
+    return begin(req, reply, "login", undefined, "appKey" in body && body.client === "ios" ? { appKey: body.appKey } : undefined);
   });
   app.post("/api/auth/oauth/link/start", async (req, reply) => begin(req, reply, "link", requireUser(req)));
 
@@ -248,7 +266,11 @@ export default async function oauthRoutes(app: FastifyInstance) {
     const now = app.now();
     // A state works once
     const [flow] = q.state ? await db.delete(oauthFlows).where(eq(oauthFlows.state, q.state)).returning() : [];
-    const back = (origin: string, path: string, params: Record<string, string>) => reply.redirect(`${origin}/#${path}?${new URLSearchParams(params)}`);
+    const back = (origin: string, path: string, params: Record<string, string>) =>
+      flow?.client === "ios"
+        ? // The iPhone app: Safari's sheet closes on bytesize://oauth (ticket, or the reason it failed)
+          reply.redirect(`bytesize://oauth?${new URLSearchParams(params.oauth_error ? { error: params.oauth_error } : params)}`)
+        : reply.redirect(`${origin}/#${path}?${new URLSearchParams(params)}`);
     if (!flow || flow.expiresAt <= now) return reply.redirect(`/#/?${new URLSearchParams({ oauth_error: "That sign-in took too long or was already used. Try again." })}`);
     const fromCookie = cookieOf(req, cookieName(flow.state));
     reply.header("set-cookie", flowCookie(flow.state, "", flow.appOrigin, 0)); // used: cleared
@@ -260,8 +282,8 @@ export default async function oauthRoutes(app: FastifyInstance) {
       }
       return back(flow.appOrigin, "/settings/security", { oauth_error: message });
     };
-    // Only the browser that started it may finish it
-    if (!fromCookie || !same(fromCookie, sha256(flow.state))) return fail(OTHER_BROWSER, "OAuth: started in another browser");
+    // Only the browser that started it may finish it (the iPhone app's flow is held by its key, checked at finish)
+    if (flow.client !== "ios" && (!fromCookie || !same(fromCookie, sha256(flow.state)))) return fail(OTHER_BROWSER, "OAuth: started in another browser");
     if (q.error) return fail(q.error_description || q.error, `OAuth: ${q.error}`);
 
     const s = await getOAuth(db);
@@ -305,14 +327,18 @@ export default async function oauthRoutes(app: FastifyInstance) {
     await logSignIn(db, req, { username: user.username, success: true, reason: `Signed in with ${s.providerName}`, sessionId: session.id });
     const ticket = crypto.randomBytes(24).toString("base64url");
     await db.delete(oauthTickets).where(lt(oauthTickets.expiresAt, now));
-    await db.insert(oauthTickets).values({ ticketHash: hashTicket(ticket), sessionId: session.id, expiresAt: new Date(now.getTime() + TICKET_MS) });
+    await db.insert(oauthTickets).values({ ticketHash: hashTicket(ticket), sessionId: session.id, appKeyHash: flow.appKeyHash, expiresAt: new Date(now.getTime() + TICKET_MS) });
     return back(flow.appOrigin, "/oauth", { ticket });
   });
 
   // The page swaps the one-time ticket for its login token
   app.post("/api/auth/oauth/finish", async (req) => {
-    const { ticket } = z.object({ ticket: z.string().max(200) }).parse(req.body ?? {});
-    const [t] = await db.delete(oauthTickets).where(and(eq(oauthTickets.ticketHash, hashTicket(ticket)), gt(oauthTickets.expiresAt, app.now()))).returning();
+    const { ticket, appKey } = z.object({ ticket: z.string().max(200), appKey: z.string().max(200).optional() }).parse(req.body ?? {});
+    const live = and(eq(oauthTickets.ticketHash, hashTicket(ticket)), gt(oauthTickets.expiresAt, app.now()));
+    // An iPhone app ticket swaps only with the app's own key; a wrong try doesn't use it up
+    const [held] = await db.select({ appKeyHash: oauthTickets.appKeyHash }).from(oauthTickets).where(live);
+    if (held?.appKeyHash && (!appKey || !same(held.appKeyHash, sha256(`appkey:${appKey}`)))) throw new HttpError(400, "That sign-in expired. Try again.");
+    const [t] = await db.delete(oauthTickets).where(live).returning();
     const [row] = t ? await db.select({ session: sessions, user: users }).from(sessions).innerJoin(users, eq(users.id, sessions.userId)).where(eq(sessions.id, t.sessionId)) : [];
     if (!row || row.session.revokedAt || row.user.disabled) throw new HttpError(400, "That sign-in expired. Try again.");
     return { token: signToken(row.user.id, row.user.tokenVersion, app.jwtSecret, row.session.tokenId), user: publicUser(row.user) };

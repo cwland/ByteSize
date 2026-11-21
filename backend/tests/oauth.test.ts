@@ -435,3 +435,70 @@ describe("the app's own address", () => {
     expect(appOriginsFromEnv({ APP_URL: "https://food.example.com/", PASSKEY_ORIGINS: "https://a.example.com, https://b.example.com/" })).toEqual(["https://food.example.com", "https://a.example.com", "https://b.example.com"]);
   });
 });
+
+// I6: the iPhone app signs in through Safari's sheet (ASWebAuthenticationSession), which doesn't share the app's
+// cookies. The app makes a secret key instead; the callback comes back to bytesize://oauth with a ticket, and only
+// that key can swap it for a token (another app grabbing the bytesize:// address can't use it).
+describe("OAuth sign-in from the iPhone app", () => {
+  const KEY = "k".repeat(43);
+  const begin = async (body: object = { client: "ios", appKey: KEY }) => {
+    const r = await req("POST", "/api/auth/oauth/start", body, null);
+    return r;
+  };
+  const app = async (who: { sub: string } = { sub: "ak-alex" }, key = KEY) => {
+    const start = await begin({ client: "ios", appKey: key });
+    expect(start.statusCode, start.body).toBe(200);
+    const back = idp.approve(start.json().url, who);
+    const cb = await t.app.inject({ method: "GET", url: back.pathname + back.search }); // no cookie: Safari's sheet
+    expect(cb.statusCode).toBe(302);
+    return { start, location: String(cb.headers.location) };
+  };
+  const finishApp = (ticket: string | null, appKey?: string) => req("POST", "/api/auth/oauth/finish", { ticket, ...(appKey ? { appKey } : {}) }, null);
+
+  it("start sets no cookie and keeps only a hash of the app's key", async () => {
+    await save();
+    const r = await begin();
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.headers["set-cookie"]).toBeUndefined();
+    const [flow] = await t.app.db.select().from(oauthFlows);
+    expect(flow.client).toBe("ios");
+    expect(flow.appKeyHash).toBeTruthy();
+    expect(flow.appKeyHash).not.toContain(KEY);
+  });
+
+  it("needs a long enough key", async () => {
+    await save();
+    expect((await begin({ client: "ios", appKey: "short" })).statusCode).toBe(400);
+    expect((await begin({ client: "ios" })).statusCode).toBe(400);
+  });
+
+  it("comes back to the app with a ticket that only the app's key can swap", async () => {
+    await save();
+    await link();
+    const { location } = await app();
+    expect(location.startsWith("bytesize://oauth?")).toBe(true);
+    const ticket = new URLSearchParams(location.split("?")[1]).get("ticket");
+    expect(ticket).toBeTruthy();
+    expect((await finishApp(ticket)).statusCode).toBe(400); // no key
+    expect((await finishApp(ticket, "w".repeat(43))).statusCode).toBe(400); // someone else's
+    const ok = await finishApp(ticket, KEY); // a wrong try doesn't use it up
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect(ok.json().user.username).toBe("alex");
+    expect((await finishApp(ticket, KEY)).statusCode).toBe(400); // used up
+  });
+
+  it("a failed sign-in comes back to the app with the reason", async () => {
+    await save();
+    const { location } = await app({ sub: "nobody-linked" });
+    expect(location.startsWith("bytesize://oauth?")).toBe(true);
+    expect(new URLSearchParams(location.split("?")[1]).get("error")).toBe(NOT_LINKED);
+  });
+
+  it("web sign-ins are unchanged: still the cookie, still back to the page, no key needed", async () => {
+    await save();
+    await link();
+    const { to, params } = await oauth({ sub: "ak-alex" });
+    expect(to.origin + to.hash.split("?")[0]).toBe(`${ORIGIN}#/oauth`);
+    expect((await finish(params.get("ticket"))).statusCode).toBe(200);
+  });
+});
