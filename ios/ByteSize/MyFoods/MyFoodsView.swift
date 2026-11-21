@@ -10,6 +10,21 @@ struct MyFoodsView: View {
     var body: some View {
         List {
             Section {
+                // Not .searchable: on iOS 26 its bar sits at the bottom, under the app's own tab bar
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(palette.color("subtle"))
+                    TextField("Search my foods", text: $model.query)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.search)
+                        .accessibilityIdentifier("myFoodsSearch")
+                    if !model.query.isEmpty {
+                        Button { model.query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(palette.color("subtle"))
+                            .accessibilityLabel("Clear search")
+                    }
+                }
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(MyFoodsModel.Filter.allCases, id: \.self) { f in
@@ -39,7 +54,6 @@ struct MyFoodsView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(palette.color("page"))
-        .searchable(text: $model.query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search my foods")
         .onChange(of: model.query) { Task { await model.queryChanged() } }
         .refreshable { await model.load() }
         .task { if !model.loaded { await model.load() } }
