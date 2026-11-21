@@ -105,13 +105,56 @@ final class EstimateModelTests: XCTestCase {
         XCTAssertEqual(m.items[0].quantity, 3)
         m.setQuantity(0, at: 0) // not an amount: unchanged
         XCTAssertEqual(m.items[0].quantity, 3)
-        m.remove(at: 1)
-        XCTAssertEqual(m.items.map(\.food.name), ["Egg, large"])
-        m.remove(at: 5) // out of range: nothing happens
-        XCTAssertEqual(m.items.count, 1)
     }
 
-    func testLogAllPostsTheDayAndMealThenReloads() async throws {
+    func testANewListStartsAllChecked() async {
+        serve()
+        let (m, _) = model()
+        m.text = "2 eggs and toast"
+        await m.describe()
+        XCTAssertEqual(m.selected, [true, true])
+        m.toggle(at: 0)
+        XCTAssertEqual(m.selected, [false, true])
+        await m.describe()
+        XCTAssertEqual(m.selected, [true, true], "a new list starts all checked")
+    }
+
+    func testToggleLeavesTheFoodOutOfTheTotal() async {
+        serve()
+        let (m, _) = model()
+        m.text = "2 eggs and toast"
+        await m.describe()
+        m.toggle(at: 0)
+        XCTAssertEqual(m.totalCalories, 80)
+        XCTAssertEqual(m.selectedCount, 1)
+        m.toggle(at: 0)
+        XCTAssertEqual(m.totalCalories, 224)
+        m.toggle(at: 7) // out of range: nothing happens
+        XCTAssertEqual(m.selected, [true, true])
+    }
+
+    func testAmountChangeKeepsSelection() async {
+        serve()
+        let (m, _) = model()
+        m.text = "2 eggs and toast"
+        await m.describe()
+        m.toggle(at: 1)
+        m.setPortion(servingIndex: 0, quantity: 3, at: 1)
+        XCTAssertEqual(m.selected, [true, false])
+    }
+
+    func testClearItemsEmptiesTheList() async {
+        serve()
+        let (m, _) = model()
+        m.text = "2 eggs and toast"
+        await m.describe()
+        m.clearItems()
+        XCTAssertEqual(m.items, [])
+        XCTAssertEqual(m.selected, [])
+        XCTAssertFalse(m.canLog)
+    }
+
+    func testLogSelectedPostsTheDayAndMealThenReloads() async throws {
         serve()
         let (m, days) = model()
         await days.select("2026-11-18")
@@ -119,7 +162,7 @@ final class EstimateModelTests: XCTestCase {
         await m.describe()
         m.meal = .lunch
         let reloads = requests("GET", "/api/day/2026-11-18").count
-        let ok = await m.logAll()
+        let ok = await m.logSelected()
         XCTAssertTrue(ok)
         let body = try XCTUnwrap(requests("POST", "/api/log/estimates").last?.json)
         XCTAssertEqual(body["day"] as? String, "2026-11-18")
@@ -130,10 +173,51 @@ final class EstimateModelTests: XCTestCase {
         XCTAssertEqual(m.text, "")
     }
 
-    func testLogAllWithNothingDoesNothing() async {
+    func testLogSelectedSendsOnlyChecked() async throws {
         serve()
         let (m, _) = model()
-        let ok = await m.logAll()
+        m.text = "2 eggs and toast"
+        await m.describe()
+        m.toggle(at: 1)
+        let ok = await m.logSelected()
+        XCTAssertTrue(ok)
+        let body = try XCTUnwrap(requests("POST", "/api/log/estimates").last?.json)
+        XCTAssertEqual((body["items"] as? [[String: Any]])?.compactMap { $0["name"] as? String }, ["Egg, large"])
+        XCTAssertEqual(m.selected, [])
+    }
+
+    func testNothingSelectedLogsNothing() async {
+        serve()
+        let (m, _) = model()
+        m.text = "2 eggs and toast"
+        await m.describe()
+        m.toggle(at: 0)
+        m.toggle(at: 1)
+        XCTAssertFalse(m.canLog)
+        let ok = await m.logSelected()
+        XCTAssertFalse(ok)
+        XCTAssertTrue(requests("POST", "/api/log/estimates").isEmpty)
+    }
+
+    func testFailedLogKeepsTheSelection() async {
+        serve()
+        let (m, _) = model()
+        m.text = "2 eggs and toast"
+        await m.describe()
+        m.toggle(at: 1)
+        let handler = HTTPStub.handler
+        HTTPStub.handler = { req in req.url?.path() == "/api/log/estimates" ? .json(500, #"{"error":"Something went wrong"}"#) : handler(req) }
+        let ok = await m.logSelected()
+        XCTAssertFalse(ok)
+        XCTAssertEqual(m.items.count, 2)
+        XCTAssertEqual(m.selected, [true, false])
+        XCTAssertNotNil(m.message)
+    }
+
+    func testLogSelectedWithNothingDoesNothing() async {
+        serve()
+        let (m, _) = model()
+        let ok = await m.logSelected()
         XCTAssertFalse(ok)
         XCTAssertTrue(requests("POST", "/api/log/estimates").isEmpty)
     }
