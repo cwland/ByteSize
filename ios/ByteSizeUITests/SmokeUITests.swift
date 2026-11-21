@@ -234,7 +234,7 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.textFields["trackSearch"].waitForExistence(timeout: 5))
         closeSheet()
         app.buttons["Food Log"].tap()
-        XCTAssertTrue(app.staticTexts["Banana"].waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(app.staticTexts["Banana"]).waitForExistence(timeout: 5), "late in the day it's in Snacks, below the fold")
     }
 
     /// Close on a sheet that stays open after logging; a tap during the pop back to the search can be lost.
@@ -337,7 +337,7 @@ final class SmokeUITests: XCTestCase {
         closeSheet()
         app.buttons["Food Log"].tap()
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "6 × 1 prune")).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(row).waitForExistence(timeout: 5))
     }
 
     func testTrackFoodStaysOpenForTheNext() {
@@ -360,8 +360,8 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(waitUntil { !self.app.buttons["logButton"].exists })
         closeSheet()
         app.buttons["Food Log"].tap()
-        XCTAssertTrue(app.staticTexts["Banana"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Prunes"].waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(app.staticTexts["Banana"]).waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(app.staticTexts["Prunes"]).waitForExistence(timeout: 5))
     }
 
     // MARK: - L2: meals always there with Add; quick foods one tap away; the bookmark
