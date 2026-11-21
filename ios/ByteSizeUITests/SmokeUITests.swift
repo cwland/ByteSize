@@ -242,6 +242,18 @@ final class SmokeUITests: XCTestCase {
         XCTAssertFalse(close.exists, "the sheet didn't close")
     }
 
+    /// Search inside an open Track Food sheet and open a result's amount screen.
+    private func trackSearchHere(_ text: String, pick name: String) {
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText(text)
+        let row = app.buttons["food-\(name)"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5))
+    }
+
     private func trackSearch(_ text: String, pick name: String) {
         openAction("Track Food")
         let search = app.searchFields.firstMatch
@@ -503,13 +515,36 @@ final class SmokeUITests: XCTestCase {
         shot("23-log-summary")
     }
 
-    func testTomorrowCantBeChosen() {
+    func testTomorrowCanBeChosenToPreLog() {
         signedIn()
         app.buttons["Food Log"].tap()
         let tomorrow = app.buttons["day-\(dayString(1))"]
         XCTAssertTrue(tomorrow.waitForExistence(timeout: 5))
-        XCTAssertFalse(tomorrow.isEnabled)
-        XCTAssertEqual(app.buttons["dayHeader"].label, "Today")
+        XCTAssertTrue(tomorrow.isEnabled)
+        tomorrow.tap()
+        XCTAssertTrue(waitUntil { self.app.buttons["dayHeader"].label != "Today" }, "the header shows tomorrow")
+        XCTAssertFalse(app.buttons["day-\(dayString(8))"].exists && app.buttons["day-\(dayString(8))"].isEnabled)
+        shot("35-tomorrow")
+        openDinnerFromTheFoodLog()
+        trackSearchHere("banana", pick: "Banana")
+        app.buttons["logButton"].tap()
+        closeSheet()
+        XCTAssertTrue(waitUntil { self.reveal(self.label("Banana")).exists }, "logged on tomorrow")
+    }
+
+    func testFutureDayDisablesWaterWeightAndShot() {
+        signedIn()
+        let tomorrow = app.buttons["day-\(dayString(1))"]
+        XCTAssertTrue(tomorrow.waitForExistence(timeout: 5))
+        tomorrow.tap()
+        let hint = app.staticTexts.matching(identifier: "futureHint").firstMatch
+        XCTAssertTrue(hint.waitForExistence(timeout: 5))
+        XCTAssertEqual(hint.label, "That day hasn't happened yet")
+        let water = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Add ")).firstMatch
+        XCTAssertTrue(water.exists)
+        XCTAssertFalse(water.isEnabled)
+        XCTAssertFalse(reveal(app.buttons["Log weight"]).isEnabled)
+        XCTAssertFalse(reveal(app.buttons["Log shot"]).isEnabled)
     }
 
     func testAFailedDayShowsWhyInTheFoodLog() {
@@ -762,7 +797,7 @@ final class SmokeUITests: XCTestCase {
     func testSearchFindsAFood() {
         signedIn()
         openMyFoods()
-        let search = app.searchFields.firstMatch
+        let search = app.textFields["myFoodsSearch"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.tap()
         search.typeText("oat")
