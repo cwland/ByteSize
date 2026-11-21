@@ -40,7 +40,12 @@ public final class EstimateModel {
     /// ≈ calories of everything listed (the server's numbers rule once logged).
     public var totalCalories: Int { Int(items.reduce(0) { $0 + $1.calories }.rounded()) }
 
+    /// Bumped by each description and by the ⓧ: an answer for an older one is dropped (review fix).
+    private var describing = 0
+
     public func describe() async {
+        describing += 1
+        let mine = describing
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard words.count >= 2 else {
             message = "Describe what you ate"
@@ -53,13 +58,25 @@ public final class EstimateModel {
         items = [] // a new description: never the old list under a new answer (or error)
         do {
             let result = try await api.send(FoodAPI.estimateItems(words))
+            guard mine == describing else { return } // cleared (or described again) while this was on its way
             items = result.items
             if result.assumed, let taken = result.interpretedAs { assumedNote = "Took it as “\(taken)”" }
         } catch APIError.server(503, _) {
+            guard mine == describing else { return }
             message = Self.needsAI
         } catch {
+            guard mine == describing else { return }
             message = Self.text(error)
         }
+    }
+
+    /// SPEC-21: the ⓧ in the field — the description and the last estimate both go, ready for the next.
+    public func clearDescription() {
+        describing += 1
+        text = ""
+        items = []
+        message = nil
+        assumedNote = nil
     }
 
     /// A photo: a barcode or a label first; otherwise the foods on the plate.

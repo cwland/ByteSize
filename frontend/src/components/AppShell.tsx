@@ -94,12 +94,14 @@ export default function AppShell() {
         {!wide && <TopBar days={page === "dashboard" && !isGlp1(hash)} />}
         <main className={wide ? "min-w-0 flex-1 px-9 pt-7 pb-12" : "mx-auto max-w-[560px] px-3 pt-2 pb-32"}>
           <div className={wide ? "mx-auto max-w-[1180px]" : undefined}>{content}</div>
-          {/* W1: the version, bottom left; it opens What's new */}
-          <div className={wide ? "mx-auto mt-10 max-w-[1180px]" : "mt-8"}>
-            <button type="button" onClick={showWhatsNew} aria-label={`What's new in ${versionLabel}`} title="What's new in this version" className="rounded px-1 text-xs text-muted hover:text-link hover:underline">
-              {versionLabel}
-            </button>
-          </div>
+          {/* W1: the version at the end of the page on phones; wide screens have it in the rail's corner (SPEC-18). It opens What's new */}
+          {!wide && (
+            <div className="mt-8">
+              <button type="button" onClick={showWhatsNew} aria-label={`What's new in ${versionLabel}`} title="What's new in this version" className="rounded px-1 text-xs text-muted hover:text-link hover:underline">
+                {versionLabel}
+              </button>
+            </div>
+          )}
         </main>
         {/* After the page, as on phones (tab and screen-reader order); the rail moves itself first (order-first) */}
         <LogButton page={page} wide={wide} />

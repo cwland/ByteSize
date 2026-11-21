@@ -726,6 +726,22 @@ final class SmokeUITests: XCTestCase {
         shot("9-scan-unknown")
     }
 
+    /// SPEC-21: Describe Food's ⓧ clears the text (and the list) without backspacing.
+    func testDescribeClearButtonEmptiesTheField() {
+        signedIn()
+        openAction("Describe Food")
+        let field = app.textFields["describeField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Clear description"].exists, "nothing to clear yet")
+        field.tap()
+        field.typeText("2 eggs and toast")
+        app.buttons["estimateButton"].tap()
+        XCTAssertTrue(app.buttons["logAll"].waitForExistence(timeout: 5))
+        app.buttons["Clear description"].tap()
+        XCTAssertTrue(waitUntil { (field.value as? String ?? "").isEmpty || field.value as? String == field.placeholderValue })
+        XCTAssertTrue(waitUntil { !self.app.buttons["logAll"].exists }, "the old list goes too")
+    }
+
     func testDescribeLogsItems() {
         signedIn()
         openAction("Describe Food")
