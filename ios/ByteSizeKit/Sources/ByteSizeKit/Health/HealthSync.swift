@@ -36,6 +36,7 @@ public final class HealthSync {
         self.defaults = defaults
         self.account = account
         self.now = now
+        defaults.set(account, forKey: Self.lastAccountKey)
         for kind in HealthKind.allCases {
             if defaults.bool(forKey: key("on", kind)) { on.insert(kind) }
             let t = defaults.double(forKey: key("last", kind))
@@ -44,6 +45,16 @@ public final class HealthSync {
     }
 
     public func isOn(_ kind: HealthKind) -> Bool { on.contains(kind) }
+
+    // MARK: - For a cold background launch (no screens yet)
+
+    static let lastAccountKey = "health.lastAccount"
+    /// The account the app last ran Health for.
+    public static func lastAccount(_ defaults: UserDefaults) -> String? { defaults.string(forKey: lastAccountKey) }
+    /// The kinds switched on for an account, as saved.
+    public static func savedOn(account: String, defaults: UserDefaults) -> [HealthKind] {
+        HealthKind.allCases.filter { defaults.bool(forKey: "health.\(account).on.\($0.rawValue)") }
+    }
 
     /// The latest sync of the kinds that are on.
     public var lastSynced: Date? { HealthKind.allCases.filter(isOn).compactMap { last[$0] }.max() }

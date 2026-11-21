@@ -60,7 +60,7 @@ struct ProfileSheet: View {
                     ForEach(HealthKind.allCases, id: \.self) { kind in
                         Toggle(kind.title, isOn: Binding(
                             get: { health.isOn(kind) },
-                            set: { on in Task { await health.setOn(kind, on); await synced() } }
+                            set: { on in Task { await health.setOn(kind, on); HealthBackground.shared.start(); await synced() } }
                         ))
                         .accessibilityIdentifier("health-\(kind.rawValue)")
                     }
