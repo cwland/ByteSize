@@ -165,14 +165,14 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         static let toast = #"{"food":{"name":"Toast","brand":null,"category":"bread","icon":"🍞","barcode":null,"servings":[{"label":"1 slice","grams":30}],"nutrients":{"calories":80,"carbs_g":15,"protein_g":3},"aiFields":["calories","carbs_g","protein_g"],"source":"ai"},"servingIndex":0,"quantity":1}"#
 
         func answer(_ req: URLRequest, body: [String: Any], raw: String = "") -> (Int, String) {
-            lock.withLock { route(req.httpMethod ?? "GET", req.url?.path() ?? "", req.url?.query() ?? "", body) }
+            lock.withLock { route(req.httpMethod ?? "GET", req.url?.path() ?? "", req.url?.query() ?? "", body, raw) }
         }
 
         private func json(_ value: Any) -> String {
             String(data: (try? JSONSerialization.data(withJSONObject: value)) ?? Data("{}".utf8), encoding: .utf8) ?? "{}"
         }
 
-        private func route(_ method: String, _ path: String, _ query: String, _ body: [String: Any]) -> (Int, String) {
+        private func route(_ method: String, _ path: String, _ query: String, _ body: [String: Any], _ raw: String) -> (Int, String) {
             let parts = path.split(separator: "/").map(String.init) // ["api", …]
             switch (method, path) {
             case ("GET", "/api/health"): return (200, #"{"ok":true,"db":true,"version":"stub"}"#)
