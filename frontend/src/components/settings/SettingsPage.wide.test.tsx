@@ -26,7 +26,7 @@ describe("Settings on a wide screen", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
     const strip = screen.getByRole("navigation", { name: "Settings sections" });
     expect(within(strip).queryByRole("tablist")).not.toBeInTheDocument();
-    expect(within(strip).getAllByRole("link").map((t) => t.textContent)).toEqual(["Profile", "API keys", "Security", "Integrations", "Cached data", "Email", "Data", "App info", "Users", "Logs"]);
+    expect(within(strip).getAllByRole("link").map((t) => t.textContent)).toEqual(["Profile", "Users", "API keys", "Security", "Integrations", "Cached data", "Email", "Data", "App info", "Logs"]);
     expect(within(strip).getByRole("link", { name: "Profile" })).toHaveAttribute("aria-current", "page");
     expect(within(strip).getByRole("link", { name: "Security" })).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("tabpanel", { name: "Profile" })).toBeInTheDocument();
@@ -60,12 +60,11 @@ describe("Settings on a wide screen", () => {
     expect(screen.getByRole("tabpanel", { name: "Profile" })).toBeInTheDocument();
   });
 
-  it("Sign out is at hand", async () => {
+  it("Sign out isn't here: it's in the account menu on the rail (SPEC-23)", () => {
     window.location.hash = "#/settings";
     wideScreen();
     fakeServer(routes);
-    const { session } = renderWithSession(<SettingsPage />);
-    await userEvent.setup().click(screen.getByRole("button", { name: "Sign out" }));
-    expect(session.signOut).toHaveBeenCalled();
+    renderWithSession(<SettingsPage />);
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
   });
 });
