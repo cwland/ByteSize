@@ -22,12 +22,28 @@ public struct Food: Codable, Identifiable, Hashable, Sendable {
     public let baseCacheId: Int?
 
     public var ref: String { "\(kind):\(id)" }
-    /// Culury recipes are tracked in the web app; a quick meal is logged item by item there too.
-    public var isLoggable: Bool { kind != "culury" && foodKind != "quick_meal" }
+    /// A quick meal is logged item by item (My Foods); everything else, Culury recipes included, logs here.
+    public var isLoggable: Bool { foodKind != "quick_meal" }
+    public var isCulury: Bool { kind == "culury" }
     public var calories: Double { nutrients["calories"] }
 }
 
 /// An amount as the server stores it: `quantity` × `fraction` of serving `servingIndex` (unit "serving"), or of a unit.
+extension Food {
+    /// The same food with other nutrition (a Culury recipe's AI estimate for one serving).
+    public func with(nutrients: Nutrients) -> Food {
+        Food(kind: kind, id: id, name: name, brand: brand, icon: icon, barcode: barcode, servings: servings, nutrients: nutrients,
+             aiFields: Array(nutrients.values.keys), source: source, foodKind: foodKind, last: last, baseCacheId: baseCacheId)
+    }
+}
+
+/// A Culury recipe read live through the server: no nutrition, or nutrition Culury marks out of date.
+public struct CuluryRecipe: Codable, Sendable {
+    public let food: Food
+    public let hasNutrition: Bool
+    public let outdated: Bool
+}
+
 public struct LastPortion: Codable, Hashable, Sendable {
     public let servingIndex: Int
     public let unit: String

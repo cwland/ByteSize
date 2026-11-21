@@ -14,6 +14,11 @@ struct PortionSheet: View {
         let toggle: () async -> Void
     }
     var bookmark: Bookmark?
+    /// About a Culury recipe: out of date, Culury unavailable, or no nutrition yet.
+    var note: String?
+    /// "Estimate with AI" for a Culury recipe with no nutrition (nil hides it).
+    var estimate: (() async -> Void)?
+    @State private var estimating = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.palette) private var palette
     @State private var logging = false
@@ -55,6 +60,26 @@ struct PortionSheet: View {
                             .foregroundStyle(palette.color("subtle"))
                             .accessibilityLabel(portion.previewCalories.map { "About \($0) calories" } ?? "Enter an amount")
                             .accessibilityIdentifier("previewCalories")
+                    }
+                }
+                if note != nil || estimate != nil {
+                    Section {
+                        if let note {
+                            Text(note).font(.subheadline).foregroundStyle(palette.color("subtle")).accessibilityIdentifier("recipeNote")
+                        }
+                        if let estimate {
+                            Button {
+                                estimating = true
+                                Task { await estimate(); estimating = false }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if estimating { ProgressView() } else { Image(systemName: "sparkles").accessibilityHidden(true) }
+                                    Text(estimating ? "Estimating…" : "Estimate with AI")
+                                }
+                            }
+                            .disabled(estimating)
+                            .accessibilityIdentifier("estimateRecipe")
+                        }
                     }
                 }
                 Section("Amount") {
@@ -147,24 +172,27 @@ struct FoodRow: View {
         icon = food.icon
         name = food.name
         brand = food.brand
-        detail = food.isLoggable
-            ? "≈ \(Int(food.calories.rounded())) cal / \(food.servings.first?.label ?? "serving")"
-            : "Track Culury recipes in the web app"
+        let serving = food.servings.first?.label ?? "serving"
+        detail = !food.isLoggable ? "Log quick meals from My Foods"
+            : food.isCulury && food.nutrients.values.isEmpty ? "Culury recipe · \(serving)"
+            : "≈ \(Int(food.calories.rounded())) cal / \(serving)"
     }
 }
 
 /// The portion screen for a food: makes (and keeps) its own portion, so it never opens empty.
 struct FoodPortionView: View {
-    let food: Food
+    @State private var food: Food
     var pushed = false
     var message: String?
     /// Where the bookmark lives (Track Food's favorites); nil hides it.
     var favorites: TrackFoodModel?
     let log: (Food, PortionModel) async -> Bool
     @State private var portion: PortionModel
+    private let meal: Meal
 
     init(food: Food, meal: Meal, pushed: Bool = false, message: String? = nil, favorites: TrackFoodModel? = nil, log: @escaping (Food, PortionModel) async -> Bool) {
-        self.food = food
+        _food = State(initialValue: food)
+        self.meal = meal
         self.pushed = pushed
         self.message = message
         self.favorites = favorites
@@ -172,7 +200,20 @@ struct FoodPortionView: View {
         _portion = State(initialValue: PortionModel(food: food, meal: meal))
     }
 
-    /// A database food or one of the person's own, loggable here (SPEC-10).
+    /// A Culury recipe with no nutrition: the AI's guess for one serving replaces it here (amount and meal kept).
+    private var estimate: (() async -> Void)? {
+        guard let favorites, food.isCulury, favorites.recipeNeedsEstimate else { return nil }
+        return {
+            guard let estimated = await favorites.estimateRecipe(food) else { return }
+            let next = PortionModel(food: estimated, meal: portion.meal)
+            next.choice = portion.choice
+            next.whole = portion.whole
+            next.fraction = portion.fraction
+            food = estimated
+            portion = next
+        }
+    }
+
     private var bookmark: PortionSheet.Bookmark? {
         guard let favorites, food.isLoggable, food.kind == "cache" || food.kind == "user_food" else { return nil }
         return PortionSheet.Bookmark(isOn: favorites.isFavorite(food)) { await favorites.toggleFavorite(food) }
@@ -180,6 +221,7 @@ struct FoodPortionView: View {
 
     var body: some View {
         // The model's message read here, so a failed bookmark or log shows while this screen is open
-        PortionSheet(portion: portion, onLog: { await log(food, portion) }, message: favorites?.message ?? message, pushed: pushed, bookmark: bookmark)
+        PortionSheet(portion: portion, onLog: { await log(food, portion) }, message: favorites?.message ?? message, pushed: pushed, bookmark: bookmark,
+                     note: food.isCulury ? favorites?.recipeNote : nil, estimate: estimate)
     }
 }

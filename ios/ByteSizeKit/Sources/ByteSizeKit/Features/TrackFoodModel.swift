@@ -26,6 +26,12 @@ public final class TrackFoodModel {
     public private(set) var groups: [FoodGroup] = []
     /// The last answer whole (with the sources it asked), for the source chips to filter; nil when nothing's found.
     public private(set) var found: SearchResult?
+    /// About the Culury recipe being opened: out of date, unavailable, or no nutrition yet (nil for other foods).
+    public private(set) var recipeNote: String?
+    /// The recipe opened has no nutrition: "Estimate with AI" fills it in for this entry.
+    public private(set) var recipeNeedsEstimate = false
+    /// AI estimates per serving, by Culury recipe id: sent with the log (the server stores them AI-estimated).
+    private var recipeEstimates: [Int: Nutrients] = [:]
     public private(set) var searching = false
     public private(set) var message: String?
     /// The food just logged ("Logged Banana"); the search is cleared for the next one (SPEC-16).
@@ -126,7 +132,7 @@ public final class TrackFoodModel {
         let last = food.last ?? LastPortion(servingIndex: 0, unit: "serving", quantity: 1, fraction: 1)
         let unit = AmountUnit(rawValue: last.unit) ?? .serving
         return await logged(food.name) {
-            _ = try await self.api.send(FoodAPI.log(food: food, day: self.dayStore.selected, meal: self.meal, servingIndex: last.servingIndex, unit: unit, quantity: last.quantity * last.fraction))
+            _ = try await self.api.send(FoodAPI.log(food: food, day: self.dayStore.selected, meal: self.meal, servingIndex: last.servingIndex, unit: unit, quantity: last.quantity * last.fraction, estimate: self.estimate(for: food)))
         }
     }
 
@@ -171,6 +177,54 @@ public final class TrackFoodModel {
 
     public func clearMessage() { message = nil }
 
+    private func estimate(for food: Food) -> Nutrients? { food.isCulury ? recipeEstimates[food.id] : nil }
+
+    /// A Culury recipe, read live (as the web does) before its amount screen opens. Culury down: the copy already
+    /// in hand, which the server also falls back to when logging.
+    public func openRecipe(_ food: Food) async -> Food {
+        recipeNote = nil
+        recipeNeedsEstimate = false
+        guard food.isCulury else { return food }
+        do {
+            let recipe = try await api.send(FoodAPI.culuryRecipe(food.id))
+            if !recipe.hasNutrition {
+                recipeNeedsEstimate = recipeEstimates[food.id] == nil
+                recipeNote = recipeNeedsEstimate ? "Culury has no nutrition for this recipe. Estimate it, or track it as unknown." : "The nutrition is an AI estimate for one serving; it's logged marked as AI-estimated."
+                return recipeEstimates[food.id].map { recipe.food.with(nutrients: $0) } ?? recipe.food
+            }
+            if recipe.outdated { recipeNote = "Culury's nutrition for this recipe may be out of date." }
+            return recipe.food
+        } catch {
+            recipeNote = "Culury is unavailable — using the last logged version"
+            return food
+        }
+    }
+
+    /// "Estimate with AI" for a recipe with no nutrition: the AI's guess for one serving, scaled to the recipe's
+    /// serving weight when both are weighed. Nil (with a message) when the AI can't.
+    public func estimateRecipe(_ food: Food) async -> Food? {
+        let grams = food.servings.first?.grams
+        let ask = "1 serving of \(food.name)" + (grams.map { " (\(Int($0.rounded())) g)" } ?? "")
+        do {
+            let out = try await api.send(FoodAPI.estimateItems(ask))
+            guard let draft = out.items.first?.food else {
+                message = "The AI couldn't estimate \(food.name)"
+                return nil
+            }
+            var per = draft.nutrients
+            if let grams, let theirs = draft.servings.first?.grams, theirs > 0 {
+                per = Nutrients(per.values.mapValues { $0 * grams / theirs })
+            }
+            recipeEstimates[food.id] = per
+            recipeNeedsEstimate = false
+            recipeNote = "The nutrition is an AI estimate for one serving; it's logged marked as AI-estimated."
+            return food.with(nutrients: per)
+        } catch {
+            message = (error as? APIError)?.message ?? error.localizedDescription
+            return nil
+        }
+    }
+
     public func isFavorite(_ food: Food) -> Bool {
         favorites.contains { fav in
             fav.ref == food.ref || Self.same(fav, food.ref) || (fav.baseCacheId != nil && fav.baseCacheId == food.baseCacheId)
@@ -207,7 +261,7 @@ public final class TrackFoodModel {
     public func log(_ food: Food, portion: PortionModel) async -> Bool {
         guard portion.canLog else { return false }
         do {
-            _ = try await api.send(FoodAPI.log(food: food, day: dayStore.selected, meal: portion.meal, servingIndex: portion.servingIndex, unit: portion.unit, quantity: portion.quantity))
+            _ = try await api.send(FoodAPI.log(food: food, day: dayStore.selected, meal: portion.meal, servingIndex: portion.servingIndex, unit: portion.unit, quantity: portion.quantity, estimate: estimate(for: food)))
             message = nil
             lastLogged = food.name
             meal = portion.meal // the next food starts in the same meal

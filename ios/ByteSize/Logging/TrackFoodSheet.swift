@@ -20,8 +20,6 @@ struct TrackFoodSheet: View {
 
     var body: some View {
         List {
-            searchField
-            hubButtons
             sourcesRow
             if let logged = model.lastLogged {
                 Label("Logged \(logged)", systemImage: "checkmark.circle.fill")
@@ -54,7 +52,18 @@ struct TrackFoodSheet: View {
             }
         }
         .listSectionSpacing(8)
-        .contentMargins(.top, 4, for: .scrollContent)
+        .contentMargins(.top, 0, for: .scrollContent)
+        // Search and tools stay put at the top (as the mockup), snug under the title; results scroll beneath
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 8) {
+                searchField
+                hubButtons
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+            .padding(.bottom, 4)
+            .background(palette.color("page"))
+        }
         .onAppear { searchFocused = true }
         .task { await model.load() }
         .task(id: model.query) {
@@ -82,50 +91,45 @@ struct TrackFoodSheet: View {
     }
 
     private var searchField: some View {
-        Section {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(palette.color("subtle"))
-                TextField("Search foods or type a barcode", text: $model.query)
-                    .focused($searchFocused)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.search)
-                    .accessibilityIdentifier("trackSearch")
-                if !model.query.isEmpty {
-                    Button { model.query = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(palette.color("subtle"))
-                        .accessibilityLabel("Clear search")
-                }
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(palette.color("subtle")).accessibilityHidden(true)
+            TextField("Search foods or type a barcode", text: $model.query)
+                .focused($searchFocused)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .accessibilityIdentifier("trackSearch")
+            if !model.query.isEmpty {
+                Button { model.query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(palette.color("subtle"))
+                    .accessibilityLabel("Clear search")
             }
-            .padding(.horizontal, 12)
-            .frame(minHeight: 44)
-            .background(palette.color("container"), in: RoundedRectangle(cornerRadius: 12))
-            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-            .listRowBackground(Color.clear)
         }
+        .padding(.horizontal, 12)
+        .frame(height: 44)
+        .background(palette.color("container"), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(palette.color("line")))
     }
 
+    /// Slim buttons, icon beside the word, in one row under the search (the mockup's option B).
     private var hubButtons: some View {
-        Section {
-            HStack(spacing: 8) {
-                ForEach([QuickAction.photo, .scan, .describe]) { action in
-                    Button { hub = action } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: action.systemImage).font(.title3)
-                            Text(action == .photo ? "Photo" : action == .scan ? "Scan" : "Describe").font(.caption.weight(.semibold))
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .foregroundStyle(palette.color("primary"))
-                        .background(palette.color("container"), in: RoundedRectangle(cornerRadius: 12))
+        HStack(spacing: 8) {
+            ForEach([QuickAction.photo, .scan, .describe]) { action in
+                Button { hub = action } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: action.systemImage).font(.subheadline.weight(.semibold)).accessibilityHidden(true)
+                        Text(action == .photo ? "Photo" : action == .scan ? "Scan" : "Describe").font(.footnote.weight(.semibold))
                     }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel(action.title)
-                    .accessibilityIdentifier("hub-\(action.rawValue)")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .foregroundStyle(palette.color("primary"))
+                    .background(palette.color("container"), in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(palette.color("line")))
                 }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(action.title)
+                .accessibilityIdentifier("hub-\(action.rawValue)")
             }
-            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 4, trailing: 0))
-            .listRowBackground(Color.clear)
         }
     }
 
@@ -151,12 +155,21 @@ struct TrackFoodSheet: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("sourcesToggle")
                 .accessibilityValue(sources.open ? "open" : "closed")
-                Picker("Meal", selection: $model.meal) {
-                    ForEach(Meal.allCases) { Text($0.title).tag($0) }
+                Menu {
+                    Picker("Meal", selection: $model.meal) {
+                        ForEach(Meal.allCases) { Text($0.title).tag($0) }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(model.meal.title).font(.footnote.weight(.semibold))
+                        Image(systemName: "chevron.down").font(.caption2.weight(.bold)).accessibilityHidden(true)
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(height: 32)
+                    .foregroundStyle(palette.color("ink"))
+                    .background(palette.color("active"), in: Capsule())
+                    .overlay(Capsule().strokeBorder(palette.color("primary")))
                 }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .tint(palette.color("ink"))
                 .accessibilityLabel("Meal, \(model.meal.title)") // as the meal pickers elsewhere read
                 .accessibilityIdentifier("trackMeal")
             }
@@ -183,7 +196,7 @@ struct TrackFoodSheet: View {
                 Text("\(chip.source.label) \(chip.count)").font(.footnote.weight(.semibold))
             }
             .padding(.horizontal, 12)
-            .frame(minHeight: 32)
+            .frame(height: 32)
             .foregroundStyle(chip.on ? palette.color("on-primary") : palette.color("subtle"))
             .background(chip.on ? palette.color("primary") : Color.clear, in: Capsule())
             .overlay(Capsule().strokeBorder(chip.on ? Color.clear : palette.color("strong")))
@@ -233,7 +246,7 @@ struct TrackFoodSheet: View {
                 ForEach(model.yesterday) { item in
                     HStack {
                         Button {
-                            if let food = item.food, food.isLoggable { picked = food }
+                            if let food = item.food, food.isLoggable { open(food) }
                         } label: {
                             FoodRow(icon: item.entry.icon, name: item.entry.name, brand: item.entry.brand,
                                     detail: "\(item.entry.amountText(units: units)) · \(Int(item.entry.calories.rounded())) cal")
@@ -257,6 +270,15 @@ struct TrackFoodSheet: View {
         }
     }
 
+    /// Opens a food's amount screen; a Culury recipe is read live first (as the web does).
+    private func open(_ food: Food) {
+        guard food.isCulury else {
+            picked = food
+            return
+        }
+        Task { picked = await model.openRecipe(food) }
+    }
+
     /// The + on a quick row: logs it now (at its last amount, or yesterday's entry as it was).
     private func quickAdd(_ name: String, _ log: @escaping () async -> Bool) -> some View {
         Button {
@@ -277,7 +299,7 @@ struct TrackFoodSheet: View {
                     HStack {
                         Button {
                             guard food.isLoggable else { return }
-                            picked = food
+                            open(food)
                         } label: {
                             FoodRow(food: food)
                         }
@@ -285,7 +307,11 @@ struct TrackFoodSheet: View {
                         .disabled(!food.isLoggable)
                         .accessibilityIdentifier("food-\(food.name)")
                         if quick, food.isLoggable {
-                            quickAdd(food.name) { await model.quickLog(food) }
+                            // A Culury recipe with no nutrition yet opens instead: it needs an estimate, or to be tracked as unknown
+                            quickAdd(food.name) {
+                                if food.isCulury, food.nutrients.values.isEmpty { open(food); return false }
+                                return await model.quickLog(food)
+                            }
                         }
                     }
                 }
