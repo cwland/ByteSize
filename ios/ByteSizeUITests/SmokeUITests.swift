@@ -320,6 +320,72 @@ final class SmokeUITests: XCTestCase {
         XCTAssertEqual(photo.frame.minY, app.buttons["hub-describe"].frame.minY, accuracy: 1, "one row")
     }
 
+    /// TF2: the keyboard comes up when Track Food opens, not again every time you come back from Scan (and the rest).
+    func testTheKeyboardComesUpOnceNotOnEveryReturn() {
+        signedIn()
+        openAction("Track Food")
+        XCTAssertTrue(app.textFields["trackSearch"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "ready to type when it opens")
+        app.buttons["hub-scan"].tap()
+        XCTAssertTrue(app.navigationBars["Scan Food"].waitForExistence(timeout: 5))
+        app.navigationBars["Scan Food"].buttons.element(boundBy: 0).tap() // Back
+        XCTAssertTrue(app.buttons["hub-scan"].waitForExistence(timeout: 5))
+        XCTAssertFalse(waitUntil(timeout: 1.5) { self.app.keyboards.firstMatch.exists }, "coming back doesn't pop the keyboard up again")
+    }
+
+    /// TF2 review: after a log, backing out of the next food's amount screen (without logging) leaves the keyboard down.
+    func testBackingOutAfterALogLeavesTheKeyboardDown() {
+        signedIn()
+        trackSearch("banana", pick: "Banana")
+        app.buttons["logButton"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
+        let search = app.textFields["trackSearch"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("prunes")
+        let prunes = app.buttons["food-Prunes"]
+        XCTAssertTrue(prunes.waitForExistence(timeout: 5))
+        prunes.tap()
+        XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons.element(boundBy: 0).tap() // Back, nothing logged
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        XCTAssertFalse(waitUntil(timeout: 1.5) { self.app.keyboards.firstMatch.exists }, "no new log: the keyboard stays down")
+    }
+
+    /// TF2 review: logging from Describe inside Track Food comes back ready to type the next food (SPEC-16).
+    func testLoggingFromDescribeComesBackReadyToType() {
+        signedIn()
+        openAction("Track Food")
+        XCTAssertTrue(app.buttons["hub-describe"].waitForExistence(timeout: 5))
+        app.buttons["hub-describe"].tap()
+        let field = app.textFields["describeField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText("2 eggs and toast")
+        app.buttons["estimateButton"].tap()
+        XCTAssertTrue(app.buttons["logAll"].waitForExistence(timeout: 5))
+        app.buttons["logAll"].tap()
+        XCTAssertTrue(label("Logged 2 foods").waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "back on the search, ready to type")
+    }
+
+    /// TF2: chips say "selected" to VoiceOver, and a cleared search drops them at once.
+    func testChipsAreSelectedAndGoWithAClearedSearch() {
+        signedIn()
+        openAction("Track Food")
+        let search = app.textFields["trackSearch"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("banana")
+        XCTAssertTrue(app.buttons["food-Banana"].waitForExistence(timeout: 5))
+        app.buttons["sourcesToggle"].tap()
+        let usda = app.buttons["source-usda"]
+        XCTAssertTrue(usda.waitForExistence(timeout: 3))
+        XCTAssertTrue(usda.isSelected)
+        XCTAssertFalse(app.buttons["source-basic"].isSelected)
+        app.buttons["Clear search"].tap()
+        XCTAssertTrue(waitUntil(timeout: 0.25) { !usda.exists }, "gone with the search, not 300 ms later")
+    }
+
     func testSourceChipsFilterTheResults() {
         signedIn()
         openAction("Track Food")
