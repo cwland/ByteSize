@@ -81,12 +81,18 @@ struct TrackFoodSheet: View {
         }
         .onChange(of: model.meal) { Task { await model.load() } }
         .onChange(of: picked) { _, now in
-            if now != nil { model.clearMessage() } // an old error isn't about the food being opened
+            if now != nil {
+                model.clearMessage() // an old error isn't about the food being opened
+                searchFocused = false // back without logging: the keyboard stays down (TF2)
+            }
             if now == nil, model.lastLogged != nil { searchFocused = true } // back from logging: ready to type the next
         }
         .navigationDestination(item: $hub) { action in hubScreen(action) }
         // One meal for the whole hub: Photo and Describe use Track Food's, and a change there comes back
-        .onChange(of: hub) { _, now in if now == .photo || now == .describe { estimate.meal = model.meal } }
+        .onChange(of: hub) { _, now in
+            if now != nil { searchFocused = false } // leaving: SwiftUI would hand the focus back on return (TF2)
+            if now == .photo || now == .describe { estimate.meal = model.meal }
+        }
         .onChange(of: estimate.meal) { _, meal in if hub != nil { model.meal = meal } }
         // Pushed, not a sheet: iOS won't open a sheet over an active search
         .navigationDestination(item: $picked) { food in
