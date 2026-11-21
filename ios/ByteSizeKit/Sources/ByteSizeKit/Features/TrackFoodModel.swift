@@ -26,6 +26,11 @@ public final class TrackFoodModel {
     public private(set) var groups: [FoodGroup] = []
     /// The last answer whole (with the sources it asked), for the source chips to filter; nil when nothing's found.
     public private(set) var found: SearchResult?
+    /// The answer for what's in the field now: gone the moment the search is cleared or shortened, not after the
+    /// pause before the next search (TF2), so the chips and "N of M" never belong to an old search.
+    public var answer: SearchResult? {
+        query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 ? found : nil
+    }
     /// About the Culury recipe being opened: out of date, unavailable, or no nutrition yet (nil for other foods).
     public private(set) var recipeNote: String?
     /// The recipe opened has no nutrition: "Estimate with AI" fills it in for this entry.
