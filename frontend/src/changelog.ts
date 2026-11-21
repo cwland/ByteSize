@@ -15,6 +15,22 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.10.0",
+    date: "2026-11-21",
+    title: "Passkeys and Authentik on iPhone",
+    added: [
+      "iPhone: sign in with a passkey you made on the web (Face ID or Touch ID), at the same address.",
+      "iPhone: sign in with Authentik (or whichever sign-in service your server uses), in Safari's sign-in sheet.",
+    ],
+    changed: [
+      "iPhone: Track Food's keyboard comes up when it opens, not again every time you come back from Scan, Photo or Describe.",
+      "iPhone: the source chips read as selected to VoiceOver, and wrap instead of being cut off at large text sizes.",
+    ],
+    fixed: [
+      "iPhone: clearing the search drops its source chips straight away.",
+    ],
+  },
+  {
     version: "0.9.0",
     date: "2026-11-21",
     title: "Tidier menus and What's new",
