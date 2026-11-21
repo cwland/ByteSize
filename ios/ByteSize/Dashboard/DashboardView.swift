@@ -93,10 +93,10 @@ struct DashboardView: View {
         case .calendar: Card { DayStrip(days: days) }
         case .overview: OverviewCard(days: days, units: units)
         case .water: WaterCard(dashboard: dashboard, days: days, units: units)
-        case .weight: WeightCard(dashboard: dashboard, units: units)
+        case .weight: WeightCard(dashboard: dashboard, days: days, units: units)
         case .streak: StreakCard(days: days)
         case .badges: BadgesCard(dashboard: dashboard, units: units)
-        case .shots: ShotCard(dashboard: dashboard)
+        case .shots: ShotCard(dashboard: dashboard, days: days)
         }
     }
 

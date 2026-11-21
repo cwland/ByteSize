@@ -242,6 +242,18 @@ final class SmokeUITests: XCTestCase {
         XCTAssertFalse(close.exists, "the sheet didn't close")
     }
 
+    /// Search inside an open Track Food sheet and open a result's amount screen.
+    private func trackSearchHere(_ text: String, pick name: String) {
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText(text)
+        let row = app.buttons["food-\(name)"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5))
+    }
+
     private func trackSearch(_ text: String, pick name: String) {
         openAction("Track Food")
         let search = app.searchFields.firstMatch
@@ -503,13 +515,36 @@ final class SmokeUITests: XCTestCase {
         shot("23-log-summary")
     }
 
-    func testTomorrowCantBeChosen() {
+    func testTomorrowCanBeChosenToPreLog() {
         signedIn()
         app.buttons["Food Log"].tap()
         let tomorrow = app.buttons["day-\(dayString(1))"]
         XCTAssertTrue(tomorrow.waitForExistence(timeout: 5))
-        XCTAssertFalse(tomorrow.isEnabled)
-        XCTAssertEqual(app.buttons["dayHeader"].label, "Today")
+        XCTAssertTrue(tomorrow.isEnabled)
+        tomorrow.tap()
+        XCTAssertTrue(waitUntil { self.app.buttons["dayHeader"].label != "Today" }, "the header shows tomorrow")
+        XCTAssertFalse(app.buttons["day-\(dayString(8))"].exists && app.buttons["day-\(dayString(8))"].isEnabled)
+        shot("35-tomorrow")
+        openDinnerFromTheFoodLog()
+        trackSearchHere("banana", pick: "Banana")
+        app.buttons["logButton"].tap()
+        closeSheet()
+        XCTAssertTrue(waitUntil { self.reveal(self.label("Banana")).exists }, "logged on tomorrow")
+    }
+
+    func testFutureDayDisablesWaterWeightAndShot() {
+        signedIn()
+        let tomorrow = app.buttons["day-\(dayString(1))"]
+        XCTAssertTrue(tomorrow.waitForExistence(timeout: 5))
+        tomorrow.tap()
+        let hint = app.staticTexts.matching(identifier: "futureHint").firstMatch
+        XCTAssertTrue(hint.waitForExistence(timeout: 5))
+        XCTAssertEqual(hint.label, "That day hasn't happened yet")
+        let water = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Add ")).firstMatch
+        XCTAssertTrue(water.exists)
+        XCTAssertFalse(water.isEnabled)
+        XCTAssertFalse(reveal(app.buttons["Log weight"]).isEnabled)
+        XCTAssertFalse(reveal(app.buttons["Log shot"]).isEnabled)
     }
 
     func testAFailedDayShowsWhyInTheFoodLog() {
@@ -635,5 +670,155 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Egg' AND label CONTAINS 'AI estimated'")).firstMatch.exists, "marked AI")
         shot("11-log-with-ai")
     }
-}
 
+    // MARK: - I4 Goals
+
+    private func openGoals() {
+        app.buttons["Goals"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["goalsTargets"].waitForExistence(timeout: 5))
+    }
+
+    private func logWeightOnGoals(_ text: String) {
+        let button = reveal(app.buttons["logWeight"])
+        button.tap()
+        let field = app.textFields["weightField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        let current = field.value as? String ?? ""
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + text)
+        app.buttons["saveWeight"].tap()
+        XCTAssertTrue(waitUntil { !field.exists }, "the sheet closes after saving")
+    }
+
+    func testGoalsShowTargetsGoalsAndChart() {
+        signedIn()
+        openGoals()
+        XCTAssertTrue(label("Goals and targets are managed in the ByteSize web app.").exists)
+        let goal = app.descendants(matching: .any)["goal-1"]
+        XCTAssertTrue(goal.waitForExistence(timeout: 5))
+        XCTAssertTrue(goal.label.contains("3 of 5 days this week"), goal.label)
+        XCTAssertTrue(reveal(app.descendants(matching: .any)["weightChart"]).exists)
+        app.buttons["range-All"].tap()
+        shot("31-goals")
+    }
+
+    func testLogWeightAddsToHistory() {
+        signedIn()
+        openGoals()
+        logWeightOnGoals("180")
+        let row = reveal(app.descendants(matching: .any)["history-\(dayString(0))"])
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("180.0 lb"), row.label)
+    }
+
+    func testSwipeDeletesAWeighIn() {
+        signedIn()
+        openGoals()
+        let oldest = app.descendants(matching: .any)["history-\(dayString(-60))"]
+        for _ in 0..<6 where !(oldest.exists && oldest.isHittable) { app.swipeUp() }
+        XCTAssertTrue(oldest.exists)
+        oldest.swipeLeft()
+        app.buttons["Delete"].tap()
+        XCTAssertTrue(waitUntil { !oldest.exists }, "the weigh-in is gone")
+    }
+
+    func testADashboardWeighInShowsOnGoals() {
+        signedIn()
+        openGoals() // loaded once before the weigh-in
+        app.buttons["Dashboard"].tap()
+        reveal(app.buttons["Log weight"]).tap()
+        let field = app.textFields["Weight"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        let current = field.value as? String ?? ""
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + "177")
+        app.buttons["Save"].tap()
+        XCTAssertTrue(waitUntil { !field.exists })
+        openGoals()
+        let row = reveal(app.descendants(matching: .any)["history-\(dayString(0))"])
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil { row.label.contains("177.0 lb") }, row.label)
+    }
+
+    func testLogWeightUsesTodayEvenWhenTomorrowIsPicked() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        let tomorrow = app.buttons["day-\(dayString(1))"]
+        XCTAssertTrue(tomorrow.waitForExistence(timeout: 5))
+        tomorrow.tap()
+        openGoals()
+        reveal(app.buttons["logWeight"]).tap()
+        XCTAssertTrue(app.textFields["weightField"].waitForExistence(timeout: 5))
+        shot("32-log-weight")
+        app.buttons["Cancel"].tap()
+        logWeightOnGoals("179")
+        let row = reveal(app.descendants(matching: .any)["history-\(dayString(0))"])
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "saved on today, not the picked day")
+        XCTAssertFalse(app.descendants(matching: .any)["history-\(dayString(1))"].exists)
+    }
+
+    // MARK: - I4 My Foods
+
+    private func openMyFoods() {
+        app.buttons["My Foods"].tap()
+        XCTAssertTrue(app.buttons["filter-all"].waitForExistence(timeout: 5))
+    }
+
+    private func foodLogShows(_ name: String) -> Bool {
+        app.buttons["Food Log"].tap()
+        let entry = label(name)
+        return waitUntil { self.reveal(entry).exists }
+    }
+
+    func testMyFoodsFiltersAndLogsARecipe() {
+        signedIn()
+        openMyFoods()
+        app.buttons["filter-recipes"].tap()
+        let chili = app.buttons["myFood-203"]
+        XCTAssertTrue(chili.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil { !self.app.buttons["myFood-201"].exists }, "only recipes")
+        shot("33-my-foods")
+        chili.tap()
+        let log = app.buttons["logButton"]
+        XCTAssertTrue(log.waitForExistence(timeout: 5))
+        log.tap()
+        XCTAssertTrue(app.buttons["filter-all"].waitForExistence(timeout: 5), "back on the list after logging")
+        XCTAssertTrue(foodLogShows("Chili"))
+    }
+
+    func testQuickMealLeavesOneOut() {
+        signedIn()
+        openMyFoods()
+        app.buttons["filter-meals"].tap()
+        let meal = app.buttons["myFood-204"]
+        XCTAssertTrue(meal.waitForExistence(timeout: 5))
+        meal.tap()
+        let toast = app.buttons["mealItem-1"]
+        XCTAssertTrue(toast.waitForExistence(timeout: 5))
+        toast.tap()
+        shot("34-quick-meal")
+        app.buttons["logMeal"].tap()
+        XCTAssertTrue(app.buttons["filter-all"].waitForExistence(timeout: 5), "back on the list after logging")
+        XCTAssertTrue(foodLogShows("Coffee"))
+        XCTAssertTrue(label("Eggs").exists)
+        XCTAssertFalse(label("Toast").exists)
+    }
+
+    func testMyEditsShowsOnlyCorrections() {
+        signedIn()
+        openMyFoods()
+        app.buttons["filter-edits"].tap()
+        XCTAssertTrue(app.buttons["myFood-202"].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil { !self.app.buttons["myFood-201"].exists && !self.app.buttons["myFood-203"].exists })
+    }
+
+    func testSearchFindsAFood() {
+        signedIn()
+        openMyFoods()
+        let search = app.textFields["myFoodsSearch"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("oat")
+        XCTAssertTrue(waitUntil { self.app.buttons["myFood-201"].exists && !self.app.buttons["myFood-203"].exists })
+    }
+}

@@ -146,4 +146,13 @@ final class DashboardModelTests: XCTestCase {
         await m.load()
         XCTAssertEqual(m.badges.map(\.id), ["streak_30", "streak_14", "lost_5", "streak_7"])
     }
+
+    func testNoWaterOnAFutureDay() async {
+        serve()
+        let (m, days) = model()
+        await days.select("2026-11-20")
+        HTTPStub.requests = []
+        await m.addWater(ml: 237)
+        XCTAssertTrue(requests("POST", "/api/log").isEmpty)
+    }
 }

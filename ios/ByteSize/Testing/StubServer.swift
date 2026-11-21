@@ -97,6 +97,37 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         private var currentDose: Double = 5
         /// Bookmarked foods, newest first ("cache:42").
         private var favoriteRefs: [String] = []
+        /// I4: weigh-ins (oldest first), kept as the Goals tab logs and deletes them.
+        private var weighIns: [(day: String, kg: Double)] = [(StubData.offset(-60), 88.0), (StubData.offset(-7), 83.5), (StubData.offset(-1), 82.28)]
+
+        /// I4: My Foods — (id, name, icon, foodKind, calories per serving, serving label).
+        static let myFoods: [(id: Int, name: String, icon: String, kind: String, calories: Double, serving: String)] = [
+            (201, "Oat bars", "🍪", "custom", 190, "1 bar"),
+            (202, "Banana (mine)", "🍌", "override", 100, "1 medium"),
+            (203, "Chili", "🍲", "recipe", 410, "1 bowl"),
+            (204, "Usual breakfast", "🍳", "quick_meal", 229, "1 meal"),
+        ]
+        /// The quick meal's items: (name, icon, calories per serving, quantity).
+        static let breakfastItems: [(name: String, icon: String, calories: Double, quantity: Double)] = [("Eggs", "🥚", 72, 2), ("Toast", "🍞", 80, 1), ("Coffee", "☕️", 5, 1)]
+
+        private static func myFoodJSON(_ f: (id: Int, name: String, icon: String, kind: String, calories: Double, serving: String)) -> String {
+            #"{"kind":"user_food","id":\#(f.id),"name":"\#(f.name)","brand":null,"icon":"\#(f.icon)","barcode":null,"servings":[{"label":"\#(f.serving)","grams":100}],"nutrients":{"calories":\#(f.calories)},"aiFields":[],"imageUrl":null,"override":\#(f.kind == "override"),"source":"mine","foodKind":"\#(f.kind)"}"#
+        }
+
+        static func offset(_ days: Int) -> String { day(Calendar.current.date(byAdding: .day, value: days, to: Date()) ?? Date()) }
+
+        private func weightJSON() -> String {
+            let list = weighIns.map { json(["day": $0.day, "weightKg": $0.kg, "trendKg": $0.kg + 0.3, "note": NSNull()]) }
+            let first = weighIns.first.map { json(["day": $0.day, "weightKg": $0.kg]) } ?? "null"
+            let last = weighIns.last.map { json(["day": $0.day, "weightKg": $0.kg]) } ?? "null"
+            let lost = (weighIns.first?.kg).flatMap { f in weighIns.last.map { f - $0.kg - 0.3 } }
+            return #"{"weighIns":[\#(list.joined(separator: ","))],"start":\#(first),"latest":\#(last),"trendKg":\#(weighIns.last.map { "\($0.kg + 0.3)" } ?? "null"),"goalKg":75,"lostKg":\#(lost.map { "\($0)" } ?? "null"),"goalDate":{"status":"ok","date":"\#(Self.offset(120))"}}"#
+        }
+
+        private static var goalsJSON: String {
+            let week = #"{"start":"\#(offset(-2))","end":"\#(offset(4))","value":3,"target":5,"status":"open"}"#
+            return #"{"active":[{"id":1,"type":"protein_days","name":"Protein most days","target":5,"period":"week","measure":null,"start":"\#(offset(-20))","end":"\#(offset(15))","progress":{"state":"active","current":\#(week),"hit":2,"done":2,"of":5,"needed":4,"startKg":null}},{"id":2,"type":"weight_by_date","name":"Down to 165","target":75,"period":"stretch","measure":null,"start":"\#(offset(-60))","end":"\#(offset(40))","progress":{"state":"active","current":null,"hit":0,"done":0,"of":1,"needed":1,"startKg":88.3}}],"past":[]}"#
+        }
 
         static var today: String { day(Date()) }
         static var yesterday: String { day(Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()) }
@@ -156,7 +187,21 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 layout = (body["columns"] as? [[String]])?.first ?? []
                 return (200, json(["layout": ["version": 1, "columns": [layout ?? []]]]))
             case ("GET", "/api/weight"):
-                return (200, #"{"weighIns":[{"day":"2026-11-12","weightKg":83.5,"trendKg":83.6},{"day":"2026-11-19","weightKg":82.28,"trendKg":82.9}],"latest":{"day":"2026-11-19","weightKg":82.28},"goalKg":75}"#)
+                return (200, weightJSON())
+            case ("GET", "/api/goals"):
+                return (200, Self.goalsJSON)
+            case ("GET", "/api/targets"):
+                return (200, #"{"targets":{"calories":{"min":1500,"max":2000},"protein_g":{"min":110,"max":130},"fiber_g":{"min":25,"max":35},"water_ml":{"min":2000,"max":3000}}}"#)
+            case ("PUT", _) where path.hasPrefix("/api/weigh-ins/"):
+                let day = String(path.dropFirst("/api/weigh-ins/".count))
+                weighIns.removeAll { $0.day == day }
+                weighIns.append((day, body["weightKg"] as? Double ?? 80))
+                weighIns.sort { $0.day < $1.day }
+                return (200, json(["weighIn": ["day": day, "weightKg": body["weightKg"] as? Double ?? 80, "note": NSNull()]]))
+            case ("DELETE", _) where path.hasPrefix("/api/weigh-ins/"):
+                let day = String(path.dropFirst("/api/weigh-ins/".count))
+                weighIns.removeAll { $0.day == day }
+                return (204, "")
             case ("GET", "/api/glp1"):
                 let shots = shotLog.map { json(["day": $0.day, "medication": "Zepbound", "doseMg": $0.dose, "doseUnit": $0.unit, "site": $0.site, "note": $0.note as Any]) }
                 let last = shots.first ?? "null"
@@ -206,6 +251,40 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                     out.append(e.json)
                 }
                 return (200, json(["entries": out]))
+            case ("GET", "/api/my-foods"):
+                let items = URLComponents(string: "x?\(query)")?.queryItems ?? []
+                let q = (items.first { $0.name == "q" }?.value ?? "").lowercased()
+                let kind = items.first { $0.name == "kind" }?.value ?? "all"
+                let list = Self.myFoods.filter { f in
+                    (q.isEmpty || f.name.lowercased().contains(q)) && (kind == "all" || (kind == "foods" && (f.kind == "custom" || f.kind == "override")) || (kind == "recipes" && f.kind == "recipe") || (kind == "meals" && f.kind == "quick_meal"))
+                }
+                return (200, #"{"foods":[\#(list.map(Self.myFoodJSON).joined(separator: ","))]}"#)
+            case ("GET", "/api/my-foods/204"):
+                let items = Self.breakfastItems.enumerated().map { i, it in
+                    #"{"food":{"kind":"cache","id":\#(300 + i)},"foodKind":"custom","name":"\#(it.name)","brand":null,"icon":"\#(it.icon)","imageUrl":null,"servingIndex":0,"unit":"serving","quantity":\#(it.quantity),"fraction":1,"servings":[{"label":"1 serving","grams":50}],"perServing":{"calories":\#(it.calories)},"nutrients":{"calories":\#(it.calories * it.quantity)},"available":true}"#
+                }
+                let base = String(Self.myFoodJSON(Self.myFoods[3]).dropLast())
+                return (200, #"{"food":\#(base),"notes":null,"items":[\#(items.joined(separator: ","))],"recipeServings":null,"servingGrams":null}}"#)
+            case ("POST", "/api/log/meal"):
+                let sent = body["items"] as? [[String: Any]] ?? []
+                var out: [[String: Any]] = []
+                for item in sent {
+                    let id = ((item["food"] as? [String: Any])?["id"] as? Int ?? 300) - 300
+                    guard Self.breakfastItems.indices.contains(id) else { continue }
+                    let it = Self.breakfastItems[id]
+                    nextId += 1
+                    let e = Entry(id: nextId, day: body["day"] as? String ?? Self.today, meal: body["meal"] as? String ?? "breakfast", name: it.name, brand: nil, icon: it.icon, unit: "serving", quantity: (item["quantity"] as? Double) ?? 1, fraction: 1, serving: "1 serving", perUnit: ["calories": it.calories], source: "cache", ref: "quick:204")
+                    entries.append(e)
+                    out.append(e.json)
+                }
+                return (200, json(["entries": out, "combined": []]))
+            case ("POST", "/api/log") where (body["food"] as? [String: Any])?["kind"] as? String == "user_food":
+                let id = (body["food"] as? [String: Any])?["id"] as? Int ?? 0
+                guard let f = Self.myFoods.first(where: { $0.id == id }) else { return (404, #"{"error":"Food not found"}"#) }
+                nextId += 1
+                let e = Entry(id: nextId, day: body["day"] as? String ?? Self.today, meal: body["meal"] as? String ?? "snacks", name: f.name, brand: nil, icon: f.icon, unit: "serving", quantity: (body["quantity"] as? Double) ?? 1, fraction: 1, serving: f.serving, perUnit: ["calories": f.calories], source: "user_food", ref: "user_food:\(id)")
+                entries.append(e)
+                return (200, json(["entry": e.json]))
             case ("POST", "/api/my-foods"):
                 return (200, #"{"food":\#(Self.banana.replacingOccurrences(of: #""kind":"cache","id":41"#, with: #""kind":"user_food","id":9"#))}"#)
             case ("POST", "/api/log") where body["food"] != nil:
