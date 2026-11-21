@@ -51,6 +51,20 @@ final class EstimateModelTests: XCTestCase {
         XCTAssertEqual(requests("POST", "/api/ai/estimate-items").last?.json?["text"] as? String, "2 eggs and toast")
     }
 
+    /// SPEC-21: one tap empties the description and the last estimate, ready for the next.
+    func testClearEmptiesTheTextAndTheLastEstimate() async {
+        serve(estimate: .json(200, #"{"items":[\#(FoodFixtures.toast)],"assumed":true,"interpretedAs":"Cheerios"}"#))
+        let (m, _) = model()
+        m.text = "cherios"
+        await m.describe()
+        XCTAssertFalse(m.items.isEmpty)
+        m.clearDescription()
+        XCTAssertEqual(m.text, "")
+        XCTAssertEqual(m.items, [])
+        XCTAssertNil(m.assumedNote)
+        XCTAssertNil(m.message)
+    }
+
     func testAGuessIsShown() async {
         serve(estimate: .json(200, #"{"items":[\#(FoodFixtures.toast)],"assumed":true,"interpretedAs":"Cheerios"}"#))
         let (m, _) = model()
