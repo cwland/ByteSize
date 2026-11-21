@@ -72,6 +72,10 @@ export const oauthFlows = pgTable("oauth_flows", {
   nonce: text("nonce").notNull(),
   redirectUri: text("redirect_uri").notNull(),
   appOrigin: text("app_origin").notNull(),
+  // I6: "ios" when the iPhone app started it (Safari's sheet: no cookie; back to bytesize://), with a hash of the
+  // app's secret key, which the ticket carries and finish checks
+  client: text("client").$type<"web" | "ios">().notNull().default("web"),
+  appKeyHash: text("app_key_hash"),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
 
@@ -82,6 +86,7 @@ export const oauthTickets = pgTable("oauth_tickets", {
   sessionId: integer("session_id")
     .notNull()
     .references(() => sessions.id, { onDelete: "cascade" }),
+  appKeyHash: text("app_key_hash"), // I6: an iPhone app ticket swaps only with the app's key
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
 

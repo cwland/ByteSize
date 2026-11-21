@@ -113,3 +113,31 @@ describe("passkeys", () => {
     expect(history[0]).toMatchObject({ success: false, username: "sam", reason: "Account turned off" });
   });
 });
+
+// I6: Apple lets the iPhone app use this site's passkeys only when the site names the app
+describe("apple-app-site-association", () => {
+  const get = () => t.app.inject({ method: "GET", url: "/.well-known/apple-app-site-association" });
+  it("isn't there until IOS_APP_ID is set", async () => {
+    delete process.env.IOS_APP_ID;
+    expect((await get()).statusCode).toBe(404);
+  });
+  it("names the app for passkeys (webcredentials)", async () => {
+    process.env.IOS_APP_ID = "ABCDE12345.com.cwland.bytesize";
+    try {
+      const r = await get();
+      expect(r.statusCode).toBe(200);
+      expect(r.headers["content-type"]).toContain("application/json");
+      expect(r.json()).toEqual({ webcredentials: { apps: ["ABCDE12345.com.cwland.bytesize"] } });
+    } finally {
+      delete process.env.IOS_APP_ID;
+    }
+  });
+  it("refuses a malformed IOS_APP_ID rather than publishing it", async () => {
+    process.env.IOS_APP_ID = "not an app id";
+    try {
+      expect((await get()).statusCode).toBe(404);
+    } finally {
+      delete process.env.IOS_APP_ID;
+    }
+  });
+});
