@@ -21,7 +21,8 @@ public enum ActivityAPI {
         let externalId: String
     }
     public static func healthWorkout(_ w: HealthWorkout, day: String) -> Endpoint<HealthWorkoutResult> {
-        let minutes = max(1, Int((w.seconds / 60).rounded()))
+        // The server takes 1–1,440 minutes: a workout left running past a day counts as a whole day
+        let minutes = min(1440, max(1, Int((w.seconds / 60).rounded())))
         let calories = w.activeCalories.map { Int($0.rounded()) }
         return Endpoint("POST", "/api/workouts", json: WorkoutBody(day: day, type: w.activity.serverType, minutes: minutes, calories: calories, externalId: w.id))
     }

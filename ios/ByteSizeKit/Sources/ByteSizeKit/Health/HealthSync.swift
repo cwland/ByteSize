@@ -115,7 +115,8 @@ public final class HealthSync {
     /// The first reading of each day, sent oldest first; returns how many the server added.
     private func syncWeight() async throws -> Int {
         let today = dayStore.today
-        let readings = try await store.weights(from: windowStart(.weight), to: now()).filter { !$0.fromByteSize }
+        // The server takes 30–350 kg; anything else (a child or a bag on the scale) is left out
+        let readings = try await store.weights(from: windowStart(.weight), to: now()).filter { !$0.fromByteSize && (30...350).contains($0.kg) }
         var firstOfDay: [String: HealthWeight] = [:]
         for r in readings {
             let day = DayMath.string(r.date, in: dayStore.zone)
@@ -125,8 +126,8 @@ public final class HealthSync {
         }
         var added = 0
         for day in firstOfDay.keys.sorted() {
-            let answer = try await api.send(BodyAPI.saveWeight(day: day, kg: firstOfDay[day]!.kg, source: "health"))
-            if answer.skipped != true { added += 1 }
+            guard stillOn(.weight) else { break }
+            if let answer = try await sendOne(BodyAPI.saveWeight(day: day, kg: firstOfDay[day]!.kg, source: "health")), answer.skipped != true { added += 1 }
         }
         return added
     }
@@ -136,8 +137,8 @@ public final class HealthSync {
         let days = try await store.dailySteps(from: windowStart(.steps), to: now(), zone: dayStore.zone)
         var sent = 0
         for (day, steps) in days.sorted(by: { $0.key < $1.key }) where steps > 0 && day <= today {
-            _ = try await api.send(ActivityAPI.healthSteps(day: day, steps: steps))
-            sent += 1
+            guard stillOn(.steps) else { break }
+            if try await sendOne(ActivityAPI.healthSteps(day: day, steps: steps)) != nil { sent += 1 }
         }
         return sent
     }
@@ -149,10 +150,28 @@ public final class HealthSync {
         for w in list.sorted(by: { $0.start < $1.start }) {
             let day = DayMath.string(w.start, in: dayStore.zone)
             guard day <= today else { continue }
-            let answer = try await api.send(ActivityAPI.healthWorkout(w, day: day))
-            if answer.skipped != true { added += 1 }
+            guard stillOn(.workouts) else { break }
+            if let answer = try await sendOne(ActivityAPI.healthWorkout(w, day: day)), answer.skipped != true { added += 1 }
         }
         return added
+    }
+
+    /// Sends one item. One the server refuses as invalid (a 4xx other than signed-out) is skipped (nil) so it can't
+    /// stop everything after it on every sync; anything else (offline, server down) stops the kind's sync.
+    private func sendOne<R>(_ endpoint: Endpoint<R>) async throws -> R? {
+        do {
+            return try await api.send(endpoint)
+        } catch APIError.server(let status, _) where (400..<500).contains(status) {
+            return nil
+        }
+    }
+
+    /// Still switched on? Read from the saved switch, which the Profile and a background sync share, so turning it off
+    /// anywhere stops a sync already sending.
+    private func stillOn(_ kind: HealthKind) -> Bool {
+        let saved = defaults.bool(forKey: key("on", kind))
+        if !saved { on.remove(kind) }
+        return saved
     }
 
     // MARK: - Windows
