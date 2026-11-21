@@ -68,14 +68,17 @@ describe("the rail's bottom (W2)", () => {
     const user = userEvent.setup();
     const avatar = within(rail()).getByRole("button", { name: "Account menu" });
     expect(avatar).toHaveAttribute("aria-expanded", "false");
+    expect(avatar).not.toHaveAttribute("aria-haspopup");
     await user.click(avatar);
-    const menu = screen.getByRole("menu", { name: "Account" });
+    const menu = screen.getByRole("group", { name: "Account" });
     expect(avatar).toHaveAttribute("aria-expanded", "true");
     expect(within(menu).getByText("Cory Landers")).toBeInTheDocument();
     expect(within(menu).getByText("cory@example.com")).toBeInTheDocument();
-    expect(within(menu).getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Profile & security", "Sign out", "Sign out everywhere"]);
-    expect(within(menu).getByRole("menuitem", { name: "Profile & security" })).toHaveAttribute("href", "#/settings/profile");
-    await user.click(within(menu).getByRole("menuitem", { name: "Sign out" }));
+    // A plain disclosure (review fix): a link and two buttons, in order, Tab-able like the rest of the page
+    expect(within(menu).queryByRole("menuitem")).toBeNull();
+    expect([...within(menu).getAllByRole("link"), ...within(menu).getAllByRole("button")].map((m) => m.textContent)).toEqual(["Profile & security", "Sign out", "Sign out everywhere"]);
+    expect(within(menu).getByRole("link", { name: "Profile & security" })).toHaveAttribute("href", "#/settings/profile");
+    await user.click(within(menu).getByRole("button", { name: "Sign out" }));
     expect(session.signOut).toHaveBeenCalled();
   });
 
@@ -83,7 +86,7 @@ describe("the rail's bottom (W2)", () => {
     fakeServer({});
     renderWithSession(<Rail page="dashboard" />, { displayName: "Cory", username: "cory", email: null });
     await userEvent.setup().click(within(rail()).getByRole("button", { name: "Account menu" }));
-    expect(within(screen.getByRole("menu", { name: "Account" })).getByText("cory")).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Account" })).getByText("cory")).toBeInTheDocument();
   });
 
   it("Sign out everywhere asks first, then signs out every device", async () => {
@@ -91,7 +94,7 @@ describe("the rail's bottom (W2)", () => {
     const { session } = renderWithSession(<Rail page="dashboard" />);
     const user = userEvent.setup();
     await user.click(within(rail()).getByRole("button", { name: "Account menu" }));
-    await user.click(screen.getByRole("menuitem", { name: "Sign out everywhere" }));
+    await user.click(screen.getByRole("button", { name: "Sign out everywhere" }));
     expect(session.signOutEverywhere).not.toHaveBeenCalled();
     const ask = screen.getByRole("alertdialog", { name: "Sign out everywhere?" });
     await user.click(within(ask).getByRole("button", { name: "Sign out everywhere" }));
@@ -105,7 +108,7 @@ describe("the rail's bottom (W2)", () => {
     const avatar = within(rail()).getByRole("button", { name: "Account menu" });
     await user.click(avatar);
     await user.keyboard("{Escape}");
-    expect(screen.queryByRole("menu", { name: "Account" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Account" })).toBeNull();
     expect(avatar).toHaveFocus();
   });
 
@@ -115,6 +118,42 @@ describe("the rail's bottom (W2)", () => {
     const user = userEvent.setup();
     await user.click(within(rail()).getByRole("button", { name: "Account menu" }));
     await user.click(within(rail()).getByRole("link", { name: "Goals" }));
-    expect(screen.queryByRole("menu", { name: "Account" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Account" })).toBeNull();
+  });
+
+  it("tabbing out of the menu closes it", async () => {
+    fakeServer({});
+    renderWithSession(<Rail page="dashboard" />);
+    const user = userEvent.setup();
+    await user.click(within(rail()).getByRole("button", { name: "Account menu" }));
+    await user.tab(); // Profile & security
+    await user.tab(); // Sign out
+    await user.tab(); // Sign out everywhere
+    await user.tab(); // out: the version
+    expect(screen.queryByRole("group", { name: "Account" })).toBeNull();
+  });
+
+  it("the confirm takes focus, and Cancel gives it back to the avatar", async () => {
+    fakeServer({});
+    renderWithSession(<Rail page="dashboard" />);
+    const user = userEvent.setup();
+    const avatar = within(rail()).getByRole("button", { name: "Account menu" });
+    await user.click(avatar);
+    await user.click(screen.getByRole("button", { name: "Sign out everywhere" }));
+    const ask = screen.getByRole("alertdialog", { name: "Sign out everywhere?" });
+    expect(within(ask).getByRole("button", { name: "Cancel" })).toHaveFocus();
+    await user.click(within(ask).getByRole("button", { name: "Cancel" }));
+    expect(avatar).toHaveFocus();
+  });
+
+  it("if signing out everywhere fails, it says so and you stay where you were", async () => {
+    fakeServer({});
+    const { session } = renderWithSession(<Rail page="dashboard" />);
+    session.signOutEverywhere.mockRejectedValueOnce(new Error("Couldn't reach ByteSize"));
+    const user = userEvent.setup();
+    await user.click(within(rail()).getByRole("button", { name: "Account menu" }));
+    await user.click(screen.getByRole("button", { name: "Sign out everywhere" }));
+    await user.click(within(screen.getByRole("alertdialog", { name: "Sign out everywhere?" })).getByRole("button", { name: "Sign out everywhere" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't reach ByteSize");
   });
 });

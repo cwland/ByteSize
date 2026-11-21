@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import PlanFlow from "./PlanFlow";
 import { fakeServer } from "../../test/fakeServer";
@@ -159,6 +159,32 @@ describe("plan flow", () => {
       expect(scrollTo).toHaveBeenCalled();
     } finally {
       delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
+    }
+  });
+
+  // Review fix: with several cards in view, the scroll events of the picker's own smooth scroll don't pull the
+  // current plan back to the old view (the dot you tapped stays lit)
+  it("several cards in view: its own scrolling doesn't undo the plan you picked", async () => {
+    const scrollTo = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, writable: true, value: scrollTo });
+    const cw = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+    const ow = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 400 });
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => 194 }); // two fit
+    try {
+      fakeServer({ "GET /api/body": () => ({ body: bodyA }), "GET /api/plans": () => plansA });
+      renderWithSession(<PlanFlow onDone={vi.fn()} />);
+      const card = (name: string) => screen.getByRole("group", { name });
+      await screen.findByRole("group", { name: "Steady" });
+      await userEvent.setup().click(screen.getByRole("button", { name: "Show Vigorous" }));
+      expect(card("Vigorous")).toHaveAttribute("data-current", "true");
+      // A scroll event from the way there (still at the start)
+      fireEvent.scroll(screen.getByRole("region", { name: "Plans" }));
+      expect(card("Vigorous")).toHaveAttribute("data-current", "true");
+    } finally {
+      delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
+      if (cw) Object.defineProperty(HTMLElement.prototype, "clientWidth", cw);
+      if (ow) Object.defineProperty(HTMLElement.prototype, "offsetWidth", ow);
     }
   });
 
