@@ -103,7 +103,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         private var weighIns: [(day: String, kg: Double)] = [(StubData.offset(-60), 88.0), (StubData.offset(-7), 83.5), (StubData.offset(-1), 82.28)]
 
         /// I4: My Foods — (id, name, icon, foodKind, calories per serving, serving label).
-        static let seedFoods: [(id: Int, name: String, icon: String, kind: String, calories: Double, serving: String)] = [
+        static let seedFoods: [MyFood] = [
             (201, "Oat bars", "🍪", "custom", 190, "1 bar"),
             (202, "Banana (mine)", "🍌", "override", 100, "1 medium"),
             (203, "Chili", "🍲", "recipe", 410, "1 bowl"),
@@ -111,10 +111,13 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         ]
         /// R2: My Foods as edited and deleted in this run.
         private var myFoods = StubData.seedFoods
+        private var nextFoodId = 500
         /// The quick meal's items: (name, icon, calories per serving, quantity).
         static let breakfastItems: [(name: String, icon: String, calories: Double, quantity: Double)] = [("Eggs", "🥚", 72, 2), ("Toast", "🍞", 80, 1), ("Coffee", "☕️", 5, 1)]
 
-        private static func myFoodJSON(_ f: (id: Int, name: String, icon: String, kind: String, calories: Double, serving: String)) -> String {
+        typealias MyFood = (id: Int, name: String, icon: String, kind: String, calories: Double, serving: String)
+
+        private static func myFoodJSON(_ f: MyFood) -> String {
             #"{"kind":"user_food","id":\#(f.id),"name":"\#(f.name)","brand":null,"icon":"\#(f.icon)","barcode":null,"servings":[{"label":"\#(f.serving)","grams":100}],"nutrients":{"calories":\#(f.calories)},"aiFields":[],"imageUrl":null,"override":\#(f.kind == "override"),"source":"mine","foodKind":"\#(f.kind)"}"#
         }
 
@@ -307,8 +310,25 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 let e = Entry(id: nextId, day: body["day"] as? String ?? Self.today, meal: body["meal"] as? String ?? "snacks", name: f.name, brand: nil, icon: f.icon, unit: "serving", quantity: (body["quantity"] as? Double) ?? 1, fraction: 1, serving: f.serving, perUnit: ["calories": f.calories], source: "user_food", ref: "user_food:\(id)")
                 entries.append(e)
                 return (200, json(["entry": e.json]))
-            case ("POST", "/api/my-foods"):
-                return (200, #"{"food":\#(Self.banana.replacingOccurrences(of: #""kind":"cache","id":41"#, with: #""kind":"user_food","id":9"#))}"#)
+            case ("POST", "/api/my-foods"), ("POST", "/api/my-foods/recipes"), ("POST", "/api/my-foods/meals"):
+                // R2: a new food, recipe or quick meal joins My Foods
+                nextFoodId += 1
+                let kind = path.hasSuffix("recipes") ? "recipe" : path.hasSuffix("meals") ? "quick_meal" : "custom"
+                let serving = ((body["servings"] as? [[String: Any]])?.first?["label"] as? String) ?? (kind == "custom" ? "1 serving" : "1 serving")
+                let calories = (body["nutrients"] as? [String: Any])?["calories"] as? Double ?? 0
+                let f = (id: nextFoodId, name: body["name"] as? String ?? "Food", icon: "🍽️", kind: kind, calories: calories, serving: serving)
+                myFoods.insert(f, at: 0)
+                return (200, #"{"food":\#(Self.myFoodJSON(f))}"#)
+            case ("PATCH", _) where path.hasPrefix("/api/my-foods/") && parts.count == 3,
+                 ("PUT", _) where path.hasPrefix("/api/my-foods/recipes/") || path.hasPrefix("/api/my-foods/meals/"):
+                let id = Int(parts.last ?? "") ?? 0
+                guard let i = myFoods.firstIndex(where: { $0.id == id }) else { return (404, #"{"error":"Food not found"}"#) }
+                if let name = body["name"] as? String { myFoods[i].name = name }
+                return (200, #"{"food":\#(Self.myFoodJSON(myFoods[i]))}"#)
+            case ("GET", "/api/my-foods/203"):
+                let item = #"{"food":{"kind":"cache","id":310},"foodKind":"custom","name":"Beans","brand":null,"icon":"🫘","imageUrl":null,"servingIndex":0,"unit":"serving","quantity":2,"fraction":1,"servings":[{"label":"1 cup","grams":170}],"perServing":{"calories":205},"nutrients":{"calories":410},"available":true}"#
+                let base = String(Self.myFoodJSON(StubData.seedFoods[2]).dropLast())
+                return (200, #"{"food":\#(base),"notes":"Freezes well","items":[\#(item)],"recipeServings":1,"servingGrams":null}}"#)
             case ("POST", "/api/log") where body["food"] != nil:
                 nextId += 1
                 // Banana (41) or Prunes (42; "1 prune" is a fifth of "5 prunes"), in the serving chosen
