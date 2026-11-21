@@ -16,6 +16,9 @@ struct TrackFoodSheet: View {
     @State private var hub: QuickAction?
     /// Our own field, not .searchable: the bar then holds only the title and Close, built from the first frame.
     @FocusState private var searchFocused: Bool
+    /// The keyboard comes up when Track Food opens; coming back from Scan, Photo, Describe or an amount screen leaves
+    /// it down (TF2). After logging it comes up again for the next food (SPEC-16).
+    @State private var focusedOnce = false
     @Environment(\.palette) private var palette
 
     var body: some View {
@@ -41,10 +44,10 @@ struct TrackFoodSheet: View {
                 if let message = model.message {
                     Text(message).foregroundStyle(palette.color("subtle")).accessibilityIdentifier("trackMessage")
                 }
-                if let found = model.found {
+                if let found = model.answer {
                     let view = sources.view(of: found)
                     ForEach(view.errors, id: \.source) { error in
-                        Label(error.message, systemImage: "exclamationmark.triangle").foregroundStyle(palette.color("subtle"))
+                        Label(error.message, systemImage: "exclamationmark.triangle").foregroundStyle(palette.color("subtle")).accessibilityIdentifier("sourceError")
                     }
                     if let hint = view.hint { hintRow(hint) }
                     ForEach(view.groups) { group in foodSection(group.label, group.foods) }
@@ -64,7 +67,11 @@ struct TrackFoodSheet: View {
             .padding(.bottom, 4)
             .background(palette.color("page"))
         }
-        .onAppear { searchFocused = true }
+        .onAppear {
+            guard !focusedOnce else { return }
+            focusedOnce = true
+            searchFocused = true
+        }
         .task { await model.load() }
         .task(id: model.query) {
             // A short pause so each keystroke doesn't send a search
@@ -142,11 +149,13 @@ struct TrackFoodSheet: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "chevron.right")
+                            .accessibilityHidden(true)
                             .font(.caption.weight(.bold))
                             .rotationEffect(.degrees(sources.open ? 90 : 0))
-                        Text(sources.summary(for: model.found).uppercased())
+                        Text(sources.summary(for: model.answer).uppercased())
                             .font(.footnote.weight(.semibold))
-                            .lineLimit(1)
+                            .lineLimit(2) // large text sizes wrap rather than cut off (TF2)
+                            .multilineTextAlignment(.leading)
                     }
                     .foregroundStyle(palette.color("subtle"))
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -155,6 +164,7 @@ struct TrackFoodSheet: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("sourcesToggle")
                 .accessibilityValue(sources.open ? "open" : "closed")
+                .accessibilityHint(sources.open ? "Hides the sources" : "Shows the sources to pick from")
                 Menu {
                     Picker("Meal", selection: $model.meal) {
                         ForEach(Meal.allCases) { Text($0.title).tag($0) }
@@ -165,7 +175,7 @@ struct TrackFoodSheet: View {
                         Image(systemName: "chevron.down").font(.caption2.weight(.bold)).accessibilityHidden(true)
                     }
                     .padding(.horizontal, 12)
-                    .frame(height: 32)
+                    .frame(minHeight: 32)
                     .foregroundStyle(palette.color("ink"))
                     .background(palette.color("active"), in: Capsule())
                     .overlay(Capsule().strokeBorder(palette.color("primary")))
@@ -176,7 +186,7 @@ struct TrackFoodSheet: View {
             .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 0))
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
-            if sources.open, let found = model.found {
+            if sources.open, let found = model.answer {
                 let chips = sources.view(of: found).chips
                 if !chips.isEmpty {
                     FlowLayout(spacing: 8) {
@@ -192,11 +202,11 @@ struct TrackFoodSheet: View {
     private func chipButton(_ chip: SourceChip) -> some View {
         Button { sources.toggle(chip.source) } label: {
             HStack(spacing: 4) {
-                if chip.failed { Image(systemName: "exclamationmark.circle.fill").font(.caption2) }
+                if chip.failed { Image(systemName: "exclamationmark.circle.fill").font(.caption2).accessibilityHidden(true) }
                 Text("\(chip.source.label) \(chip.count)").font(.footnote.weight(.semibold))
             }
             .padding(.horizontal, 12)
-            .frame(height: 32)
+            .frame(minHeight: 32)
             .foregroundStyle(chip.on ? palette.color("on-primary") : palette.color("subtle"))
             .background(chip.on ? palette.color("primary") : Color.clear, in: Capsule())
             .overlay(Capsule().strokeBorder(chip.on ? Color.clear : palette.color("strong")))
@@ -204,6 +214,7 @@ struct TrackFoodSheet: View {
         .buttonStyle(.borderless)
         .accessibilityLabel("\(chip.source.label) \(chip.count)\(chip.failed ? ", couldn't be searched" : "")")
         .accessibilityValue(chip.on ? "on" : "off")
+        .accessibilityAddTraits(chip.on ? .isSelected : [])
         .accessibilityIdentifier("source-\(chip.source.rawValue)")
     }
 
@@ -327,7 +338,8 @@ private struct FlowLayout: Layout {
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let rows = rows(width: proposal.width ?? .infinity, subviews: subviews)
         let height = rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(rows.count - 1, 0))
-        return CGSize(width: proposal.width ?? rows.map(\.width).max() ?? 0, height: height)
+        let widest = rows.map(\.width).max() ?? 0
+        return CGSize(width: proposal.width.map { $0.isFinite ? $0 : widest } ?? widest, height: height)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
@@ -335,7 +347,7 @@ private struct FlowLayout: Layout {
         for row in rows(width: bounds.width, subviews: subviews) {
             var x = bounds.minX
             for index in row.items {
-                let size = subviews[index].sizeThatFits(.unspecified)
+                let size = fitted(subviews[index], width: bounds.width)
                 subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
                 x += size.width + spacing
             }
@@ -345,10 +357,17 @@ private struct FlowLayout: Layout {
 
     private struct Row { var items: [Int] = []; var width: CGFloat = 0; var height: CGFloat = 0 }
 
+    /// A chip's own size, but never wider than the row (huge text sizes): it wraps inside instead of running off.
+    private func fitted(_ view: LayoutSubview, width: CGFloat) -> CGSize {
+        let natural = view.sizeThatFits(.unspecified)
+        guard width.isFinite, natural.width > width else { return natural }
+        return view.sizeThatFits(ProposedViewSize(width: width, height: nil))
+    }
+
     private func rows(width: CGFloat, subviews: Subviews) -> [Row] {
         var rows: [Row] = [Row()]
         for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
+            let size = fitted(subviews[index], width: width)
             let needed = rows[rows.count - 1].items.isEmpty ? size.width : rows[rows.count - 1].width + spacing + size.width
             if needed > width, !rows[rows.count - 1].items.isEmpty { rows.append(Row()) }
             var row = rows[rows.count - 1]
