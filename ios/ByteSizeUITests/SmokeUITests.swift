@@ -867,7 +867,7 @@ final class SmokeUITests: XCTestCase {
             let chip = app.buttons["day-\(dayString(offset))"]
             guard chip.exists else { continue }
             let f = chip.frame
-            guard f.maxX > bounds.minX + 1, f.minX < bounds.maxX - 1 else { continue } // off screen
+            guard f.maxX > bounds.minX + 0.5, f.minX < bounds.maxX - 0.5 else { continue } // off screen (any sliver counts as shown)
             XCTAssertGreaterThanOrEqual(f.minX, bounds.minX - 0.5, "\(place): day \(offset) is cut off on the left")
             XCTAssertLessThanOrEqual(f.maxX, bounds.maxX + 0.5, "\(place): day \(offset) is cut off on the right")
             whole += 1
