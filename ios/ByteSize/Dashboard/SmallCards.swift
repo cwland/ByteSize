@@ -31,8 +31,11 @@ struct WaterCard: View {
                             .background(palette.color("primary"), in: RoundedRectangle(cornerRadius: 10))
                     }
                     .accessibilityLabel("Add \(units.water(ml: Double(amount))) of water")
+                    .disabled(days.selectedIsFuture)
+                    .opacity(days.selectedIsFuture ? 0.4 : 1)
                 }
             }
+            if days.selectedIsFuture { FutureHint() }
         }
     }
 }
@@ -40,6 +43,7 @@ struct WaterCard: View {
 /// The latest weigh-in, its change from the one before, and a quick way to log today's.
 struct WeightCard: View {
     let dashboard: DashboardModel
+    let days: DayStore
     let units: Units
     @Environment(\.palette) private var palette
     @State private var logging = false
@@ -60,8 +64,9 @@ struct WeightCard: View {
                 Text("No weigh-ins yet").foregroundStyle(palette.color("subtle"))
             }
             Button("Log weight", systemImage: "plus") { logging = true }
+                .disabled(days.selectedIsFuture)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(palette.color("primary"))
+                .foregroundStyle(palette.color(days.selectedIsFuture ? "subtle" : "primary"))
         }
         .sheet(isPresented: $logging) { WeightSheet(dashboard: dashboard, units: units) }
     }
@@ -178,6 +183,7 @@ struct BadgesCard: View {
 /// GLP-1: the last shot, when the next is due, the suggested site, and Log shot.
 struct ShotCard: View {
     let dashboard: DashboardModel
+    let days: DayStore
     @Environment(\.palette) private var palette
     @State private var logging = false
 
@@ -195,7 +201,8 @@ struct ShotCard: View {
                 Text("Next site: \(ShotSite.name(g.suggestedSite))").font(.caption).foregroundStyle(palette.color("subtle"))
                 Button("Log shot", systemImage: "syringe") { logging = true }
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(palette.color("primary"))
+                    .foregroundStyle(palette.color(days.selectedIsFuture ? "subtle" : "primary"))
+                    .disabled(days.selectedIsFuture)
             } else {
                 Text("Set up GLP-1 tracking in the web app").foregroundStyle(palette.color("subtle"))
             }
@@ -329,3 +336,15 @@ private struct ShotFormView: View {
 
 /// "7.5", "5" — a dose without a trailing ".0".
 func formatDose(_ mg: Double) -> String { mg.rounded() == mg ? String(Int(mg)) : String(mg) }
+
+/// On a day after today only food can be logged (SPEC-17): water, weight and shots wait for the day.
+struct FutureHint: View {
+    @Environment(\.palette) private var palette
+
+    var body: some View {
+        Text("That day hasn't happened yet")
+            .font(.caption)
+            .foregroundStyle(palette.color("subtle"))
+            .accessibilityIdentifier("futureHint")
+    }
+}

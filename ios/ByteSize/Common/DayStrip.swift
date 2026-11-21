@@ -69,14 +69,14 @@ struct DayStrip: View {
     }
 }
 
-/// The month calendar behind the strip's header: any day from a year back to today.
+/// The month calendar behind the strip's header: any day from a year back to a week ahead.
 struct DayPickerSheet: View {
     let days: DayStore
     @Environment(\.dismiss) private var dismiss
     @State private var date = Date()
 
     private var range: ClosedRange<Date> {
-        DayText.date(DayMath.add(-365, to: days.today))...DayText.date(days.today)
+        DayText.date(DayMath.add(-365, to: days.today))...DayText.date(DayMath.add(7, to: days.today))
     }
 
     var body: some View {
