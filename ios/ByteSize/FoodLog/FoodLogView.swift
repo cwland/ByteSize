@@ -19,17 +19,12 @@ struct FoodLogView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // The same card in the same place as on the Dashboard, so switching tabs doesn't move it
-            Card { DayStrip(days: days) }
-                .padding([.horizontal, .top])
-            list
-        }
-        .background(palette.color("page").ignoresSafeArea())
-    }
-
-    private var list: some View {
         List {
+            // The Dashboard's strip card, in the same place (16 pt in, 16 pt down) and scrolling away the same way,
+            // so switching tabs doesn't move it
+            Section { Card { DayStrip(days: days) } }
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
             if let day = days.day {
                 Section { summaryBar(logSummary(day)) }
                     .listRowBackground(Color.clear)
@@ -69,6 +64,9 @@ struct FoodLogView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .contentMargins(.horizontal, 16, for: .scrollContent)
+        .contentMargins(.top, 16, for: .scrollContent)
+        .listSectionSpacing(12)
         // SPEC-04: changing day animates rather than flashing (the previous day stays until the new one is in)
         .animation(.easeInOut(duration: 0.2), value: days.dayIsFor)
         .background(palette.color("page").ignoresSafeArea())
