@@ -27,6 +27,13 @@ enum Fixtures {
 }
 
 final class ModelsTests: XCTestCase {
+    func testSearchResultDecodesSearched() throws {
+        let with = try JSONDecoder().decode(SearchResult.self, from: Data(#"{"groups":[],"errors":[],"searched":["usda"]}"#.utf8))
+        XCTAssertEqual(with.searched, ["usda"])
+        let without = try JSONDecoder().decode(SearchResult.self, from: Data(#"{"groups":[],"errors":[]}"#.utf8))
+        XCTAssertNil(without.searched)
+    }
+
     func testEntryDecodesSourceRef() throws {
         let base = #"{"id":1,"day":"2026-11-19","meal":"lunch","name":"Oatmeal","brand":null,"icon":"🥣","servingIndex":0,"unit":"serving","quantity":1,"fraction":1,"servings":[{"label":"1 cup"}],"nutrients":{"calories":150},"aiEstimated":false,"source":"cache""#
         let with = try JSONDecoder().decode(LogEntry.self, from: Data((base + #","sourceRef":"cache:42"}"#).utf8))
