@@ -70,12 +70,11 @@ struct TrackFoodSheet: View {
             .padding(.bottom, 4)
             .background(palette.color("page"))
         }
-        // Focus is set when the search screen is back on screen: a request made while it's still sliding back in is
-        // ignored. First open, or back from logging somewhere (SPEC-16): ready to type. Back without logging: left down.
+        // First open: ready to type. Back from logging somewhere (SPEC-16): ready again, once the search has slid back
+        // in (a focus request during the slide is ignored). Back without logging: left down (TF2).
         .onAppear {
-            guard !focusedOnce || justLogged else { return }
+            guard !focusedOnce else { return }
             focusedOnce = true
-            justLogged = false
             searchFocused = true
         }
         .task { await model.load() }
@@ -87,6 +86,7 @@ struct TrackFoodSheet: View {
         }
         .onChange(of: model.meal) { Task { await model.load() } }
         .onChange(of: picked) { _, now in
+            if now == nil { refocusAfterALog() }
             if now != nil {
                 model.clearMessage() // an old error isn't about the food being opened
                 searchFocused = false // back without logging: the keyboard stays down (TF2)
@@ -96,6 +96,7 @@ struct TrackFoodSheet: View {
         // One meal for the whole hub: Photo and Describe use Track Food's, and a change there comes back
         .onChange(of: hub) { _, now in
             if now != nil { searchFocused = false } // leaving: SwiftUI would hand the focus back on return (TF2)
+            if now == nil { refocusAfterALog() }
             if now == .photo || now == .describe { estimate.meal = model.meal }
         }
         .onChange(of: estimate.meal) { _, meal in if hub != nil { model.meal = meal } }
@@ -107,6 +108,16 @@ struct TrackFoodSheet: View {
                 if ok { justLogged = true }
                 return ok
             }
+        }
+    }
+
+    /// Back on the search after a log: the keyboard comes up for the next food, once the slide back has finished.
+    private func refocusAfterALog() {
+        guard justLogged else { return }
+        justLogged = false
+        Task {
+            try? await Task.sleep(for: .milliseconds(650))
+            searchFocused = true
         }
     }
 
