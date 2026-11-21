@@ -181,7 +181,8 @@ final class SmokeUITests: XCTestCase {
         let delete = app.buttons["Delete"].firstMatch
         XCTAssertTrue(delete.waitForExistence(timeout: 3))
         delete.tap()
-        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "edit-badges").firstMatch.waitForExistence(timeout: 1))
+        let gone = app.descendants(matching: .any).matching(identifier: "edit-badges").firstMatch
+        XCTAssertTrue(waitUntil(timeout: 3) { !gone.exists }, "the Badges row leaves the list")
         app.buttons["Done"].tap()
         XCTAssertTrue(app.staticTexts["362 to go"].waitForExistence(timeout: 5))
         app.swipeUp()
