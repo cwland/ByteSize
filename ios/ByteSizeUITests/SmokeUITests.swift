@@ -315,6 +315,41 @@ final class SmokeUITests: XCTestCase {
         XCTAssertFalse(waitUntil(timeout: 1.5) { self.app.keyboards.firstMatch.exists }, "coming back doesn't pop the keyboard up again")
     }
 
+    /// TF2 review: after a log, backing out of the next food's amount screen (without logging) leaves the keyboard down.
+    func testBackingOutAfterALogLeavesTheKeyboardDown() {
+        signedIn()
+        trackSearch("banana", pick: "Banana")
+        app.buttons["logButton"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
+        let search = app.textFields["trackSearch"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("prunes")
+        let prunes = app.buttons["food-Prunes"]
+        XCTAssertTrue(prunes.waitForExistence(timeout: 5))
+        prunes.tap()
+        XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons.element(boundBy: 0).tap() // Back, nothing logged
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        XCTAssertFalse(waitUntil(timeout: 1.5) { self.app.keyboards.firstMatch.exists }, "no new log: the keyboard stays down")
+    }
+
+    /// TF2 review: logging from Describe inside Track Food comes back ready to type the next food (SPEC-16).
+    func testLoggingFromDescribeComesBackReadyToType() {
+        signedIn()
+        openAction("Track Food")
+        XCTAssertTrue(app.buttons["hub-describe"].waitForExistence(timeout: 5))
+        app.buttons["hub-describe"].tap()
+        let field = app.textFields["describeField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText("2 eggs and toast")
+        app.buttons["estimateButton"].tap()
+        XCTAssertTrue(app.buttons["logAll"].waitForExistence(timeout: 5))
+        app.buttons["logAll"].tap()
+        XCTAssertTrue(label("Logged 2 foods").waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "back on the search, ready to type")
+    }
+
     /// TF2: chips say "selected" to VoiceOver, and a cleared search drops them at once.
     func testChipsAreSelectedAndGoWithAClearedSearch() {
         signedIn()
