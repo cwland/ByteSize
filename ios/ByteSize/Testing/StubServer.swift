@@ -174,7 +174,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
             let parts = path.split(separator: "/").map(String.init) // ["api", …]
             switch (method, path) {
             case ("GET", "/api/health"): return (200, #"{"ok":true,"db":true,"version":"stub"}"#)
-            case ("GET", "/api/auth/status"): return (200, #"{"setupRequired":false,"passwords":true,"forgotPassword":true,"oauth":null}"#)
+            case ("GET", "/api/auth/status"): return (200, #"{"setupRequired":false,"passwords":true,"forgotPassword":true,"oauth":{"label":"Authentik"}}"#)
             case ("POST", "/api/auth/login"):
                 if body["username"] as? String == "cory", body["password"] as? String == "pw" {
                     return (200, #"{"token":"stub-token","user":\#(StubServer.user)}"#)

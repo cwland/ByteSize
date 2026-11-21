@@ -12,6 +12,16 @@ public struct Endpoint<Response: Decodable & Sendable>: Sendable {
     public let signsOut: Bool
     /// Seconds to wait for the answer: AI calls (photos, estimates) can take a while.
     public let timeout: TimeInterval
+    /// I6: send `Origin: https://<server>` as a browser would — the passkey and OAuth routes need to know which
+    /// address the sign-in is for (and it's the origin Apple signs into a passkey's client data).
+    public var sendsOrigin = false
+
+    /// The same call, sending the server's origin.
+    public func withOrigin() -> Endpoint {
+        var copy = self
+        copy.sendsOrigin = true
+        return copy
+    }
 
     public init(_ method: String, _ path: String, query: [URLQueryItem] = [], json: (any Encodable)? = nil, signsOut: Bool = true, timeout: TimeInterval = 20) {
         self.method = method
