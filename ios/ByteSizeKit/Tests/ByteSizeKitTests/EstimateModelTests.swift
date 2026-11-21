@@ -51,6 +51,34 @@ final class EstimateModelTests: XCTestCase {
         XCTAssertEqual(requests("POST", "/api/ai/estimate-items").last?.json?["text"] as? String, "2 eggs and toast")
     }
 
+    /// SPEC-21: one tap empties the description and the last estimate, ready for the next.
+    func testClearEmptiesTheTextAndTheLastEstimate() async {
+        serve(estimate: .json(200, #"{"items":[\#(FoodFixtures.toast)],"assumed":true,"interpretedAs":"Cheerios"}"#))
+        let (m, _) = model()
+        m.text = "cherios"
+        await m.describe()
+        XCTAssertFalse(m.items.isEmpty)
+        m.clearDescription()
+        XCTAssertEqual(m.text, "")
+        XCTAssertEqual(m.items, [])
+        XCTAssertNil(m.assumedNote)
+        XCTAssertNil(m.message)
+    }
+
+    /// Review fix: ⓧ while an estimate is still coming back — the old answer must not land under an empty field.
+    func testClearingDuringAnEstimateDropsItsAnswer() async throws {
+        serve(estimate: .delayed(0.3, .json(200, EstimateModelTests.twoItems)))
+        let (m, _) = model()
+        m.text = "2 eggs and toast"
+        let pending = Task { await m.describe() }
+        try await Task.sleep(for: .milliseconds(50))
+        m.clearDescription()
+        await pending.value
+        XCTAssertEqual(m.text, "")
+        XCTAssertEqual(m.items, [], "the field and the list never mismatch")
+        XCTAssertFalse(m.busy)
+    }
+
     func testAGuessIsShown() async {
         serve(estimate: .json(200, #"{"items":[\#(FoodFixtures.toast)],"assumed":true,"interpretedAs":"Cheerios"}"#))
         let (m, _) = model()

@@ -41,7 +41,7 @@ describe("SettingsPage", () => {
   it("admins see Users, Integrations and Logs; AI and food sources are inside Integrations", async () => {
     fakeServer({});
     renderWithSession(<SettingsPage />, { isAdmin: true });
-    expect((await screen.findAllByRole("tab")).map((t) => t.getAttribute("aria-label"))).toEqual(["Profile", "API keys", "Security", "Integrations", "Cached data", "Email", "Data", "App info", "Users", "Logs"]);
+    expect((await screen.findAllByRole("tab")).map((t) => t.getAttribute("aria-label"))).toEqual(["Profile", "Users", "API keys", "Security", "Integrations", "Cached data", "Email", "Data", "App info", "Logs"]);
     expect(screen.getByText("Your data and backups")).toBeInTheDocument();
     expect(screen.getByText("Sending email, forgot password")).toBeInTheDocument();
     expect(screen.getByText("AI, food data, restaurants, Culury")).toBeInTheDocument();

@@ -17,6 +17,7 @@ import { useWide } from "../../wide";
 // server-wide services there (AI, food data, restaurants). twoUp: on wide screens its cards sit in two columns.
 const TABS = [
   { id: "profile", label: "Profile", hint: "Name, units, time zone, appearance", admin: false, Icon: User, Panel: ProfileSettings },
+  { id: "users", label: "Users", hint: "Add and manage people", admin: true, Icon: Users, Panel: UsersSettings },
   { id: "api-keys", label: "API keys", hint: "Keys for your own tools and scripts", admin: false, Icon: KeyRound, Panel: ApiKeysSettings },
   { id: "security", label: "Security", hint: "Password, passkeys, devices", admin: false, Icon: Shield, Panel: SecuritySettings },
   { id: "integrations", label: "Integrations", hint: "Culury meal plan and recipes", adminHint: "AI, food data, restaurants, Culury", admin: false, twoUp: true, Icon: Link2, Panel: IntegrationsSettings },
@@ -24,7 +25,6 @@ const TABS = [
   { id: "email", label: "Email", hint: "Sending email, forgot password", admin: true, Icon: Mail, Panel: EmailSettings },
   { id: "data", label: "Data", hint: "Download your data", adminHint: "Your data and backups", admin: false, Icon: HardDrive, Panel: DataSettings },
   { id: "app-info", label: "App info", hint: "Fun numbers: foods logged, scans, lookups", adminHint: "Your numbers, and everyone's", admin: false, Icon: Info, Panel: AppInfoSettings },
-  { id: "users", label: "Users", hint: "Add and manage people", admin: true, Icon: Users, Panel: UsersSettings },
   { id: "logs", label: "Logs", hint: "What ByteSize has been doing", admin: true, Icon: ScrollText, Panel: LogsSettings },
 ] as const;
 
@@ -51,12 +51,8 @@ export default function SettingsPage() {
     <div className={wide ? undefined : "pt-2"}>
       {wide ? (
         <>
-          <div className="flex items-center gap-4">
-            <h1 className="mr-auto text-3xl font-bold">Settings</h1>
-            <button type="button" onClick={signOut} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-subtle hover:bg-pressed hover:text-ink">
-              <LogOut className="size-4" aria-hidden="true" /> Sign out
-            </button>
-          </div>
+          {/* Sign out lives in the rail's account menu on wide screens (SPEC-23) */}
+          <h1 className="text-3xl font-bold">Settings</h1>
           <nav aria-label="Settings sections" className="mt-5 flex overflow-x-auto border-b border-line [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {tabs.map((t) => (
               <a
