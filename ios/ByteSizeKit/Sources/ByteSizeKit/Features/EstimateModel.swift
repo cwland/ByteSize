@@ -19,6 +19,8 @@ public final class EstimateModel {
 
     public var text = ""
     public private(set) var items: [EstimateItem] = []
+    /// One check per item: checked foods are logged and counted (all checked whenever a list arrives).
+    public private(set) var selected: [Bool] = []
     public private(set) var busy = false
     public private(set) var message: String?
     public private(set) var assumedNote: String?
@@ -37,8 +39,32 @@ public final class EstimateModel {
         self.meal = Meal.suggested(at: now(), in: dayStore.zone)
     }
 
-    /// ≈ calories of everything listed (the server's numbers rule once logged).
-    public var totalCalories: Int { Int(items.reduce(0) { $0 + $1.calories }.rounded()) }
+    /// ≈ calories of the checked foods (the server's numbers rule once logged).
+    public var totalCalories: Int { Int(chosen.reduce(0) { $0 + $1.calories }.rounded()) }
+
+    public var selectedCount: Int { selected.filter { $0 }.count }
+    public var canLog: Bool { selectedCount > 0 && !busy }
+
+    /// A new list (or none): every food checked.
+    private func show(_ list: [EstimateItem]) {
+        items = list
+        selected = Array(repeating: true, count: list.count)
+    }
+
+    private var chosen: [EstimateItem] { items.indices.filter { selected[$0] }.map { items[$0] } }
+
+    /// Check or uncheck one food: an unchecked one stays listed but isn't logged.
+    public func toggle(at i: Int) {
+        guard selected.indices.contains(i) else { return }
+        selected[i].toggle()
+    }
+
+    /// Retake photo: the list goes, ready for the next photo.
+    public func clearItems() {
+        show([])
+        message = nil
+        assumedNote = nil
+    }
 
     /// Bumped by each description and by the ⓧ: an answer for an older one is dropped (review fix).
     private var describing = 0
@@ -55,11 +81,11 @@ public final class EstimateModel {
         defer { busy = false }
         message = nil
         assumedNote = nil
-        items = [] // a new description: never the old list under a new answer (or error)
+        show([]) // a new description: never the old list under a new answer (or error); its checks go too
         do {
             let result = try await api.send(FoodAPI.estimateItems(words))
             guard mine == describing else { return } // cleared (or described again) while this was on its way
-            items = result.items
+            show(result.items)
             if result.assumed, let taken = result.interpretedAs { assumedNote = "Took it as “\(taken)”" }
         } catch APIError.server(503, _) {
             guard mine == describing else { return }
@@ -74,7 +100,7 @@ public final class EstimateModel {
     public func clearDescription() {
         describing += 1
         text = ""
-        items = []
+        show([])
         message = nil
         assumedNote = nil
     }
@@ -99,7 +125,7 @@ public final class EstimateModel {
                 message = plate.errors.first?.message ?? Self.noFood
                 return .nothing
             }
-            items = found
+            show(found)
             return .items
         } catch APIError.server(503, _) {
             message = Self.needsPhotoAI
@@ -134,19 +160,14 @@ public final class EstimateModel {
         items[i].quantity = quantity
     }
 
-    public func remove(at i: Int) {
-        guard items.indices.contains(i) else { return }
-        items.remove(at: i)
-    }
-
-    /// Logs every item on the day being looked at, in `meal`; the day reloads.
-    public func logAll() async -> Bool {
-        guard !items.isEmpty else { return false }
+    /// Logs the checked items on the day being looked at, in `meal`; the day reloads.
+    public func logSelected() async -> Bool {
+        guard canLog else { return false }
         busy = true
         defer { busy = false }
         do {
-            _ = try await api.send(FoodAPI.logEstimates(items, day: dayStore.selected, meal: meal))
-            items = []
+            _ = try await api.send(FoodAPI.logEstimates(chosen, day: dayStore.selected, meal: meal))
+            show([])
             text = ""
             assumedNote = nil
             message = nil
