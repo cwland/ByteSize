@@ -82,6 +82,14 @@ public final class GoalsModel {
         }.reversed()
     }
 
+    /// The history shows the last 5 weigh-ins until "Show all" (owner's ask).
+    public static let historyLimit = 5
+    public var showAllHistory = false
+
+    public var shownHistory: [WeightRow] { showAllHistory ? history : Array(history.prefix(Self.historyLimit)) }
+
+    public var hiddenHistoryCount: Int { showAllHistory ? 0 : max(0, history.count - Self.historyLimit) }
+
     /// A weigh-in typed in the account's units, for today or an earlier day.
     public func logWeight(display: Double, day: String) async throws {
         guard day <= dayStore.today else { throw APIError.server(status: 400, message: "Choose today or an earlier day") }

@@ -161,7 +161,7 @@ struct GoalsView: View {
 
     private var historySection: some View {
         Section("History") {
-            ForEach(model.history) { row in
+            ForEach(model.shownHistory) { row in
                 HStack {
                     Text(DayText.long(row.day)).foregroundStyle(palette.color("ink"))
                     Spacer()
@@ -173,6 +173,14 @@ struct GoalsView: View {
                 .swipeActions(edge: .trailing) {
                     Button("Delete", role: .destructive) { Task { await model.deleteWeighIn(day: row.day) } }
                 }
+            }
+            // The last 5 show; the rest on request
+            if model.hiddenHistoryCount > 0 {
+                Button("Show all \(model.history.count) weigh-ins") { withAnimation { model.showAllHistory = true } }
+                    .accessibilityIdentifier("historyToggle")
+            } else if model.showAllHistory, model.history.count > GoalsModel.historyLimit {
+                Button("Show fewer") { withAnimation { model.showAllHistory = false } }
+                    .accessibilityIdentifier("historyToggle")
             }
         }
     }
