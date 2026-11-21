@@ -99,9 +99,10 @@ public enum BodyAPI {
         Endpoint("GET", "/api/weight", query: from.map { [URLQueryItem(name: "from", value: $0)] } ?? [])
     }
 
-    struct WeightBody: Encodable { let weightKg: Double }
-    public static func saveWeight(day: String, kg: Double) -> Endpoint<Empty> {
-        Endpoint("PUT", "/api/weigh-ins/\(day)", json: WeightBody(weightKg: (kg * 100).rounded() / 100))
+    struct WeightBody: Encodable { let weightKg: Double; let source: String? }
+    /// `source` "health": the server only fills a day with no weigh-in that was never deleted (I5).
+    public static func saveWeight(day: String, kg: Double, source: String? = nil) -> Endpoint<WeighInResult> {
+        Endpoint("PUT", "/api/weigh-ins/\(day)", json: WeightBody(weightKg: (kg * 100).rounded() / 100, source: source))
     }
 
     public static func deleteWeight(day: String) -> Endpoint<Empty> { Endpoint("DELETE", "/api/weigh-ins/\(day)") }
