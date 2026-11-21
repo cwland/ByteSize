@@ -892,7 +892,10 @@ final class SmokeUITests: XCTestCase {
     func testSwipeDeletesAWeighIn() {
         signedIn()
         openGoals()
-        reveal(app.buttons["historyToggle"]).tap() // the oldest is past the last five
+        let toggle = reveal(app.buttons["historyToggle"])
+        app.swipeUp() // to the end: the tab bar covers the last rows until then
+        app.swipeUp()
+        toggle.tap() // the oldest is past the last five
         let oldest = app.descendants(matching: .any)["history-\(dayString(-60))"]
         for _ in 0..<6 where !(oldest.exists && oldest.isHittable) { app.swipeUp() }
         XCTAssertTrue(oldest.exists)
@@ -1303,10 +1306,9 @@ final class SmokeUITests: XCTestCase {
         XCTAssertEqual(toggle.label, "Show all 6 weigh-ins")
         XCTAssertTrue(app.descendants(matching: .any)["history-\(dayString(-30))"].exists, "the fifth newest shows")
         XCTAssertFalse(app.descendants(matching: .any)["history-\(dayString(-60))"].exists, "the sixth waits")
-        shot("dbg-before")
+        app.swipeUp() // to the end: the tab bar covers the last rows until then
+        app.swipeUp()
         toggle.tap()
-        sleep(1)
-        shot("dbg-after")
         XCTAssertTrue(reveal(app.descendants(matching: .any)["history-\(dayString(-60))"]).waitForExistence(timeout: 3))
         XCTAssertEqual(reveal(app.buttons["historyToggle"]).label, "Show fewer")
     }
