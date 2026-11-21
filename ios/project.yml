@@ -40,6 +40,7 @@ targets:
     info:
       path: ByteSize/Info.plist
       properties:
+        ITSAppUsesNonExemptEncryption: false
         CFBundleURLTypes:
           - CFBundleURLName: com.cwland.bytesize
             CFBundleURLSchemes: [bytesize]
