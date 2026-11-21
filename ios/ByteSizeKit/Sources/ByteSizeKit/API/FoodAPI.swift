@@ -52,12 +52,19 @@ public enum FoodAPI {
         let unit: String
         let quantity: Double
         let fraction: Double
+        /// Only for a Culury recipe without nutrition: the AI's estimate per serving (logged as AI-estimated).
+        var nutrients: Nutrients? = nil
     }
 
     /// Logs a found food: an amount of one of its servings, or of a weight/volume unit (fraction is always 1: the
     /// wheel's fraction is part of the quantity, as the web sends it).
-    public static func log(food: Food, day: String, meal: Meal, servingIndex: Int, unit: AmountUnit = .serving, quantity: Double) -> Endpoint<EntryResponse> {
-        Endpoint("POST", "/api/log", json: LogBody(day: day, meal: meal.rawValue, food: FoodRef(kind: food.kind, id: food.id), servingIndex: servingIndex, unit: unit.rawValue, quantity: quantity, fraction: 1))
+    public static func log(food: Food, day: String, meal: Meal, servingIndex: Int, unit: AmountUnit = .serving, quantity: Double, estimate: Nutrients? = nil) -> Endpoint<EntryResponse> {
+        Endpoint("POST", "/api/log", json: LogBody(day: day, meal: meal.rawValue, food: FoodRef(kind: food.kind, id: food.id), servingIndex: servingIndex, unit: unit.rawValue, quantity: quantity, fraction: 1, nutrients: estimate))
+    }
+
+    /// A Culury recipe, read live from Culury by the server (the phone never calls Culury itself).
+    public static func culuryRecipe(_ id: Int) -> Endpoint<CuluryRecipe> {
+        Endpoint("GET", "/api/culury/recipes/\(id)")
     }
 
     struct EstimateLogItem: Encodable {

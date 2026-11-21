@@ -246,7 +246,7 @@ struct TrackFoodSheet: View {
                 ForEach(model.yesterday) { item in
                     HStack {
                         Button {
-                            if let food = item.food, food.isLoggable { picked = food }
+                            if let food = item.food, food.isLoggable { open(food) }
                         } label: {
                             FoodRow(icon: item.entry.icon, name: item.entry.name, brand: item.entry.brand,
                                     detail: "\(item.entry.amountText(units: units)) · \(Int(item.entry.calories.rounded())) cal")
@@ -270,6 +270,15 @@ struct TrackFoodSheet: View {
         }
     }
 
+    /// Opens a food's amount screen; a Culury recipe is read live first (as the web does).
+    private func open(_ food: Food) {
+        guard food.isCulury else {
+            picked = food
+            return
+        }
+        Task { picked = await model.openRecipe(food) }
+    }
+
     /// The + on a quick row: logs it now (at its last amount, or yesterday's entry as it was).
     private func quickAdd(_ name: String, _ log: @escaping () async -> Bool) -> some View {
         Button {
@@ -290,7 +299,7 @@ struct TrackFoodSheet: View {
                     HStack {
                         Button {
                             guard food.isLoggable else { return }
-                            picked = food
+                            open(food)
                         } label: {
                             FoodRow(food: food)
                         }
@@ -298,7 +307,11 @@ struct TrackFoodSheet: View {
                         .disabled(!food.isLoggable)
                         .accessibilityIdentifier("food-\(food.name)")
                         if quick, food.isLoggable {
-                            quickAdd(food.name) { await model.quickLog(food) }
+                            // A Culury recipe with no nutrition yet opens instead: it needs an estimate, or to be tracked as unknown
+                            quickAdd(food.name) {
+                                if food.isCulury, food.nutrients.values.isEmpty { open(food); return false }
+                                return await model.quickLog(food)
+                            }
                         }
                     }
                 }
