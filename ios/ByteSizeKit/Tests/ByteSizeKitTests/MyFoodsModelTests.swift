@@ -110,6 +110,17 @@ final class MyFoodsModelTests: XCTestCase {
         XCTAssertEqual(m.foods.map(\.name), ["Chicken"])
     }
 
+    func testTheMealFollowsTheTimeOfDay() throws {
+        let clock = Clock(ISO8601DateFormatter().date(from: "2026-11-19T15:00:00Z")!) // 8 am in Denver
+        let days = DayStore(api: api, timeZone: denver, now: { clock.now })
+        let m = MyFoodsModel(api: api, dayStore: days, now: { clock.now })
+        XCTAssertEqual(m.meal, .breakfast)
+        clock.now = ISO8601DateFormatter().date(from: "2026-11-20T02:00:00Z")! // 7 pm in Denver
+        XCTAssertEqual(m.meal, .dinner, "worked out when used, not once at sign-in")
+        let food = try JSONDecoder().decode(Food.self, from: Data(MyFoodFixtures.food(90, "Usual breakfast", kind: "quick_meal").utf8))
+        XCTAssertEqual(m.quickMeal(food).meal, .dinner)
+    }
+
     func testLogSendsTheSelectedDay() async throws {
         serve { _ in .json(200, MyFoodFixtures.list()) }
         let (m, days) = model()
@@ -226,5 +237,29 @@ final class QuickMealModelTests: XCTestCase {
         let ok = await m.logAll()
         XCTAssertFalse(ok)
         XCTAssertEqual(m.message, "That meal has no foods left to log")
+    }
+
+    func testUntouchedAmountsAreSentAsSaved() async throws {
+        serve(detail: MyFoodFixtures.meal(
+            MyFoodFixtures.item(1, "Rice", calories: 200, quantity: 0.4),
+            MyFoodFixtures.item(2, "Salt", calories: 0, quantity: 0.05)
+        ))
+        let m = try model()
+        await m.load()
+        XCTAssertTrue(m.canLog, "a tiny saved amount still logs")
+        _ = await m.logAll()
+        let items = try XCTUnwrap(sent?["items"] as? [[String: Any]])
+        XCTAssertEqual(items[0]["quantity"] as? Double, 0.4)
+        XCTAssertEqual(items[1]["quantity"] as? Double, 0.05)
+    }
+
+    func testAnEditedAmountIsSentFromTheWheel() async throws {
+        serve(detail: MyFoodFixtures.meal(MyFoodFixtures.item(1, "Rice", calories: 200, quantity: 0.4)))
+        let m = try model()
+        await m.load()
+        m.rows[0].portion.whole = 1
+        _ = await m.logAll()
+        let items = try XCTUnwrap(sent?["items"] as? [[String: Any]])
+        XCTAssertEqual(items[0]["quantity"] as? Double ?? 0, 1.375, accuracy: 0.001)
     }
 }
