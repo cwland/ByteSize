@@ -188,16 +188,24 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 return (200, json(["layout": ["version": 1, "columns": [layout ?? []]]]))
             case ("GET", "/api/weight"):
                 return (200, weightJSON())
+            case ("PUT", _) where path.hasPrefix("/api/steps/"):
+                return (200, json(["day": String(path.dropFirst("/api/steps/".count)), "steps": body["steps"] as? Int ?? 0, "stepsSource": "health"]))
+            case ("POST", "/api/workouts"):
+                return (200, #"{"workout":null,"skipped":false}"#)
             case ("GET", "/api/goals"):
                 return (200, Self.goalsJSON)
             case ("GET", "/api/targets"):
                 return (200, #"{"targets":{"calories":{"min":1500,"max":2000},"protein_g":{"min":110,"max":130},"fiber_g":{"min":25,"max":35},"water_ml":{"min":2000,"max":3000}}}"#)
             case ("PUT", _) where path.hasPrefix("/api/weigh-ins/"):
                 let day = String(path.dropFirst("/api/weigh-ins/".count))
+                // I5: from Health it only fills an empty day
+                if body["source"] as? String == "health", let have = weighIns.first(where: { $0.day == day }) {
+                    return (200, json(["weighIn": ["day": day, "weightKg": have.kg, "note": NSNull()], "skipped": true]))
+                }
                 weighIns.removeAll { $0.day == day }
                 weighIns.append((day, body["weightKg"] as? Double ?? 80))
                 weighIns.sort { $0.day < $1.day }
-                return (200, json(["weighIn": ["day": day, "weightKg": body["weightKg"] as? Double ?? 80, "note": NSNull()]]))
+                return (200, json(["weighIn": ["day": day, "weightKg": body["weightKg"] as? Double ?? 80, "note": NSNull()], "skipped": false]))
             case ("DELETE", _) where path.hasPrefix("/api/weigh-ins/"):
                 let day = String(path.dropFirst("/api/weigh-ins/".count))
                 weighIns.removeAll { $0.day == day }

@@ -1,9 +1,12 @@
 import ByteSizeKit
 import SwiftUI
 
-/// Who's signed in, this phone's look, Apple Health (coming), and sign out.
+/// Who's signed in, this phone's look, Apple Health, and sign out.
 struct ProfileSheet: View {
     @Bindable var profile: ProfileModel
+    let health: HealthSync
+    /// After a Health sync from here (the Dashboard's weight may have changed).
+    var synced: () async -> Void = {}
     @Environment(\.palette) private var palette
     @Environment(\.dismiss) private var dismiss
     @State private var confirmSignOut = false
@@ -53,9 +56,32 @@ struct ProfileSheet: View {
                     Text("Text size follows your iPhone's Text Size setting.")
                 }
 
-                Section("Apple Health") {
-                    Text("Coming soon")
-                        .foregroundStyle(palette.color("subtle"))
+                Section {
+                    ForEach(HealthKind.allCases, id: \.self) { kind in
+                        Toggle(kind.title, isOn: Binding(
+                            get: { health.isOn(kind) },
+                            set: { on in Task { await health.setOn(kind, on); HealthBackground.shared.start(); await synced() } }
+                        ))
+                        .accessibilityIdentifier("health-\(kind.rawValue)")
+                    }
+                    if health.anyOn {
+                        HStack {
+                            Text(healthStatus).font(.footnote).foregroundStyle(palette.color("subtle"))
+                                .accessibilityIdentifier("healthStatus")
+                            Spacer()
+                            if health.syncing { ProgressView() }
+                        }
+                        Button("Sync now") { Task { await health.syncNow(); await synced() } }
+                            .disabled(health.syncing)
+                            .accessibilityIdentifier("healthSyncNow")
+                    }
+                    if let message = health.message {
+                        Text(message).font(.footnote).foregroundStyle(palette.color("error"))
+                    }
+                } header: {
+                    Text("Apple Health")
+                } footer: {
+                    Text("ByteSize reads your weight, steps and workouts. A weigh-in you type or delete in ByteSize always wins.")
                 }
 
                 Section {
@@ -98,5 +124,11 @@ struct ProfileSheet: View {
         case .dark: "Dark"
         case .system: "Match iPhone"
         }
+    }
+
+    private var healthStatus: String {
+        guard let last = health.lastSynced else { return health.syncing ? "Syncing…" : "Not synced yet" }
+        let when = last.formatted(date: Calendar.current.isDateInToday(last) ? .omitted : .abbreviated, time: .shortened)
+        return "Last synced \(when)" + (health.result.map { " · \($0)" } ?? "")
     }
 }

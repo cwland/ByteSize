@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { projectionOf, trendOf } from "../src/lib/weight.js";
 import { addDays } from "../src/lib/days.js";
-import { userBody } from "../src/db/schema.js";
+import { userBody, weighInSkips } from "../src/db/schema.js";
 
 // Trend: trend₀ = w₀; trend += (w − trend) × (1 − 0.9^gapDays). Projection over the last 28 days.
 describe("trendOf", () => {
@@ -147,6 +147,77 @@ const BODY = { sex: "male", birthDate: "1986-01-01", heightCm: 177.8, weightKg: 
 const weigh = (day: string, weightKg: number, note?: string) => t.api("PUT", `/api/weigh-ins/${day}`, note === undefined ? { weightKg } : { weightKg, note });
 const bodyWeight = async () => (await t.db.select({ w: userBody.weightKg }).from(userBody).where(eq(userBody.userId, 1)))[0]?.w;
 
+const fromHealth = (day: string, weightKg: number) => t.api("PUT", `/api/weigh-ins/${day}`, { weightKg, source: "health" });
+const weightOn = async (day: string) => (await t.api("GET", "/api/weight")).body.weighIns.find((w: { day: string }) => w.day === day)?.weightKg;
+
+// I5: weigh-ins from Apple Health fill only empty days, and never a day whose weigh-in was deleted
+describe("weigh-ins from Health", () => {
+  beforeEach(() => {
+    t.clock.date = NOW;
+  });
+
+  it("saves a Health weigh-in on an empty day", async () => {
+    const r = await fromHealth("2026-11-16", 82.4);
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ weighIn: { day: "2026-11-16", weightKg: 82.4, note: null }, skipped: false });
+    expect(await weightOn("2026-11-16")).toBe(82.4);
+  });
+
+  it("skips a Health weigh-in when the day has one", async () => {
+    await weigh("2026-11-16", 80);
+    const r = await fromHealth("2026-11-16", 79);
+    expect(r.status).toBe(200);
+    expect(r.body.skipped).toBe(true);
+    expect(r.body.weighIn.weightKg).toBe(80);
+    expect(await weightOn("2026-11-16")).toBe(80);
+    // nor another Health one
+    await fromHealth("2026-11-15", 81);
+    expect((await fromHealth("2026-11-15", 82)).body.skipped).toBe(true);
+    expect(await weightOn("2026-11-15")).toBe(81);
+  });
+
+  it("skips a Health weigh-in on a deleted day", async () => {
+    await weigh("2026-11-16", 80);
+    await t.api("DELETE", "/api/weigh-ins/2026-11-16");
+    const r = await fromHealth("2026-11-16", 79);
+    expect(r.body).toEqual({ weighIn: null, skipped: true });
+    expect(await weightOn("2026-11-16")).toBeUndefined();
+  });
+
+  it("a typed weigh-in clears the deleted mark", async () => {
+    await weigh("2026-11-16", 80);
+    await t.api("DELETE", "/api/weigh-ins/2026-11-16");
+    expect((await weigh("2026-11-16", 78)).body.skipped).toBe(false);
+    expect(await t.db.select().from(weighInSkips)).toEqual([]);
+    await t.api("DELETE", "/api/weigh-ins/2026-11-16"); // marked again
+    expect((await fromHealth("2026-11-16", 77)).body.skipped).toBe(true);
+  });
+
+  it("a typed weigh-in replaces a Health one", async () => {
+    await fromHealth("2026-11-16", 79);
+    await weigh("2026-11-16", 78);
+    expect(await weightOn("2026-11-16")).toBe(78);
+  });
+
+  it("Health weigh-ins in the future are refused", async () => {
+    const r = await fromHealth("2026-11-18", 79);
+    expect(r.status).toBe(400);
+    expect(r.body).toEqual({ error: "Choose today or an earlier day" });
+  });
+
+  it("one person's deleted day doesn't block another's", async () => {
+    await weigh("2026-11-16", 80);
+    await t.api("DELETE", "/api/weigh-ins/2026-11-16");
+    const other = await t.createUser("sam");
+    t.setToken(other.token);
+    expect((await fromHealth("2026-11-16", 70)).body.skipped).toBe(false);
+  });
+
+  it("checks the source", async () => {
+    expect((await t.api("PUT", "/api/weigh-ins/2026-11-16", { weightKg: 80, source: "scale" })).status).toBe(400);
+  });
+});
+
 describe("weigh-ins", () => {
   beforeEach(() => {
     t.clock.date = NOW;
@@ -155,9 +226,9 @@ describe("weigh-ins", () => {
   it("saves a weigh-in and a second one that day replaces it", async () => {
     const first = await weigh(TODAY, 99.5, "after coffee");
     expect(first.status).toBe(200);
-    expect(first.body).toEqual({ weighIn: { day: TODAY, weightKg: 99.5, note: "after coffee" } });
+    expect(first.body).toEqual({ weighIn: { day: TODAY, weightKg: 99.5, note: "after coffee" }, skipped: false });
     const second = await weigh(TODAY, 99.1);
-    expect(second.body).toEqual({ weighIn: { day: TODAY, weightKg: 99.1, note: null } });
+    expect(second.body).toEqual({ weighIn: { day: TODAY, weightKg: 99.1, note: null }, skipped: false });
     const got = (await t.api("GET", "/api/weight")).body;
     expect(got.weighIns).toEqual([{ day: TODAY, weightKg: 99.1, trendKg: 99.1, note: null }]);
   });

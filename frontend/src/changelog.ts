@@ -10,6 +10,17 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.8.0",
+    date: "2026-11-20",
+    title: "Apple Health",
+    changes: [
+      "iPhone: turn on Weight, Steps and Workouts in your Profile to bring them in from Apple Health — your scale's weight, your Watch's steps and workouts — when you open the app and in the background.",
+      "A weigh-in from Health only fills a day with none; a day whose weigh-in you deleted stays empty, and one you type always wins.",
+      "Watch workouts come in once: your edits and notes stay, and one you delete stays deleted.",
+      "iPhone: the day strip on the Food Log is the same card, in the same place, as on the Dashboard.",
+    ],
+  },
+  {
     version: "0.7.0",
     date: "2026-11-20",
     title: "Goals and My Foods on iPhone",

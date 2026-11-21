@@ -181,7 +181,8 @@ final class SmokeUITests: XCTestCase {
         let delete = app.buttons["Delete"].firstMatch
         XCTAssertTrue(delete.waitForExistence(timeout: 3))
         delete.tap()
-        XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "edit-badges").firstMatch.waitForExistence(timeout: 1))
+        let gone = app.descendants(matching: .any).matching(identifier: "edit-badges").firstMatch
+        XCTAssertTrue(waitUntil(timeout: 3) { !gone.exists }, "the Badges row leaves the list")
         app.buttons["Done"].tap()
         XCTAssertTrue(app.staticTexts["362 to go"].waitForExistence(timeout: 5))
         app.swipeUp()
@@ -820,5 +821,39 @@ final class SmokeUITests: XCTestCase {
         search.tap()
         search.typeText("oat")
         XCTAssertTrue(waitUntil { self.app.buttons["myFood-201"].exists && !self.app.buttons["myFood-203"].exists })
+    }
+
+    // MARK: - I5 Apple Health
+
+    func testHealthSwitchSyncsAWeighIn() {
+        app.terminate()
+        app.launchArguments.append("-UITestFakeHealth")
+        app.launch()
+        signedIn()
+        app.buttons["Profile"].firstMatch.tap()
+        let weight = app.switches["health-weight"]
+        XCTAssertTrue(reveal(weight).waitForExistence(timeout: 5))
+        weight.switches.firstMatch.tap()
+        let status = app.descendants(matching: .any)["healthStatus"]
+        XCTAssertTrue(waitUntil(timeout: 8) { status.exists && status.label.contains("1 weigh-in") }, status.exists ? status.label : "no status")
+        shot("41-health")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(waitUntil(timeout: 8) { self.label("176.4 lb").exists }, "the Dashboard weight card shows the Health weigh-in")
+    }
+
+    func testTheDayStripSitsTheSameOnDashboardAndFoodLog() {
+        signedIn()
+        let header = app.buttons["dayHeader"]
+        let chip = app.buttons["day-\(dayString(0))"]
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+        let onDashboard = (header.frame, chip.frame)
+        app.buttons["Food Log"].tap()
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 3) { chip.exists })
+        shot("42-strip-food-log")
+        XCTAssertEqual(header.frame.minY, onDashboard.0.minY, accuracy: 1, "the header doesn't drop between tabs")
+        XCTAssertEqual(chip.frame.minY, onDashboard.1.minY, accuracy: 1)
+        XCTAssertEqual(chip.frame.height, onDashboard.1.height, accuracy: 1)
+        XCTAssertEqual(header.frame.midX, onDashboard.0.midX, accuracy: 1)
     }
 }

@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { isLatest, saveWeighIn, syncBodyWeight } from "../lib/weighIns.js";
-import { userBody, weighIns } from "../db/schema.js";
+import { userBody, weighInSkips, weighIns } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
 import { DAY, todayFor } from "../lib/days.js";
@@ -20,6 +20,8 @@ const dayParam = z.object({ day: DAY });
 const weighInBody = z.object({
   weightKg: z.number({ error: WEIGHT }).min(30, WEIGHT).max(350, WEIGHT),
   note: z.string().trim().max(500, "Keep the note under 500 characters").nullish(),
+  // health (I5): from Apple Health — fills only a day with no weigh-in that was never deleted
+  source: z.enum(["manual", "health"], { error: "Source is manual or health" }).default("manual"),
 });
 const rangeQuery = z
   .object({ from: DAY.optional(), to: DAY.optional() })
@@ -28,14 +30,29 @@ const rangeQuery = z
 export default async function weightRoutes(app: FastifyInstance) {
   const { db } = app;
 
-  // One per day: a second weigh-in that day replaces it (note included)
+  // One per day: a second weigh-in that day replaces it (note included). From Health it only fills an empty day that
+  // was never deleted ({ skipped: true } otherwise); a typed one always saves and clears the day's deleted mark.
   app.put("/api/weigh-ins/:day", async (req) => {
     const userId = requireUser(req);
     const { day } = dayParam.parse(req.params);
-    const { weightKg, note } = weighInBody.parse(req.body ?? {});
+    const { weightKg, note, source } = weighInBody.parse(req.body ?? {});
     if (day > (await todayFor(app, userId))) throw badRequest(FUTURE);
-    const row = await db.transaction((tx) => saveWeighIn(tx, userId, day, weightKg, note || null, app.now()));
-    return { weighIn: { day: row.day, weightKg: row.weightKg, note: row.note } };
+    const view = (r: { day: string; weightKg: number; note: string | null }) => ({ day: r.day, weightKg: r.weightKg, note: r.note });
+    return db.transaction(async (tx) => {
+      const here = and(eq(weighIns.userId, userId), eq(weighIns.day, day));
+      if (source === "health") {
+        // Lock the person's row so two phones syncing at once can't both fill the day
+        await tx.execute(sql`select 1 from users where id = ${userId} for update`);
+        const [existing] = await tx.select().from(weighIns).where(here);
+        if (existing) return { weighIn: view(existing), skipped: true };
+        const [skip] = await tx.select({ id: weighInSkips.id }).from(weighInSkips).where(and(eq(weighInSkips.userId, userId), eq(weighInSkips.day, day)));
+        if (skip) return { weighIn: null, skipped: true };
+      } else {
+        await tx.delete(weighInSkips).where(and(eq(weighInSkips.userId, userId), eq(weighInSkips.day, day)));
+      }
+      const row = await saveWeighIn(tx, userId, day, weightKg, note || null, app.now());
+      return { weighIn: view(row), skipped: false };
+    });
   });
 
   app.delete("/api/weigh-ins/:day", async (req, reply) => {
@@ -48,6 +65,8 @@ export default async function weightRoutes(app: FastifyInstance) {
         .returning({ id: weighIns.id });
       // Removing the latest: the body weight falls back to the one before
       if (gone.length && (await isLatest(tx, userId, day))) await syncBodyWeight(tx, userId, app.now());
+      // …and Apple Health won't fill the day again
+      if (gone.length) await tx.insert(weighInSkips).values({ userId, day }).onConflictDoNothing();
       return gone.length > 0;
     });
     if (!removed) throw new HttpError(404, NOT_FOUND);

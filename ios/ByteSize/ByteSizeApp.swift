@@ -3,6 +3,7 @@ import SwiftUI
 
 @main
 struct ByteSizeApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var session: SessionStore
     @State private var profile: ProfileModel
 
