@@ -37,9 +37,11 @@ struct ScanSheet: View {
             default: break
             }
         }
-        .sheet(item: $portionFood, onDismiss: { model.restart() }) { food in
-            // SPEC-16: after logging, back to the camera for the next barcode (Close leaves)
-            FoodPortionView(food: food, meal: track.meal, message: track.message, favorites: track) { food, portion in
+        // Pushed, not a sheet (R1). SPEC-16: back from it (logged, Back or Scan again), the camera for the next barcode
+        .onChange(of: portionFood) { _, now in if now == nil { model.restart() } }
+        .navigationDestination(item: $portionFood) { food in
+            FoodPortionView(food: food, meal: track.meal, pushed: true, message: track.message, favorites: track,
+                            again: PortionSheet.Again(title: "Scan again") { portionFood = nil }) { food, portion in
                 let ok = await track.log(food, portion: portion)
                 if ok { model.logged(food.name) }
                 return ok
