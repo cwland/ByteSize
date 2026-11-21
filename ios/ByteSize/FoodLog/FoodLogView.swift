@@ -19,9 +19,21 @@ struct FoodLogView: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            // The same card in the same place as on the Dashboard, so switching tabs doesn't move it
+            Card { DayStrip(days: days) }
+                .padding([.horizontal, .top])
+            list
+        }
+        .background(palette.color("page").ignoresSafeArea())
+    }
+
+    private var list: some View {
         List {
-            Section { header }
-                .listRowBackground(Color.clear)
+            if let day = days.day {
+                Section { summaryBar(logSummary(day)) }
+                    .listRowBackground(Color.clear)
+            }
             ForEach(log.sections) { section in
                 Section {
                     ForEach(section.entries) { entry in
@@ -88,13 +100,6 @@ struct FoodLogView: View {
                 }
             }
             .padding(.bottom, 8)
-        }
-    }
-
-    private var header: some View {
-        VStack(spacing: 10) {
-            DayStrip(days: days)
-            if let day = days.day { summaryBar(logSummary(day)) }
         }
     }
 

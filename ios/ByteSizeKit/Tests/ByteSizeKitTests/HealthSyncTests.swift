@@ -329,7 +329,7 @@ final class HealthSyncTests: XCTestCase {
     }
 
     func testTurningOffElsewhereStopsASyncInProgress() async {
-        let defaults = self.defaults!
+        nonisolated(unsafe) let defaults = self.defaults!
         HTTPStub.requests = []
         HTTPStub.handler = { req in
             // the background copy (or Profile) turns Weight off while the first day is being sent
