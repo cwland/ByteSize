@@ -73,6 +73,17 @@ final class TrackFoodModelTests: XCTestCase {
         XCTAssertEqual(m.found?.groups.map(\.source), ["basic", "culury"])
     }
 
+    func testAFailedSourceShowsEvenWhenNothingWasFound() async {
+        serve(search: { _ in .json(200, #"{"groups":[{"source":"usda","label":"USDA","foods":[]}],"errors":[{"source":"usda","message":"USDA didn't answer"}],"searched":["mine","usda"]}"#) })
+        let (m, _) = model()
+        m.query = "kale"
+        await m.search()
+        XCTAssertEqual(m.found?.errors.map(\.source), ["usda"], "the failure must reach the chips")
+        XCTAssertEqual(m.found?.searched, ["mine", "usda"])
+        XCTAssertEqual(m.found?.groups, [], "empty groups are dropped")
+        XCTAssertEqual(m.message, "Nothing found for “kale”")
+    }
+
     func testABarcodeHitHasNoSources() async {
         serve()
         let (m, _) = model()
