@@ -19,6 +19,9 @@ struct TrackFoodSheet: View {
     /// The keyboard comes up when Track Food opens; coming back from Scan, Photo, Describe or an amount screen leaves
     /// it down (TF2). After logging it comes up again for the next food (SPEC-16).
     @State private var focusedOnce = false
+    /// A food was just logged on the screen being left (an amount screen, Photo or Describe): coming back, the
+    /// keyboard comes up for the next one (SPEC-16). Backing out without logging leaves it down (TF2 review).
+    @State private var justLogged = false
     @Environment(\.palette) private var palette
 
     var body: some View {
@@ -85,12 +88,19 @@ struct TrackFoodSheet: View {
                 model.clearMessage() // an old error isn't about the food being opened
                 searchFocused = false // back without logging: the keyboard stays down (TF2)
             }
-            if now == nil, model.lastLogged != nil { searchFocused = true } // back from logging: ready to type the next
+            if now == nil, justLogged { // back from logging: ready to type the next
+                justLogged = false
+                searchFocused = true
+            }
         }
         .navigationDestination(item: $hub) { action in hubScreen(action) }
         // One meal for the whole hub: Photo and Describe use Track Food's, and a change there comes back
         .onChange(of: hub) { _, now in
             if now != nil { searchFocused = false } // leaving: SwiftUI would hand the focus back on return (TF2)
+            if now == nil, justLogged { // logged in Photo or Describe: ready for the next food
+                justLogged = false
+                searchFocused = true
+            }
             if now == .photo || now == .describe { estimate.meal = model.meal }
         }
         .onChange(of: estimate.meal) { _, meal in if hub != nil { model.meal = meal } }
@@ -98,7 +108,9 @@ struct TrackFoodSheet: View {
         .navigationDestination(item: $picked) { food in
             // SPEC-16: after logging, back to an empty search for the next food (Close leaves)
             FoodPortionView(food: food, meal: model.meal, pushed: true, message: model.message, favorites: model) { food, portion in
-                await model.log(food, portion: portion)
+                let ok = await model.log(food, portion: portion)
+                if ok { justLogged = true }
+                return ok
             }
         }
     }
@@ -239,6 +251,7 @@ struct TrackFoodSheet: View {
     @ViewBuilder
     private func hubScreen(_ action: QuickAction) -> some View {
         let back: (String) -> Void = { name in
+            justLogged = true
             hub = nil
             Task { await model.loggedElsewhere(name) }
         }
