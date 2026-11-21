@@ -62,6 +62,20 @@ final class ItemsEditorTests: XCTestCase {
         XCTAssertEqual(picker.results.map(\.name), ["Chili", "Banana"], "no quick meals, no Culury recipes")
     }
 
+    /// Review I-3: going back under two letters clears an old error and the spinner.
+    func testShortQueryClearsTheMessage() async {
+        HTTPStub.requests = []
+        HTTPStub.handler = { _ in .json(500, #"{"error":"Search is down"}"#) }
+        let picker = FoodPickerModel(api: api) { _ in true }
+        picker.query = "ban"
+        await picker.search()
+        XCTAssertEqual(picker.message, "Search is down")
+        picker.query = "b"
+        await picker.search()
+        XCTAssertNil(picker.message)
+        XCTAssertFalse(picker.searching)
+    }
+
     func testPickerNeedsTwoLetters() async {
         HTTPStub.requests = []
         HTTPStub.handler = { _ in .json(200, #"{"groups":[],"errors":[]}"#) }

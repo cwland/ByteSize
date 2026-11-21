@@ -124,6 +124,20 @@ final class RecipeEditorModelTests: XCTestCase {
         XCTAssertTrue(m.allows(try decode(MyFoodFixtures.food(31, "Cornbread", kind: "recipe"))))
     }
 
+    /// Review I-1: a recipe that didn't load must not become an empty form that saves over the real one.
+    func testFailedLoadIsNotEditable() async {
+        HTTPStub.requests = []
+        HTTPStub.handler = { _ in .json(500, #"{"error":"Something went wrong"}"#) }
+        let m = RecipeEditorModel(api: api, id: 30)
+        await m.load()
+        XCTAssertFalse(m.loaded)
+        XCTAssertEqual(m.message, "Something went wrong")
+        m.name = "Oops"
+        let out = await m.save()
+        XCTAssertNil(out)
+        XCTAssertFalse(HTTPStub.requests.contains { $0.request.httpMethod == "PUT" }, "nothing saved over the real recipe")
+    }
+
     func testServerErrorStays() async {
         serve(save: .json(400, #"{"error":"That's too many ingredients"}"#))
         let m = RecipeEditorModel(api: api, id: 30)
@@ -192,6 +206,17 @@ final class QuickMealEditorModelTests: XCTestCase {
         _ = await m.save()
         XCTAssertEqual(m.message, "Add at least one food")
         XCTAssertTrue(HTTPStub.requests.isEmpty)
+    }
+
+    func testFailedLoadIsNotEditable() async {
+        HTTPStub.requests = []
+        HTTPStub.handler = { _ in .json(500, #"{"error":"Something went wrong"}"#) }
+        let m = QuickMealEditorModel(api: api, id: 90)
+        await m.load()
+        XCTAssertFalse(m.loaded)
+        m.name = "Oops"
+        _ = await m.save()
+        XCTAssertFalse(HTTPStub.requests.contains { $0.request.httpMethod == "PUT" })
     }
 
     func testItemsExcludeQuickMeals() throws {

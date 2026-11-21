@@ -1258,4 +1258,16 @@ final class SmokeUITests: XCTestCase {
         app.buttons["saveMeal"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["myFoodsNotice"].waitForExistence(timeout: 5), "Saved, back on the list")
     }
+
+    /// Review I-2: Save is at the top, so its message must show there, not under 13 nutrient rows.
+    func testFoodEditorMessageShowsNearSave() {
+        signedInMyFoods()
+        newFromMenu("New food")
+        XCTAssertTrue(app.buttons["saveFood"].waitForExistence(timeout: 5))
+        app.buttons["saveFood"].tap()
+        let message = app.staticTexts["editorMessage"]
+        XCTAssertTrue(message.waitForExistence(timeout: 3))
+        XCTAssertEqual(message.label, "Give the food a name")
+        XCTAssertTrue(message.isHittable, "on screen without scrolling")
+    }
 }
