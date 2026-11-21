@@ -62,6 +62,14 @@ public final class EstimateModel {
         }
     }
 
+    /// SPEC-21: the ⓧ in the field — the description and the last estimate both go, ready for the next.
+    public func clearDescription() {
+        text = ""
+        items = []
+        message = nil
+        assumedNote = nil
+    }
+
     /// A photo: a barcode or a label first; otherwise the foods on the plate.
     public func photo(jpeg: Data) async -> PhotoOutcome {
         busy = true
