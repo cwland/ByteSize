@@ -62,9 +62,13 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(server.waitForExistence(timeout: 5))
         server.tap()
         server.typeText("stub.test")
-        app.buttons["Continue"].tap()
-
+        // A freshly booted simulator can show the keyboard's own first-run tip, which has a Continue too: tap until
+        // the sign-in form moves on
         let username = app.textFields["usernameField"]
+        for _ in 0..<3 where !username.exists {
+            app.buttons["Continue"].firstMatch.tap()
+            _ = username.waitForExistence(timeout: 3)
+        }
         XCTAssertTrue(username.waitForExistence(timeout: 5))
         username.tap()
         username.typeText("cory")
@@ -855,5 +859,33 @@ final class SmokeUITests: XCTestCase {
         XCTAssertEqual(chip.frame.minY, onDashboard.1.minY, accuracy: 1)
         XCTAssertEqual(chip.frame.height, onDashboard.1.height, accuracy: 1)
         XCTAssertEqual(header.frame.midX, onDashboard.0.midX, accuracy: 1)
+    }
+
+    /// Every day chip on screen is whole: none cut off at the strip's edges (on the Dashboard, the Food Log, and after a swipe).
+    private func assertWholeChips(_ place: String) {
+        let row = app.scrollViews["dayStripRow"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        let bounds = row.frame
+        var whole = 0
+        for offset in -12...12 {
+            let chip = app.buttons["day-\(dayString(offset))"]
+            guard chip.exists else { continue }
+            let f = chip.frame
+            guard f.maxX > bounds.minX + 0.5, f.minX < bounds.maxX - 0.5 else { continue } // off screen (any sliver counts as shown)
+            XCTAssertGreaterThanOrEqual(f.minX, bounds.minX - 0.5, "\(place): day \(offset) is cut off on the left")
+            XCTAssertLessThanOrEqual(f.maxX, bounds.maxX + 0.5, "\(place): day \(offset) is cut off on the right")
+            whole += 1
+        }
+        XCTAssertEqual(whole, 7, "\(place): seven whole days show")
+    }
+
+    func testTheDayStripNeverCutsADayOff() {
+        signedIn()
+        assertWholeChips("Dashboard")
+        app.scrollViews["dayStripRow"].swipeRight()
+        sleep(1)
+        assertWholeChips("Dashboard after a swipe")
+        app.buttons["Food Log"].tap()
+        assertWholeChips("Food Log")
     }
 }
