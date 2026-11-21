@@ -18,7 +18,7 @@ iOS app and the web app. Each item can be built and tested on its own. Not yet s
 
 **Status (2026-11-20):** done — SPEC-01, 09, 16 (L1, 0.3–0.4), SPEC-07, 08, 10 (L2, 0.5), SPEC-02–06, 11, 12
 (Today polish, 0.6), SPEC-14, 15 (W1, 0.2), SPEC-17 (I4, 0.7); the Food Log day strip matching the Dashboard (I5, 0.8).
-Open — SPEC-13 (iPad, parked by Cory), SPEC-18, SPEC-19, SPEC-20, SPEC-21, SPEC-22, SPEC-23.
+Open — SPEC-13 (iPad, parked by Cory), SPEC-18, SPEC-19, SPEC-20, SPEC-21, SPEC-22, SPEC-23, SPEC-24.
 
 ---
 
@@ -300,3 +300,16 @@ avatar at the bottom of the side rail opens a user menu like Culury's.
 
 **Acceptance:** on a wide screen, clicking the avatar at the bottom of the rail shows name and email, Profile & security,
 Sign out and Sign out everywhere; Settings no longer has a Sign out row.
+
+### SPEC-24: Web — Settings cog up with the other rail items (like Culury)
+Cory: move the Settings cog up near the other menu items, as Culury has it.
+
+- Today the side rail (`frontend/src/components/Rail.tsx`) lists Dashboard, Goals, Insights, (GLP-1), My foods at the
+  top, then pushes Settings down to the bottom beside the account avatar (`mt-auto`).
+- Settings joins the main list, after My foods, with the same look and spacing as the items above it (icon over
+  "Settings", highlighted when a Settings page is open).
+- The bottom of the rail keeps only the account avatar (SPEC-23's menu) and the version number (SPEC-18).
+- Phone layout unchanged unless it also separates Settings — then the same rule: with the other items.
+
+**Acceptance:** on a wide screen, Settings sits directly under My foods in the rail's list; only the avatar and version
+remain at the bottom.
