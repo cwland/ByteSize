@@ -24,6 +24,8 @@ public final class TrackFoodModel {
     public private(set) var favorites: [Food] = []
     public private(set) var recent: [Food] = []
     public private(set) var groups: [FoodGroup] = []
+    /// The last answer whole (with the sources it asked), for the source chips to filter; nil when nothing's found.
+    public private(set) var found: SearchResult?
     public private(set) var searching = false
     public private(set) var message: String?
     /// The food just logged ("Logged Banana"); the search is cleared for the next one (SPEC-16).
@@ -82,6 +84,7 @@ public final class TrackFoodModel {
         message = nil
         guard q.count >= 2 else {
             groups = []
+            found = nil
             searching = false
             return
         }
@@ -93,14 +96,17 @@ public final class TrackFoodModel {
                 guard mine == searchNumber else { return }
                 if let food = hit.food {
                     groups = [FoodGroup(source: "barcode", label: "Barcode \(hit.code)", foods: [food])]
+                    found = SearchResult(groups: groups, errors: [])
                 } else {
                     groups = []
+                    found = nil
                     message = Self.unknownBarcode
                 }
             } else {
                 let result = try await api.send(FoodAPI.search(q))
                 guard mine == searchNumber else { return }
                 groups = result.groups.filter { !$0.foods.isEmpty }
+                found = groups.isEmpty ? nil : SearchResult(groups: groups, errors: result.errors, suggestion: result.suggestion, searched: result.searched)
                 if groups.isEmpty { message = "Nothing found for “\(q)”" }
             }
         } catch is CancellationError {
@@ -108,6 +114,7 @@ public final class TrackFoodModel {
         } catch {
             guard mine == searchNumber else { return }
             groups = []
+            found = nil
             message = (error as? APIError)?.message ?? error.localizedDescription
         }
     }
@@ -205,6 +212,7 @@ public final class TrackFoodModel {
             meal = portion.meal // the next food starts in the same meal
             query = ""
             groups = []
+            found = nil
             await dayStore.reload()
             return true
         } catch {
