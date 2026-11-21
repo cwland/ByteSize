@@ -12,6 +12,8 @@ final class TodayModels {
     let goals: GoalsModel
     let myFoods: MyFoodsModel
     let health: HealthSync
+    /// Track Food's source chips and Sources row, remembered for this sign-in.
+    let sources: SourceFilter
     let units: Units
 
     /// `account`: the server and user, so Health switches belong to this sign-in.
@@ -28,7 +30,8 @@ final class TodayModels {
         // A weigh-in logged or deleted on the Goals tab also updates the Dashboard's weight card
         goals = GoalsModel(api: api, dayStore: days, units: units) { await dashboard.reloadWeight() }
         myFoods = MyFoodsModel(api: api, dayStore: days)
-        health = HealthSync(api: api, dayStore: days, store: Self.healthStore, defaults: Self.healthDefaults, account: account)
+        health = HealthSync(api: api, dayStore: days, store: Self.healthStore, defaults: Self.appDefaults, account: account)
+        sources = SourceFilter(defaults: Self.appDefaults, account: account)
     }
 
     private static var healthStore: HealthStore {
@@ -38,7 +41,8 @@ final class TodayModels {
         return HealthKitStore.shared
     }
 
-    private static var healthDefaults: UserDefaults {
+    /// Health switches and Track Food sources; a fresh suite under the UI tests.
+    private static var appDefaults: UserDefaults {
         #if DEBUG
         if StubServer.isOn { return UserDefaults(suiteName: "com.cwland.bytesize.uitests") ?? .standard }
         #endif
