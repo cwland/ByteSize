@@ -10,6 +10,7 @@ final class TodayModels {
     let dashboard: DashboardModel
     let log: FoodLogModel
     let goals: GoalsModel
+    let myFoods: MyFoodsModel
     let units: Units
 
     init(api: APIClient, user: User) {
@@ -24,6 +25,7 @@ final class TodayModels {
         log = FoodLogModel(api: api, dayStore: days)
         // A weigh-in logged or deleted on the Goals tab also updates the Dashboard's weight card
         goals = GoalsModel(api: api, dayStore: days, units: units) { await dashboard.reloadWeight() }
+        myFoods = MyFoodsModel(api: api, dayStore: days)
     }
 
     func load() async {

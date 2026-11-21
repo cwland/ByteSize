@@ -103,6 +103,9 @@ public final class MyFoodsModel {
         await load()
     }
 
+    /// A quick meal's items, ready to log to the day being looked at.
+    public func quickMeal(_ food: Food) -> QuickMealModel { QuickMealModel(api: api, dayStore: dayStore, food: food, meal: meal) }
+
     public func log(_ food: Food, portion: PortionModel) async -> Bool {
         do {
             _ = try await api.send(FoodAPI.log(food: food, day: dayStore.selected, meal: portion.meal, servingIndex: portion.servingIndex, unit: portion.unit, quantity: portion.quantity))
