@@ -50,7 +50,11 @@ public final class SignInModel {
     public var showsPasswordForm: Bool { options?.passwords ?? true }
     public var showsForgotPassword: Bool { options?.forgotPassword ?? false }
     /// I6: passkeys made on the web at this address sign in here too (Apple's sheet says if there are none).
-    public var showsPasskey: Bool { options != nil && address != nil }
+    /// Apple signs a passkey for https://<host> on the standard port, so an odd port can't use them.
+    public var showsPasskey: Bool {
+        guard options != nil, let url = address?.url else { return false }
+        return url.scheme == "https" && (url.port == nil || url.port == 443)
+    }
     /// I6: the server's OAuth provider ("Authentik"), when it offers one.
     public var oauthLabel: String? { options?.oauth?.label }
 

@@ -494,6 +494,32 @@ describe("OAuth sign-in from the iPhone app", () => {
     expect(new URLSearchParams(location.split("?")[1]).get("error")).toBe(NOT_LINKED);
   });
 
+  it("a sign-in left open too long comes back to the app (not the web page) saying so", async () => {
+    await save();
+    t.clock.date = new Date();
+    try {
+      const start = await begin({ client: "ios", appKey: KEY });
+      const back = idp.approve(start.json().url, { sub: "ak-alex" });
+      t.clock.date = new Date(t.clock.date.getTime() + 10 * 60 * 1000 + 1000);
+      const cb = await t.app.inject({ method: "GET", url: back.pathname + back.search });
+      const location = String(cb.headers.location);
+      expect(location.startsWith("bytesize://oauth?")).toBe(true);
+      expect(new URLSearchParams(location.split("?")[1]).get("error")).toMatch(/took too long/);
+    } finally {
+      t.clock.date = null;
+    }
+  });
+
+  it("a sign-in declined at the provider comes back to the app with the reason", async () => {
+    await save();
+    const start = await begin({ client: "ios", appKey: KEY });
+    const state = new URL(start.json().url).searchParams.get("state")!;
+    const cb = await t.app.inject({ method: "GET", url: `/api/auth/oauth/callback?state=${state}&error=access_denied&error_description=${encodeURIComponent("You said no")}` });
+    const location = String(cb.headers.location);
+    expect(location.startsWith("bytesize://oauth?")).toBe(true);
+    expect(new URLSearchParams(location.split("?")[1]).get("error")).toBe("You said no");
+  });
+
   it("web sign-ins are unchanged: still the cookie, still back to the page, no key needed", async () => {
     await save();
     await link();
