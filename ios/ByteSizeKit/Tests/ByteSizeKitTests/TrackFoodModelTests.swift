@@ -64,6 +64,37 @@ final class TrackFoodModelTests: XCTestCase {
         XCTAssertEqual(m.groups, [], "clearing the field goes back to recent and frequent")
     }
 
+    func testATypedSearchKeepsTheAnswer() async {
+        serve()
+        let (m, _) = model()
+        m.query = "banana"
+        await m.search()
+        XCTAssertEqual(m.found?.searched, ["basic", "usda"], "the chips need what the server asked")
+        XCTAssertEqual(m.found?.groups.map(\.source), ["basic", "culury"])
+    }
+
+    func testABarcodeHitHasNoSources() async {
+        serve()
+        let (m, _) = model()
+        m.query = "0012345678905"
+        await m.search()
+        XCTAssertNil(m.found?.searched)
+        XCTAssertEqual(m.found?.groups.count, 1)
+    }
+
+    func testClearingTheSearchClearsTheAnswer() async {
+        serve()
+        let (m, _) = model()
+        m.query = "banana"
+        await m.search()
+        m.query = "a"
+        await m.search()
+        XCTAssertNil(m.found)
+        m.query = "0099999999999"
+        await m.search()
+        XCTAssertNil(m.found, "an unknown barcode")
+    }
+
     func testTypedBarcodeUsesTheBarcodeRoute() async {
         serve()
         let (m, _) = model()
