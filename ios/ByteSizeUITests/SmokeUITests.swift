@@ -1171,14 +1171,14 @@ final class SmokeUITests: XCTestCase {
 
     // MARK: - R2 My foods editing
 
-    private func openMyFoods() {
+    private func signedInMyFoods() {
         signedIn()
         app.buttons["My Foods"].tap()
         XCTAssertTrue(app.buttons["myFood-201"].waitForExistence(timeout: 5))
     }
 
     func testDeleteAFoodFromMyFoods() {
-        openMyFoods()
+        signedInMyFoods()
         app.buttons["myFood-201"].swipeLeft()
         app.buttons["Delete"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts["Delete Oat bars?"].waitForExistence(timeout: 3), "asks first, in the website's words")
@@ -1205,7 +1205,7 @@ final class SmokeUITests: XCTestCase {
     }
 
     func testNewFoodFromMyFoods() {
-        openMyFoods()
+        signedInMyFoods()
         newFromMenu("New food")
         XCTAssertTrue(app.navigationBars["New food"].waitForExistence(timeout: 5))
         type("foodName", "Granola")
@@ -1219,7 +1219,7 @@ final class SmokeUITests: XCTestCase {
     }
 
     func testEditAFoodsName() {
-        openMyFoods()
+        signedInMyFoods()
         app.buttons["myFood-201"].swipeLeft()
         app.buttons["Edit"].firstMatch.tap()
         XCTAssertTrue(app.navigationBars["Edit food"].waitForExistence(timeout: 5))
@@ -1230,7 +1230,7 @@ final class SmokeUITests: XCTestCase {
     }
 
     func testNewRecipeWithAnIngredient() {
-        openMyFoods()
+        signedInMyFoods()
         newFromMenu("New recipe")
         XCTAssertTrue(app.navigationBars["New recipe"].waitForExistence(timeout: 5))
         type("recipeName", "Banana bowl")
@@ -1246,7 +1246,7 @@ final class SmokeUITests: XCTestCase {
     }
 
     func testEditQuickMealRemovesAFood() {
-        openMyFoods()
+        signedInMyFoods()
         app.buttons["myFood-204"].swipeLeft()
         app.buttons["Edit"].firstMatch.tap()
         XCTAssertTrue(app.navigationBars["Edit quick meal"].waitForExistence(timeout: 5))
