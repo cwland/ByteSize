@@ -462,7 +462,12 @@ final class SmokeUITests: XCTestCase {
         // Back (not Close): the Describe Food bar has both, and other bars sit behind the sheet
         app.navigationBars["Describe Food"].buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.buttons["hub-describe"].waitForExistence(timeout: 5), "back on the search, sheet still open")
-        XCTAssertTrue(app.buttons["Meal, Snacks"].exists || app.buttons.matching(NSPredicate(format: "label == %@", "Meal, Snacks")).firstMatch.exists, "the search is in Snacks now")
+        let meal = app.descendants(matching: .any)["trackMeal"]
+        let inSnacks = waitUntil { meal.exists && (meal.label.contains("Snacks") || (meal.value as? String ?? "").contains("Snacks")) }
+        if !inSnacks, let dir = ProcessInfo.processInfo.environment["SHOTS_DIR"] {
+            try? app.debugDescription.write(toFile: dir + "/meal-tree.txt", atomically: true, encoding: .utf8)
+        }
+        XCTAssertTrue(inSnacks, "the search is in Snacks now")
         XCTAssertTrue(reveal(app.buttons["quickAdd-Banana"]).waitForExistence(timeout: 5))
         app.buttons["quickAdd-Banana"].tap()
         XCTAssertTrue(label("Logged Banana").waitForExistence(timeout: 5))

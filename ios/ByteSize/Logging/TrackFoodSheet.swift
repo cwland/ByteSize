@@ -158,6 +158,7 @@ struct TrackFoodSheet: View {
                 .labelsHidden()
                 .tint(palette.color("ink"))
                 .accessibilityLabel("Meal, \(model.meal.title)") // as the meal pickers elsewhere read
+                .accessibilityIdentifier("trackMeal")
             }
             .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 0))
             .listRowBackground(Color.clear)
