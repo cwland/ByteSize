@@ -255,12 +255,27 @@ final class StubServer: URLProtocol, @unchecked Sendable {
             case ("DELETE", _) where path.hasPrefix("/api/foods/favorites/") && parts.count == 5:
                 favoriteRefs.removeAll { $0 == "\(parts[3]):\(parts[4])" }
                 return (200, json(["refs": favoriteRefs]))
+            case ("POST", "/api/ai/estimate-items") where (body["text"] as? String ?? "").contains("sandwich"):
+                // several foods with a name for them together: Describe opens on One meal
+                return (200, #"{"items":[\#(Self.egg),\#(Self.toast)],"mealName":"Egg sandwich","assumed":false}"#)
             case ("POST", "/api/ai/estimate-items"):
                 return (200, #"{"items":[\#(Self.egg),\#(Self.toast)],"assumed":false}"#)
             case ("POST", "/api/photos/analyze") where raw.contains(PhotoButtons.testBarcodePhoto):
                 return (200, #"{"photoIds":["stub-photo"],"barcode":"0012345678905","food":\#(Self.banana),"errors":[],"labelReading":true}"#)
             case ("POST", "/api/photos/analyze"):
                 return (200, #"{"photoIds":["stub-photo"],"plate":{"items":[\#(Self.egg),\#(Self.toast)]},"errors":[],"labelReading":true}"#)
+            case ("POST", "/api/log/estimates") where body["combine"] != nil:
+                // One meal: one entry, its nutrients the sum of the foods' amounts
+                let combine = body["combine"] as? [String: Any] ?? [:]
+                var calories = 0.0
+                for item in body["items"] as? [[String: Any]] ?? [] {
+                    calories += ((item["nutrients"] as? [String: Double])?["calories"] ?? 0) * ((item["quantity"] as? Double) ?? 1)
+                }
+                nextId += 1
+                let name = combine["name"] as? String ?? "Meal"
+                let e = Entry(id: nextId, day: body["day"] as? String ?? Self.today, meal: body["meal"] as? String ?? "snacks", name: name, brand: nil, icon: "🍽️", unit: "serving", quantity: 1, fraction: 1, serving: "1 \(name)", perUnit: ["calories": calories], source: "ai", ai: true)
+                entries.append(e)
+                return (200, json(["entries": [e.json]]))
             case ("POST", "/api/log/estimates"):
                 var out: [[String: Any]] = []
                 for item in body["items"] as? [[String: Any]] ?? [] {
