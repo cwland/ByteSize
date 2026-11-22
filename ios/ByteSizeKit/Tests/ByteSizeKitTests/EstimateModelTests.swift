@@ -271,6 +271,21 @@ final class EstimateModelTests: XCTestCase {
         XCTAssertEqual(requests("POST", "/api/photos/analyze").count, 2) // auto, then plate
     }
 
+    func testPhotoAmountTooBigToTrustAsksToCheckIt() async {
+        // the server read 30.9 servings (a whole canister) as 1, marked checkAmount
+        let checked = FoodFixtures.egg.replacingOccurrences(of: #""quantity":"#, with: #""checkAmount":true,"quantity":"#)
+        serve(photo: { mode in
+            mode == "plate"
+                ? .json(200, #"{"photoIds":["p2"],"plate":{"items":[\#(checked),\#(FoodFixtures.toast)]},"errors":[],"labelReading":true}"#)
+                : .json(200, #"{"photoIds":["p1"],"errors":[],"labelReading":true}"#)
+        })
+        let (m, _) = model()
+        _ = await m.photo(jpeg: Data([1]))
+        XCTAssertEqual(m.items.first?.checkAmount, true)
+        XCTAssertNil(m.items.last?.checkAmount)
+        XCTAssertEqual(m.assumedNote, "Check the amount: Egg, large")
+    }
+
     func testPhotoWithNothingInIt() async {
         serve(photo: { mode in
             mode == "plate"
