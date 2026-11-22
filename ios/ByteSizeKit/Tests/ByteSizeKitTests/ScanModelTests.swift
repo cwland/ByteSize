@@ -179,7 +179,7 @@ final class ScanModelTests: XCTestCase {
         HTTPStub.requests = []
         HTTPStub.handler = { req in
             switch (req.httpMethod ?? "", req.url?.path() ?? "") {
-            case ("GET", "/api/foods/barcode/0018400312944"):
+            case ("GET", "/api/foods/barcode/018400312944"), ("GET", "/api/foods/barcode/0018400312944"): // UPC-A or EAN-13
                 return .json(200, #"{"code":"0018400312944","food":\#(ScanModelTests.real),"errors":[],"choices":[\#(ScanModelTests.real),\#(ScanModelTests.vague)]}"#)
             case ("POST", "/api/foods/barcode/0018400312944/pick"): return .json(204, "")
             default: return .json(404, #"{"error":"Not found"}"#)

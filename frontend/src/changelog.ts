@@ -15,6 +15,16 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.14.0",
+    date: "2026-11-22",
+    title: "Barcodes: pick the right product",
+    added: [
+      "A scanned or typed barcode now asks every food source (Open Food Facts, FatSecret on Premier, USDA) at once. When they don't agree on what the product is, you get a short list to pick from — the most complete entry first — instead of whichever answered first.",
+      "The product you pick is remembered for that barcode, so the next scan opens it straight away.",
+      "None of these: search instead (web) or photograph its label (iPhone).",
+    ],
+  },
+  {
     version: "0.13.0",
     date: "2026-11-22",
     title: "Describe: one meal or separate items",
