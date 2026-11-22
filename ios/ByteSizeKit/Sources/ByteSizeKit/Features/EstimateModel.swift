@@ -177,6 +177,8 @@ public final class EstimateModel {
                 return .nothing
             }
             show(found)
+            let toCheck = found.filter { $0.checkAmount == true }.map(\.food.name)
+            if !toCheck.isEmpty { assumedNote = "Check the amount: " + toCheck.joined(separator: ", ") }
             return .items
         } catch APIError.server(503, _) {
             message = Self.needsPhotoAI

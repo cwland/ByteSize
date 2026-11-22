@@ -139,8 +139,18 @@ describe("usda clients", () => {
     const { f, calls } = fakeFetch(() => ({ status: 200, json: page([other, yogurt]) }));
     const food = await usdaByBarcode(f, "KEY123", "0036632035676", 1000);
     expect(food?.sourceId).toBe("2346404");
-    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ query: "0036632035676", pageSize: 10, dataType: ["Branded"] });
+    // USDA only matches the 12-digit UPC-A it stores, so a US code is asked for without its leading 0
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ query: "036632035676", pageSize: 10, dataType: ["Branded"] });
     expect(await usdaByBarcode(fakeFetch(() => ({ status: 200, json: page([other]) })).f, "KEY123", "0036632035676", 1000)).toBeNull();
+  });
+
+  it("a scanned 12-digit UPC is asked for as is; a true EAN-13 keeps all 13 digits", async () => {
+    const upc = fakeFetch(() => ({ status: 200, json: page([yogurt]) }));
+    expect((await usdaByBarcode(upc.f, "K", "036632035676", 1000))?.sourceId).toBe("2346404");
+    expect(JSON.parse(String(upc.calls[0].init?.body)).query).toBe("036632035676");
+    const ean = fakeFetch(() => ({ status: 200, json: page([]) }));
+    await usdaByBarcode(ean.f, "K", "4006381333931", 1000);
+    expect(JSON.parse(String(ean.calls[0].init?.body)).query).toBe("4006381333931");
   });
 
   it("errors are SourceErrors that never show the key; a hang times out", async () => {

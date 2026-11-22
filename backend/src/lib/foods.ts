@@ -1389,11 +1389,14 @@ export type EstimateItem = {
   food: AiDraft;
   servingIndex: number;
   quantity: number;
+  checkAmount?: true; // a photo amount too big to trust: read as 1 serving, for the person to check
 };
 export const MAX_ESTIMATE_ITEMS = 12;
+/** More servings of one food than a photo plausibly shows: the AI likely counted a whole package. */
+export const MAX_PHOTO_SERVINGS = 6;
 
-/** The usable items of an AI answer {"items": [...]}: each a draft with a positive amount (1 when missing), at most 12. */
-export function estimateItems(json: unknown): EstimateItem[] {
+/** The usable items of an AI answer {"items": [...]}: each a draft with a positive amount (1 when missing), at most 12. With maxQuantity (photos), a bigger amount is read as 1 serving, marked checkAmount. */
+export function estimateItems(json: unknown, opts: { maxQuantity?: number } = {}): EstimateItem[] {
   const list = (json as { items?: unknown } | null)?.items;
   if (!Array.isArray(list)) return [];
   const out: EstimateItem[] = [];
@@ -1401,11 +1404,9 @@ export function estimateItems(json: unknown): EstimateItem[] {
     const food = aiDraft(raw);
     if (!food) continue;
     const q = Number((raw as { quantity?: unknown }).quantity);
-    out.push({
-      food,
-      servingIndex: 0,
-      quantity: Number.isFinite(q) && q > 0 && q <= 100 ? q : 1,
-    });
+    const quantity = Number.isFinite(q) && q > 0 && q <= 100 ? q : 1;
+    if (opts.maxQuantity !== undefined && quantity > opts.maxQuantity) out.push({ food, servingIndex: 0, quantity: 1, checkAmount: true });
+    else out.push({ food, servingIndex: 0, quantity });
     if (out.length === MAX_ESTIMATE_ITEMS) break;
   }
   return out;

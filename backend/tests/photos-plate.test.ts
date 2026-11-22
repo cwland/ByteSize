@@ -61,6 +61,23 @@ describe("plate photos", () => {
     expect(r.body.errors).toContainEqual({ source: "ai", message: "Couldn't make out the food in that photo" });
   });
 
+  it("a packaged product counts as what's served, not the servings in the package", async () => {
+    await t.api("PUT", "/api/settings/ai", photoAi);
+    aiAnswers(t, plate);
+    await analyzePlate();
+    expect(JSON.stringify(t.ai.calls[0].body)).toMatch(/package.*1.*never the servings in the (package|container)/i);
+  });
+
+  it("more than 6 servings of one food is read as 1, marked to check the amount", async () => {
+    await t.api("PUT", "/api/settings/ai", photoAi);
+    // a canister of drink mix: the AI counted the 30.9 servings in the container
+    aiAnswers(t, { items: [{ ...plate.items[0], name: "Cappuccino drink mix", quantity: 30.9 }, { ...plate.items[1], quantity: 6 }] });
+    const items = (await analyzePlate()).body.plate.items;
+    expect(items[0]).toMatchObject({ quantity: 1, checkAmount: true });
+    expect(items[1].quantity).toBe(6);
+    expect(items[1].checkAmount).toBeUndefined();
+  });
+
   it("keeps at most 12 foods", async () => {
     await t.api("PUT", "/api/settings/ai", photoAi);
     aiAnswers(t, { items: Array.from({ length: 15 }, (_, i) => ({ ...plate.items[0], name: `Food ${i}` })) });

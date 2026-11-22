@@ -15,6 +15,15 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.14.2",
+    date: "2026-11-22",
+    title: "Better barcode matches and photo amounts",
+    fixed: [
+      "Scanning a US barcode now also finds the product in USDA FoodData Central, so when the sources disagree you get the short list to pick from.",
+      "A photo of a packaged product (a can, box, bag or canister) counts as one serving, not every serving in the package. If a photo amount still looks too big to trust, it's read as 1 serving with a \"Check the amount\" note (iPhone app).",
+    ],
+  },
+  {
     version: "0.14.1",
     date: "2026-11-22",
     title: "Culury is now RecipeHub",

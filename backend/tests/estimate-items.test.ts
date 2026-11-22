@@ -18,6 +18,14 @@ const coffee = { name: "Black coffee", category: "coffee", servings: [{ label: "
 const estimate = (text: string) => t.api("POST", "/api/ai/estimate-items", { text });
 
 describe("estimate several foods", () => {
+  it("a large amount someone typed is kept (the photo cap is for photos only)", async () => {
+    await t.api("PUT", "/api/settings/ai", aiSettings);
+    aiAnswers(t, { items: [{ ...egg, name: "Chicken wing", quantity: 12 }], assumed: false });
+    const r = await estimate("12 chicken wings");
+    expect(r.body.items[0].quantity).toBe(12);
+    expect(r.body.items[0].checkAmount).toBeUndefined();
+  });
+
   it("a breakfast description becomes one draft per food, with amounts", async () => {
     await t.api("PUT", "/api/settings/ai", aiSettings);
     aiAnswers(t, { items: [egg, toast, coffee], assumed: false });

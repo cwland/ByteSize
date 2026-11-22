@@ -25,6 +25,10 @@ struct PhotoSheet: View {
                     }
                 }
             } else if !model.items.isEmpty {
+                if let note = model.assumedNote {
+                    // a whole package read as 1 serving: worth a look before logging
+                    Section { Label(note, systemImage: "exclamationmark.triangle").accessibilityIdentifier("checkAmount") }
+                }
                 EstimateItemsView(model: model, editing: $editing, onLogged: onLogged)
                 Section {
                     // R1: the AI got it wrong — the photo choices again

@@ -92,11 +92,14 @@ public struct EstimateItem: Codable, Equatable, Sendable {
     public var food: AiDraft
     public var servingIndex: Int
     public var quantity: Double
+    /// A photo amount too big to trust (likely a whole package): the server read it as 1 serving, to check.
+    public var checkAmount: Bool?
 
-    public init(food: AiDraft, servingIndex: Int = 0, quantity: Double = 1) {
+    public init(food: AiDraft, servingIndex: Int = 0, quantity: Double = 1, checkAmount: Bool? = nil) {
         self.food = food
         self.servingIndex = servingIndex
         self.quantity = quantity
+        self.checkAmount = checkAmount
     }
 
     /// Calories for the amount (≈: the server's numbers rule once logged).
