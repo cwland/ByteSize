@@ -13,6 +13,12 @@ name: iOS TestFlight
 on:
   push:
     tags: ["ios-v*"]
+  # Or by hand (Actions › iOS TestFlight › Run workflow): the version to ship, e.g. 0.13.0, from the chosen branch
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to upload, e.g. 0.13.0"
+        required: true
 
 permissions:
   contents: read
@@ -38,9 +44,13 @@ jobs:
           xcodebuild -version
 
       - name: Work out the version and build number
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           bash ios/scripts/ci-version.test.sh
-          echo "APP_VERSION=$(bash ios/scripts/ci-version.sh "$GITHUB_REF_NAME")" >> "$GITHUB_ENV"
+          TAG="$GITHUB_REF_NAME"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then TAG="ios-v$INPUT_VERSION"; fi
+          echo "APP_VERSION=$(bash ios/scripts/ci-version.sh "$TAG")" >> "$GITHUB_ENV"
           echo "BUILD_NUMBER=${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
 
       - name: Check the secrets are set
