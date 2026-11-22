@@ -826,6 +826,7 @@ final class SmokeUITests: XCTestCase {
         field.tap()
         field.typeText("0012345678905")
         app.buttons["lookUpBarcode"].tap()
+        openScanned("Banana")
         let log = app.buttons["logButton"]
         XCTAssertTrue(log.waitForExistence(timeout: 5))
         log.tap()
@@ -847,6 +848,7 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["choice-Cappuccino mix"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["choice-Hills bros"].exists)
         XCTAssertTrue(app.buttons["noneOfThese"].exists)
+        XCTAssertTrue(app.buttons["quickAdd-Cappuccino mix"].exists, "each choice can be logged with +")
         app.buttons["choice-Cappuccino mix"].tap()
         XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5), "the picked product opens")
     }
@@ -1221,6 +1223,7 @@ final class SmokeUITests: XCTestCase {
         field.tap()
         field.typeText("0012345678905")
         app.buttons["lookUpBarcode"].tap()
+        openScanned("Banana")
         XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons["again"].label, "Scan again")
         app.buttons["again"].tap()
@@ -1339,6 +1342,7 @@ final class SmokeUITests: XCTestCase {
         field.tap()
         field.typeText("0012345678905")
         app.buttons["lookUpBarcode"].tap()
+        openScanned("Banana")
         let log = app.buttons["logButton"]
         XCTAssertTrue(log.waitForExistence(timeout: 5))
         let again = app.buttons["again"]
@@ -1366,5 +1370,46 @@ final class SmokeUITests: XCTestCase {
         toggle.tap()
         XCTAssertTrue(reveal(app.descendants(matching: .any)["history-\(dayString(-60))"]).waitForExistence(timeout: 3))
         XCTAssertEqual(reveal(app.buttons["historyToggle"]).label, "Show fewer")
+    }
+
+    // MARK: - Scan shows a list (owner, 2026-11-22)
+
+    /// Tap the scanned food's row: its amount screen.
+    private func openScanned(_ name: String) {
+        let row = app.buttons["scanned-\(name)"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "the scan shows a list first")
+        row.tap()
+    }
+
+    /// Owner: scan → a list (even of one) → tap the food for its amount, or + to log it from the list.
+    func testScanShowsAListEvenForOneFood() {
+        signedIn()
+        openAction("Scan Food")
+        let field = app.textFields["barcodeField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("0012345678905")
+        app.buttons["lookUpBarcode"].tap()
+        XCTAssertTrue(app.buttons["scanned-Banana"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["quickAdd-Banana"].exists, "a + on the row")
+        sleep(2)
+        XCTAssertFalse(app.buttons["logButton"].exists, "never straight to the amount")
+        shot("scan-list")
+        app.buttons["scanned-Banana"].tap()
+        XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5), "the row opens the amount")
+    }
+
+    func testScanPlusLogsAndReturnsToTheCamera() {
+        signedIn()
+        openAction("Scan Food")
+        let field = app.textFields["barcodeField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("0012345678905")
+        app.buttons["lookUpBarcode"].tap()
+        XCTAssertTrue(app.buttons["quickAdd-Banana"].waitForExistence(timeout: 5))
+        app.buttons["quickAdd-Banana"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5), "logged from the list")
+        XCTAssertTrue(app.textFields["barcodeField"].exists, "back to the camera for the next one")
     }
 }
