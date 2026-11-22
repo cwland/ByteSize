@@ -120,7 +120,9 @@ export async function usdaSearch(fetchFn: FoodFetch, apiKey: string, q: string, 
 export async function usdaByBarcode(fetchFn: FoodFetch, apiKey: string, code: string, timeoutMs: number): Promise<SourceFood | null> {
   const want = normalizeBarcode(code);
   if (!want) return null;
-  const foods = await search(fetchFn, apiKey, code, ["Branded"], timeoutMs);
+  // USDA keeps (and only matches) the 12-digit UPC-A for US products: ask without the leading 0
+  const query = want.length === 13 && want.startsWith("0") ? want.slice(1) : want;
+  const foods = await search(fetchFn, apiKey, query, ["Branded"], timeoutMs);
   const hit = foods.find((f) => f?.gtinUpc && normalizeBarcode(String(f.gtinUpc)) === want);
   return hit ? normalizeUsda(hit) : null;
 }

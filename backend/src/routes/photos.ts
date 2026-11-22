@@ -6,7 +6,7 @@ import { AiError, LABEL_ASK, LABEL_SYSTEM, PLATE_ASK, PLATE_SYSTEM } from "../li
 import { logEvent } from "../lib/appLog.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { countUsage } from "../lib/usage.js";
-import { aiDraft, estimateItems, lookupBarcode, type AiDraft, type EstimateItem, type FoodResult, type SearchResult } from "../lib/foods.js";
+import { aiDraft, estimateItems, MAX_PHOTO_SERVINGS, lookupBarcode, type AiDraft, type EstimateItem, type FoodResult, type SearchResult } from "../lib/foods.js";
 import { MAX_PHOTOS, MAX_PHOTO_BYTES, MAX_REQUEST_BYTES, decodeBarcode, normalisePhoto, photoUrl, readPhoto, signImageUrl, storePhoto } from "../lib/photos.js";
 
 export type PhotoDraft = AiDraft & { photoId: string };
@@ -92,7 +92,7 @@ export default async function photoRoutes(app: FastifyInstance) {
           reasoning: "low",
           images: [{ mime: "image/jpeg", base64: normalised[0].toString("base64") }],
         });
-        items = estimateItems(json);
+        items = estimateItems(json, { maxQuantity: MAX_PHOTO_SERVINGS });
         if (!items.length) {
           await logEvent(app.db, { category: "ai", level: "warning", source: "Plate photo", event: "The AI's plate reading couldn't be used", detail: JSON.stringify(json).slice(0, 600), userId });
         }

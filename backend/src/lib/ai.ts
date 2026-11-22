@@ -664,6 +664,7 @@ export const PLATE_ASK =
   `List the foods on this plate in the photo. ` +
   `Answer as JSON: {"items": [{"name": string, "category": string, "servings": [{"label": string, "grams"?: number, "ml"?: number}], "nutrients": {<key>: number}, "quantity": number}]}. ` +
   `servings[0] is a usual serving and the nutrients are for it; quantity is how many of servings[0] the photo shows (e.g. 1.5). ` +
+  `A packaged product (a can, box, bag, bottle, jar or canister) that isn't served out is quantity 1: one serving of it, never the servings in the package or container. ` +
   `If there is no food in the photo, answer {"items": []}.`;
 export const LABEL_ASK =
   `Read the nutrition facts label in the photo. If another photo shows the front of the package, use it for the name and brand.\n\n` +
