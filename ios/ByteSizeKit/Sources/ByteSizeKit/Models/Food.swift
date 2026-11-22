@@ -155,6 +155,8 @@ public struct PhotoResult: Codable, Equatable, Sendable {
 
 public struct EstimateItems: Codable, Equatable, Sendable {
     public let items: [EstimateItem]
+    /// A short name for the foods together ("Breakfast sandwich"): nil for one food (and from older servers).
+    public let mealName: String?
     public let assumed: Bool
     public let interpretedAs: String?
 }
