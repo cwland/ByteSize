@@ -28,7 +28,7 @@ describe("searched sources", () => {
     expect(await searched()).toEqual(["mine", "basic", "usda", "off"]);
   });
 
-  it("FatSecret and a linked Culury come in their places", async () => {
+  it("FatSecret and a linked RecipeHub come in their places", async () => {
     await t.api("PUT", "/api/admin/food-sources", { usdaApiKey: "usda-key" });
     await setRestaurantKeys(t, { fatsecret: { id: "fs-id", secret: "fs-secret" } });
     culuryKnows(t, { recipes: [culuryRecipe(7, "Chili")], plan: [] });

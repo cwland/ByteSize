@@ -105,7 +105,7 @@ describe("members", () => {
   it("see none of the admin parts, and none of their routes is asked", async () => {
     const server = fakeServer({ "GET /api/settings/culury": () => ({ url: null, hasKey: false, enabled: false }) });
     renderWithSession(<IntegrationsSettings />, { isAdmin: false });
-    await screen.findByRole("switch", { name: "Culury on" });
+    await screen.findByRole("switch", { name: "RecipeHub on" });
     expect(screen.queryByRole("table", { name: "How ByteSize looks foods up" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Saved barcodes" })).not.toBeInTheDocument();
     expect(screen.queryByText(/keep results for/i)).not.toBeInTheDocument();

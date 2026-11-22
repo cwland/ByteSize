@@ -64,7 +64,7 @@ A restore replaces everything on the server with the backup. A `…-before-resto
 everyone has to sign in again afterwards.
 
 Restore onto a fresh server: start ByteSize, create the first admin account, then Settings › Data › Restore from
-a file. Keep the same `JWT_SECRET` as the old server: saved keys (AI, USDA, Spoonacular, FatSecret, Culury) only
+a file. Keep the same `JWT_SECRET` as the old server: saved keys (AI, USDA, Spoonacular, FatSecret, RecipeHub) only
 open with it. With a different one, Settings › Data lists the keys to enter again.
 Behind a reverse proxy, restoring a large backup file needs the proxy's upload size limit and timeout raised.
 

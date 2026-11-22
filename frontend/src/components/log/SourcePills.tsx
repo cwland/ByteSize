@@ -8,7 +8,7 @@ export const PILLS = [
   { id: "basic", label: "Basic" },
   { id: "usda", label: "USDA" },
   { id: "off", label: "Open Food Facts" },
-  { id: "culury", label: "Culury" },
+  { id: "culury", label: "RecipeHub" },
 ] as const;
 export type PillId = (typeof PILLS)[number]["id"];
 export type Choice = Record<PillId, boolean>;

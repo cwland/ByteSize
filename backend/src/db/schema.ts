@@ -230,7 +230,7 @@ export const userSettings = pgTable("user_settings", {
   dateFormat: text("date_format").notNull().default("weekday-long-month-short"),
   culuryUrl: text("culury_url"),
   culuryKeyEnc: text("culury_key_enc"), // encrypted
-  // The person's Culury switch (Settings › Integrations); null = never switched: on when linked
+  // The person's RecipeHub switch (Settings › Integrations); null = never switched: on when linked
   culuryEnabled: boolean("culury_enabled"),
   // Insights' weekly recap (§43): the switch on the Insights page, on by default
   insightsWeekly: boolean("insights_weekly").notNull().default(true),

@@ -342,7 +342,7 @@ describe("per-user isolation", () => {
     expect((await a.as("GET", "/api/trends/weekly?weeks=1")).body.weeks[0]).toMatchObject({ daysLogged: 1, avg: { calories: 80 } });
   });
 
-  it("a person's Culury switch only turns their own Culury on or off", async () => {
+  it("a person's RecipeHub switch only turns their own RecipeHub on or off", async () => {
     const { a, b } = await twoUsers(t);
     const BENS = "http://bens-culury.lan:4000";
     const plan = [{ date: "2026-11-17", slot: "dinner", recipeId: 7, title: "Chili" }];
@@ -368,7 +368,7 @@ describe("per-user isolation", () => {
     expect((await b.as("GET", "/api/culury/plan?day=2026-11-17")).body).toMatchObject({ linked: true });
   });
 
-  it("a person's Culury link (address and key) is only ever used for their own requests", async () => {
+  it("a person's RecipeHub link (address and key) is only ever used for their own requests", async () => {
     const { a, b } = await twoUsers(t);
     const BENS = "http://bens-culury.lan:4000";
     culuryKnows(t, { key: "annas-key", recipes: [culuryRecipe(7, "Anna's chili")], plan: [{ date: "2026-11-17", slot: "dinner", recipeId: 7, title: "Anna's chili" }] });
@@ -377,7 +377,7 @@ describe("per-user isolation", () => {
     expect((await a.as("POST", "/api/log", { day: "2026-11-17", meal: "dinner", food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1 })).status).toBe(200);
     t.foodWeb.calls.length = 0;
 
-    // ben, not linked: nothing of anna's link, and her Culury is never called for him
+    // ben, not linked: nothing of anna's link, and her RecipeHub is never called for him
     expect((await b.as("GET", "/api/settings/culury")).body).toEqual({ url: null, hasKey: false, enabled: false });
     expect((await b.as("GET", "/api/culury/plan?day=2026-11-17")).body).toEqual({ linked: false, days: [], errors: [] });
     expect((await b.as("GET", "/api/culury/recipes/7")).status).toBe(400);
@@ -389,7 +389,7 @@ describe("per-user isolation", () => {
     expect((await b.as("POST", "/api/settings/culury/test", { url: CULURY })).status).toBe(400);
     expect(culuryCalls(t)).toHaveLength(0);
 
-    // ben links his own: his requests go to his Culury with his key
+    // ben links his own: his requests go to his RecipeHub with his key
     expect((await b.as("PUT", "/api/settings/culury", { url: BENS, apiKey: "bens-key" })).status).toBe(200);
     expect((await b.as("GET", "/api/culury/recipes/7")).body.food.name).toBe("Ben's curry");
     expect((await a.as("GET", "/api/culury/recipes/7")).body.food.name).toBe("Anna's chili");
@@ -399,7 +399,7 @@ describe("per-user isolation", () => {
     await b.as("DELETE", "/api/settings/culury");
     expect((await a.as("GET", "/api/settings/culury")).body).toEqual({ url: CULURY, hasKey: true, enabled: true });
 
-    // with his Culury unreachable, re-logging never falls back to anna's snapshot of "her" recipe 7
+    // with his RecipeHub unreachable, re-logging never falls back to anna's snapshot of "her" recipe 7
     fakeDns["bens-down.lan"] = [];
     expect((await b.as("PUT", "/api/settings/culury", { url: "http://bens-down.lan", apiKey: "bens-key" })).status).toBe(200);
     expect((await b.as("POST", "/api/log", { day: "2026-11-17", meal: "dinner", food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1 })).status).toBe(502);
@@ -408,7 +408,7 @@ describe("per-user isolation", () => {
     expect((await b.as("GET", "/api/day/2026-11-17")).body.entries).toEqual([]);
   });
 
-  it("a person can only fetch their own saved Culury key", async () => {
+  it("a person can only fetch their own saved RecipeHub key", async () => {
     const { a, b } = await twoUsers(t);
     expect((await a.as("PUT", "/api/settings/culury", { url: CULURY, apiKey: "annas-key" })).status).toBe(200);
     const bens = await b.as("GET", "/api/settings/culury/key");
@@ -552,7 +552,7 @@ describe("per-user isolation", () => {
     expect((await a.as("GET", `/api/activity/${day}`)).body.stepGoal).toBeNull();
   });
 
-  it("a person's data download holds none of anyone else's rows, photos or Culury address", async () => {
+  it("a person's data download holds none of anyone else's rows, photos or RecipeHub address", async () => {
     const { a, b } = await twoUsers(t);
     const food = (who: typeof a, name: string) => who.as("POST", "/api/my-foods", { name, servings: [{ label: "1", grams: 10 }], nutrients: { calories: 100 } }).then((r) => r.body.food);
     const annas = await food(a, "Anna's Oatmeal");

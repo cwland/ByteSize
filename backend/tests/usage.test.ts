@@ -132,7 +132,7 @@ describe("counting where it happens", () => {
     expect(await counts()).toEqual({ outside_usda: 1, outside_fatsecret: 1, outside_spoonacular: 1 });
   });
 
-  it("Culury calls are the person's own outside lookups: exactly one per call made", async () => {
+  it("RecipeHub calls are the person's own outside lookups: exactly one per call made", async () => {
     culuryKnows(t, { recipes: [culuryRecipe(7, "Chili")] });
     await t.api("PUT", "/api/settings/culury", { url: CULURY, apiKey: "cul_readonly_SECRET_9f8e7d" });
     t.foodWeb.calls.length = 0;

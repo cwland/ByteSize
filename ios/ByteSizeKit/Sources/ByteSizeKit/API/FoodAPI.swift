@@ -58,7 +58,7 @@ public enum FoodAPI {
         let unit: String
         let quantity: Double
         let fraction: Double
-        /// Only for a Culury recipe without nutrition: the AI's estimate per serving (logged as AI-estimated).
+        /// Only for a RecipeHub recipe without nutrition: the AI's estimate per serving (logged as AI-estimated).
         var nutrients: Nutrients? = nil
     }
 
@@ -68,7 +68,7 @@ public enum FoodAPI {
         Endpoint("POST", "/api/log", json: LogBody(day: day, meal: meal.rawValue, food: FoodRef(kind: food.kind, id: food.id), servingIndex: servingIndex, unit: unit.rawValue, quantity: quantity, fraction: 1, nutrients: estimate))
     }
 
-    /// A Culury recipe, read live from Culury by the server (the phone never calls Culury itself).
+    /// A RecipeHub recipe, read live from RecipeHub by the server (the phone never calls RecipeHub itself).
     public static func culuryRecipe(_ id: Int) -> Endpoint<CuluryRecipe> {
         Endpoint("GET", "/api/culury/recipes/\(id)")
     }

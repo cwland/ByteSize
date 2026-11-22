@@ -66,7 +66,7 @@ const foodBody = z.object({
   unit: portionFields.unit,
   quantity: portionFields.quantity,
   fraction: portionFields.fraction.default(1),
-  // Only for a Culury recipe without nutrition: an AI estimate per serving (logged as AI-estimated)
+  // Only for a RecipeHub recipe without nutrition: an AI estimate per serving (logged as AI-estimated)
   nutrients: z.record(z.string(), z.number().nonnegative().max(1000000)).optional(),
   // §40b: a treat, paid from the weekly bank (never combined with the same food logged as a normal entry)
   treat: z.boolean().default(false),
@@ -91,7 +91,7 @@ const estimatesBody = z.object({
   // Describe's "One meal": the foods become one entry with this name; save keeps it in My foods
   combine: z.object({ name: z.string().trim().min(1, "Name the meal").max(200, "Keep the name short"), save: z.boolean().default(false) }).optional(),
 });
-const ESTIMATE_ONLY = "An estimate can only be sent for a Culury recipe without nutrition";
+const ESTIMATE_ONLY = "An estimate can only be sent for a RecipeHub recipe without nutrition";
 const mealLogBody = z.object({ day: DAY.optional(), meal: z.enum(MEALS).optional(), foodId: id, items: itemList.optional() });
 const waterBody = z.object({
   day: DAY.optional(),
@@ -268,7 +268,7 @@ async function resolveFoods(db: Db, userId: number, picks: { ref: string | null;
     ...cache.map((r) => [`cache:${r.id}`, overrideOf.get(r.id) ?? toResult(r, "cache")] as const),
     ...mine.map((r) => [`user_food:${r.id}`, toResult(r, "user_food")] as const),
     ...mine.filter((r) => r.kind === "quick_meal").map((r) => [`quick:${r.id}`, toResult(r, "user_food")] as const),
-    // Culury recipes are never copied: they come back as last logged (the entry's snapshot)
+    // RecipeHub recipes are never copied: they come back as last logged (the entry's snapshot)
     ...picks.filter((p) => p.ref!.startsWith("culury:") && p.entry).map((p) => [p.ref!, culurySnapshot(p.entry!)] as const),
   ]);
   // In the order given (newest or most used first); a food reached twice (itself and via its database
@@ -284,7 +284,7 @@ async function resolveFoods(db: Db, userId: number, picks: { ref: string | null;
   });
 }
 
-/** A logged Culury recipe as a food, from the entry's own snapshot. */
+/** A logged RecipeHub recipe as a food, from the entry's own snapshot. */
 function culurySnapshot(r: Row): FoodResult {
   const nutrients = r.perServing as Nutrients;
   return {
@@ -305,8 +305,8 @@ function culurySnapshot(r: Row): FoodResult {
 }
 
 /**
- * This person's newest snapshot of a Culury recipe, as the food to log when Culury can't be asked. A recipe
- * Culury says it doesn't have (404) isn't revived; never logged: Culury's own error stands.
+ * This person's newest snapshot of a RecipeHub recipe, as the food to log when RecipeHub can't be asked. A recipe
+ * RecipeHub says it doesn't have (404) isn't revived; never logged: RecipeHub's own error stands.
  */
 async function lastCuluryLogged(db: Db, userId: number, recipeId: number, err: unknown) {
   if (err instanceof HttpError && err.statusCode === 404) throw err;
@@ -484,7 +484,7 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     const b = foodBody.parse(raw);
     let food: FoodResult;
     if (b.food.kind === "culury") {
-      // Read live from the caller's own Culury, then snapshotted like any food; when Culury can't be asked
+      // Read live from the caller's own RecipeHub, then snapshotted like any food; when RecipeHub can't be asked
       // (down, or the link removed), the caller's own last snapshot of it is used
       const recipe = await loadCuluryRecipe(app, userId, b.food.id).catch((err) => lastCuluryLogged(db, userId, b.food.id, err));
       food = recipe.food;

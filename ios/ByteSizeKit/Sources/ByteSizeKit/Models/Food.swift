@@ -2,7 +2,7 @@ import Foundation
 
 /// A food the server found (search, barcode, recent, My Foods): what it's called and what one serving holds.
 public struct Food: Codable, Identifiable, Hashable, Sendable {
-    /// "cache" (a database food), "user_food" (the person's own) or "culury" (a Culury recipe).
+    /// "cache" (a database food), "user_food" (the person's own) or "culury" (a RecipeHub recipe).
     public let kind: String
     public let id: Int
     public let name: String
@@ -22,7 +22,7 @@ public struct Food: Codable, Identifiable, Hashable, Sendable {
     public let baseCacheId: Int?
 
     public var ref: String { "\(kind):\(id)" }
-    /// A quick meal is logged item by item (My Foods); everything else, Culury recipes included, logs here.
+    /// A quick meal is logged item by item (My Foods); everything else, RecipeHub recipes included, logs here.
     public var isLoggable: Bool { foodKind != "quick_meal" }
     public var isCulury: Bool { kind == "culury" }
     public var calories: Double { nutrients["calories"] }
@@ -30,14 +30,14 @@ public struct Food: Codable, Identifiable, Hashable, Sendable {
 
 /// An amount as the server stores it: `quantity` × `fraction` of serving `servingIndex` (unit "serving"), or of a unit.
 extension Food {
-    /// The same food with other nutrition (a Culury recipe's AI estimate for one serving).
+    /// The same food with other nutrition (a RecipeHub recipe's AI estimate for one serving).
     public func with(nutrients: Nutrients) -> Food {
         Food(kind: kind, id: id, name: name, brand: brand, icon: icon, barcode: barcode, servings: servings, nutrients: nutrients,
              aiFields: Array(nutrients.values.keys), source: source, foodKind: foodKind, last: last, baseCacheId: baseCacheId)
     }
 }
 
-/// A Culury recipe read live through the server: no nutrition, or nutrition Culury marks out of date.
+/// A RecipeHub recipe read live through the server: no nutrition, or nutrition RecipeHub marks out of date.
 public struct CuluryRecipe: Codable, Sendable {
     public let food: Food
     public let hasNutrition: Bool

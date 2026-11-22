@@ -1,7 +1,7 @@
-// Culury: the person's own recipe / meal-planning app, read over HTTP with a read-only API key (X-API-Key).
+// RecipeHub: the person's own recipe / meal-planning app, read over HTTP with a read-only API key (X-API-Key).
 // ByteSize never writes to it. The link is per person (user_settings.culury_url / culury_key_enc, the key
 // encrypted). Only GET {culury}/api/plan and GET {culury}/api/recipes… are ever called, with a 3 s timeout,
-// no redirects followed, and failures reported as plain messages (never Culury's answer, the key or the URL).
+// no redirects followed, and failures reported as plain messages (never RecipeHub's answer, the key or the URL).
 import dns from "node:dns/promises";
 import net from "node:net";
 import type { FastifyInstance } from "fastify";
@@ -21,8 +21,8 @@ const MAX_URL = 300;
 const MAX_KEY = 300;
 const PLAN_OR_RECIPE_MAX_BYTES = 512 * 1024;
 const LIST_MAX_BYTES = 1024 * 1024;
-const LOG_EVERY_MS = 10 * 60 * 1000; // a Culury that stays down: one warning per person per 10 minutes
-// Cloud metadata services by name: never a Culury
+const LOG_EVERY_MS = 10 * 60 * 1000; // a RecipeHub that stays down: one warning per person per 10 minutes
+// Cloud metadata services by name: never a RecipeHub
 const BLOCKED_NAMES = new Set(["metadata.google.internal", "metadata"]);
 
 /** The 8 groups of an IPv6 address (with an embedded IPv4 tail), or null. */
@@ -73,7 +73,7 @@ export function setCuluryLookup(fn: HostLookup | null) {
   lookupHost = fn ?? systemLookup;
 }
 
-/** Culury didn't answer usefully. The message is safe to show (never the key, the URL or Culury's answer). */
+/** RecipeHub didn't answer usefully. The message is safe to show (never the key, the URL or RecipeHub's answer). */
 export class CuluryError extends Error {
   constructor(
     message: string,
@@ -87,11 +87,11 @@ export class CuluryError extends Error {
 // ---------- the link ----------
 
 /**
- * A Culury address as it's kept: http(s) only, no user name or password, no query or fragment, no trailing
- * slash (a path is kept, for a Culury behind a sub-path). Anything else is a 400.
+ * A RecipeHub address as it's kept: http(s) only, no user name or password, no query or fragment, no trailing
+ * slash (a path is kept, for a RecipeHub behind a sub-path). Anything else is a 400.
  */
 export function cleanCuluryUrl(raw: string): string {
-  const bad = () => badRequest("Enter Culury's address, like http://192.168.1.20:4000 (http or https, no user name or password)");
+  const bad = () => badRequest("Enter RecipeHub's address, like http://192.168.1.20:4000 (http or https, no user name or password)");
   if (raw.length > MAX_URL) throw bad();
   let u: URL;
   try {
@@ -118,19 +118,19 @@ async function storedLink(app: FastifyInstance, userId: number) {
   return { url, key, enabled: row?.enabled ?? !!(url && key) };
 }
 
-/** This person's saved Culury key as stored (encrypted), or null. */
+/** This person's saved RecipeHub key as stored (encrypted), or null. */
 export async function savedCuluryKeyEnc(app: FastifyInstance, userId: number): Promise<string | null> {
   const [row] = await app.db.select({ keyEnc: userSettings.culuryKeyEnc }).from(userSettings).where(eq(userSettings.userId, userId));
   return row?.keyEnc ?? null;
 }
 
-/** This person's saved Culury link, on or off; null when they haven't linked one (or its key can't be read any more). */
+/** This person's saved RecipeHub link, on or off; null when they haven't linked one (or its key can't be read any more). */
 export async function savedCuluryLink(app: FastifyInstance, userId: number): Promise<CuluryLink | null> {
   const { url, key } = await storedLink(app, userId);
   return url && key ? { url, key, userId } : null;
 }
 
-/** This person's Culury link when their Culury is on; null when it is off or not linked (Culury isn't asked). */
+/** This person's RecipeHub link when their RecipeHub is on; null when it is off or not linked (RecipeHub isn't asked). */
 export async function culuryLink(app: FastifyInstance, userId: number): Promise<CuluryLink | null> {
   const { url, key, enabled } = await storedLink(app, userId);
   return enabled && url && key ? { url, key, userId } : null;
@@ -138,14 +138,14 @@ export async function culuryLink(app: FastifyInstance, userId: number): Promise<
 
 /**
  * What Settings shows: the address, whether a key is saved (the key itself only comes from
- * GET /api/settings/culury/key) and whether the person's Culury switch is on.
+ * GET /api/settings/culury/key) and whether the person's RecipeHub switch is on.
  */
 export async function culurySummary(app: FastifyInstance, userId: number) {
   const { url, key, enabled } = await storedLink(app, userId);
   return { url, hasKey: key !== null, enabled };
 }
 
-/** The person's Culury switch; the address and key stay as they are. */
+/** The person's RecipeHub switch; the address and key stay as they are. */
 export async function setCuluryEnabled(app: FastifyInstance, userId: number, enabled: boolean) {
   await app.db.insert(userSettings).values({ userId, culuryEnabled: enabled }).onConflictDoUpdate({ target: userSettings.userId, set: { culuryEnabled: enabled } });
 }
@@ -156,7 +156,7 @@ export async function saveCuluryLink(app: FastifyInstance, userId: number, rawUr
   const key = apiKey?.trim();
   if (key && key.length > MAX_KEY) throw badRequest("That API key is too long");
   const current = await storedLink(app, userId);
-  if (!key && !(current.key && current.url === url)) throw badRequest("Enter Culury's API key (Culury › Settings › API keys, Read only)");
+  if (!key && !(current.key && current.url === url)) throw badRequest("Enter RecipeHub's API key (RecipeHub › Settings › API keys, Read only)");
   const set = { culuryUrl: url, ...(key ? { culuryKeyEnc: encryptSecret(key, app.jwtSecret) } : {}) };
   await app.db
     .insert(userSettings)
@@ -168,7 +168,7 @@ export async function removeCuluryLink(app: FastifyInstance, userId: number) {
   await app.db.update(userSettings).set({ culuryUrl: null, culuryKeyEnc: null }).where(eq(userSettings.userId, userId));
 }
 
-// ---------- calling Culury ----------
+// ---------- calling RecipeHub ----------
 
 /** GET {culury}{path}?{query} with the key; the parsed JSON. path is one of ours, never from a request. */
 async function culuryGet(app: FastifyInstance, link: CuluryLink, path: "/api/plan" | "/api/recipes" | `/api/recipes/${number}`, query: Record<string, string> = {}, timeoutMs = CULURY_TIMEOUT_MS): Promise<unknown> {
@@ -180,7 +180,7 @@ async function culuryGet(app: FastifyInstance, link: CuluryLink, path: "/api/pla
   const timedOut = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       ctrl.abort();
-      reject(new CuluryError("Culury took too long to answer"));
+      reject(new CuluryError("RecipeHub took too long to answer"));
     }, Math.max(0, timeoutMs));
   });
   const call = (async () => {
@@ -191,17 +191,17 @@ async function culuryGet(app: FastifyInstance, link: CuluryLink, path: "/api/pla
       // redirect "manual": a 3xx is answered as it is (and refused below), never followed to another host
       res = await app.foodFetch(url, { method: "GET", headers: { "X-API-Key": link.key, Accept: "application/json" }, redirect: "manual", signal: ctrl.signal });
     } catch {
-      throw new CuluryError("Couldn't reach Culury");
+      throw new CuluryError("Couldn't reach RecipeHub");
     }
-    if (res.status === 401) throw new CuluryError("Culury didn't accept the API key");
-    if (res.status === 403) throw new CuluryError("Culury refused the API key (it needs Read only access, with API keys turned on in Culury)");
-    if (res.status === 404) throw new CuluryError("Culury didn't find that (check the address)", true);
-    if (res.status < 200 || res.status >= 300) throw new CuluryError(`Culury answered with an error (${res.status})`);
+    if (res.status === 401) throw new CuluryError("RecipeHub didn't accept the API key");
+    if (res.status === 403) throw new CuluryError("RecipeHub refused the API key (it needs Read only access, with API keys turned on in RecipeHub)");
+    if (res.status === 404) throw new CuluryError("RecipeHub didn't find that (check the address)", true);
+    if (res.status < 200 || res.status >= 300) throw new CuluryError(`RecipeHub answered with an error (${res.status})`);
     const body = await readCapped(res, maxBytes, ctrl);
     try {
       return JSON.parse(body) as unknown;
     } catch {
-      throw new CuluryError("Culury's answer didn't make sense");
+      throw new CuluryError("RecipeHub's answer didn't make sense");
     }
   })();
   try {
@@ -224,13 +224,13 @@ async function checkHost(url: string) {
   try {
     addresses = await lookupHost(host);
   } catch {
-    throw new CuluryError("Couldn't reach Culury");
+    throw new CuluryError("Couldn't reach RecipeHub");
   }
-  if (!addresses.length) throw new CuluryError("Couldn't reach Culury");
+  if (!addresses.length) throw new CuluryError("Couldn't reach RecipeHub");
   if (addresses.some(blockedAddress)) throw new CuluryError(NOT_ALLOWED);
 }
-const NOT_ALLOWED = "Culury's address isn't allowed";
-const TOO_LARGE = "Culury's answer was too large";
+const NOT_ALLOWED = "RecipeHub's address isn't allowed";
+const TOO_LARGE = "RecipeHub's answer was too large";
 
 /** The body as text, refused (and the request aborted) past maxBytes. */
 async function readCapped(res: Response, maxBytes: number, ctrl: AbortController): Promise<string> {
@@ -257,17 +257,17 @@ async function readCapped(res: Response, maxBytes: number, ctrl: AbortController
     }
   } catch (err) {
     if (err instanceof CuluryError) throw err;
-    throw new CuluryError("Couldn't reach Culury");
+    throw new CuluryError("Couldn't reach RecipeHub");
   }
   return Buffer.concat(chunks).toString("utf8");
 }
 
-export const culuryMessage = (err: unknown) => (err instanceof CuluryError ? err.message : "Culury couldn't be reached");
+export const culuryMessage = (err: unknown) => (err instanceof CuluryError ? err.message : "RecipeHub couldn't be reached");
 
 const lastLogged = new WeakMap<FastifyInstance, Map<number, number>>();
 
 /**
- * A warning in Settings › Logs, at most once per 10 minutes per person (a Culury that stays down would
+ * A warning in Settings › Logs, at most once per 10 minutes per person (a RecipeHub that stays down would
  * otherwise add a line on every search). force: always (a connection test the person asked for).
  */
 export async function logCuluryFailure(app: FastifyInstance, userId: number, what: string, err: unknown, force = false) {
@@ -277,7 +277,7 @@ export async function logCuluryFailure(app: FastifyInstance, userId: number, wha
   const last = seen.get(userId);
   if (!force && last !== undefined && now >= last && now - last < LOG_EVERY_MS) return;
   seen.set(userId, now);
-  await logEvent(app.db, { category: "food", level: "warning", source: "Culury", event: `Culury ${what} failed`, detail: culuryMessage(err), userId });
+  await logEvent(app.db, { category: "food", level: "warning", source: "RecipeHub", event: `RecipeHub ${what} failed`, detail: culuryMessage(err), userId });
 }
 
 const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
@@ -286,10 +286,10 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 type PlanRow = { date: string; slot: string; recipeId: number | null; title: string; servings: number | null; note: string | null };
 
-/** Culury's plan between two days (its rows as Culury sends them, malformed ones left out). */
+/** RecipeHub's plan between two days (its rows as RecipeHub sends them, malformed ones left out). */
 async function planBetween(app: FastifyInstance, link: CuluryLink, from: string, to: string): Promise<PlanRow[]> {
   const json = await culuryGet(app, link, "/api/plan", { from, to });
-  if (!Array.isArray(json)) throw new CuluryError("Culury's answer didn't make sense");
+  if (!Array.isArray(json)) throw new CuluryError("RecipeHub's answer didn't make sense");
   return json.flatMap((r): PlanRow[] => {
     const date = typeof r?.date === "string" && ISO_DAY.test(r.date) ? r.date : null;
     const title = text(r?.title);
@@ -308,7 +308,7 @@ export async function testCulury(app: FastifyInstance, link: CuluryLink, today: 
 export type PlanItem = { slot: string; title: string; recipeId: number | null; servings: number | null; note: string | null };
 export type PlanDay = { day: string; items: PlanItem[] };
 
-/** Does a Culury slot ("snack", "second-breakfast") go with a ByteSize meal ("snacks")? */
+/** Does a RecipeHub slot ("snack", "second-breakfast") go with a ByteSize meal ("snacks")? */
 const slotMatches = (slot: string, meal: Meal) => {
   const word = meal === "snacks" ? "snack" : meal;
   return slot.toLowerCase().split(/[^a-z]+/).some((w) => w === word || w === meal);
@@ -339,7 +339,7 @@ export const isMeal = (v: unknown): v is Meal => (MEALS as readonly unknown[]).i
 
 // ---------- recipes as foods ----------
 
-// Culury's per-serving nutrition -> ByteSize's keys (sodium is mg in both)
+// RecipeHub's per-serving nutrition -> ByteSize's keys (sodium is mg in both)
 const NUTRITION_MAP: [string, NutrientKey, number][] = [
   ["calories", "calories", 1],
   ["protein", "protein_g", 2],
@@ -355,7 +355,7 @@ const round = (v: number, decimals: number) => Math.round(v * 10 ** decimals) / 
 
 export type CuluryFood = { food: FoodResult; hasNutrition: boolean; outdated: boolean };
 
-/** A Culury recipe (GET /api/recipes/:id, or a list row without nutrition) as a loggable food. */
+/** A RecipeHub recipe (GET /api/recipes/:id, or a list row without nutrition) as a loggable food. */
 export function culuryFood(recipe: any): CuluryFood | null {
   const id = posInt(recipe?.id);
   const name = text(recipe?.title);
@@ -379,8 +379,8 @@ export function culuryFood(recipe: any): CuluryFood | null {
       barcode: null,
       servings: [serving],
       nutrients,
-      aiFields: n?.source === "ai" ? keys : [], // Culury's own AI estimate is still an AI estimate
-      imageUrl: null, // Culury's images need its login: not shown
+      aiFields: n?.source === "ai" ? keys : [], // RecipeHub's own AI estimate is still an AI estimate
+      imageUrl: null, // RecipeHub's images need its login: not shown
       override: false,
       source: "culury",
       foodKind: "recipe",
@@ -390,23 +390,23 @@ export function culuryFood(recipe: any): CuluryFood | null {
   };
 }
 
-/** One recipe from the person's Culury. CuluryError (notFound for a recipe Culury doesn't have). */
+/** One recipe from the person's RecipeHub. CuluryError (notFound for a recipe RecipeHub doesn't have). */
 export async function culuryRecipe(app: FastifyInstance, link: CuluryLink, id: number, timeoutMs = CULURY_TIMEOUT_MS): Promise<CuluryFood> {
   const found = culuryFood(await culuryGet(app, link, `/api/recipes/${id}`, {}, timeoutMs));
-  if (!found || found.food.id !== id) throw new CuluryError("Culury's answer didn't make sense");
+  if (!found || found.food.id !== id) throw new CuluryError("RecipeHub's answer didn't make sense");
   return found;
 }
 
 const SEARCH_LIMIT = 8;
 
 /**
- * Recipes matching q (Culury's own search, GET /api/recipes?q=), each opened for its nutrition, all within
+ * Recipes matching q (RecipeHub's own search, GET /api/recipes?q=), each opened for its nutrition, all within
  * the 3 s budget. A recipe whose details didn't come in time is still listed, with nutrients unknown.
  */
 export async function searchCulury(app: FastifyInstance, link: CuluryLink, q: string): Promise<FoodResult[]> {
   const deadline = Date.now() + CULURY_TIMEOUT_MS;
   const json = (await culuryGet(app, link, "/api/recipes", { q, limit: String(SEARCH_LIMIT) })) as { recipes?: unknown };
-  if (!json || !Array.isArray(json.recipes)) throw new CuluryError("Culury's answer didn't make sense");
+  if (!json || !Array.isArray(json.recipes)) throw new CuluryError("RecipeHub's answer didn't make sense");
   const listed = json.recipes.slice(0, SEARCH_LIMIT).map(culuryFood).filter((f): f is CuluryFood => f !== null);
   const details = await Promise.allSettled(listed.map((f) => culuryRecipe(app, link, f.food.id, deadline - Date.now())));
   return listed.map((f, i) => {
@@ -416,7 +416,7 @@ export async function searchCulury(app: FastifyInstance, link: CuluryLink, q: st
 }
 
 /**
- * The grams in a Culury serving note: "About 1½ cups (340 g)", "(1,200 g)", "(340 g / 12 oz)", "(85.5g)".
+ * The grams in a RecipeHub serving note: "About 1½ cups (340 g)", "(1,200 g)", "(340 g / 12 oz)", "(85.5g)".
  * Undefined when the note gives no grams (servings only, then).
  */
 export function servingGrams(text: unknown): number | undefined {
@@ -428,15 +428,15 @@ export function servingGrams(text: unknown): number | undefined {
 
 // ---------- for routes ----------
 
-const NOT_LINKED = "Link Culury in Settings › Integrations first";
+const NOT_LINKED = "Link RecipeHub in Settings › Integrations first";
 
-/** Culury failing for a request that needs it: a plain 404 / 502. */
+/** RecipeHub failing for a request that needs it: a plain 404 / 502. */
 export function culuryHttpError(err: unknown): HttpError {
-  if (err instanceof CuluryError && err.notFound) return new HttpError(404, "Culury doesn't have that recipe (any more)");
+  if (err instanceof CuluryError && err.notFound) return new HttpError(404, "RecipeHub doesn't have that recipe (any more)");
   return new HttpError(502, culuryMessage(err));
 }
 
-/** A recipe from the caller's own Culury, for showing or logging. 400 not linked; 404 / 502 from Culury. */
+/** A recipe from the caller's own RecipeHub, for showing or logging. 400 not linked; 404 / 502 from RecipeHub. */
 export async function loadCuluryRecipe(app: FastifyInstance, userId: number, id: number): Promise<CuluryFood> {
   const link = await culuryLink(app, userId);
   if (!link) throw badRequest(NOT_LINKED);

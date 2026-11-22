@@ -29,7 +29,7 @@ export const itemFromView = ({ nutrients: _saved, servingIndex, unit, quantity, 
 });
 export const itemFromFood = (f: FoodResult, portion: Portion): EditItem => ({
   key: nextKey++,
-  food: { kind: f.kind as FoodRef["kind"], id: f.id }, // FoodPicker never offers a Culury recipe
+  food: { kind: f.kind as FoodRef["kind"], id: f.id }, // FoodPicker never offers a RecipeHub recipe
   foodKind: f.foodKind,
   name: f.name,
   brand: f.brand,

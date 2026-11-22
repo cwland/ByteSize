@@ -23,7 +23,7 @@ afterAll(async () => t.close());
 const link = (url = CULURY, apiKey: string | undefined = CULURY_KEY) => t.api("PUT", "/api/settings/culury", { url, ...(apiKey !== undefined ? { apiKey } : {}) });
 const everythingSaid = async () => JSON.stringify((await t.db.select().from(appLog)).map((r) => [r.event, r.detail, r.source]));
 
-describe("Culury settings", () => {
+describe("RecipeHub settings", () => {
   it("starts unlinked", async () => {
     expect((await t.api("GET", "/api/settings/culury")).body).toEqual({ url: null, hasKey: false, enabled: false });
   });
@@ -94,7 +94,7 @@ describe("Culury settings", () => {
 });
 
 describe("Test connection", () => {
-  it("asks Culury for today's plan with the key in X-API-Key", async () => {
+  it("asks RecipeHub for today's plan with the key in X-API-Key", async () => {
     t.clock.date = new Date("2026-11-17T18:00:00Z");
     culuryKnows(t);
     await link();
@@ -115,7 +115,7 @@ describe("Test connection", () => {
     expect((await t.api("GET", "/api/settings/culury")).body).toEqual({ url: null, hasKey: false, enabled: false });
   });
 
-  it("a wrong key: a plain reason, never the key or Culury's answer", async () => {
+  it("a wrong key: a plain reason, never the key or RecipeHub's answer", async () => {
     culuryKnows(t, { key: "the-right-one" });
     await link();
     const res = await t.api("POST", "/api/settings/culury/test");
@@ -131,7 +131,7 @@ describe("Test connection", () => {
     t.foodWeb.down = true;
     const res = await t.api("POST", "/api/settings/culury/test");
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/reach Culury/);
+    expect(res.body.error).toMatch(/reach RecipeHub/);
   });
 
   it("too slow: gives up after 3 seconds", async () => {
@@ -204,19 +204,19 @@ describe("Meal plan", () => {
     });
   });
 
-  it("ByteSize's snacks matches Culury's snack slot", async () => {
+  it("ByteSize's snacks matches RecipeHub's snack slot", async () => {
     culuryKnows(t, { plan });
     await link();
     const res = await t.api("GET", "/api/culury/plan?day=2026-11-21&meal=snacks");
     expect(res.body.days[0]).toEqual({ day: "2026-11-21", items: [{ slot: "snack", title: "Energy bites", recipeId: 5, servings: null, note: null }] });
   });
 
-  it("Culury down: a plain message, no days, never a 500", async () => {
+  it("RecipeHub down: a plain message, no days, never a 500", async () => {
     await link();
     t.foodWeb.down = true;
     const res = await t.api("GET", "/api/culury/plan?day=2026-11-17");
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ linked: true, days: [], errors: [{ source: "culury", message: expect.stringMatching(/reach Culury/) }] });
+    expect(res.body).toEqual({ linked: true, days: [], errors: [{ source: "culury", message: expect.stringMatching(/reach RecipeHub/) }] });
   });
 
   it("malformed rows are skipped", async () => {
@@ -232,7 +232,7 @@ describe("Meal plan", () => {
   });
 });
 
-describe("Culury recipes as foods", () => {
+describe("RecipeHub recipes as foods", () => {
   it("maps nutrition per serving and the serving's grams", async () => {
     culuryKnows(t, { recipes: [culuryRecipe(7, "Turkey chili")] });
     await link();
@@ -283,14 +283,14 @@ describe("Culury recipes as foods", () => {
     expect(res.body.food.nutrients).toEqual({});
   });
 
-  it("Culury's own AI estimate is flagged as AI", async () => {
+  it("RecipeHub's own AI estimate is flagged as AI", async () => {
     culuryKnows(t, { recipes: [culuryRecipe(7, "Soup", fullNutrition({ source: "ai" }))] });
     await link();
     const res = await t.api("GET", "/api/culury/recipes/7");
     expect(res.body.food.aiFields).toHaveLength(9);
   });
 
-  it("not found in Culury: 404; down: a plain 502; not linked: 400", async () => {
+  it("not found in RecipeHub: 404; down: a plain 502; not linked: 400", async () => {
     culuryKnows(t, { recipes: [] });
     expect((await t.api("GET", "/api/culury/recipes/7")).status).toBe(400);
     await link();
@@ -298,12 +298,12 @@ describe("Culury recipes as foods", () => {
     t.foodWeb.down = true;
     const down = await t.api("GET", "/api/culury/recipes/7");
     expect(down.status).toBe(502);
-    expect(down.body.error).toMatch(/reach Culury/);
+    expect(down.body.error).toMatch(/reach RecipeHub/);
   });
 });
 
-describe("Culury in food search", () => {
-  it("a Culury group after My foods when linked", async () => {
+describe("RecipeHub in food search", () => {
+  it("a RecipeHub group after My foods when linked", async () => {
     culuryKnows(t, { recipes: [culuryRecipe(7, "Turkey chili"), culuryRecipe(8, "Chicken chili verde", null), culuryRecipe(9, "Pancakes")] });
     await link();
     const res = await t.api("GET", "/api/foods/search?q=chili");
@@ -312,7 +312,7 @@ describe("Culury in food search", () => {
     expect(new URL(listCall.url).searchParams.get("q")).toBe("chili");
     expect(listCall.headers["x-api-key"]).toBe(CULURY_KEY);
     const group = res.body.groups.find((g: any) => g.source === "culury");
-    expect(group.label).toBe("Culury");
+    expect(group.label).toBe("RecipeHub");
     expect(group.foods.map((f: any) => [f.kind, f.id, f.name])).toEqual([
       ["culury", 7, "Turkey chili"],
       ["culury", 8, "Chicken chili verde"],
@@ -322,14 +322,14 @@ describe("Culury in food search", () => {
     expect(res.body.errors).toEqual([]);
   });
 
-  it("no group when not linked, and nothing is asked of Culury", async () => {
+  it("no group when not linked, and nothing is asked of RecipeHub", async () => {
     culuryKnows(t, { recipes: [culuryRecipe(7, "Turkey chili")] });
     const res = await t.api("GET", "/api/foods/search?q=chili");
     expect(res.body.groups.some((g: any) => g.source === "culury")).toBe(false);
     expect(culuryCalls(t)).toHaveLength(0);
   });
 
-  it("Culury down: a plain error, the rest of search still works", async () => {
+  it("RecipeHub down: a plain error, the rest of search still works", async () => {
     culuryKnows(t, { key: "other" }); // refuses our key
     await link();
     const res = await t.api("GET", "/api/foods/search?q=chili");
@@ -340,10 +340,10 @@ describe("Culury in food search", () => {
   });
 });
 
-describe("Logging a Culury recipe", () => {
+describe("Logging a RecipeHub recipe", () => {
   const log = (body: object) => t.api("POST", "/api/log", { day: "2026-11-17", meal: "dinner", ...body });
 
-  it("snapshots it (source culury, ref culury:<id>); a later Culury edit never changes it; shows in recents", async () => {
+  it("snapshots it (source culury, ref culury:<id>); a later RecipeHub edit never changes it; shows in recents", async () => {
     culuryKnows(t, { recipes: [culuryRecipe(7, "Turkey chili")] });
     await link();
     const res = await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1.5 });
@@ -351,12 +351,12 @@ describe("Logging a Culury recipe", () => {
     expect(res.body.entry).toMatchObject({ name: "Turkey chili", source: "culury", sourceRef: "culury:7", aiEstimated: false, servings: [{ label: "1 serving", grams: 340 }] });
     expect(res.body.entry.nutrients).toMatchObject({ calories: 780, protein_g: 61.5, sodium_mg: 1320 });
 
-    // Culury changes the recipe: the logged day doesn't move
+    // RecipeHub changes the recipe: the logged day doesn't move
     culuryKnows(t, { recipes: [culuryRecipe(7, "Turkey chili", fullNutrition({ calories: 9999 }))] });
     const day = await t.api("GET", "/api/day/2026-11-17");
     expect(day.body.entries[0].nutrients.calories).toBe(780);
 
-    // Recents come from the snapshot (no call to Culury)
+    // Recents come from the snapshot (no call to RecipeHub)
     t.foodWeb.calls.length = 0;
     const recent = await t.api("GET", "/api/foods/recent");
     expect(recent.body.foods).toEqual([
@@ -388,7 +388,7 @@ describe("Logging a Culury recipe", () => {
     expect(est.body.entry).toMatchObject({ aiEstimated: true, nutrients: { calories: 820, protein_g: 60 }, sourceRef: "culury:8" });
   });
 
-  it("an estimate is refused when Culury has nutrition, and for other foods", async () => {
+  it("an estimate is refused when RecipeHub has nutrition, and for other foods", async () => {
     culuryKnows(t, { recipes: [culuryRecipe(7, "Turkey chili")] });
     await link();
     expect((await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1, nutrients: { calories: 1 } })).status).toBe(400);
@@ -396,7 +396,7 @@ describe("Logging a Culury recipe", () => {
     expect((await log({ food: { kind: "user_food", id: mine.body.food.id }, unit: "serving", quantity: 1, nutrients: { calories: 1 } })).status).toBe(400);
   });
 
-  it("Culury down or not linked: a plain refusal, nothing logged; other foods still log", async () => {
+  it("RecipeHub down or not linked: a plain refusal, nothing logged; other foods still log", async () => {
     expect((await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1 })).status).toBe(400);
     await link();
     t.foodWeb.down = true;
@@ -406,7 +406,7 @@ describe("Logging a Culury recipe", () => {
     expect((await t.api("POST", "/api/log", { day: "2026-11-17", water_ml: 250 })).status).toBe(200);
   });
 
-  it("only ever calls the person's own Culury paths", async () => {
+  it("only ever calls the person's own RecipeHub paths", async () => {
     culuryKnows(t, { recipes: [culuryRecipe(7, "Turkey chili")] });
     await link("http://culury.lan:4000/sub/");
     culuryKnows(t, { recipes: [culuryRecipe(7, "Turkey chili")], base: "http://culury.lan:4000/sub" });
@@ -420,8 +420,8 @@ describe("Logging a Culury recipe", () => {
 describe("fix round 1", () => {
   const log = (body: object) => t.api("POST", "/api/log", { day: "2026-11-17", meal: "dinner", ...body });
 
-  describe("re-logging from the last snapshot when Culury can't be asked", () => {
-    it("Culury down, or the link removed: this person's last snapshot is used", async () => {
+  describe("re-logging from the last snapshot when RecipeHub can't be asked", () => {
+    it("RecipeHub down, or the link removed: this person's last snapshot is used", async () => {
       culuryKnows(t, { recipes: [culuryRecipe(7, "Turkey chili")] });
       await link();
       expect((await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1 })).status).toBe(200);
@@ -431,7 +431,7 @@ describe("fix round 1", () => {
       expect(again.body.entry).toMatchObject({ name: "Turkey chili", sourceRef: "culury:7", source: "culury", nutrients: { calories: 1040 }, servings: [{ label: "1 serving", grams: 340 }] });
       // an estimate isn't taken over a snapshot that has nutrition
       expect((await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1, nutrients: { calories: 1 } })).status).toBe(400);
-      // never logged: still Culury's failure
+      // never logged: still RecipeHub's failure
       expect((await log({ food: { kind: "culury", id: 9 }, unit: "serving", quantity: 1 })).status).toBe(502);
       await t.api("DELETE", "/api/settings/culury");
       expect((await log({ day: "2026-11-19", food: { kind: "culury", id: 7 }, unit: "serving", quantity: 0.5 })).body.entry.nutrients.calories).toBe(260);
@@ -448,7 +448,7 @@ describe("fix round 1", () => {
       expect(est.body.entry).toMatchObject({ aiEstimated: true, nutrients: { calories: 400 } });
     });
 
-    it("a recipe Culury no longer has is not logged from an old snapshot", async () => {
+    it("a recipe RecipeHub no longer has is not logged from an old snapshot", async () => {
       culuryKnows(t, { recipes: [culuryRecipe(7, "Turkey chili")] });
       await link();
       await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1 });
@@ -464,14 +464,14 @@ describe("fix round 1", () => {
       await link();
       const res = await t.api("GET", "/api/culury/recipes/7");
       expect(res.status).toBe(502);
-      expect(res.body.error).toBe("Culury's answer was too large");
+      expect(res.body.error).toBe("RecipeHub's answer was too large");
     });
 
     it("a plan over 512 KB is refused", async () => {
       await link();
       t.foodWeb.respond = () => ({ status: 200, json: [{ date: "2026-11-17", slot: "dinner", title: "Big", recipeId: 1, note: big }] });
       const res = await t.api("GET", "/api/culury/plan?day=2026-11-17");
-      expect(res.body.errors).toEqual([{ source: "culury", message: "Culury's answer was too large" }]);
+      expect(res.body.errors).toEqual([{ source: "culury", message: "RecipeHub's answer was too large" }]);
     });
 
     it("a list may be up to 1 MB, not more; only the first 8 are opened", async () => {
@@ -487,7 +487,7 @@ describe("fix round 1", () => {
       expect((await t.api("GET", "/api/foods/search?q=chili")).body.errors).toEqual([]);
       const huge = Array.from({ length: 5 }, (_, i) => ({ ...culuryRecipe(i + 1, `Chili ${i + 1}`), description: "y".repeat(250 * 1024) }));
       culuryKnows(t, { recipes: huge });
-      expect((await t.api("GET", "/api/foods/search?q=chili")).body.errors).toEqual([{ source: "culury", message: "Culury's answer was too large" }]);
+      expect((await t.api("GET", "/api/foods/search?q=chili")).body.errors).toEqual([{ source: "culury", message: "RecipeHub's answer was too large" }]);
     });
   });
 
@@ -504,7 +504,7 @@ describe("fix round 1", () => {
         expect((await link(`http://${host}:4000`)).status).toBe(200);
         const res = await t.api("POST", "/api/settings/culury/test");
         expect(res.status).toBe(400);
-        expect(res.body.error).toBe("Culury's address isn't allowed");
+        expect(res.body.error).toBe("RecipeHub's address isn't allowed");
       }
       expect(t.foodWeb.calls).toHaveLength(0);
     });
@@ -529,15 +529,15 @@ describe("fix round 1", () => {
     it("a name that doesn't resolve can't be reached", async () => {
       fakeDns["nowhere.lan"] = [];
       await link("http://nowhere.lan");
-      expect((await t.api("POST", "/api/settings/culury/test")).body.error).toBe("Couldn't reach Culury");
+      expect((await t.api("POST", "/api/settings/culury/test")).body.error).toBe("Couldn't reach RecipeHub");
     });
   });
 
-  it("while Culury is down, searches log a warning at most once per 10 minutes", async () => {
+  it("while RecipeHub is down, searches log a warning at most once per 10 minutes", async () => {
     await link();
     t.foodWeb.down = true;
     t.clock.date = new Date("2030-01-01T12:00:00Z");
-    const culuryLines = async () => (await t.db.select().from(appLog).where(and(eq(appLog.source, "Culury")))).length;
+    const culuryLines = async () => (await t.db.select().from(appLog).where(and(eq(appLog.source, "RecipeHub")))).length;
     for (let i = 0; i < 3; i++) expect((await t.api("GET", "/api/foods/search?q=chili")).body.errors.filter((e: any) => e.source === "culury")).toHaveLength(1);
     expect(await culuryLines()).toBe(1);
     t.clock.date = new Date("2030-01-01T12:09:00Z");

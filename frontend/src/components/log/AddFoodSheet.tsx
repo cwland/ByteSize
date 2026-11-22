@@ -108,14 +108,14 @@ type View =
   | { k: "detail"; food: FoodResult; initial: Portion; from?: "restaurants" }
   | { k: "restaurants" }
   | { k: "meal"; food: FoodResult } // a quick meal: adjust its foods, then Track
-  | { k: "plan" } // Culury's meal plan
+  | { k: "plan" } // RecipeHub's meal plan
   | {
       k: "culury";
       recipe: CuluryRecipe;
       from: CuluryFrom;
       initial: Portion;
       stale?: boolean;
-    }; // a Culury recipe, read live
+    }; // a RecipeHub recipe, read live
 type CuluryFrom = "plan" | "search" | "recent";
 const ONE_SERVING: Portion = {
   servingIndex: 0,
@@ -345,8 +345,8 @@ export default function AddFoodSheet({
   const [msg, setMsg] = useState<Msg>(null);
   const [attempt, setAttempt] = useState(0); // "Try again" re-runs the lookup
   const [culury, setCulury] = useState(false); // on and linked: the Meal plan button shows
-  const [opening, setOpening] = useState<number | null>(null); // the Culury recipe a row is opening
-  const viewSeq = useRef(0); // bumps on every view change, so a late Culury answer can tell it's stale
+  const [opening, setOpening] = useState<number | null>(null); // the RecipeHub recipe a row is opening
+  const viewSeq = useRef(0); // bumps on every view change, so a late RecipeHub answer can tell it's stale
   useEffect(() => void viewSeq.current++, [view]);
 
   useEffect(() => {
@@ -435,7 +435,7 @@ export default function AddFoodSheet({
   const startPortion = (food: FoodResult) =>
     recent.find((r) => r.kind === food.kind && r.id === food.id)?.last ??
     startingPortion(food, units);
-  // A Culury recipe is read live: from Recently tracked at its last portion, and when Culury can't answer
+  // A RecipeHub recipe is read live: from Recently tracked at its last portion, and when RecipeHub can't answer
   // (anything but "not found") from the saved copy; from the plan or search at 1 serving. An answer that
   // arrives after the person moved to another view is dropped.
   const openCulury = async (
@@ -516,7 +516,7 @@ export default function AddFoodSheet({
           ? { kind: "override", cacheId: food.id }
           : { kind: "edit", id: food.id },
       draft: draftOf(food),
-      fillRef: { kind: food.kind as "cache" | "user_food", id: food.id }, // never a Culury recipe (its own view)
+      fillRef: { kind: food.kind as "cache" | "user_food", id: food.id }, // never a RecipeHub recipe (its own view)
     });
 
   const estimating = useEstimate();
@@ -569,7 +569,7 @@ export default function AddFoodSheet({
     );
     notifyDayChanged();
   };
-  // estimate: per-serving AI nutrients for a Culury recipe that has none
+  // estimate: per-serving AI nutrients for a RecipeHub recipe that has none
   const log = async (
     food: FoodResult,
     p: Portion,
@@ -918,7 +918,7 @@ export default function AddFoodSheet({
     );
   }
 
-  // saved: the row is from Recently tracked. A Culury row with no nutrition opens on + too (to offer the estimate).
+  // saved: the row is from Recently tracked. A RecipeHub row with no nutrition opens on + too (to offer the estimate).
   // A found food (search or barcode) that is a kept copy says so, with Check for changes.
   const culuryRow = (f: FoodResult) => f.kind === "culury";
   // chosen: also remember this food for a barcode the sources disagreed on (the next scan opens it straight away)
@@ -935,7 +935,7 @@ export default function AddFoodSheet({
       imageUrl={f.imageUrl}
       amount={amountOf(f.servings, p)}
       brand={f.brand}
-      tag={f.kind === "culury" ? "Culury" : tagOf(f.foodKind)}
+      tag={f.kind === "culury" ? "RecipeHub" : tagOf(f.foodKind)}
       nutrients={nutrientsFor(f, p)}
       busy={culuryRow(f) && opening === f.id}
       onOpen={() => {

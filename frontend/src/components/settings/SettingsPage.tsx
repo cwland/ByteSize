@@ -20,7 +20,7 @@ const TABS = [
   { id: "users", label: "Users", hint: "Add and manage people", admin: true, Icon: Users, Panel: UsersSettings },
   { id: "api-keys", label: "API keys", hint: "Keys for your own tools and scripts", admin: false, Icon: KeyRound, Panel: ApiKeysSettings },
   { id: "security", label: "Security", hint: "Password, passkeys, devices", admin: false, Icon: Shield, Panel: SecuritySettings },
-  { id: "integrations", label: "Integrations", hint: "Culury meal plan and recipes", adminHint: "AI, food data, restaurants, Culury", admin: false, twoUp: true, Icon: Link2, Panel: IntegrationsSettings },
+  { id: "integrations", label: "Integrations", hint: "RecipeHub meal plan and recipes", adminHint: "AI, food data, restaurants, RecipeHub", admin: false, twoUp: true, Icon: Link2, Panel: IntegrationsSettings },
   { id: "cached-data", label: "Cached data", hint: "Saved barcodes and what ByteSize keeps", admin: true, Icon: Database, Panel: CachedDataSettings },
   { id: "email", label: "Email", hint: "Sending email, forgot password", admin: true, Icon: Mail, Panel: EmailSettings },
   { id: "data", label: "Data", hint: "Download your data", adminHint: "Your data and backups", admin: false, Icon: HardDrive, Panel: DataSettings },

@@ -163,7 +163,7 @@ describe("GET /api/admin/food-sources/:source/key", () => {
 });
 
 describe("GET /api/settings/culury/key", () => {
-  it("gives a person their own Culury key, not cached, and logs it without the key", async () => {
+  it("gives a person their own RecipeHub key, not cached, and logs it without the key", async () => {
     const sam = await t.createUser("sam");
     const as = asUser(t, sam.token);
     expect((await as("PUT", "/api/settings/culury", { url: CULURY, apiKey: CULURY_KEY })).status).toBe(200);
@@ -173,7 +173,7 @@ describe("GET /api/settings/culury/key", () => {
     expect(r.headers["cache-control"]).toBe("no-store");
     const lines = await logLines();
     expect(lines.map((l) => [l.category, l.event, l.userId])).toEqual([["api", "Saved key shown", sam.id]]);
-    expect(lines[0].detail).toMatch(/^Culury key\b.*sam/);
+    expect(lines[0].detail).toMatch(/^RecipeHub key\b.*sam/);
     const [row] = await t.db.select().from(userSettings).where(eq(userSettings.userId, sam.id));
     const said = await everythingLogged();
     expect(said).not.toContain(CULURY_KEY);

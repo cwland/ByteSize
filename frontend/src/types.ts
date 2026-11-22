@@ -22,7 +22,7 @@ export type Serving = { label: string; grams?: number; ml?: number; approx?: tru
 // What a food is to its owner. Database (cache) foods read as "custom"; only recipes and quick meals get a tag.
 export type FoodKind = "custom" | "override" | "recipe" | "quick_meal";
 export type FoodResult = {
-  kind: "cache" | "user_food" | "culury"; // culury: a recipe read live from the person's Culury (id = its recipe id)
+  kind: "cache" | "user_food" | "culury"; // culury: a recipe read live from the person's RecipeHub (id = its recipe id)
   id: number;
   name: string;
   brand: string | null;
@@ -63,7 +63,7 @@ export type ItemView = Item & {
 export type MyFood = FoodResult & { notes: string | null; items?: ItemView[]; recipeServings?: number | null; servingGrams?: number | null };
 export type Portion = { servingIndex: number; unit: Unit; quantity: number; fraction: number };
 export type RecentFood = FoodResult & { last: Portion };
-// Food search: groups in order (My foods, Culury, Basic foods, FatSecret, USDA branded, Open Food Facts, Saved
+// Food search: groups in order (My foods, RecipeHub, Basic foods, FatSecret, USDA branded, Open Food Facts, Saved
 // foods); a close spelling ("Did you mean …?") comes only when little was found
 export type SearchGroup = { source: string; label: string; foods: FoodResult[] };
 export type SearchResult = { groups: SearchGroup[]; errors: { source: string; message: string }[]; searched: string[]; suggestion?: string };
@@ -195,9 +195,9 @@ export type WeekTrend = { start: string; end: string; daysLogged: number; calori
 // count: Goal met only (§40c) — goals completed; earnedOn is the latest one's day
 export type Badge = { id: string; earnedOn: string | null; seen: boolean; count?: number };
 export type Vacation = { id: number; from: string; to: string };
-// Culury link (§14 A): GET/PUT/DELETE /api/settings/culury (the key never comes back), GET /api/culury/plan
+// RecipeHub link (§14 A): GET/PUT/DELETE /api/settings/culury (the key never comes back), GET /api/culury/plan
 // (selected day first; recipeId null = a note, not loggable), GET /api/culury/recipes/:id
-// enabled: the person's own Culury switch (PUT /api/settings/culury/enabled); off = Culury is never asked
+// enabled: the person's own RecipeHub switch (PUT /api/settings/culury/enabled); off = RecipeHub is never asked
 export type CuluryLink = { url: string | null; hasKey: boolean; enabled: boolean };
 export type CuluryPlan = { linked: boolean; days: { day: string; items: { slot: string; title: string; recipeId: number | null; servings: number | null; note: string | null }[] }[]; errors: SourceError[] };
 export type CuluryRecipe = { food: FoodResult; hasNutrition: boolean; outdated: boolean };

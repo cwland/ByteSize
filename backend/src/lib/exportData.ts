@@ -63,7 +63,7 @@ function perPersonTables() {
     .filter((tbl) => getTableConfig(tbl).columns.some((c) => c.name === "user_id") && !LEFT_OUT.has(getTableConfig(tbl).name));
 }
 
-// The row keys (camelCase) of columns that must not leave the server: secrets by name, and the Culury address (it goes out as its own entry)
+// The row keys (camelCase) of columns that must not leave the server: secrets by name, and the RecipeHub address (it goes out as its own entry)
 function hiddenKeys(tbl: PgTable): Set<string> {
   const hidden = new Set<string>();
   for (const [key, col] of Object.entries(tbl)) {

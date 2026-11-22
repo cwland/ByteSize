@@ -61,7 +61,7 @@ describe("starting state (also for servers set up before the switches)", () => {
     expect((await t.api("GET", "/api/restaurants/status")).body.sources).toEqual(["fatsecret", "spoonacular"]);
   });
 
-  it("Culury: on when linked, off when not (no switch stored)", async () => {
+  it("RecipeHub: on when linked, off when not (no switch stored)", async () => {
     expect((await t.api("GET", "/api/settings/culury")).body).toEqual({ url: null, hasKey: false, enabled: false });
     culuryKnows(t);
     await t.api("PUT", "/api/settings/culury", { url: CULURY, apiKey: CULURY_KEY });
@@ -252,7 +252,7 @@ describe("restaurant sources off", () => {
   });
 });
 
-describe("Culury off (the person's own switch)", () => {
+describe("RecipeHub off (the person's own switch)", () => {
   const linkIt = async () => {
     culuryKnows(t, { recipes: [culuryRecipe(7, "Chili")], plan: [{ date: "2026-11-17", slot: "dinner", recipeId: 7, title: "Chili" }] });
     expect((await t.api("PUT", "/api/settings/culury", { url: CULURY, apiKey: CULURY_KEY })).status).toBe(200);
@@ -271,7 +271,7 @@ describe("Culury off (the person's own switch)", () => {
     expect((await turnCulury("yes")).status).toBe(400);
   });
 
-  it("plan, recipes and search never ask Culury and report nothing", async () => {
+  it("plan, recipes and search never ask RecipeHub and report nothing", async () => {
     await linkIt();
     await turnCulury(false);
     expect((await t.api("GET", "/api/culury/plan?day=2026-11-17")).body).toEqual({ linked: false, days: [], errors: [] });

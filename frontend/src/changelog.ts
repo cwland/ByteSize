@@ -1,4 +1,4 @@
-// "What's new": one entry per version, newest first (W1, as in Culury). With each release add an entry and bump
+// "What's new": one entry per version, newest first (W1, as in RecipeHub). With each release add an entry and bump
 // "version" in frontend/package.json and backend/package.json (a test keeps the three equal). Everyone sees the
 // new entries once after signing in, and every version any time from the version number in the bottom left.
 // Each change is sorted into a kind (SPEC-19): what's new (added), what works differently (changed), what was put right (fixed).
@@ -14,6 +14,12 @@ export interface Release {
 export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.length ?? 0) + (r.fixed?.length ?? 0);
 
 export const CHANGELOG: Release[] = [
+  {
+    version: "0.14.1",
+    date: "2026-11-22",
+    title: "Culury is now RecipeHub",
+    changed: ["The recipe and meal-planning app ByteSize links to is now called RecipeHub everywhere: Settings › Integrations, Track Food, search and My foods. Your link and settings are unchanged."],
+  },
   {
     version: "0.14.0",
     date: "2026-11-22",
@@ -110,7 +116,7 @@ export const CHANGELOG: Release[] = [
     date: "2026-11-20",
     title: "Track Food on iPhone",
     added: [
-      "iPhone: pick which sources a search shows (My foods, FatSecret, Basic, USDA, Open Food Facts, Culury), as on the web — tap “Show results from” to open the chips; your picks are remembered.",
+      "iPhone: pick which sources a search shows (My foods, FatSecret, Basic, USDA, Open Food Facts, RecipeHub), as on the web — tap “Show results from” to open the chips; your picks are remembered.",
     ],
     changed: [
       "iPhone: Photo, Scan and Describe sit right under the search in Track Food, and Close is there as soon as it opens.",
@@ -217,7 +223,7 @@ export const CHANGELOG: Release[] = [
     added: [
       "Food log with calorie and protein ranges, rings and streaks; search, barcodes, photos of labels, AI estimates, My Foods, recipes and quick meals.",
       "Weight, goals and plans, weekly trends, badges, GLP-1 shot tracking and Insights.",
-      "Culury meal plans and recipes, restaurant menus, backups, API keys, email and sign-in with passkeys.",
+      "RecipeHub meal plans and recipes, restaurant menus, backups, API keys, email and sign-in with passkeys.",
     ],
   },
 ];

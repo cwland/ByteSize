@@ -154,11 +154,11 @@ export const m3Routes = {
   "GET /api/goals": () => ({ active: [], past: [] }), // §40c: no goals yet
 };
 
-// Culury (§14 A). Not linked is the default for any screen that opens Add food:
+// RecipeHub (§14 A). Not linked is the default for any screen that opens Add food:
 // fakeServer({ ...culuryOff, … })
 export const culuryOff = { "GET /api/settings/culury": () => ({ url: null, hasKey: false, enabled: false }) };
 export const culuryOn = { "GET /api/settings/culury": () => ({ url: "http://culury.lan:4000", hasKey: true, enabled: true }) };
-// Linked, but the person switched Culury off in Settings › Integrations
+// Linked, but the person switched RecipeHub off in Settings › Integrations
 export const culuryLinkedOff = { "GET /api/settings/culury": () => ({ url: "http://culury.lan:4000", hasKey: true, enabled: false }) };
 
 // As GET /api/culury/plan sends it: the selected day (Wed) first, its dinner first; then the rest in date order
@@ -178,7 +178,7 @@ export const culuryPlan = {
   errors: [],
 };
 
-// GET /api/culury/recipes/812: per serving, a serving weight from Culury's "About 1½ cups (340 g)"
+// GET /api/culury/recipes/812: per serving, a serving weight from RecipeHub's "About 1½ cups (340 g)"
 export const culuryChili = {
   kind: "culury",
   id: 812,

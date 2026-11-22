@@ -29,7 +29,7 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("tab", { name: "API keys" })).toBeInTheDocument(); // everyone's own keys
     expect(screen.getByText("Keys for your own tools and scripts")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Integrations" })).toBeInTheDocument(); // per person
-    expect(screen.getByText("Culury meal plan and recipes")).toBeInTheDocument();
+    expect(screen.getByText("RecipeHub meal plan and recipes")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Data" })).toBeInTheDocument(); // everyone can download their own data
     expect(screen.getByText("Download your data")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "App info" })).toBeInTheDocument(); // everyone's own numbers
@@ -44,7 +44,7 @@ describe("SettingsPage", () => {
     expect((await screen.findAllByRole("tab")).map((t) => t.getAttribute("aria-label"))).toEqual(["Profile", "Users", "API keys", "Security", "Integrations", "Cached data", "Email", "Data", "App info", "Logs"]);
     expect(screen.getByText("Your data and backups")).toBeInTheDocument();
     expect(screen.getByText("Sending email, forgot password")).toBeInTheDocument();
-    expect(screen.getByText("AI, food data, restaurants, Culury")).toBeInTheDocument();
+    expect(screen.getByText("AI, food data, restaurants, RecipeHub")).toBeInTheDocument();
   });
 
   it.each(["#/settings/ai", "#/settings/food-sources", "#/settings/integrations"])("%s opens Integrations", async (hash) => {
@@ -58,7 +58,7 @@ describe("SettingsPage", () => {
     expect(await screen.findByRole("tabpanel", { name: "Integrations" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Integrations");
     expect(await screen.findByRole("region", { name: "USDA" })).toBeInTheDocument();
-    expect(await screen.findByRole("switch", { name: "Culury on" })).toBeInTheDocument();
+    expect(await screen.findByRole("switch", { name: "RecipeHub on" })).toBeInTheDocument();
   });
 
   it("Security: an admin sets up OAuth sign-in there; everyone can link their account when it's on", async () => {
@@ -89,12 +89,12 @@ describe("SettingsPage", () => {
     expect(server.sent.some((s) => s.path === "/api/settings/oauth")).toBe(false);
   });
 
-  it("an old address opens Integrations for a member too, with only Culury", async () => {
+  it("an old address opens Integrations for a member too, with only RecipeHub", async () => {
     window.location.hash = "#/settings/ai";
     const server = fakeServer({ "GET /api/settings/culury": () => ({ url: null, hasKey: false, enabled: false }) });
     renderWithSession(<SettingsPage />, { isAdmin: false });
     expect(await screen.findByRole("tabpanel", { name: "Integrations" })).toBeInTheDocument();
-    expect(await screen.findByRole("switch", { name: "Culury on" })).toBeInTheDocument();
+    expect(await screen.findByRole("switch", { name: "RecipeHub on" })).toBeInTheDocument();
     expect(server.sent.map((r) => r.path)).toEqual(["/api/settings/culury"]);
   });
 

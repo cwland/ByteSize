@@ -74,7 +74,7 @@ describe("Settings › App info", () => {
     await screen.findByRole("group", { name: "Outside lookups" });
     expect(screen.getByText("Counting since Nov 18, 2026")).toBeInTheDocument();
     const outside = within(tile("Outside lookups"));
-    for (const [source, n] of [["Open Food Facts", "60"], ["USDA", "25"], ["FatSecret", "10"], ["Spoonacular", "3"], ["Culury", "2"]]) {
+    for (const [source, n] of [["Open Food Facts", "60"], ["USDA", "25"], ["FatSecret", "10"], ["Spoonacular", "3"], ["RecipeHub", "2"]]) {
       const line = outside.getByText(source).closest("li")!;
       expect(line.querySelector(".sr-only")!.textContent, source).toBe(n);
     }

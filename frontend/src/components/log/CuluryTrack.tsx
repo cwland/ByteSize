@@ -21,10 +21,10 @@ function servingOf(food: FoodResult, out: Estimate): Nutrients {
   return grams && theirs ? scaleNutrients(out.food.nutrients, grams / theirs) : out.food.nutrients;
 }
 
-// Track food for a Culury recipe (read live from Culury, starts at 1 serving). Culury's nutrition may be
+// Track food for a RecipeHub recipe (read live from RecipeHub, starts at 1 serving). RecipeHub's nutrition may be
 // marked out of date; with none at all, "Estimate with AI" fills it in for this entry only (logged as AI-estimated).
 // initial: where the amount starts (1 serving, or the last portion from Recently tracked).
-// stale: Culury couldn't answer, so this is the last logged copy (the server logs from it too).
+// stale: RecipeHub couldn't answer, so this is the last logged copy (the server logs from it too).
 export default function CuluryTrack({
   recipe,
   initial = ONE_SERVING,
@@ -53,8 +53,8 @@ export default function CuluryTrack({
 
   return (
     <div className="flex flex-col gap-3">
-      {stale && <p className="rounded-xl bg-pressed px-3 py-2 text-sm text-subtle">Culury is unavailable — using the last logged version</p>}
-      {recipe.outdated && <p className="px-1 text-xs text-muted">Culury's nutrition for this recipe may be out of date.</p>}
+      {stale && <p className="rounded-xl bg-pressed px-3 py-2 text-sm text-subtle">RecipeHub is unavailable — using the last logged version</p>}
+      {recipe.outdated && <p className="px-1 text-xs text-muted">RecipeHub's nutrition for this recipe may be out of date.</p>}
       {!recipe.hasNutrition &&
         (estimate ? (
           <p className="flex flex-wrap items-center gap-1.5 px-1 text-sm text-subtle">
@@ -62,7 +62,7 @@ export default function CuluryTrack({
           </p>
         ) : (
           <div className="rounded-2xl bg-pressed px-3 py-2.5 text-sm">
-            <p className="text-subtle">Culury has no nutrition for this recipe. Estimate it before tracking, or track it as unknown.</p>
+            <p className="text-subtle">RecipeHub has no nutrition for this recipe. Estimate it before tracking, or track it as unknown.</p>
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <button type="button" disabled={!!estimating.step} onClick={() => void runEstimate()} className={`${primaryButton} inline-flex items-center gap-1.5 text-sm`}>
                 <Sparkles className="size-4" /> Estimate with AI

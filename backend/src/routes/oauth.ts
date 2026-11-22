@@ -14,7 +14,7 @@ import { logSignIn, startSession } from "../lib/sessions.js";
 import { publicUser } from "../lib/users.js";
 import { checkLockout, clearFailures, recordFailure } from "./auth.js";
 
-// OAuth / OpenID Connect sign-in (authorization code flow with PKCE, state and nonce), copied from Culury:
+// OAuth / OpenID Connect sign-in (authorization code flow with PKCE, state and nonce), copied from RecipeHub:
 //  1. POST /api/auth/oauth/start (or /link/start, signed in): the page gets the provider's address
 //  2. the provider sends the browser back to GET /api/auth/oauth/callback
 //  3. that redirects into the app with a one-time ticket (never the login token itself),

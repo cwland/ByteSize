@@ -12,7 +12,7 @@ const slotText = (slot: string) => {
   return s ? s[0].toUpperCase() + s.slice(1) : "Planned";
 };
 
-// The meal plan from Culury: days around the selected one as sections (the server sends the selected day
+// The meal plan from RecipeHub: days around the selected one as sections (the server sends the selected day
 // first, its matching meal first). A recipe opens to be tracked; a note ("Leftovers") is shown, greyed, not loggable.
 export default function MealPlanView({ day, meal, onOpen }: { day: string; meal: Meal; onOpen: (recipeId: number) => Promise<void> }) {
   const { user } = useSession();
@@ -51,7 +51,7 @@ export default function MealPlanView({ day, meal, onOpen }: { day: string; meal:
           {e.message}
         </p>
       ))}
-      {!plan.errors.length && !plan.days.length && <p className="px-2 text-subtle">Nothing planned in Culury for these days.</p>}
+      {!plan.errors.length && !plan.days.length && <p className="px-2 text-subtle">Nothing planned in RecipeHub for these days.</p>}
       <Notice msg={msg} />
       {plan.days.map((d) => {
         const title = heading(d.day);

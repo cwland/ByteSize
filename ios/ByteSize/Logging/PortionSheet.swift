@@ -14,9 +14,9 @@ struct PortionSheet: View {
         let toggle: () async -> Void
     }
     var bookmark: Bookmark?
-    /// About a Culury recipe: out of date, Culury unavailable, or no nutrition yet.
+    /// About a RecipeHub recipe: out of date, RecipeHub unavailable, or no nutrition yet.
     var note: String?
-    /// "Estimate with AI" for a Culury recipe with no nutrition (nil hides it).
+    /// "Estimate with AI" for a RecipeHub recipe with no nutrition (nil hides it).
     var estimate: (() async -> Void)?
     /// Take another photo / Scan again: the AI or the scan got it wrong (R1).
     struct Again {
@@ -203,7 +203,7 @@ struct FoodRow: View {
         brand = food.brand
         let serving = food.servings.first?.label ?? "serving"
         detail = !food.isLoggable ? "Log quick meals from My Foods"
-            : food.isCulury && food.nutrients.values.isEmpty ? "Culury recipe · \(serving)"
+            : food.isCulury && food.nutrients.values.isEmpty ? "RecipeHub recipe · \(serving)"
             : "≈ \(Int(food.calories.rounded())) cal / \(serving)"
     }
 }
@@ -231,7 +231,7 @@ struct FoodPortionView: View {
         _portion = State(initialValue: PortionModel(food: food, meal: meal))
     }
 
-    /// A Culury recipe with no nutrition: the AI's guess for one serving replaces it here (amount and meal kept).
+    /// A RecipeHub recipe with no nutrition: the AI's guess for one serving replaces it here (amount and meal kept).
     private var estimate: (() async -> Void)? {
         guard let favorites, food.isCulury, favorites.recipeNeedsEstimate else { return nil }
         return {

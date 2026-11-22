@@ -1,14 +1,14 @@
-// A fake Culury (the person's own recipe / meal-plan app) on the fake food web, shaped like Culury's real API:
+// A fake RecipeHub (the person's own recipe / meal-plan app) on the fake food web, shaped like RecipeHub's real API:
 //  GET /api/plan?from&to   -> [{ id, date, slot, position, recipeId, title, servings, note, imageUrl, totalMinutes, recipeServings }]
 //  GET /api/recipes?q=     -> { total, recipes: [{ id, title, description, imageUrl, servings, ... }] } (no nutrition)
 //  GET /api/recipes/:id    -> the recipe, with nutrition (per serving) or null
-// A wrong or missing X-API-Key gets 401 { error: "Not logged in" }, like Culury.
+// A wrong or missing X-API-Key gets 401 { error: "Not logged in" }, like RecipeHub.
 import type { TestApp } from "./helpers.js";
 import { OFF_SEARCH, USDA } from "./foodFakes.js";
 import { setCuluryLookup } from "../src/lib/culury.js";
 
 /**
- * The fake DNS ByteSize checks a Culury host name with before each call: a name listed here resolves to
+ * The fake DNS ByteSize checks a RecipeHub host name with before each call: a name listed here resolves to
  * its addresses; any other name resolves to a LAN address (192.168.1.20). Tests change it per case.
  */
 export const fakeDns: Record<string, string[]> = {};
@@ -66,8 +66,8 @@ export function culuryRecipe(id: number, title: string, nutrition: CuluryNutriti
 export type PlanRow = { date: string; slot: string; recipeId: number | null; title: string; servings?: number | null; note?: string | null; position?: number };
 
 /**
- * Culury at `base` with this key, plan and recipes. Anything else on the food web (OFF / USDA) finds
- * nothing. Also keeps any earlier responder for other hosts (a second person's Culury).
+ * RecipeHub at `base` with this key, plan and recipes. Anything else on the food web (OFF / USDA) finds
+ * nothing. Also keeps any earlier responder for other hosts (a second person's RecipeHub).
  */
 export function culuryKnows(t: TestApp, opts: { plan?: PlanRow[]; recipes?: ReturnType<typeof culuryRecipe>[]; key?: string; base?: string } = {}) {
   const base = opts.base ?? CULURY;
@@ -107,5 +107,5 @@ export function culuryKnows(t: TestApp, opts: { plan?: PlanRow[]; recipes?: Retu
   };
 }
 
-/** The calls made to a Culury (any path). */
+/** The calls made to a RecipeHub (any path). */
 export const culuryCalls = (t: TestApp, base = CULURY) => t.foodWeb.calls.filter((c) => c.url.startsWith(base + "/"));

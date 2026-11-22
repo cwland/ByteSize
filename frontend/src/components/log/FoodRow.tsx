@@ -76,7 +76,7 @@ export default function FoodRow({
   nutrients: Nutrients;
   onOpen: () => void;
   onQuickAdd: () => Promise<void>;
-  busy?: boolean; // being opened (a Culury recipe loading): disabled, "Opening…" for the amount
+  busy?: boolean; // being opened (a RecipeHub recipe loading): disabled, "Opening…" for the amount
   note?: ReactNode; // under the row (a kept copy's "Saved copy from …" with its own button)
 }) {
   const quick = useQuickAdd(onQuickAdd);

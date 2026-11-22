@@ -5,7 +5,7 @@ import XCTest
 enum FoodFixtures {
     static let banana = #"{"kind":"cache","id":41,"name":"Banana","brand":null,"icon":"🍌","barcode":null,"servings":[{"label":"1 medium","grams":118},{"label":"100 g","grams":100}],"nutrients":{"calories":105,"protein_g":1.3,"fiber_g":3.1},"aiFields":[],"imageUrl":null,"override":false,"source":"usda","foodKind":"custom","savedAt":null}"#
     static let culury = #"{"kind":"culury","id":7,"name":"Chili","brand":null,"icon":"🍲","barcode":null,"servings":[{"label":"1 bowl"}],"nutrients":{"calories":400},"aiFields":[],"imageUrl":null,"override":false,"source":"culury","foodKind":"recipe"}"#
-    static let search = #"{"groups":[{"source":"basic","label":"Basic foods","foods":[\#(banana)]},{"source":"culury","label":"Culury","foods":[\#(culury)]}],"errors":[{"source":"usda","message":"USDA didn't answer"}],"searched":["basic","usda"],"suggestion":"Banana"}"#
+    static let search = #"{"groups":[{"source":"basic","label":"Basic foods","foods":[\#(banana)]},{"source":"culury","label":"RecipeHub","foods":[\#(culury)]}],"errors":[{"source":"usda","message":"USDA didn't answer"}],"searched":["basic","usda"],"suggestion":"Banana"}"#
     static let draft = #"{"name":"Wheat crackers","brand":"Acme","category":"crackers","icon":"🍘","barcode":null,"servings":[{"label":"2 crackers","grams":30}],"nutrients":{"calories":140,"protein_g":3,"fat_g":5},"aiFields":["calories","protein_g","fat_g"],"imageUrl":"/api/photos/p1?sig=x","override":false,"source":"ai","photoId":"p1"}"#
     static let egg = #"{"food":{"name":"Egg, large","brand":null,"category":"eggs","icon":"🥚","barcode":null,"servings":[{"label":"1 large egg","grams":50}],"nutrients":{"calories":72,"protein_g":6.3},"aiFields":["calories","protein_g"],"imageUrl":null,"override":false,"source":"ai"},"servingIndex":0,"quantity":2}"#
     static let toast = #"{"food":{"name":"Toast","brand":null,"category":"bread","icon":"🍞","barcode":null,"servings":[{"label":"1 slice","grams":30}],"nutrients":{"calories":80},"aiFields":["calories"],"imageUrl":null,"override":false,"source":"ai"},"servingIndex":0,"quantity":1}"#
@@ -19,13 +19,13 @@ final class FoodAPITests: XCTestCase {
         HTTPStub.routes(["/api/foods/search": .json(200, FoodFixtures.search)])
         let r = try await api.send(FoodAPI.search("bana"))
         XCTAssertEqual(sent().request.url?.query(), "q=bana")
-        XCTAssertEqual(r.groups.map(\.label), ["Basic foods", "Culury"])
+        XCTAssertEqual(r.groups.map(\.label), ["Basic foods", "RecipeHub"])
         let banana = r.groups[0].foods[0]
         XCTAssertEqual(banana.ref, "cache:41")
         XCTAssertEqual(banana.servings[0], Serving(label: "1 medium", grams: 118))
         XCTAssertEqual(banana.nutrients["calories"], 105)
         XCTAssertTrue(banana.isLoggable)
-        XCTAssertTrue(r.groups[1].foods[0].isLoggable) // Culury recipes are tracked on the phone too
+        XCTAssertTrue(r.groups[1].foods[0].isLoggable) // RecipeHub recipes are tracked on the phone too
         XCTAssertEqual(r.errors.first?.message, "USDA didn't answer")
         XCTAssertEqual(r.suggestion, "Banana")
     }

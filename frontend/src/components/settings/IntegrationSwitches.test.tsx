@@ -36,7 +36,7 @@ describe("Settings › Integrations switches", () => {
   it("admins see one card per integration, in order, each with its switch in the title row", async () => {
     adminTab({ usda: { hasKey: true, enabled: true } });
     await screen.findByLabelText("USDA API key");
-    const names = ["AI services", "Open Food Facts", "USDA", "FatSecret", "Spoonacular", "Culury"];
+    const names = ["AI services", "Open Food Facts", "USDA", "FatSecret", "Spoonacular", "RecipeHub"];
     // the lookup order table comes first Saved barcodes moved to Cached data (§32): the order table has no switch
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["How ByteSize looks foods up", ...names]);
     for (const name of names) {
@@ -49,7 +49,7 @@ describe("Settings › Integrations switches", () => {
   it("a card that is off shows only its title row and “Off — not used”", async () => {
     adminTab();
     await screen.findAllByText("Off — not used");
-    for (const name of ["USDA", "FatSecret", "Spoonacular", "Culury"]) {
+    for (const name of ["USDA", "FatSecret", "Spoonacular", "RecipeHub"]) {
       expect(theSwitch(name)).toHaveAttribute("aria-checked", "false");
       expect(within(card(name)).getByText("Off — not used")).toBeInTheDocument();
       expect(within(card(name)).queryByRole("textbox")).toBeNull();
@@ -136,7 +136,7 @@ describe("Settings › Integrations switches", () => {
   it("every card's description is the same size (small, subtle)", async () => {
     adminTab({ usda: { hasKey: true, enabled: true } }, { culury: { url: null, hasKey: false, enabled: true } });
     await screen.findByLabelText("USDA API key");
-    for (const text of [/Used to look up foods and read meal photos/, /Packaged foods and barcodes/, /FoodData Central adds whole foods/, /Log meals you planned in Culury/]) {
+    for (const text of [/Used to look up foods and read meal photos/, /Packaged foods and barcodes/, /FoodData Central adds whole foods/, /Log meals you planned in RecipeHub/]) {
       expect(await screen.findByText(text)).toHaveClass("text-sm", "text-subtle");
     }
   });
@@ -147,34 +147,34 @@ describe("Settings › Integrations switches", () => {
     expect(theSwitch("AI services")).toHaveAttribute("aria-checked", "false");
   });
 
-  it("Culury: the person's own switch saves at once; switching on unlinked opens the form ready to fill", async () => {
+  it("RecipeHub: the person's own switch saves at once; switching on unlinked opens the form ready to fill", async () => {
     const server = adminTab();
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("switch", { name: "Culury on" }));
+    await user.click(await screen.findByRole("switch", { name: "RecipeHub on" }));
     expect(server.writes()).toEqual([expect.objectContaining({ method: "PUT", path: "/api/settings/culury/enabled", body: { enabled: true } })]);
-    expect(await screen.findByLabelText("Culury address")).toHaveFocus();
-    expect(within(card("Culury")).getByText(/Not linked yet/)).toBeInTheDocument();
+    expect(await screen.findByLabelText("RecipeHub address")).toHaveFocus();
+    expect(within(card("RecipeHub")).getByText(/Not linked yet/)).toBeInTheDocument();
   });
 
-  it("Culury linked but off: closed; on again shows the saved link", async () => {
+  it("RecipeHub linked but off: closed; on again shows the saved link", async () => {
     adminTab({}, { culury: { url: "http://culury.lan:4000", hasKey: true, enabled: false } });
     const user = userEvent.setup();
-    expect(await within(await screen.findByRole("region", { name: "Culury" })).findByText("Off — not used")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Culury address")).toBeNull();
-    await user.click(theSwitch("Culury"));
-    expect(await screen.findByLabelText("Culury address")).toHaveValue("http://culury.lan:4000");
-    expect(within(card("Culury")).getByText(/A key is saved/)).toBeInTheDocument();
+    expect(await within(await screen.findByRole("region", { name: "RecipeHub" })).findByText("Off — not used")).toBeInTheDocument();
+    expect(screen.queryByLabelText("RecipeHub address")).toBeNull();
+    await user.click(theSwitch("RecipeHub"));
+    expect(await screen.findByLabelText("RecipeHub address")).toHaveValue("http://culury.lan:4000");
+    expect(within(card("RecipeHub")).getByText(/A key is saved/)).toBeInTheDocument();
   });
 
-  it("members see only their Culury card and its switch", async () => {
+  it("members see only their RecipeHub card and its switch", async () => {
     const server = fakeServer({
       "GET /api/settings/culury": () => ({ url: null, hasKey: false, enabled: false }),
       "PUT /api/settings/culury/enabled": (b: any) => ({ url: null, hasKey: false, enabled: b.enabled }),
     });
     renderWithSession(<IntegrationsSettings />, { isAdmin: false });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("switch", { name: "Culury on" }));
-    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Culury"]);
+    await user.click(await screen.findByRole("switch", { name: "RecipeHub on" }));
+    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["RecipeHub"]);
     expect(screen.getAllByRole("switch")).toHaveLength(1);
     expect(server.sent.map((r) => `${r.method} ${r.path}`)).toEqual(["GET /api/settings/culury", "PUT /api/settings/culury/enabled"]);
   });

@@ -41,24 +41,24 @@ describe("Meal plan view", () => {
     expect(onOpen).toHaveBeenCalledWith(812);
   });
 
-  it("Culury down: a plain message, nothing else", async () => {
-    fakeServer({ "GET /api/culury/plan": () => ({ linked: true, days: [], errors: [{ source: "culury", message: "Couldn't reach Culury" }] }) });
+  it("RecipeHub down: a plain message, nothing else", async () => {
+    fakeServer({ "GET /api/culury/plan": () => ({ linked: true, days: [], errors: [{ source: "culury", message: "Couldn't reach RecipeHub" }] }) });
     renderWithSession(<MealPlanView day="2026-11-18" meal="dinner" onOpen={async () => {}} />);
-    expect(await screen.findByText("Couldn't reach Culury")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't reach RecipeHub")).toBeInTheDocument();
     expect(screen.queryByText(/Nothing planned/)).toBeNull();
   });
 
   it("an empty plan says so", async () => {
     fakeServer({ "GET /api/culury/plan": () => ({ linked: true, days: [], errors: [] }) });
     renderWithSession(<MealPlanView day="2026-11-18" meal="dinner" onOpen={async () => {}} />);
-    expect(await screen.findByText(/Nothing planned in Culury/)).toBeInTheDocument();
+    expect(await screen.findByText(/Nothing planned in RecipeHub/)).toBeInTheDocument();
   });
 
   it("a recipe that won't open says why, and the plan stays", async () => {
     fakeServer({ "GET /api/culury/plan": () => culuryPlan });
-    renderWithSession(<MealPlanView day="2026-11-18" meal="dinner" onOpen={async () => Promise.reject(new Error("Culury took too long to answer"))} />);
+    renderWithSession(<MealPlanView day="2026-11-18" meal="dinner" onOpen={async () => Promise.reject(new Error("RecipeHub took too long to answer"))} />);
     await userEvent.click(await screen.findByRole("button", { name: /Chili con carne/ }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Culury took too long to answer");
+    expect(await screen.findByRole("alert")).toHaveTextContent("RecipeHub took too long to answer");
     expect(screen.getByRole("button", { name: /Chili con carne/ })).toBeInTheDocument();
   });
 });

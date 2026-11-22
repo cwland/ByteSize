@@ -87,7 +87,7 @@ export default function AppInfoSettings() {
     { label: "AI estimates", Icon: Sparkles, value: you.aiEstimates },
     { label: "AI insights", Icon: Lightbulb, value: you.aiInsights ?? 0 },
     { label: "Lookups saved", Icon: Zap, value: you.lookupsSaved },
-    { label: "Outside lookups", Icon: Globe, value: o.total, lines: [["Open Food Facts", o.off], ["USDA", o.usda], ["FatSecret", o.fatsecret], ["Spoonacular", o.spoonacular], ["Culury", o.culury]] },
+    { label: "Outside lookups", Icon: Globe, value: o.total, lines: [["Open Food Facts", o.off], ["USDA", o.usda], ["FatSecret", o.fatsecret], ["Spoonacular", o.spoonacular], ["RecipeHub", o.culury]] },
   ];
   return (
     <>

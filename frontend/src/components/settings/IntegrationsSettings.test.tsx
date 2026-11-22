@@ -13,13 +13,13 @@ const adminRoutes = {
 };
 
 describe("Settings › Integrations", () => {
-  it("admins see the lookup order, six titled cards (AI services, Open Food Facts, USDA, FatSecret, Spoonacular, Culury) and a link to Cached data", async () => {
+  it("admins see the lookup order, six titled cards (AI services, Open Food Facts, USDA, FatSecret, Spoonacular, RecipeHub) and a link to Cached data", async () => {
     const server = fakeServer(adminRoutes);
     renderWithSession(<IntegrationsSettings />, { isAdmin: true });
     expect(await screen.findByRole("switch", { name: "USDA on" })).toBeInTheDocument();
-    expect(await screen.findByRole("switch", { name: "Culury on" })).toBeInTheDocument();
-    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["How ByteSize looks foods up", "AI services", "Open Food Facts", "USDA", "FatSecret", "Spoonacular", "Culury"]);
-    for (const name of ["AI services", "Open Food Facts", "USDA", "FatSecret", "Spoonacular", "Culury"]) expect(screen.getByRole("region", { name })).toBeInTheDocument();
+    expect(await screen.findByRole("switch", { name: "RecipeHub on" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["How ByteSize looks foods up", "AI services", "Open Food Facts", "USDA", "FatSecret", "Spoonacular", "RecipeHub"]);
+    for (const name of ["AI services", "Open Food Facts", "USDA", "FatSecret", "Spoonacular", "RecipeHub"]) expect(screen.getByRole("region", { name })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Saved barcodes" })).not.toBeInTheDocument(); // moved to Cached data (§32)
     expect(server.sent.some((r) => r.path.includes("saved-barcodes"))).toBe(false);
     // one summary of the food sources for the order table and their four cards
@@ -34,11 +34,11 @@ describe("Settings › Integrations", () => {
     }
   });
 
-  it("members see only Culury, and no admin route is asked", async () => {
+  it("members see only RecipeHub, and no admin route is asked", async () => {
     const server = fakeServer({ "GET /api/settings/culury": () => ({ url: null, hasKey: false, enabled: false }) });
     renderWithSession(<IntegrationsSettings />, { isAdmin: false });
-    expect(await screen.findByRole("switch", { name: "Culury on" })).toBeInTheDocument();
-    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Culury"]);
+    expect(await screen.findByRole("switch", { name: "RecipeHub on" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["RecipeHub"]);
     expect(server.sent.map((r) => r.path)).toEqual(["/api/settings/culury"]);
   });
 });

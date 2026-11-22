@@ -61,7 +61,7 @@ final class TrackFoodModelTests: XCTestCase {
         m.query = "gr"
         await m.search()
         XCTAssertEqual(requests("GET", "/api/foods/search").count, 1)
-        XCTAssertEqual(m.groups.map(\.label), ["Basic foods", "Culury"])
+        XCTAssertEqual(m.groups.map(\.label), ["Basic foods", "RecipeHub"])
         XCTAssertFalse(m.searching)
         m.query = ""
         await m.search()
@@ -110,7 +110,7 @@ final class TrackFoodModelTests: XCTestCase {
         XCTAssertNil(m.found, "an unknown barcode")
     }
 
-    // MARK: Culury recipes on the phone (tests for what shipped untested in #14)
+    // MARK: RecipeHub recipes on the phone (tests for what shipped untested in #14)
 
     private static let chili = try! JSONDecoder().decode(Food.self, from: Data(FoodFixtures.culury.utf8))
     private static func chiliWith(_ nutrients: String, grams: Bool = true) -> String {
@@ -127,7 +127,7 @@ final class TrackFoodModelTests: XCTestCase {
         serve(recipe: .json(200, #"{"food":\#(Self.chiliWith(#"{"calories":450}"#)),"hasNutrition":true,"outdated":false}"#))
         let (m, _) = model()
         let opened = await m.openRecipe(Self.chili)
-        XCTAssertEqual(opened.calories, 450, "Culury's numbers now, not the search's copy")
+        XCTAssertEqual(opened.calories, 450, "RecipeHub's numbers now, not the search's copy")
         XCTAssertNil(m.recipeNote)
         XCTAssertFalse(m.recipeNeedsEstimate)
     }
@@ -136,15 +136,15 @@ final class TrackFoodModelTests: XCTestCase {
         serve(recipe: .json(200, #"{"food":\#(FoodFixtures.culury),"hasNutrition":true,"outdated":true}"#))
         let (m, _) = model()
         _ = await m.openRecipe(Self.chili)
-        XCTAssertEqual(m.recipeNote, "Culury's nutrition for this recipe may be out of date.")
+        XCTAssertEqual(m.recipeNote, "RecipeHub's nutrition for this recipe may be out of date.")
     }
 
     func testCuluryDownUsesTheCopyInHand() async {
-        serve(recipe: .json(502, #"{"error":"Culury didn't answer"}"#))
+        serve(recipe: .json(502, #"{"error":"RecipeHub didn't answer"}"#))
         let (m, _) = model()
         let opened = await m.openRecipe(Self.chili)
         XCTAssertEqual(opened, Self.chili)
-        XCTAssertEqual(m.recipeNote, "Culury is unavailable — using the last logged version")
+        XCTAssertEqual(m.recipeNote, "RecipeHub is unavailable — using the last logged version")
     }
 
     func testOtherFoodsOpenAsTheyAre() async {
@@ -163,7 +163,7 @@ final class TrackFoodModelTests: XCTestCase {
         let (m, _) = model()
         let opened = await m.openRecipe(Self.chili)
         XCTAssertTrue(m.recipeNeedsEstimate)
-        XCTAssertEqual(m.recipeNote, "Culury has no nutrition for this recipe. Estimate it, or track it as unknown.")
+        XCTAssertEqual(m.recipeNote, "RecipeHub has no nutrition for this recipe. Estimate it, or track it as unknown.")
         let maybe = await m.estimateRecipe(opened)
         let estimated = try XCTUnwrap(maybe)
         XCTAssertEqual(estimated.calories, 160)

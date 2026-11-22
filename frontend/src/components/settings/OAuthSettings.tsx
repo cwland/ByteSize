@@ -11,7 +11,7 @@ import { label as labelClass, linkButton, primaryButton, secondaryButton } from 
 import { IconButton } from "../ui/IconButton";
 
 // Settings › Security: sign in with OAuth / OpenID Connect (Authentik, Keycloak, Google...), copied from
-// Culury's SignInSettings. The admin sets up the provider; everyone can link their own account once it's on.
+// RecipeHub's SignInSettings. The admin sets up the provider; everyone can link their own account once it's on.
 
 interface OAuthView {
   enabled: boolean;

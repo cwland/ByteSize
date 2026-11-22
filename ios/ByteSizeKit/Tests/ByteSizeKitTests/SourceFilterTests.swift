@@ -27,7 +27,7 @@ final class SourceFilterTests: XCTestCase {
         let f = filter()
         XCTAssertEqual(f.choice, [.mine: true, .fatsecret: true, .basic: false, .usda: true, .off: true, .culury: false])
         XCTAssertFalse(f.open)
-        XCTAssertEqual(SearchSource.allCases.map(\.label), ["My foods", "FatSecret", "Basic", "USDA", "Open Food Facts", "Culury"])
+        XCTAssertEqual(SearchSource.allCases.map(\.label), ["My foods", "FatSecret", "Basic", "USDA", "Open Food Facts", "RecipeHub"])
     }
 
     func testChipsFollowSearchedInWebOrder() throws {

@@ -516,7 +516,7 @@ export async function unreadableKeys(app: FastifyInstance): Promise<string[]> {
     .from(userSettings)
     .innerJoin(users, eq(users.id, userSettings.userId))
     .orderBy(users.id);
-  for (const c of culury) if (bad(c.enc)) out.push(`Culury key for ${c.name || c.username}`);
+  for (const c of culury) if (bad(c.enc)) out.push(`RecipeHub key for ${c.name || c.username}`);
   return out;
 }
 

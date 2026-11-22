@@ -14,7 +14,7 @@ const KINDS = [
   { key: "fixed", label: "Fixed", Icon: Wrench, tone: "text-warning" },
 ] as const;
 
-// "What's new" (W1, as in Culury; SPEC-19 like YAHD2): the versions you haven't seen (or just the current one) open in
+// "What's new" (W1, as in RecipeHub; SPEC-19 like YAHD2): the versions you haven't seen (or just the current one) open in
 // full, grouped as Added / Changed / Fixed; every earlier version is a folded row under "Earlier updates" that opens
 // in place. `all` (from the version number) has nothing new to show beyond the current version.
 export default function WhatsNew({ since, onClose }: { since?: string | null; all?: boolean; onClose: () => void }) {

@@ -306,7 +306,7 @@ struct TrackFoodSheet: View {
         }
     }
 
-    /// Opens a food's amount screen; a Culury recipe is read live first (as the web does).
+    /// Opens a food's amount screen; a RecipeHub recipe is read live first (as the web does).
     private func open(_ food: Food) {
         guard food.isCulury else {
             picked = food
@@ -343,7 +343,7 @@ struct TrackFoodSheet: View {
                         .disabled(!food.isLoggable)
                         .accessibilityIdentifier("food-\(food.name)")
                         if quick, food.isLoggable {
-                            // A Culury recipe with no nutrition yet opens instead: it needs an estimate, or to be tracked as unknown
+                            // A RecipeHub recipe with no nutrition yet opens instead: it needs an estimate, or to be tracked as unknown
                             quickAdd(food.name) {
                                 if food.isCulury, food.nutrients.values.isEmpty { open(food); return false }
                                 return await model.quickLog(food)

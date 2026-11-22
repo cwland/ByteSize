@@ -6,7 +6,7 @@ import { logEvent } from "./appLog.js";
 import { HttpError } from "./errors.js";
 import { decryptSecret, encryptSecret } from "./secrets.js";
 
-// Sign in with OAuth / OpenID Connect (Authentik, Keycloak, Google, Microsoft...). Copied from Culury.
+// Sign in with OAuth / OpenID Connect (Authentik, Keycloak, Google, Microsoft...). Copied from RecipeHub.
 // Settings live in app_settings under "oauth" (the client secret encrypted); an admin sets them in
 // Settings › Security. oauthOnly hides the password form (the API refuses passwords too); passkeys still work.
 // Locked out? `npm run auth:reset`, or EMERGENCY_DISABLE_OAUTH=true, turns OAuth only and OAuth off.

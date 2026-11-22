@@ -42,7 +42,7 @@ export function useEstimate() {
       }
     }
   };
-  // One food (Culury's estimate, Restaurants), or the foods in a description (Describe it)
+  // One food (RecipeHub's estimate, Restaurants), or the foods in a description (Describe it)
   const run = (text: string) => ask<Estimate>("/api/ai/estimate", text);
   const runItems = (text: string) => ask<ItemsEstimate>("/api/ai/estimate-items", text);
   const cancel = () => {

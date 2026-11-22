@@ -12,7 +12,7 @@ public enum SearchSource: String, CaseIterable, Sendable {
         case .basic: "Basic"
         case .usda: "USDA"
         case .off: "Open Food Facts"
-        case .culury: "Culury"
+        case .culury: "RecipeHub"
         }
     }
 

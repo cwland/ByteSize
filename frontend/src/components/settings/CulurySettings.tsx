@@ -7,10 +7,10 @@ import { KeyField } from "../ui/KeyField";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { primaryButton, secondaryButton } from "../ui/styles";
 
-// Settings › Integrations › Culury (per person): the link to Culury, the recipe and meal-planning app.
+// Settings › Integrations › RecipeHub (per person): the link to RecipeHub, the recipe and meal-planning app.
 // The summary only says whether a key is saved; the eye and copy buttons fetch the person's own key when
 // pressed. A new address needs the key again (the server keeps a saved key with its own address).
-// The card's switch is the person's own: off, ByteSize never asks their Culury (the link is kept).
+// The card's switch is the person's own: off, ByteSize never asks their RecipeHub (the link is kept).
 export default function CulurySettings() {
   const [link, setLink] = useState<CuluryLink | null>(null);
   const [url, setUrl] = useState("");
@@ -48,7 +48,7 @@ export default function CulurySettings() {
   const save = () =>
     run(async () => {
       show(await api<CuluryLink>("PUT", "/api/settings/culury", typed()));
-      return { ok: true, text: "Culury linked" };
+      return { ok: true, text: "RecipeHub linked" };
     });
   // Nothing changed: test the saved link; otherwise what's typed, before saving it
   const test = () =>
@@ -60,7 +60,7 @@ export default function CulurySettings() {
   const remove = () =>
     run(async () => {
       show(await api<CuluryLink>("DELETE", "/api/settings/culury"));
-      return { ok: true, text: "Culury unlinked" };
+      return { ok: true, text: "RecipeHub unlinked" };
     });
 
   // The switch alone: the address and key stay as they are
@@ -73,11 +73,11 @@ export default function CulurySettings() {
   const linked = !!link?.url && link.hasKey;
   return (
     <IntegrationCard
-      title="Culury"
+      title="RecipeHub"
       on={link ? link.enabled : null}
       onSwitch={onSwitch}
       loading={loadMsg ? <Notice msg={loadMsg} /> : <p className="text-muted">Loading…</p>}
-      description="Log meals you planned in Culury, your recipe app. ByteSize reads your meal plan and recipes; nothing changes in Culury."
+      description="Log meals you planned in RecipeHub, your recipe app. ByteSize reads your meal plan and recipes; nothing changes in RecipeHub."
     >
       <p className="text-sm text-subtle">{linked ? "Linked. A key is saved — leave the key empty to keep it." : "Not linked yet."}</p>
       <form
@@ -87,10 +87,10 @@ export default function CulurySettings() {
           void save();
         }}
       >
-        <Field id={addressId} label="Culury address" type="url" autoComplete="off" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://192.168.1.20:4000" />
+        <Field id={addressId} label="RecipeHub address" type="url" autoComplete="off" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://192.168.1.20:4000" />
         <KeyField
           label="API key"
-          keyName="Culury key"
+          keyName="RecipeHub key"
           autoComplete="new-password"
           value={key}
           onChange={setKey}
@@ -98,7 +98,7 @@ export default function CulurySettings() {
           fetchSaved={async () => (await api<{ key: string }>("GET", "/api/settings/culury/key")).key}
           placeholder={link?.hasKey ? "Enter a new key to replace it" : "Paste a Read only key"}
         />
-        <p className="text-xs text-muted">Make one in Culury › Settings › API keys, with Read only access.</p>
+        <p className="text-xs text-muted">Make one in RecipeHub › Settings › API keys, with Read only access.</p>
         <div className="flex flex-wrap gap-2">
           <button type="submit" className={primaryButton} disabled={busy || !url.trim()}>
             Save

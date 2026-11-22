@@ -31,11 +31,11 @@ public final class TrackFoodModel {
     public var answer: SearchResult? {
         query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 ? found : nil
     }
-    /// About the Culury recipe being opened: out of date, unavailable, or no nutrition yet (nil for other foods).
+    /// About the RecipeHub recipe being opened: out of date, unavailable, or no nutrition yet (nil for other foods).
     public private(set) var recipeNote: String?
     /// The recipe opened has no nutrition: "Estimate with AI" fills it in for this entry.
     public private(set) var recipeNeedsEstimate = false
-    /// AI estimates per serving, by Culury recipe id: sent with the log (the server stores them AI-estimated).
+    /// AI estimates per serving, by RecipeHub recipe id: sent with the log (the server stores them AI-estimated).
     private var recipeEstimates: [Int: Nutrients] = [:]
     public private(set) var searching = false
     public private(set) var message: String?
@@ -184,7 +184,7 @@ public final class TrackFoodModel {
 
     private func estimate(for food: Food) -> Nutrients? { food.isCulury ? recipeEstimates[food.id] : nil }
 
-    /// A Culury recipe, read live (as the web does) before its amount screen opens. Culury down: the copy already
+    /// A RecipeHub recipe, read live (as the web does) before its amount screen opens. RecipeHub down: the copy already
     /// in hand, which the server also falls back to when logging.
     public func openRecipe(_ food: Food) async -> Food {
         recipeNote = nil
@@ -194,13 +194,13 @@ public final class TrackFoodModel {
             let recipe = try await api.send(FoodAPI.culuryRecipe(food.id))
             if !recipe.hasNutrition {
                 recipeNeedsEstimate = recipeEstimates[food.id] == nil
-                recipeNote = recipeNeedsEstimate ? "Culury has no nutrition for this recipe. Estimate it, or track it as unknown." : "The nutrition is an AI estimate for one serving; it's logged marked as AI-estimated."
+                recipeNote = recipeNeedsEstimate ? "RecipeHub has no nutrition for this recipe. Estimate it, or track it as unknown." : "The nutrition is an AI estimate for one serving; it's logged marked as AI-estimated."
                 return recipeEstimates[food.id].map { recipe.food.with(nutrients: $0) } ?? recipe.food
             }
-            if recipe.outdated { recipeNote = "Culury's nutrition for this recipe may be out of date." }
+            if recipe.outdated { recipeNote = "RecipeHub's nutrition for this recipe may be out of date." }
             return recipe.food
         } catch {
-            recipeNote = "Culury is unavailable — using the last logged version"
+            recipeNote = "RecipeHub is unavailable — using the last logged version"
             return food
         }
     }

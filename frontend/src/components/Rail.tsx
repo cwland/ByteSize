@@ -50,7 +50,7 @@ export default function Rail({ page }: { page: Page }) {
   );
 }
 
-// SPEC-23: the avatar opens the account menu (as in Culury): who's signed in, Profile & security, Sign out, and
+// SPEC-23: the avatar opens the account menu (as in RecipeHub): who's signed in, Profile & security, Sign out, and
 // Sign out everywhere (asks first). A plain disclosure (a link and buttons you Tab through), not an ARIA menu.
 // Escape, a click outside or Tab-ing out closes it.
 function AccountMenu() {

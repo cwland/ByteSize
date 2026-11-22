@@ -20,10 +20,10 @@ import {
   testCulury,
 } from "../lib/culury.js";
 
-// The person's Culury link (Settings › Integrations), their Culury meal plan and recipes. Per person: the
+// The person's RecipeHub link (Settings › Integrations), their RecipeHub meal plan and recipes. Per person: the
 // link used is always the caller's own. The API key is never sent with the summary; the eye and copy
 // buttons fetch it from /api/settings/culury/key (the caller's own only).
-const linkBody = z.object({ url: z.string().trim().min(1, "Enter Culury's address").max(300), apiKey: z.string().max(300).optional() });
+const linkBody = z.object({ url: z.string().trim().min(1, "Enter RecipeHub's address").max(300), apiKey: z.string().max(300).optional() });
 const testBody = z.object({ url: z.string().trim().max(300).optional(), apiKey: z.string().max(300).optional() });
 const planQuery = z.object({ day: DAY, meal: z.enum(MEALS).optional() });
 const switchBody = z.object({ enabled: z.boolean({ error: "The switch is on (true) or off (false)" }) });
@@ -39,7 +39,7 @@ export default async function culuryRoutes(app: FastifyInstance) {
     return culurySummary(app, userId);
   });
 
-  // The person's Culury switch: off = Culury is never asked (the link is kept for when it's back on)
+  // The person's RecipeHub switch: off = RecipeHub is never asked (the link is kept for when it's back on)
   app.put("/api/settings/culury/enabled", async (req) => {
     const userId = requireUser(req);
     await setCuluryEnabled(app, userId, switchBody.parse(req.body ?? {}).enabled);
@@ -48,7 +48,7 @@ export default async function culuryRoutes(app: FastifyInstance) {
 
   app.get("/api/settings/culury/key", { config: revealRateLimit }, async (req, reply) => {
     const userId = requireUser(req);
-    return sendSavedKey(app, reply, userId, "Culury key", { key: openSaved(await savedCuluryKeyEnc(app, userId), app.jwtSecret) });
+    return sendSavedKey(app, reply, userId, "RecipeHub key", { key: openSaved(await savedCuluryKeyEnc(app, userId), app.jwtSecret) });
   });
 
   app.delete("/api/settings/culury", async (req) => {
@@ -65,20 +65,20 @@ export default async function culuryRoutes(app: FastifyInstance) {
     const saved = await savedCuluryLink(app, userId);
     const url = b.url ? cleanCuluryUrl(b.url) : (saved?.url ?? null);
     const key = b.apiKey?.trim() || (saved && saved.url === url ? saved.key : null);
-    if (!url || !key) throw badRequest("Add Culury's address and API key first");
+    if (!url || !key) throw badRequest("Add RecipeHub's address and API key first");
     try {
       await testCulury(app, { url, key }, await todayFor(app, userId));
     } catch (err) {
       await logCuluryFailure(app, userId, "connection test", err, true);
       throw badRequest(culuryMessage(err));
     }
-    return { ok: true, message: "Connected to Culury" };
+    return { ok: true, message: "Connected to RecipeHub" };
   });
 
   app.get("/api/culury/plan", async (req) => {
     const userId = requireUser(req);
     const q = planQuery.parse(req.query ?? {});
-    const link = await culuryLink(app, userId); // null too when the person's Culury is off
+    const link = await culuryLink(app, userId); // null too when the person's RecipeHub is off
     if (!link) return { linked: false, days: [], errors: [] };
     try {
       return { linked: true, days: await mealPlan(app, link, q.day, q.meal), errors: [] };

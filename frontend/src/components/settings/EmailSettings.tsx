@@ -8,7 +8,7 @@ import { Toggle } from "../ui/Toggle";
 import { field, label as labelClass, linkButton, primaryButton, secondaryButton } from "../ui/styles";
 
 // Settings › Email (admin): the account ByteSize sends email from (forgot-password codes). Copied from
-// Culury's EmailSettings. The password is never sent with the settings: the eye and copy buttons fetch it.
+// RecipeHub's EmailSettings. The password is never sent with the settings: the eye and copy buttons fetch it.
 // Save needs a test email that went through with the same connection first (the server checks too).
 
 type Security = "starttls" | "ssl" | "auto" | "none";

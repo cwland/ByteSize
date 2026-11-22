@@ -53,13 +53,13 @@ final class ItemsEditorTests: XCTestCase {
     }
 
     func testPickerKeepsOnlyAllowedFoods() async throws {
-        let groups = #"{"groups":[{"source":"mine","label":"My foods","foods":[\#(food(1, "Chili", kind: "user_food", foodKind: "recipe")),\#(food(2, "Usual breakfast", kind: "user_food", foodKind: "quick_meal"))]},{"source":"usda","label":"USDA","foods":[\#(food(41, "Banana"))]},{"source":"culury","label":"Culury","foods":[\#(food(9, "Banana bread", kind: "culury"))]}],"errors":[]}"#
+        let groups = #"{"groups":[{"source":"mine","label":"My foods","foods":[\#(food(1, "Chili", kind: "user_food", foodKind: "recipe")),\#(food(2, "Usual breakfast", kind: "user_food", foodKind: "quick_meal"))]},{"source":"usda","label":"USDA","foods":[\#(food(41, "Banana"))]},{"source":"culury","label":"RecipeHub","foods":[\#(food(9, "Banana bread", kind: "culury"))]}],"errors":[]}"#
         HTTPStub.requests = []
         HTTPStub.handler = { req in req.url?.path() == "/api/foods/search" ? .json(200, groups) : .json(404, #"{"error":"Not found"}"#) }
         let picker = FoodPickerModel(api: api) { $0.foodKind != "quick_meal" }
         picker.query = "ba"
         await picker.search()
-        XCTAssertEqual(picker.results.map(\.name), ["Chili", "Banana"], "no quick meals, no Culury recipes")
+        XCTAssertEqual(picker.results.map(\.name), ["Chili", "Banana"], "no quick meals, no RecipeHub recipes")
     }
 
     /// Review I-3: going back under two letters clears an old error and the spinner.

@@ -1020,6 +1020,6 @@ describe("unreadable keys", () => {
       .where(eq(appSettings.key, "food_sources"));
     await t.db.update(userSettings).set({ culuryKeyEnc: encryptSecret("c", other) }).where(eq(userSettings.userId, a.id));
     const r = await t.api("GET", "/api/admin/backups");
-    expect(r.body.unreadableKeys).toEqual(["Home AI key", "USDA key", "FatSecret secret", "Culury key for anna"]);
+    expect(r.body.unreadableKeys).toEqual(["Home AI key", "USDA key", "FatSecret secret", "RecipeHub key for anna"]);
   });
 });

@@ -8,7 +8,7 @@ import { decryptSecret, encryptSecret } from "./secrets.js";
 
 // Settings › Email (admin): the account ByteSize sends email from (forgot-password codes).
 // Saved in app_settings under "email", the password encrypted. SMTP_* / MAIL_FROM / APP_URL in .env
-// are used when nothing is saved in the app. (Copied from Culury's lib/mail.ts.)
+// are used when nothing is saved in the app. (Copied from RecipeHub's lib/mail.ts.)
 
 // starttls: plain connection upgraded to TLS (required) - usually port 587
 // ssl:      TLS from the start - usually port 465

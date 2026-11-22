@@ -229,7 +229,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(activityRoutes); // steps, workouts, workout calories in the plan (§40b)
   app.register(goalRoutes); // goals with a start and end (§40c)
   app.register(trendRoutes); // weekly trends, badges, vacations
-  app.register(culuryRoutes); // the person's Culury link: meal plan and recipes
+  app.register(culuryRoutes); // the person's RecipeHub link: meal plan and recipes
   app.register(restaurantRoutes); // restaurant menus (Spoonacular, FatSecret)
   app.register(backupRoutes); // admin: whole-server backups and restore
   app.register(exportRoutes); // Download my data
