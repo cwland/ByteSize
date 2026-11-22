@@ -30,6 +30,16 @@ describe("estimate several foods", () => {
     expect(lastAiPrompt(t)).toMatch(/each separate food/i);
   });
 
+  it("a long serving name from the AI is shortened, and the AI is asked for short ones", async () => {
+    await t.api("PUT", "/api/settings/ai", aiSettings);
+    const label = "1 sandwich (2 eggs, 1 tbsp light mayo, 1 light English muffin)";
+    aiAnswers(t, { items: [{ ...egg, name: "Egg and mayo English muffin", servings: [{ label, grams: 171 }], nutrients: { calories: 268, protein_g: 18 }, quantity: 1 }], assumed: false });
+    const r = await estimate("2 eggs with 1 tbsp low-calorie mayo on a low-calorie English muffin");
+    expect(r.status).toBe(200);
+    expect(r.body.items[0].food.servings[0]).toEqual({ label: "1 sandwich (2 eggs, 1 tbsp light mayo, 1 light English…", grams: 171 });
+    expect(lastAiPrompt(t)).toMatch(/serving label short/i);
+  });
+
   it("one food works too, and a guess comes back to confirm", async () => {
     await t.api("PUT", "/api/settings/ai", aiSettings);
     aiAnswers(t, { items: [{ ...toast, name: "Cheerios" }], assumed: true, interpretedAs: "Cheerios" });

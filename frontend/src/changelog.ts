@@ -15,6 +15,13 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.12.2",
+    date: "2026-11-21",
+    fixed: [
+      "Describe: a food the AI gave a very long serving name (like a whole sandwich's ingredients) no longer fails with \"The AI couldn't estimate that\"; the name is shortened instead.",
+    ],
+  },
+  {
     version: "0.12.1",
     date: "2026-11-21",
     changed: [
