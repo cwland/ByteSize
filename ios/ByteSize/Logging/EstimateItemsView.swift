@@ -73,9 +73,7 @@ struct EstimateItemsView: View {
                     Button(role: .destructive) { model.remove(at: i) } label: { Label("Remove", systemImage: "trash") }
                 }
             }
-        }
-        if allowAdd {
-            Section {
+            if allowAdd {
                 HStack {
                     TextField("Add a food, e.g. a black coffee", text: $model.addText)
                         .accessibilityLabel("Add a food")
