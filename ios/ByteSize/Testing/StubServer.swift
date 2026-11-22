@@ -159,6 +159,8 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         }
 
         static let banana = #"{"kind":"cache","id":41,"name":"Banana","brand":null,"icon":"🍌","barcode":"0012345678905","servings":[{"label":"1 medium","grams":118},{"label":"100 g","grams":100}],"nutrients":{"calories":105,"protein_g":1.3,"carbs_g":27,"fiber_g":3.1},"aiFields":[],"imageUrl":null,"override":false,"source":"usda","foodKind":"custom"}"#
+        static let cappuccino = #"{"kind":"cache","id":901,"name":"Cappuccino mix","brand":"Hills Bros.","icon":"☕️","barcode":"0018400312944","servings":[{"label":"3 tbsp","grams":18}],"nutrients":{"calories":78},"aiFields":[],"imageUrl":null,"override":false,"source":"usda","foodKind":"custom"}"#
+        static let hillsBros = #"{"kind":"cache","id":902,"name":"Hills bros","brand":"Hills Bros.","icon":"☕️","barcode":"0018400312944","servings":[{"label":"100 g","grams":100}],"nutrients":{"calories":417},"aiFields":[],"imageUrl":null,"override":false,"source":"off","foodKind":"custom"}"#
         static let prunes = #"{"kind":"cache","id":42,"name":"Prunes","brand":null,"icon":"🍇","barcode":null,"servings":[{"label":"5 prunes","grams":40},{"label":"1 prune","grams":8,"derived":true}],"nutrients":{"calories":150,"fiber_g":3},"aiFields":[],"imageUrl":null,"override":false,"source":"usda","foodKind":"custom"}"#
         static let pasta = #"{"kind":"cache","id":50,"name":"Pasta","brand":null,"icon":"🍝","barcode":null,"servings":[{"label":"1 cup","grams":140}],"nutrients":{"calories":220,"carbs_g":43},"aiFields":[],"imageUrl":null,"override":false,"source":"usda","foodKind":"custom","last":{"servingIndex":0,"unit":"serving","quantity":1,"fraction":1}}"#
         /// Only in Basic, which is off by default: shows once its chip is turned on.
@@ -410,6 +412,11 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 return (404, #"{"error":"Entry not found"}"#)
             }
             // /api/foods/barcode/:code
+            if method == "GET", parts.count == 4, parts[1] == "foods", parts[2] == "barcode", parts[3] == "0018400312944" {
+                // the sources disagree on this one: a short list to pick from
+                return (200, #"{"code":"0018400312944","food":\#(Self.cappuccino),"errors":[],"choices":[\#(Self.cappuccino),\#(Self.hillsBros)]}"#)
+            }
+            if method == "POST", parts.count == 5, parts[1] == "foods", parts[2] == "barcode", parts[4] == "pick" { return (204, "") }
             if method == "GET", parts.count == 4, parts[1] == "foods", parts[2] == "barcode" {
                 let food = parts[3] == "0012345678905" ? Self.banana : "null"
                 return (200, #"{"code":"\#(parts[3])","food":\#(food),"errors":[]}"#)

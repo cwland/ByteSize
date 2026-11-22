@@ -10,6 +10,8 @@ public final class ScanModel {
         case scanning
         case looking(String)
         case found(Food)
+        /// The sources disagree on what the barcode is: pick one (remembered for it), or none of them.
+        case choose([Food], code: String)
         case notFound(String)
         case readingLabel
         case review(AiDraft, barcode: String)
@@ -53,7 +55,12 @@ public final class ScanModel {
         step = .looking(digits)
         do {
             let hit = try await api.send(FoodAPI.barcode(digits))
-            step = hit.food.map(Step.found) ?? .notFound(digits)
+            if let choices = hit.choices, choices.count > 1 {
+                code = hit.code
+                step = .choose(choices, code: hit.code)
+            } else {
+                step = hit.food.map(Step.found) ?? .notFound(digits)
+            }
         } catch {
             step = .failed(Self.text(error))
         }
@@ -100,6 +107,19 @@ public final class ScanModel {
         justLogged = code.map { ($0, now()) }
         restart()
         lastLogged = name
+    }
+
+    /// The product picked from the list: opened, and remembered for the barcode (a failure to remember doesn't stop it).
+    public func pick(_ food: Food) async {
+        guard case .choose(_, let code) = step else { return }
+        step = .found(food)
+        _ = try? await api.send(FoodAPI.pickBarcode(code, foodId: food.id))
+    }
+
+    /// None of the listed products: photograph the label instead (saved as the person's food, which wins next time).
+    public func noneOfThese() {
+        guard case .choose(_, let code) = step else { return }
+        step = .notFound(code)
     }
 
     public func restart() {

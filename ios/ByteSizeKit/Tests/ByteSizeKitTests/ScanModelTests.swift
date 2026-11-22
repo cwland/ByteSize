@@ -170,4 +170,57 @@ final class ScanModelTests: XCTestCase {
         await m.save(draft)
         XCTAssertEqual(HTTPStub.requests.last?.json?["aiFields"] as? [String], ["fat_g", "protein_g"])
     }
+
+    // 2026-11-22: the sources disagree on what a barcode is: pick from a short list (remembered for it), or none
+    private nonisolated static let vague = #"{"kind":"cache","id":902,"name":"Hills bros","brand":"Hills Bros.","icon":"☕️","barcode":"0018400312944","servings":[{"label":"100 g","grams":100}],"nutrients":{"calories":417},"aiFields":[],"imageUrl":null,"override":false,"source":"off","foodKind":"custom","savedAt":null}"#
+    private nonisolated static let real = #"{"kind":"cache","id":901,"name":"HILLS BROS, CAPPUCCINO","brand":"Hills Bros.","icon":"☕️","barcode":"0018400312944","servings":[{"label":"3 tbsp","grams":18}],"nutrients":{"calories":78},"aiFields":[],"imageUrl":null,"override":false,"source":"usda","foodKind":"custom","savedAt":null}"#
+
+    private func serveChoices() {
+        HTTPStub.requests = []
+        HTTPStub.handler = { req in
+            switch (req.httpMethod ?? "", req.url?.path() ?? "") {
+            case ("GET", "/api/foods/barcode/018400312944"), ("GET", "/api/foods/barcode/0018400312944"): // UPC-A or EAN-13
+                return .json(200, #"{"code":"0018400312944","food":\#(ScanModelTests.real),"errors":[],"choices":[\#(ScanModelTests.real),\#(ScanModelTests.vague)]}"#)
+            case ("POST", "/api/foods/barcode/0018400312944/pick"): return .json(204, "")
+            default: return .json(404, #"{"error":"Not found"}"#)
+            }
+        }
+    }
+
+    func testSourcesThatDisagreeGiveAShortList() async {
+        serveChoices()
+        let m = ScanModel(api: api)
+        await m.scanned("018400312944")
+        guard case .choose(let foods, let code) = m.step else { return XCTFail("\(m.step)") }
+        XCTAssertEqual(foods.map(\.name), ["HILLS BROS, CAPPUCCINO", "Hills bros"])
+        XCTAssertEqual(code, "0018400312944")
+    }
+
+    func testPickingOneOpensItAndRemembersIt() async throws {
+        serveChoices()
+        let m = ScanModel(api: api)
+        await m.scanned("018400312944")
+        guard case .choose(let foods, _) = m.step else { return XCTFail("\(m.step)") }
+        await m.pick(foods[1])
+        guard case .found(let food) = m.step else { return XCTFail("\(m.step)") }
+        XCTAssertEqual(food.name, "Hills bros")
+        let pick = try XCTUnwrap(HTTPStub.requests.last { $0.request.url?.path() == "/api/foods/barcode/0018400312944/pick" })
+        XCTAssertEqual(pick.request.httpMethod, "POST")
+        XCTAssertEqual(pick.json?["id"] as? Int, 902)
+    }
+
+    func testNoneOfTheseGoesToTheLabelPhoto() async {
+        serveChoices()
+        let m = ScanModel(api: api)
+        await m.scanned("018400312944")
+        m.noneOfThese()
+        XCTAssertEqual(m.step, .notFound("0018400312944"))
+    }
+
+    func testAgreeingSourcesOpenTheFoodAsBefore() async {
+        serve()
+        let m = ScanModel(api: api)
+        await m.scanned("0012345678905")
+        guard case .found = m.step else { return XCTFail("\(m.step)") }
+    }
 }

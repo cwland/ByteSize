@@ -79,6 +79,20 @@ struct ScanSheet: View {
                 FoodRow(food: food)
                 Button("Scan another") { model.restart() }
             }
+        case .choose(let foods, let code):
+            Card(title: "Which one is it?") {
+                Text("The sources don't agree on barcode \(code). Pick the right one:")
+                    .font(.subheadline)
+                    .foregroundStyle(palette.color("subtle"))
+                ForEach(foods, id: \.id) { food in
+                    Button { Task { await model.pick(food) } } label: { FoodRow(food: food) }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("choice-\(food.name)")
+                }
+                Button("None of these — scan its label") { model.noneOfThese() }
+                    .accessibilityIdentifier("noneOfThese")
+                Button("Scan something else") { model.restart() }
+            }
         case .notFound(let code):
             Card(title: "Barcode \(code)") {
                 Text("We don't know this barcode yet").font(.headline).accessibilityIdentifier("unknownBarcode")

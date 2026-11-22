@@ -13,6 +13,12 @@ public enum FoodAPI {
         Endpoint("GET", "/api/foods/barcode/\(code)")
     }
 
+    struct PickBody: Encodable { let id: Int }
+    /// Remembers the product picked for a barcode the sources disagreed on: its next scan opens it straight away.
+    public static func pickBarcode(_ code: String, foodId: Int) -> Endpoint<Empty> {
+        Endpoint("POST", "/api/foods/barcode/\(code)/pick", json: PickBody(id: foodId))
+    }
+
     public static func recent(meal: Meal?) -> Endpoint<FoodList> {
         Endpoint("GET", "/api/foods/recent", query: mealQuery(meal))
     }

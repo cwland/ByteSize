@@ -84,7 +84,7 @@ describe("barcode lookup", () => {
     offKnows(t, {});
     const r = await barcode("4006381333931");
     expect(r.status).toBe(200);
-    expect(r.body).toEqual({ code: "4006381333931", food: null, errors: [] });
+    expect(r.body).toEqual({ code: "4006381333931", food: null, errors: [], choices: [] });
     expect(t.foodWeb.calls.map((c) => c.url.startsWith(OFF_PRODUCT))).toEqual([true]); // no USDA key: OFF only
     expect(await foodLogs()).toEqual([]);
     const bad = await barcode("12ab");
