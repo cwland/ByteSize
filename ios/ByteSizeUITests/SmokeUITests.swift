@@ -850,6 +850,7 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["noneOfThese"].exists)
         XCTAssertTrue(app.buttons["quickAdd-Cappuccino mix"].exists, "each choice can be logged with +")
         app.buttons["choice-Cappuccino mix"].tap()
+        sleep(2); shot("dbg-choice")
         XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5), "the picked product opens")
     }
 

@@ -80,7 +80,8 @@ struct ScanSheet: View {
                     .foregroundStyle(palette.color("subtle"))
                 ForEach(foods, id: \.id) { food in
                     scannedRow(food, id: "choice-\(food.name)") {
-                        Task { await model.pick(food); openPortion(food) }
+                        openPortion(food) // straight away; remembering the pick for the barcode follows
+                        Task { await model.pick(food) }
                     } quick: {
                         await model.pick(food)
                         return await quickLog(food)
