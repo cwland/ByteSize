@@ -716,6 +716,7 @@ export async function loadFood(db: Db, userId: number, ref: { kind: "cache" | "u
 const SYSTEM = [
   "You are a nutrition label expert. You estimate nutrition facts for foods as sold or served in the United States.",
   "Use US serving sizes (the way a US nutrition label or restaurant menu would).",
+  'Keep each serving label short, under 40 characters, like a label would write it ("1 sandwich", "1 cup (240 ml)"): never list the ingredients in it.',
   `Nutrient keys (per the first serving): ${NUTRIENT_KEYS.join(", ")}. Units: calories in kcal, *_g in grams, *_mg in milligrams, water_ml in millilitres.`,
   "Give every key you can reasonably estimate; leave out a key only when it can't be known.",
   "Values are plain numbers only (no units, no ranges, no strings). Answer with JSON only.",
@@ -729,6 +730,16 @@ export async function aiReady(app: FastifyInstance) {
 const askFood = (app: FastifyInstance, userId: number, user: string, opts: { signal?: AbortSignal; onProgress?: (p: AiProgress) => void } = {}) =>
   app.ai.ask("food", SYSTEM, user, { userId, maxTokens: 4000, reasoning: "low", ...opts }).then((r) => r.json);
 
+const SERVING_LABEL_MAX = 60;
+
+/** A serving label the AI made too long, cut to fit at the last whole word (one long word: cut mid-word) with "…". */
+export function shortLabel(label: string): string {
+  if (label.length <= SERVING_LABEL_MAX) return label;
+  const room = label.slice(0, SERVING_LABEL_MAX - 1);
+  const atWord = room.replace(/\s+\S*$/, "");
+  return `${(atWord || room).replace(/[\s,;:(\-]+$/, "")}…`;
+}
+
 const aiFood = z.object({
   name: z.string().trim().min(1).max(200),
   brand: z.string().trim().max(200).nullable().optional(),
@@ -736,7 +747,8 @@ const aiFood = z.object({
   servings: z
     .array(
       z.object({
-        label: z.string().trim().min(1).max(60),
+        // The AI sometimes writes the whole recipe into the label: shortened rather than losing the estimate
+        label: z.string().trim().min(1).transform(shortLabel),
         grams: z.number().positive().nullable().optional(),
         ml: z.number().positive().nullable().optional(),
       })
