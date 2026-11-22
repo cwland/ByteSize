@@ -1,4 +1,4 @@
-import { favorites, weighInSkips, workoutSkips } from "../src/db/schema.js";
+import { barcodePicks, favorites, weighInSkips, workoutSkips } from "../src/db/schema.js";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -139,6 +139,8 @@ async function seed() {
   await t.db.insert(userFoods).values({ userId: b.id, kind: "override", name: "Food corrected", baseCacheId: corrected.id, servings: [], nutrients: { calories: 2 } });
   // L2: a favorite of each kind (a kept food and one of the person's own)
   await t.db.insert(favorites).values([{ userId: a.id, cacheId: cache.id }, { userId: a.id, userFoodId: custom.id }]);
+  // A product picked for a barcode the sources disagreed on (2026-11-22)
+  await t.db.insert(barcodePicks).values({ userId: a.id, barcode: "0012345678905", cacheId: cache.id });
   await t.db.insert(weighInSkips).values({ userId: a.id, day: "2026-11-10" });
   await t.db.insert(workoutSkips).values({ userId: a.id, externalId: "HK-gone" });
   const [recipe] = await t.db.insert(userFoods).values({ userId: a.id, kind: "recipe", name: "Overnight oats", servings: [{ label: "1 serving" }], nutrients: { calories: 360 }, recipeServings: 2, servingGrams: null }).returning();

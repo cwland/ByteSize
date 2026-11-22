@@ -5,7 +5,7 @@ import { AiStopped, type AiProgress } from "../lib/ai.js";
 import { logEvent } from "../lib/appLog.js";
 import { HttpError } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
-import { aiReady, estimateFood, estimateFoodItems, fillGaps, lookupBarcode, searchFoods } from "../lib/foods.js";
+import { aiReady, estimateFood, estimateFoodItems, fillGaps, lookupBarcode, pickBarcode, searchFoods } from "../lib/foods.js";
 import { refreshKept, refreshRateLimit } from "../lib/lookups.js";
 import { wholeKeptFood } from "../lib/restaurants/index.js";
 
@@ -19,10 +19,19 @@ export default async function foodRoutes(app: FastifyInstance) {
     return searchFoods(app, userId, typeof q === "string" ? q : undefined);
   });
 
+  // A barcode: the food (the most complete answer), and choices when the sources disagree on what it is
   app.get("/api/foods/barcode/:code", async (req) => {
     const userId = requireUser(req);
-    const { code, food, errors } = await lookupBarcode(app, userId, String((req.params as { code: string }).code));
-    return { code, food, errors };
+    const { code, food, errors, choices } = await lookupBarcode(app, userId, String((req.params as { code: string }).code));
+    return { code, food, errors, choices };
+  });
+
+  // The kept food picked from the choices: that barcode opens it straight away next time (for this person)
+  app.post("/api/foods/barcode/:code/pick", async (req, reply) => {
+    const userId = requireUser(req);
+    const { id } = z.object({ id: z.number().int().positive().max(2147483647) }).parse(req.body ?? {});
+    await pickBarcode(app, userId, String((req.params as { code: string }).code), id);
+    return reply.status(204).send();
   });
 
   // One kept food as it is now, whole (opening a FatSecret search row fetches the whole food once)

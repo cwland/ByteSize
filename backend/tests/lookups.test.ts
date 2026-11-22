@@ -139,22 +139,25 @@ describe("barcodes: saved copy first, then Open Food Facts → FatSecret (Premie
     expect(outside()).toHaveLength(2);
   });
 
-  it("the order: OFF first; FatSecret (Premier) before USDA; the first hit wins", async () => {
+  it("every source is asked (FatSecret only on Premier); the same product from two of them is one food, no list", async () => {
     await setRestaurantKeys(t, { fatsecret: FS });
     await settings({ usdaApiKey: "usda-key", fatsecretPlan: "premier" });
     web({ usda: [usdaFood(77, "USDA granola", 400, "012345678905")], fs: { fsBarcode: () => fsFound(), fsGet: () => ({ status: 200, json: { food: fsGranola } }) } });
     const r = await scan();
+    // FatSecret's Nature Valley Granola Bar is the most complete; USDA's "USDA granola" is a different product
     expect(r.body.food).toMatchObject({ name: "Granola Bar", brand: "Nature Valley", source: "fatsecret", barcode: CODE });
-    const order = outside().map((c) => (c.url === FS_API ? new URLSearchParams(String(c.body)).get("method") : new URL(c.url).hostname));
-    expect(order).toEqual(["world.openfoodfacts.org", "food.find_id_for_barcode", "food.get.v2"]);
+    expect(r.body.choices.map((c: any) => c.source)).toEqual(["fatsecret", "usda"]);
+    const asked = outside().map((c) => (c.url === FS_API ? new URLSearchParams(String(c.body)).get("method") : new URL(c.url).hostname));
+    expect([...asked].sort()).toEqual(["api.nal.usda.gov", "food.find_id_for_barcode", "food.get.v2", "world.openfoodfacts.org"]);
     expect(new URLSearchParams(String(fsCalls(t, "food.find_id_for_barcode")[0].body)).get("barcode")).toBe(CODE);
-    // FatSecret doesn't know it: USDA is next
+    // FatSecret doesn't know it: USDA's alone, no list
     await t.db.execute(sql`delete from food_cache`);
     await t.db.execute(sql`delete from fatsecret_barcodes`);
     t.foodWeb.calls.length = 0;
     web({ usda: [usdaFood(77, "USDA granola", 400, "012345678905")] });
     const u = await scan();
     expect(u.body.food).toMatchObject({ name: "USDA granola", source: "usda" });
+    expect(u.body.choices).toEqual([]);
     expect(fsCalls(t, "food.find_id_for_barcode")).toHaveLength(1);
     expect(usdaCalls()).toHaveLength(1);
   });

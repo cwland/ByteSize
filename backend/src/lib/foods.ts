@@ -4,7 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { and, asc, desc, eq, gte, inArray, ne, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/index.js";
-import { fatsecretBarcodes, foodCache, foodSearches, userFoods } from "../db/schema.js";
+import { barcodePicks, fatsecretBarcodes, foodCache, foodSearches, userFoods } from "../db/schema.js";
 import { culuryLink, culuryMessage, logCuluryFailure, searchCulury } from "./culury.js";
 import { AiError, AiStopped, type AiProgress } from "./ai.js";
 import { logEvent } from "./appLog.js";
@@ -16,7 +16,7 @@ import { fatsecretPlan, setBarcodeScopeMissing, sourceHours, sourceSwitches, usd
 import { fatsecretInUse } from "./restaurants/index.js";
 import { SourceError, type SourceFood } from "./foodSources/types.js";
 import { usdaByBarcode, usdaSearch } from "./foodSources/usda.js";
-import { countUsage } from "./usage.js";
+import { countUsage, type UsageKey } from "./usage.js";
 import { withMeasures } from "./measures.js";
 import { NUTRIENT_KEYS, withLiquidVolumes, type NutrientKey, type Nutrients, type Serving } from "./nutrients.js";
 import { linkPhoto, photoForFood, photoUrl, signImageUrl } from "./photos.js";
@@ -200,107 +200,175 @@ const friendly = (source: Outside, err: unknown) => (err instanceof SourceError 
 
 // ---------- barcode ----------
 
-export type BarcodeHit = { code: string; food: FoodResult | null; from: GroupSource | null; errors: SearchResult["errors"] };
+export type BarcodeHit = {
+  code: string;
+  food: FoodResult | null;
+  from: GroupSource | null;
+  errors: SearchResult["errors"];
+  /** The sources disagree on what this barcode is: one entry per different product, the most complete first. Empty otherwise. */
+  choices: FoodResult[];
+};
 
 /**
- * The waterfall: the person's own food with that barcode, a kept copy fresher than its source's hours (or, for a
- * barcode FatSecret found before, that one food fetched again), then Open Food Facts, FatSecret (Premier only) and
- * USDA (only with a key). The first hit wins and is kept. A stale kept copy is still used when the outside sources
- * can't refresh it. A source the admin switched off is skipped silently.
+ * A barcode: the person's own food with it wins outright, then the kept food they picked for it before. Otherwise
+ * every source is asked at once (2026-11-22 barcode choices) — Open Food Facts, FatSecret (Premier only; a barcode it
+ * found before is that one food fetched again) and USDA (only with a key) — each answered from its kept copy while
+ * that is fresher than the source's hours. A source that can't be reached falls back to its stale kept copy, and is
+ * listed in errors. What's found is kept; the most complete is the food, and `choices` lists the different products
+ * when the sources disagree. A source the admin switched off is skipped silently.
  */
 export async function lookupBarcode(app: FastifyInstance, userId: number, raw: string): Promise<BarcodeHit> {
   const code = normalizeBarcode(raw);
   if (!code) throw badRequest(NOT_A_BARCODE);
   const { db } = app;
   countUsage(app, userId, "barcodes_scanned");
+  const errors: SearchResult["errors"] = []; // sources that couldn't be checked: "not found" isn't certain then
+  const none = (): BarcodeHit => ({ code, food: null, from: null, errors, choices: [] });
 
   const [mine] = await db
     .select()
     .from(userFoods)
     .where(and(eq(userFoods.userId, userId), eq(userFoods.barcode, code), eq(userFoods.archived, false)))
     .limit(1);
-  const errors: SearchResult["errors"] = []; // sources that couldn't be checked: "not found" isn't certain then
-  if (mine) return { code, food: toResult(mine, "user_food"), from: "mine", errors };
+  if (mine) return { ...none(), food: toResult(mine, "user_food"), from: "mine" };
 
   const now = app.now();
+  const [picked] = await db
+    .select({ row: foodCache })
+    .from(barcodePicks)
+    .innerJoin(foodCache, eq(foodCache.id, barcodePicks.cacheId))
+    .where(and(eq(barcodePicks.userId, userId), eq(barcodePicks.barcode, code)));
+  if (picked) {
+    await touchUsed(db, [picked.row.id], now);
+    return { ...none(), food: toResult(picked.row, "cache"), from: picked.row.source as GroupSource };
+  }
+
   const hours = await sourceHours(app);
   const kept = await db.select().from(foodCache).where(eq(foodCache.barcode, code)).orderBy(desc(foodCache.fetchedAt));
-  const keptFresh = kept.find((r) => fresh(r, hours, now));
-  if (keptFresh) {
-    countUsage(app, userId, "lookups_saved");
-    await touchUsed(db, [keptFresh.id], now);
-    return { code, food: toResult(keptFresh, "cache"), from: "cache", errors };
-  }
-  const cached = kept[0];
-
+  const keptOf = (source: string) => kept.filter((r) => r.source === source);
+  const freshOf = (source: string) => keptOf(source).find((r) => fresh(r, hours, now));
   const switches = await sourceSwitches(app);
   const fs = await fatsecretInUse(app);
-  const keep = async (found: SourceFood) => {
-    const [row] = await upsertMany(db, [{ ...found, barcode: found.barcode ?? code }], app.now());
-    await touchUsed(db, [row.id], app.now());
-    return row;
-  };
-  const tryFatSecret = async (what: string, run: () => Promise<SourceFood | null>) => {
-    countUsage(app, userId, "outside_fatsecret");
+  const plan = fs ? await fatsecretPlan(app) : null;
+  const [link] = fs ? await db.select().from(fatsecretBarcodes).where(eq(fatsecretBarcodes.barcode, code)) : [];
+  const usdaKey = await usdaKeyInUse(app);
+
+  // One source's answer: its fresh kept copy, else asked (null: doesn't know it, or isn't asked); a failure falls
+  // back to the stale kept copy
+  type Answer = { row: CacheRow; fetched: boolean } | null;
+  const ask = async (source: "off" | "fatsecret" | "usda", usage: UsageKey, what: () => Promise<SourceFood | null>): Promise<Answer> => {
+    const ready = freshOf(source);
+    if (ready) return { row: ready, fetched: false };
+    countUsage(app, userId, usage);
     try {
-      return await run();
+      const found = await what();
+      if (!found) return null;
+      const [row] = await upsertMany(db, [{ ...found, barcode: found.barcode ?? code }], app.now());
+      return { row, fetched: true };
     } catch (err) {
-      if (err instanceof SourceError && err.kind === "no_scope") {
+      if (source === "fatsecret" && err instanceof SourceError && err.kind === "no_scope") {
         await setBarcodeScopeMissing(app, true); // shown once on the FatSecret card; barcodes skip FatSecret now
         return null;
       }
-      await logSourceFailure(app, userId, "fatsecret", what, err);
-      errors.push({ source: "fatsecret", message: friendly("fatsecret", err) });
-      return null;
+      await logSourceFailure(app, userId, source, "barcode lookup", err);
+      errors.push({ source, message: friendly(source, err) });
+      const stale = keptOf(source)[0];
+      return stale ? { row: stale, fetched: false } : null;
     }
   };
-
-  // FatSecret found this barcode before (the link is kept for good): only that one food is fetched again
-  const [link] = fs ? await db.select().from(fatsecretBarcodes).where(eq(fatsecretBarcodes.barcode, code)) : [];
-  if (fs && link) {
-    const found = await tryFatSecret("barcode lookup", async () => (await fs.item(link.foodId)).food);
-    if (found) return { code, food: justFetched(await keep(found)), from: "fatsecret", errors };
-  }
-
-  let found: SourceFood | null = null;
-  if (switches.off) {
-    countUsage(app, userId, "outside_off");
-    try {
-      found = await offByBarcode(app.foodFetch, code, SOURCE_TIMEOUT_MS);
-    } catch (err) {
-      await logSourceFailure(app, userId, "off", "barcode lookup", err);
-      errors.push({ source: "off", message: friendly("off", err) });
-    }
-  }
-  const plan = await fatsecretPlan(app);
   // FatSecret takes GTIN-13: EAN-8 is padded with zeros; a longer code (a GTIN-14 case code) isn't asked
   const fsCode = code.length <= 13 ? code.padStart(13, "0") : null;
-  if (!found && fs && fsCode && !link && plan.plan === "premier" && !plan.barcodeScopeMissing) {
-    found = await tryFatSecret("barcode lookup", async () => {
-      const id = await fs.barcode(fsCode);
-      if (!id) return null;
-      await db.insert(fatsecretBarcodes).values({ barcode: code, foodId: id, createdAt: app.now() }).onConflictDoUpdate({ target: fatsecretBarcodes.barcode, set: { foodId: id } });
-      return (await fs.item(id)).food;
-    });
+  const fsAsks = fs && (link || (fsCode && plan?.plan === "premier" && !plan.barcodeScopeMissing));
+  const answers = await Promise.all([
+    switches.off ? ask("off", "outside_off", () => offByBarcode(app.foodFetch, code, SOURCE_TIMEOUT_MS)) : null,
+    fsAsks
+      ? ask("fatsecret", "outside_fatsecret", async () => {
+          if (link) return (await fs.item(link.foodId)).food;
+          const id = await fs.barcode(fsCode!);
+          if (!id) return null;
+          await db.insert(fatsecretBarcodes).values({ barcode: code, foodId: id, createdAt: app.now() }).onConflictDoUpdate({ target: fatsecretBarcodes.barcode, set: { foodId: id } });
+          return (await fs.item(id)).food;
+        })
+      : null,
+    usdaKey ? ask("usda", "outside_usda", () => usdaByBarcode(app.foodFetch, usdaKey, code, SOURCE_TIMEOUT_MS)) : null,
+  ]);
+  const found = answers.filter((a): a is NonNullable<Answer> => a !== null);
+  // A source switched off or without a key still has its kept copy to offer when nothing else answers
+  if (!found.length) {
+    const any = kept[0];
+    if (!any) return none();
+    await touchUsed(db, [any.id], now);
+    return { ...none(), food: toResult(any, "cache"), from: any.source as GroupSource };
   }
-  if (!found) {
-    const key = await usdaKeyInUse(app);
-    if (key) {
-      countUsage(app, userId, "outside_usda");
-      try {
-        found = await usdaByBarcode(app.foodFetch, key, code, SOURCE_TIMEOUT_MS);
-      } catch (err) {
-        await logSourceFailure(app, userId, "usda", "barcode lookup", err);
-        errors.push({ source: "usda", message: friendly("usda", err) });
-      }
-    }
-  }
-  if (found) return { code, food: justFetched(await keep(found)), from: found.source as GroupSource, errors };
-  if (cached) {
-    await touchUsed(db, [cached.id], now);
-    return { code, food: toResult(cached, "cache"), from: "cache", errors };
-  }
-  return { code, food: null, from: null, errors };
+  if (found.every((a) => !a.fetched)) countUsage(app, userId, "lookups_saved");
+  await touchUsed(db, found.map((a) => a.row.id), app.now());
+  const ranked = found.sort((a, b) => completeness(b.row) - completeness(a.row));
+  const result = (a: NonNullable<Answer>) => (a.fetched ? justFetched(a.row) : toResult(a.row, "cache"));
+  const products = differentProducts(ranked.map((a) => a.row));
+  return {
+    code,
+    food: result(ranked[0]),
+    from: ranked[0].row.source as GroupSource,
+    errors,
+    choices: products.length > 1 ? ranked.filter((a) => products.includes(a.row)).map(result) : [],
+  };
+}
+
+/** Remembers the kept food a person picked for a barcode the sources disagreed on (404 when it isn't that barcode's). */
+export async function pickBarcode(app: FastifyInstance, userId: number, raw: string, cacheId: number): Promise<void> {
+  const code = normalizeBarcode(raw);
+  if (!code) throw badRequest(NOT_A_BARCODE);
+  const [row] = await app.db.select({ id: foodCache.id }).from(foodCache).where(and(eq(foodCache.id, cacheId), eq(foodCache.barcode, code)));
+  if (!row) throw new HttpError(404, "That food isn't one of this barcode's");
+  await app.db
+    .insert(barcodePicks)
+    .values({ userId, barcode: code, cacheId, createdAt: app.now() })
+    .onConflictDoUpdate({ target: [barcodePicks.userId, barcodePicks.barcode], set: { cacheId, createdAt: app.now() } });
+}
+
+const SOURCE_ORDER: Record<string, number> = { fatsecret: 0.3, usda: 0.2, off: 0.1 };
+const tokens = (s: string | null | undefined) => new Set((s ?? "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter((w) => w.length > 1));
+/** The words of a food's name that aren't its brand ("Hills bros" by Hills Bros. has none: it doesn't say what it is). */
+const productWords = (r: CacheRow) => {
+  const brand = tokens(r.brand);
+  return new Set([...tokens(r.name)].filter((w) => !brand.has(w)));
+};
+
+/**
+ * How complete a kept food is, to put the likeliest right one first: a name that says more than the brand, a real
+ * serving (not just "100 g"), protein / carbs / fat present; ties go FatSecret, USDA, Open Food Facts.
+ */
+export function completeness(r: CacheRow): number {
+  const servings = (r.servings ?? []) as Serving[];
+  const n = (r.nutrients ?? {}) as Nutrients;
+  let score = SOURCE_ORDER[r.source] ?? 0;
+  if (productWords(r).size > 0) score += 3;
+  if (servings.some((s) => !/^100 ?(g|ml)$/i.test(s.label.trim()))) score += 2;
+  for (const k of ["protein_g", "carbs_g", "fat_g"] as const) if (typeof n[k] === "number") score += 0.5;
+  return score;
+}
+
+const per100 = (r: CacheRow): number | null => {
+  const s = ((r.servings ?? []) as Serving[]).find((x) => x.grams);
+  const kcal = (r.nutrients as Nutrients | null)?.calories;
+  return s?.grams && typeof kcal === "number" ? (kcal / s.grams) * 100 : null;
+};
+/** The same product from two sources: both names say what it is, one's words contain the other's, and calories agree (±15%). */
+function sameProduct(a: CacheRow, b: CacheRow): boolean {
+  const wa = productWords(a);
+  const wb = productWords(b);
+  if (!wa.size || !wb.size) return false;
+  const [small, big] = wa.size <= wb.size ? [wa, wb] : [wb, wa];
+  if (![...small].every((w) => big.has(w))) return false;
+  const ka = per100(a);
+  const kb = per100(b);
+  return ka === null || kb === null || Math.abs(ka - kb) <= 0.15 * Math.max(ka, kb);
+}
+/** One row per different product, in the order given (the first of each kind kept). */
+export function differentProducts(rows: CacheRow[]): CacheRow[] {
+  const out: CacheRow[] = [];
+  for (const r of rows) if (!out.some((o) => sameProduct(o, r))) out.push(r);
+  return out;
 }
 
 // ---------- text matching ----------

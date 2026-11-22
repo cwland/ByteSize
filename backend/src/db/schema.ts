@@ -595,6 +595,23 @@ export const fatsecretBarcodes = pgTable("fatsecret_barcodes", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// A barcode the sources disagreed on: the kept food the person picked for it, opened straight away on their next
+// scan (2026-11-22 barcode choices). One per person per barcode (normalized EAN-13).
+export const barcodePicks = pgTable(
+  "barcode_picks",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    barcode: text("barcode").notNull(),
+    cacheId: integer("cache_id")
+      .notNull()
+      .references(() => foodCache.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.barcode] })]
+);
+
 // What a person has done with ByteSize that nothing else records (Settings › App info): barcodes scanned, photos
 // read, AI estimates, lookups answered from a saved copy, outside calls per source. One row per person and key,
 // counted from the day this shipped. Their own data: backed up, in "Download my data", gone with the person.
