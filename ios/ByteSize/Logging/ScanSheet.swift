@@ -31,17 +31,10 @@ struct ScanSheet: View {
                 }
             }
         }
-        .onChange(of: model.step) { _, step in
-            switch step {
-            case .found(let food), .saved(let food): openPortion(food)
-            default: break
-            }
-        }
-        // Pushed, not a sheet (R1). SPEC-16: back from it (logged, Back or Scan again), the camera for the next barcode
-        .onChange(of: portionFood) { _, now in if now == nil { model.restart() } }
+        // Pushed, not a sheet (R1). Logged or Scan again: the camera for the next barcode (SPEC-16); Back: the list
         .navigationDestination(item: $portionFood) { food in
             FoodPortionView(food: food, meal: track.meal, pushed: true, message: track.message, favorites: track,
-                            again: PortionSheet.Again(title: "Scan again") { portionFood = nil }) { food, portion in
+                            again: PortionSheet.Again(title: "Scan again") { portionFood = nil; model.restart() }) { food, portion in
                 let ok = await track.log(food, portion: portion)
                 if ok { model.logged(food.name) }
                 return ok
@@ -75,8 +68,9 @@ struct ScanSheet: View {
         case .looking(let code):
             Card { HStack { ProgressView(); Text("Looking up \(code)…") } }
         case .found(let food), .saved(let food):
-            Card {
-                FoodRow(food: food)
+            // Owner: always a list first (even of one): tap the food for its amount, or + to log it now
+            Card(title: model.code.map { "Barcode \($0)" }) {
+                scannedRow(food, id: "scanned-\(food.name)") { openPortion(food) } quick: { await quickLog(food) }
                 Button("Scan another") { model.restart() }
             }
         case .choose(let foods, let code):
@@ -85,9 +79,12 @@ struct ScanSheet: View {
                     .font(.subheadline)
                     .foregroundStyle(palette.color("subtle"))
                 ForEach(foods, id: \.id) { food in
-                    Button { Task { await model.pick(food) } } label: { FoodRow(food: food) }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("choice-\(food.name)")
+                    scannedRow(food, id: "choice-\(food.name)") {
+                        Task { await model.pick(food); openPortion(food) }
+                    } quick: {
+                        await model.pick(food)
+                        return await quickLog(food)
+                    }
                 }
                 Button("None of these — scan its label") { model.noneOfThese() }
                     .accessibilityIdentifier("noneOfThese")
@@ -136,6 +133,33 @@ struct ScanSheet: View {
             .disabled(typed.filter(\.isNumber).count < 6)
             .accessibilityIdentifier("lookUpBarcode")
         }
+    }
+
+    /// A found food's row: tap it for the amount; + logs it now (its last amount, or one serving).
+    private func scannedRow(_ food: Food, id: String, open: @escaping () -> Void, quick: @escaping () async -> Bool) -> some View {
+        HStack {
+            Button(action: open) { FoodRow(food: food).contentShape(Rectangle()) }
+                .buttonStyle(.plain)
+                .disabled(!food.isLoggable)
+                .accessibilityIdentifier(id)
+            if food.isLoggable {
+                Button {
+                    Task { if await quick() { Haptics.logged() } }
+                } label: {
+                    Image(systemName: "plus.circle.fill").font(.title2).foregroundStyle(palette.color("primary"))
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Log \(food.name)")
+                .accessibilityIdentifier("quickAdd-\(food.name)")
+            }
+        }
+    }
+
+    /// The + : logged as the search's + logs it, then back to the camera for the next barcode (SPEC-16).
+    private func quickLog(_ food: Food) async -> Bool {
+        let ok = await track.quickLog(food)
+        if ok { model.logged(food.name) }
+        return ok
     }
 
     private func openPortion(_ food: Food) {

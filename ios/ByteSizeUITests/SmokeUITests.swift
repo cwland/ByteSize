@@ -1397,6 +1397,8 @@ final class SmokeUITests: XCTestCase {
         shot("scan-list")
         app.buttons["scanned-Banana"].tap()
         XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5), "the row opens the amount")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["scanned-Banana"].waitForExistence(timeout: 5), "Back: the list again, not the camera")
     }
 
     func testScanPlusLogsAndReturnsToTheCamera() {
