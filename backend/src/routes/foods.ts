@@ -1,7 +1,7 @@
 import { PassThrough } from "node:stream";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { AiStopped } from "../lib/ai.js";
+import { AiStopped, type AiProgress } from "../lib/ai.js";
 import { logEvent } from "../lib/appLog.js";
 import { HttpError } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
@@ -39,44 +39,45 @@ export default async function foodRoutes(app: FastifyInstance) {
   });
 
   // Describe it. Asked for as lines (accept: application/x-ndjson), it says how it's going while the AI works:
-  // {"progress": "another"} when another AI service is asked, then the answer ({"food", "assumed",
-  // "interpretedAs"?}) or {"error", "status"} as the last line. The person going away (Cancel) stops the AI request.
-  app.post("/api/ai/estimate", async (req, reply) => {
-    const userId = requireUser(req);
-    const { text } = z.object({ text: z.string().trim().min(2, "Describe the food").max(500) }).parse(req.body ?? {});
-    const stop = new AbortController();
-    reply.raw.on("close", () => !reply.raw.writableFinished && stop.abort());
-    if (!String(req.headers.accept ?? "").includes("application/x-ndjson")) {
-      try {
-        return await estimateFood(app, userId, text, { signal: stop.signal });
-      } catch (err) {
-        if (err instanceof AiStopped) return reply.status(499).send({ error: "Stopped" }); // nobody is waiting for it
-        throw err;
+  // {"progress": "another"} when another AI service is asked, then the answer or {"error", "status"} as the last
+  // line. The person going away (Cancel) stops the AI request. Without lines: plain JSON.
+  //   /api/ai/estimate: one food ({"food", "assumed", "interpretedAs"?})
+  //   /api/ai/estimate-items: several foods, each with its amount, and a name for them together
+  //   ({"items", "mealName", "assumed", "interpretedAs"?}); mealName is null for one food
+  const describe =
+    <T>(route: string, run: (userId: number, text: string, opts: { signal: AbortSignal; onProgress?: (p: AiProgress) => void }) => Promise<T>) =>
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const userId = requireUser(req);
+      const { text } = z.object({ text: z.string().trim().min(2, "Describe the food").max(500) }).parse(req.body ?? {});
+      const stop = new AbortController();
+      reply.raw.on("close", () => !reply.raw.writableFinished && stop.abort());
+      if (!String(req.headers.accept ?? "").includes("application/x-ndjson")) {
+        try {
+          return await run(userId, text, { signal: stop.signal });
+        } catch (err) {
+          if (err instanceof AiStopped) return reply.status(499).send({ error: "Stopped" }); // nobody is waiting for it
+          throw err;
+        }
       }
-    }
-    await aiReady(app); // AI off: a plain 503 as before, not a line
-    const out = new PassThrough();
-    out.on("error", () => {}); // the person went away mid-answer
-    const line = (o: unknown) => !out.destroyed && out.write(`${JSON.stringify(o)}\n`);
-    void estimateFood(app, userId, text, { signal: stop.signal, onProgress: (p) => p.kind === "failover" && line({ progress: "another" }) })
-      .then(line, async (err) => {
-        if (err instanceof AiStopped) return;
-        if (err instanceof HttpError) return line({ error: err.message, status: err.statusCode });
-        req.log.error(err);
-        await logEvent(app.db, { category: "api", level: "error", source: "POST /api/ai/estimate", event: "Server error", detail: (err as Error).message, userId });
-        line({ error: "Something went wrong", status: 500 });
-      })
-      .finally(() => out.end());
-    // x-accel-buffering: nginx-style reverse proxies pass each line on at once instead of holding the answer back
-    return reply.type("application/x-ndjson").header("cache-control", "no-store").header("x-accel-buffering", "no").send(out);
-  });
+      await aiReady(app); // AI off: a plain 503 as before, not a line
+      const out = new PassThrough();
+      out.on("error", () => {}); // the person went away mid-answer
+      const line = (o: unknown) => !out.destroyed && out.write(`${JSON.stringify(o)}\n`);
+      void run(userId, text, { signal: stop.signal, onProgress: (p) => p.kind === "failover" && line({ progress: "another" }) })
+        .then(line, async (err) => {
+          if (err instanceof AiStopped) return;
+          if (err instanceof HttpError) return line({ error: err.message, status: err.statusCode });
+          req.log.error(err);
+          await logEvent(app.db, { category: "api", level: "error", source: `POST ${route}`, event: "Server error", detail: (err as Error).message, userId });
+          line({ error: "Something went wrong", status: 500 });
+        })
+        .finally(() => out.end());
+      // x-accel-buffering: nginx-style reverse proxies pass each line on at once instead of holding the answer back
+      return reply.type("application/x-ndjson").header("cache-control", "no-store").header("x-accel-buffering", "no").send(out);
+    };
 
-  // Several foods from one description (iPhone app): plain JSON, no streaming
-  app.post("/api/ai/estimate-items", async (req) => {
-    const userId = requireUser(req);
-    const { text } = z.object({ text: z.string().trim().min(2, "Describe the food").max(500) }).parse(req.body ?? {});
-    return estimateFoodItems(app, userId, text);
-  });
+  app.post("/api/ai/estimate", describe("/api/ai/estimate", (userId, text, opts) => estimateFood(app, userId, text, opts)));
+  app.post("/api/ai/estimate-items", describe("/api/ai/estimate-items", (userId, text, opts) => estimateFoodItems(app, userId, text, opts)));
 
   app.post("/api/ai/fill-gaps", async (req) => {
     const userId = requireUser(req);

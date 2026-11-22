@@ -49,3 +49,49 @@ describe("log AI-estimated foods", () => {
     expect((await log({ items: [{ ...egg, servingIndex: 3 }] })).status).toBe(400);
   });
 });
+
+// Describe's "One meal": the foods become one entry whose nutrients are the sum of each food's amount
+describe("log AI-estimated foods as one meal", () => {
+  const mayo = { name: "Mayonnaise, light", servings: [{ label: "1 tbsp", grams: 15 }], nutrients: { calories: 35, fat_g: 3.5 }, servingIndex: 0, quantity: 1 };
+
+  it("one entry named for the meal, nutrients summed from each food's amount, grams summed", async () => {
+    const r = await log({ day: "2026-11-19", meal: "breakfast", items: [egg, toast, mayo], combine: { name: "Breakfast sandwich" } });
+    expect(r.status).toBe(200);
+    expect(r.body.entries).toHaveLength(1);
+    const e = r.body.entries[0];
+    // egg 2 × 78 = 156, toast ½ × 80 = 40, mayo 35 → 231 kcal; grams 2 × 50 + ½ × 30 + 15 = 130
+    expect(e).toMatchObject({ name: "Breakfast sandwich", meal: "breakfast", quantity: 1, fraction: 1, servingIndex: 0, aiEstimated: true, source: "ai", sourceRef: null });
+    expect(e.servings).toEqual([{ label: "1 Breakfast sandwich", grams: 130 }]);
+    expect(e.nutrients).toEqual({ calories: 231, protein_g: 12.6, carbs_g: 7.5, fat_g: 3.5 });
+    expect((await t.api("GET", "/api/my-foods")).body.foods).toEqual([]); // not saved unless asked
+  });
+
+  it("grams are left out when a food has none (a drink in ml)", async () => {
+    const coffee = { name: "Coffee", servings: [{ label: "1 cup", ml: 240 }], nutrients: { calories: 2 }, servingIndex: 0, quantity: 1 };
+    const r = await log({ items: [egg, coffee], combine: { name: "Eggs and coffee" } });
+    expect(r.body.entries[0].servings).toEqual([{ label: "1 Eggs and coffee" }]);
+    expect(r.body.entries[0].nutrients.calories).toBe(158);
+  });
+
+  it("a long meal name is shortened for the serving label, kept whole as the name", async () => {
+    const name = "Two fried eggs with light mayonnaise on a light English muffin";
+    const r = await log({ items: [egg, mayo], combine: { name } });
+    expect(r.body.entries[0].name).toBe(name);
+    expect(r.body.entries[0].servings[0].label.length).toBeLessThanOrEqual(60);
+  });
+
+  it("Save to My foods: one custom food with the ingredients in its notes, and the entry logged from it", async () => {
+    const r = await log({ day: "2026-11-19", meal: "breakfast", items: [egg, toast, mayo], combine: { name: "Breakfast sandwich", save: true } });
+    expect(r.status).toBe(200);
+    const mine = (await t.api("GET", "/api/my-foods")).body.foods;
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ name: "Breakfast sandwich", servings: [{ label: "1 Breakfast sandwich", grams: 130 }], nutrients: { calories: 231, protein_g: 12.6 } });
+    const food = (await t.api("GET", `/api/my-foods/${mine[0].id}`)).body.food;
+    expect(food.notes).toBe("Made with: 2 × 1 large egg Egg, large · ½ × 1 slice Toast · 1 tbsp Mayonnaise, light");
+    expect(r.body.entries[0]).toMatchObject({ name: "Breakfast sandwich", source: "user_food", sourceRef: `user_food:${mine[0].id}`, nutrients: { calories: 231 } });
+  });
+
+  it("a meal name is needed", async () => {
+    expect((await log({ items: [egg, toast], combine: { name: "  " } })).status).toBe(400);
+  });
+});

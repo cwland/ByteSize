@@ -2,29 +2,52 @@ import ByteSizeKit
 import SwiftUI
 
 /// The foods the AI listed (Describe, plate photos): each checked to start; uncheck what you don't want, tap a food
-/// for its amount, pick a meal, then Log selected.
+/// for its amount, pick a meal, then Log selected. Several described foods with a name together (2026-11-22 design)
+/// get a One meal / Separate items switch, opening on One meal: one entry under the (renameable) name, optionally
+/// saved to My foods. A food can be swiped away (or removed on its amount screen) and, in Describe, more added.
 struct EstimateItemsView: View {
     @Bindable var model: EstimateModel
     /// The food whose amount screen is open: pushed by the screen holding this list (a sheet here closed itself).
     @Binding var editing: EstimatePick?
-    /// After logging: how many foods were logged ("2 foods") or the one food's name.
+    /// Describe: an "Add a food" row asks the AI for more foods.
+    var allowAdd = false
+    /// After logging: how many foods were logged ("2 foods"), the one food's name, or the meal's.
     let onLogged: (String) -> Void
     @Environment(\.palette) private var palette
 
+    private var isMeal: Bool { model.showsSwitch && model.mode == .meal }
+
     var body: some View {
-        Section("What the AI found") {
+        if model.showsSwitch {
+            Section {
+                Picker("Log as", selection: $model.mode) {
+                    Text("One meal").tag(EstimateModel.LogMode.meal)
+                    Text("Separate items").tag(EstimateModel.LogMode.items)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("logAs")
+                if isMeal {
+                    TextField("Meal name", text: $model.mealName)
+                        .accessibilityLabel("Meal name")
+                        .accessibilityIdentifier("mealName")
+                }
+            }
+        }
+        Section(isMeal ? "Made with" : "What the AI found") {
             ForEach(Array(model.items.enumerated()), id: \.offset) { i, item in
-                let on = model.selected.indices.contains(i) && model.selected[i]
+                let on = isMeal || (model.selected.indices.contains(i) && model.selected[i])
                 HStack(spacing: 12) {
-                    Button { model.toggle(at: i) } label: {
-                        Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                            .font(.title2)
-                            .foregroundStyle(on ? palette.color("primary") : palette.color("subtle"))
+                    if !isMeal {
+                        Button { model.toggle(at: i) } label: {
+                            Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                                .font(.title2)
+                                .foregroundStyle(on ? palette.color("primary") : palette.color("subtle"))
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Include \(item.food.name)")
+                        .accessibilityAddTraits(on ? .isSelected : [])
+                        .accessibilityIdentifier("check-\(item.food.name)")
                     }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel("Include \(item.food.name)")
-                    .accessibilityAddTraits(on ? .isSelected : [])
-                    .accessibilityIdentifier("check-\(item.food.name)")
                     // The rest of the row: the amount wheel, in this food's own servings (L1)
                     Button { editing = EstimatePick(id: i) } label: {
                         HStack(spacing: 12) {
@@ -46,10 +69,32 @@ struct EstimateItemsView: View {
                     .buttonStyle(.borderless)
                     .accessibilityIdentifier("item-\(item.food.name)")
                 }
+                .swipeActions {
+                    Button(role: .destructive) { model.remove(at: i) } label: { Label("Remove", systemImage: "trash") }
+                }
+            }
+            if allowAdd {
+                HStack {
+                    TextField("Add a food, e.g. a black coffee", text: $model.addText)
+                        .accessibilityLabel("Add a food")
+                        .accessibilityIdentifier("addFoodField")
+                    if model.adding {
+                        ProgressView()
+                    } else {
+                        Button("Add") { Task { await model.addFood() } }
+                            .buttonStyle(.borderless)
+                            .disabled(model.addText.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
+                            .accessibilityIdentifier("addFood")
+                    }
+                }
             }
         }
         Section {
             MealPicker(meal: $model.meal)
+            if isMeal {
+                Toggle("Save to My foods", isOn: $model.saveToMyFoods)
+                    .accessibilityIdentifier("saveToMyFoods")
+            }
             HStack {
                 Text("Total")
                 Spacer()
@@ -57,14 +102,15 @@ struct EstimateItemsView: View {
             }
             Button {
                 Task {
+                    let meal = isMeal ? model.mealName.trimmingCharacters(in: .whitespacesAndNewlines) : nil
                     let names = model.items.indices.filter { model.selected[$0] }.map { model.items[$0].food.name }
                     if await model.logSelected() {
                         Haptics.logged()
-                        onLogged(names.count == 1 ? names[0] : "\(names.count) foods")
+                        onLogged(meal ?? (names.count == 1 ? names[0] : "\(names.count) foods"))
                     }
                 }
             } label: {
-                HStack { Spacer(); Text("Log selected").bold(); Spacer() }
+                HStack { Spacer(); Text(isMeal ? "Log \(model.mealName.trimmingCharacters(in: .whitespacesAndNewlines))" : "Log selected").bold(); Spacer() }
             }
             .disabled(!model.canLog)
             .accessibilityIdentifier("logSelected")
@@ -80,7 +126,7 @@ extension View {
     func estimateAmount(_ editing: Binding<EstimatePick?>, model: EstimateModel) -> some View {
         navigationDestination(item: editing) { pick in
             if model.items.indices.contains(pick.id) {
-                ItemAmountScreen(item: model.items[pick.id]) { servingIndex, quantity in
+                ItemAmountScreen(item: model.items[pick.id], onRemove: { model.remove(at: pick.id) }) { servingIndex, quantity in
                     model.setPortion(servingIndex: servingIndex, quantity: quantity, at: pick.id)
                 }
             }
@@ -92,10 +138,12 @@ extension View {
 /// Pushed: Back leaves it unchanged, Done keeps the new amount.
 private struct ItemAmountScreen: View {
     @State private var portion: PortionModel
+    let onRemove: () -> Void
     let onDone: (Int, Double) -> Void
     @Environment(\.dismiss) private var dismiss
 
-    init(item: EstimateItem, onDone: @escaping (Int, Double) -> Void) {
+    init(item: EstimateItem, onRemove: @escaping () -> Void, onDone: @escaping (Int, Double) -> Void) {
+        self.onRemove = onRemove
         let p = PortionModel(name: item.food.name, icon: item.food.icon, servings: item.food.servings, nutrients: item.food.nutrients, meal: .snacks, servingsOnly: true)
         p.choice = .serving(item.servingIndex)
         (p.whole, p.fraction) = PortionModel.split(item.quantity)
@@ -114,6 +162,13 @@ private struct ItemAmountScreen: View {
                 }
             }
             Section("Amount") { AmountWheel(portion: portion) }
+            Section {
+                Button("Remove from the list", role: .destructive) {
+                    onRemove()
+                    dismiss()
+                }
+                .accessibilityIdentifier("removeItem")
+            }
         }
         .navigationTitle("Amount")
         .navigationBarTitleDisplayMode(.inline)

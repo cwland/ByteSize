@@ -45,7 +45,7 @@ struct DescribeSheet: View {
                 Section { Text(message).foregroundStyle(palette.color("error")).accessibilityIdentifier("describeMessage") }
             }
             if !model.items.isEmpty {
-                EstimateItemsView(model: model, editing: $editing, onLogged: onLogged)
+                EstimateItemsView(model: model, editing: $editing, allowAdd: true, onLogged: onLogged)
             }
         }
         .estimateAmount($editing, model: model)

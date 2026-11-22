@@ -15,6 +15,16 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.13.0",
+    date: "2026-11-22",
+    title: "Describe: one meal or separate items",
+    added: [
+      "Describe several foods (\"2 fried eggs, a light English muffin and light mayo\") and choose how to log them: One meal (one entry, like \"Breakfast sandwich\") or Separate items (one line each). It opens on One meal.",
+      "One meal: rename it, and tick Save to My foods to keep it for next time.",
+      "Change any food's amount, remove one, or add another with Add a food — the totals follow, and your changes stay when you switch. On the web and on iPhone.",
+    ],
+  },
+  {
     version: "0.12.2",
     date: "2026-11-21",
     fixed: [

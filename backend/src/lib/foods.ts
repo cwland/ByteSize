@@ -826,16 +826,31 @@ const ESTIMATE_ITEMS_ASK = (text: string) =>
     "",
     "List each separate food once (\"2 eggs, toast and coffee\" is three foods), with a usual US serving for it and how many of those servings were eaten (2 eggs: quantity 2 of \"1 large egg\").",
     "Assume the most likely foods the person meant: the text may misspell a food, write a brand name loosely, or leave words out. Only when nothing sensible fits, give up and answer {\"unknown\": true}.",
-    `Answer as JSON: {"items": [{"name": string, "brand": string | null, "category": string, "servings": [{"label": string, "grams"?: number, "ml"?: number}], "nutrients": {<key>: number}, "quantity": number}], "assumed": boolean, "interpretedAs"?: string}. servings[0] is the usual US serving and the nutrients are for it.`,
+    `Answer as JSON: {"items": [{"name": string, "brand": string | null, "category": string, "servings": [{"label": string, "grams"?: number, "ml"?: number}], "nutrients": {<key>: number}, "quantity": number}], "mealName": string | null, "assumed": boolean, "interpretedAs"?: string}. servings[0] is the usual US serving and the nutrients are for it.`,
+    'When there are two or more foods, mealName is a short everyday name for them eaten together (e.g. "Breakfast sandwich", "Eggs and toast"), under 40 characters; with one food it is null.',
     "Set assumed to true (and interpretedAs to what you took the text to mean) only when you changed or guessed what was typed: a misspelling, an unclear name, a guessed brand. Not when you only reworded clear words.",
   ].join("\n");
 
-/** Describe it with several foods (iPhone app): one draft per food with its amount, and whether the AI had to assume. */
-export async function estimateFoodItems(app: FastifyInstance, userId: number, text: string): Promise<{ items: EstimateItem[]; assumed: boolean; interpretedAs?: string }> {
+/** The foods' everyday name together (One meal): the AI's, else their names joined; null for one food (nothing to switch to). */
+export function mealNameOf(items: readonly EstimateItem[], aiName: unknown): string | null {
+  if (items.length < 2) return null;
+  const given = z.string().trim().min(1).safeParse(aiName).data;
+  if (given) return shortLabel(given);
+  const names = items.map((i) => i.food.name);
+  return shortLabel(`${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
+}
+
+export type ItemsEstimate = { items: EstimateItem[]; mealName: string | null; assumed: boolean; interpretedAs?: string };
+
+/**
+ * Describe it with several foods: one draft per food with its amount, a name for them together (One meal), and
+ * whether the AI had to assume. signal / onProgress as for estimateFood.
+ */
+export async function estimateFoodItems(app: FastifyInstance, userId: number, text: string, opts: { signal?: AbortSignal; onProgress?: (p: AiProgress) => void } = {}): Promise<ItemsEstimate> {
   await aiReady(app);
   let json: Record<string, unknown>;
   try {
-    json = await askFood(app, userId, ESTIMATE_ITEMS_ASK(text), {});
+    json = await askFood(app, userId, ESTIMATE_ITEMS_ASK(text), opts);
   } catch (err) {
     if (err instanceof AiStopped || !(err instanceof AiError)) throw err;
     throw new HttpError(502, AI_COULDNT_ESTIMATE);
@@ -849,7 +864,8 @@ export async function estimateFoodItems(app: FastifyInstance, userId: number, te
   countUsage(app, userId, "ai_estimates");
   const assumed = z.boolean().safeParse(json.assumed).data === true;
   const interpretedAs = z.string().trim().min(1).max(200).safeParse(json.interpretedAs).data;
-  return assumed ? { items, assumed, interpretedAs: interpretedAs ?? items.map((i) => i.food.name).join(", ") } : { items, assumed };
+  const mealName = mealNameOf(items, json.mealName);
+  return assumed ? { items, mealName, assumed, interpretedAs: interpretedAs ?? items.map((i) => i.food.name).join(", ") } : { items, mealName, assumed };
 }
 
 /** An AI answer as a draft food (every value AI-estimated); null when it isn't a food with at least one nutrient. */

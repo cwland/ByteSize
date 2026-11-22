@@ -6,7 +6,7 @@ import { favorites, foodCache, logCombines, logEntries, logTrash, userFoods, use
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
 import { addDays, DAY, localDay, mealFor, MEALS, streak, suggestedFor, todayFor, userTimezone, type Meal } from "../lib/days.js";
-import { cleanNutrients, loadFood, toResult, type FoodResult } from "../lib/foods.js";
+import { cleanNutrients, loadFood, shortLabel, toResult, type FoodResult } from "../lib/foods.js";
 import { wholeKeptFood } from "../lib/restaurants/index.js";
 import { loadCuluryRecipe } from "../lib/culury.js";
 import { itemList, portionFields, quickMealParts } from "../lib/recipes.js";
@@ -88,6 +88,8 @@ const estimatesBody = z.object({
   day: DAY.optional(),
   meal: z.enum(MEALS).optional(),
   items: z.array(estimateItem).min(1, "Add a food").max(12, "Log at most 12 foods at a time"),
+  // Describe's "One meal": the foods become one entry with this name; save keeps it in My foods
+  combine: z.object({ name: z.string().trim().min(1, "Name the meal").max(200, "Keep the name short"), save: z.boolean().default(false) }).optional(),
 });
 const ESTIMATE_ONLY = "An estimate can only be sent for a Culury recipe without nutrition";
 const mealLogBody = z.object({ day: DAY.optional(), meal: z.enum(MEALS).optional(), foodId: id, items: itemList.optional() });
@@ -126,6 +128,36 @@ export function toEntry(r: Row): LogEntry {
 }
 
 /** Nutrients for a portion of a snapshot; a unit the food can't be measured in is a 400. */
+type EstimateItem = z.infer<typeof estimateItem>;
+
+const FRACTION_TEXT: Record<string, string> = { "0.25": "¼", "0.50": "½", "0.75": "¾", "0.33": "⅓", "0.67": "⅔" };
+const amountText = (n: number) => FRACTION_TEXT[n.toFixed(2)] ?? String(Math.round(n * 100) / 100);
+
+/**
+ * Describe's "One meal": the foods as one food with one serving ("1 <name>", shortened to fit) whose nutrients are
+ * the sum of each food's amount (only nutrients some food has), its grams the sum when every food has grams,
+ * and notes listing what went in ("Made with: 2 × 1 large egg Egg, large · 1 tbsp Mayonnaise, light").
+ */
+function combinedMeal(name: string, items: EstimateItem[]) {
+  const totals: Record<string, number> = {};
+  let grams: number | undefined = 0;
+  const parts: string[] = [];
+  for (const i of items) {
+    const per = cleanNutrients(i.nutrients);
+    const portion = { servingIndex: i.servingIndex, unit: "serving" as const, quantity: i.quantity, fraction: i.fraction };
+    const got = portionNutrients(per, i.servings, portion);
+    for (const [k, v] of Object.entries(got)) if (typeof v === "number" && Number.isFinite(v)) totals[k] = (totals[k] ?? 0) + v;
+    const amount = i.quantity * i.fraction;
+    const g = i.servings[i.servingIndex].grams;
+    grams = grams !== undefined && g ? grams + g * amount : undefined;
+    const label = i.servings[i.servingIndex].label;
+    parts.push(`${amount === 1 ? label : `${amountText(amount)} × ${label}`} ${i.name}`);
+  }
+  const nutrients = Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, Math.round(v * 100) / 100])) as Nutrients;
+  const serving: Serving = { label: shortLabel(`1 ${name}`), ...(grams ? { grams: Math.round(grams * 10) / 10 } : {}) };
+  return { name, nutrients, servings: [serving], notes: `Made with: ${parts.join(" · ")}`.slice(0, 5000) };
+}
+
 function portionNutrients(per: Nutrients, servings: Serving[], p: Portion): Nutrients {
   try {
     return scaleNutrients(per, amountFactor(servings, p.servingIndex, p.unit, p.quantity) * p.fraction);
@@ -515,7 +547,8 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     return { entry: toEntry(row), ...(combined ? { combined } : {}) };
   });
 
-  // AI-estimated foods: one new entry each (source "ai", no food behind it), all in one go
+  // AI-estimated foods: one new entry each (source "ai", no food behind it), all in one go. With combine
+  // (Describe's One meal): one entry for them all, saved first as a custom food when combine.save.
   app.post("/api/log/estimates", async (req) => {
     const userId = requireUser(req);
     const b = estimatesBody.parse(req.body ?? {});
@@ -523,6 +556,47 @@ export default async function foodLogRoutes(app: FastifyInstance) {
     const timezone = await userTimezone(db, userId);
     const day = b.day ?? localDay(timezone, now);
     const meal = b.meal ?? (await mealNow(db, userId, timezone, now));
+    if (b.combine) {
+      const one = combinedMeal(b.combine.name, b.items);
+      const row = await db.transaction(async (tx) => {
+        await lockMeal(tx, userId, { day, meal });
+        let source = "ai";
+        let sourceRef: string | null = null;
+        if (b.combine!.save) {
+          const [food] = await tx
+            .insert(userFoods)
+            .values({ userId, kind: "custom", name: one.name, servings: one.servings, nutrients: one.nutrients, aiFields: Object.keys(one.nutrients), notes: one.notes, useCount: 1, lastUsedAt: now })
+            .returning();
+          source = "user_food";
+          sourceRef = `user_food:${food.id}`;
+        }
+        const [inserted] = await tx
+          .insert(logEntries)
+          .values({
+            userId,
+            day,
+            meal,
+            name: one.name,
+            brand: null,
+            icon: entryIcon(one.name, "🍽️"),
+            source,
+            sourceRef,
+            servingIndex: 0,
+            unit: "serving",
+            quantity: 1,
+            fraction: 1,
+            perServing: one.nutrients,
+            servings: one.servings,
+            nutrients: one.nutrients,
+            aiEstimated: true,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
+        return inserted;
+      });
+      return { entries: [toEntry(row)] };
+    }
     const values = b.items.map((i) => {
       const perServing = cleanNutrients(i.nutrients);
       const portion = { servingIndex: i.servingIndex, unit: "serving" as const, quantity: i.quantity, fraction: i.fraction };

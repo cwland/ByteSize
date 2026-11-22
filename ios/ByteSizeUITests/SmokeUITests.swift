@@ -368,6 +368,45 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "back on the search, ready to type")
     }
 
+    /// Describe with several foods that have a name together: opens on One meal (name shown, no checkboxes);
+    /// Separate items brings the checkboxes back; One meal logs one entry under the name.
+    func testDescribeOpensOnOneMealAndLogsOneEntry() {
+        signedIn()
+        openAction("Track Food")
+        XCTAssertTrue(app.buttons["hub-describe"].waitForExistence(timeout: 5))
+        app.buttons["hub-describe"].tap()
+        let field = app.textFields["describeField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText("egg sandwich")
+        app.buttons["estimateButton"].tap()
+        let oneMeal = app.buttons["One meal"]
+        XCTAssertTrue(oneMeal.waitForExistence(timeout: 5), "the switch shows for several foods")
+        XCTAssertTrue(oneMeal.isSelected, "opens on One meal")
+        XCTAssertEqual(app.textFields["mealName"].value as? String, "Egg sandwich")
+        XCTAssertFalse(app.buttons["check-Egg"].exists, "no checkboxes in One meal")
+        app.buttons["Separate items"].tap()
+        XCTAssertTrue(app.buttons["check-Egg"].waitForExistence(timeout: 3))
+        app.buttons["One meal"].tap()
+        XCTAssertTrue(app.switches["saveToMyFoods"].exists)
+        XCTAssertEqual(app.switches["saveToMyFoods"].value as? String, "0", "Save to My foods starts off")
+        reveal(app.buttons["logSelected"]).tap()
+        XCTAssertTrue(label("Logged Egg sandwich").waitForExistence(timeout: 5))
+    }
+
+    /// Several foods without a name together (and photos): no switch, the checkboxes as before.
+    func testDescribeWithoutAMealNameHasNoSwitch() {
+        signedIn()
+        openAction("Track Food")
+        XCTAssertTrue(app.buttons["hub-describe"].waitForExistence(timeout: 5))
+        app.buttons["hub-describe"].tap()
+        let field = app.textFields["describeField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.typeText("2 eggs and toast")
+        app.buttons["estimateButton"].tap()
+        XCTAssertTrue(app.buttons["check-Egg"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["One meal"].exists)
+    }
+
     /// TF2: chips say "selected" to VoiceOver, and a cleared search drops them at once.
     func testChipsAreSelectedAndGoWithAClearedSearch() {
         signedIn()
@@ -603,8 +642,8 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("2 eggs and toast")
         app.buttons["estimateButton"].tap()
-        XCTAssertTrue(app.buttons["logSelected"].waitForExistence(timeout: 5))
-        app.buttons["logSelected"].tap()
+        XCTAssertTrue(app.buttons["check-Egg"].waitForExistence(timeout: 5))
+        reveal(app.buttons["logSelected"]).tap() // below the fold under the taller header (with the Add a food row)
         XCTAssertTrue(label("Logged 2 foods").waitForExistence(timeout: 5), "back on the search")
         XCTAssertTrue(app.textFields["trackSearch"].waitForExistence(timeout: 5))
         closeSheet()

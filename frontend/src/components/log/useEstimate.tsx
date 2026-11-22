@@ -8,6 +8,10 @@ import { secondaryButton } from "../ui/styles";
 // something worth confirming ("Did you mean Cheerios?"), interpretedAs.
 export type AiFood = Omit<FoodResult, "id" | "kind"> & { category: string };
 export type Estimate = { food: AiFood; assumed?: boolean; interpretedAs?: string };
+// Several foods from one description (POST /api/ai/estimate-items): each with its amount, and a short name for
+// them together (null for one food)
+export type EstimateItem = { food: AiFood; servingIndex: number; quantity: number };
+export type ItemsEstimate = { items: EstimateItem[]; mealName: string | null; assumed?: boolean; interpretedAs?: string };
 
 // What's happening while it works: the first AI asked, or another one after the first failed
 export type EstimateStep = "asking" | "another";
@@ -21,13 +25,13 @@ export function useEstimate() {
   const current = useRef<AbortController | null>(null);
   useEffect(() => () => current.current?.abort(), []);
 
-  const run = async (text: string): Promise<Estimate | null> => {
+  const ask = async <T,>(path: string, text: string): Promise<T | null> => {
     current.current?.abort();
     const mine = new AbortController();
     current.current = mine;
     setStep("asking");
     try {
-      return await apiLines<Estimate>("POST", "/api/ai/estimate", { text }, { signal: mine.signal, onLine: (l) => !mine.signal.aborted && l.progress === "another" && setStep("another") });
+      return await apiLines<T>("POST", path, { text }, { signal: mine.signal, onLine: (l) => !mine.signal.aborted && l.progress === "another" && setStep("another") });
     } catch (e) {
       if (mine.signal.aborted) return null;
       throw e;
@@ -38,12 +42,15 @@ export function useEstimate() {
       }
     }
   };
+  // One food (Culury's estimate, Restaurants), or the foods in a description (Describe it)
+  const run = (text: string) => ask<Estimate>("/api/ai/estimate", text);
+  const runItems = (text: string) => ask<ItemsEstimate>("/api/ai/estimate-items", text);
   const cancel = () => {
     current.current?.abort();
     current.current = null;
     setStep(null);
   };
-  return { step, run, cancel };
+  return { step, run, runItems, cancel };
 }
 
 // The line beside the estimate button while it works: a turning wheel (a pulse with reduced motion), what

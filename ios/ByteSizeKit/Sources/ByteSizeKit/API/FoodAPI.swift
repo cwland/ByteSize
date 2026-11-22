@@ -76,12 +76,14 @@ public enum FoodAPI {
         let servingIndex: Int
         let quantity: Double
     }
-    struct EstimatesBody: Encodable { let day: String; let meal: String; let items: [EstimateLogItem] }
+    struct Combine: Encodable { let name: String; let save: Bool }
+    struct EstimatesBody: Encodable { let day: String; let meal: String; let items: [EstimateLogItem]; let combine: Combine? }
 
-    /// Logs what the AI estimated as entries (marked AI), without saving any food.
-    public static func logEstimates(_ items: [EstimateItem], day: String, meal: Meal) -> Endpoint<EntriesResponse> {
+    /// Logs what the AI estimated as entries (marked AI), without saving any food. With `combine` (Describe's One
+    /// meal) they become one entry with that name, saved to My foods first when `save`.
+    public static func logEstimates(_ items: [EstimateItem], day: String, meal: Meal, combine: (name: String, save: Bool)? = nil) -> Endpoint<EntriesResponse> {
         let list = items.map { EstimateLogItem(name: $0.food.name, brand: $0.food.brand, icon: $0.food.icon, servings: $0.food.servings, nutrients: $0.food.nutrients, servingIndex: $0.servingIndex, quantity: $0.quantity) }
-        return Endpoint("POST", "/api/log/estimates", json: EstimatesBody(day: day, meal: meal.rawValue, items: list))
+        return Endpoint("POST", "/api/log/estimates", json: EstimatesBody(day: day, meal: meal.rawValue, items: list, combine: combine.map { Combine(name: $0.name, save: $0.save) }))
     }
 
     struct TextBody: Encodable { let text: String }

@@ -17,8 +17,22 @@ public final class EstimateModel {
         case nothing
     }
 
+    /// Describe with several foods: logged as one meal (one entry) or as separate items (one per checked food).
+    public enum LogMode: Equatable, Sendable { case meal, items }
+
     public var text = ""
     public private(set) var items: [EstimateItem] = []
+    /// One meal or Separate items; One meal only when the foods came with a name (`showsSwitch`).
+    public var mode: LogMode = .items
+    /// The name One meal logs under (the AI's, renameable).
+    public var mealName = ""
+    /// Save One meal to My foods as one custom food (off unless ticked).
+    public var saveToMyFoods = false
+    /// Several foods from a description: the One meal / Separate items switch shows.
+    public private(set) var showsSwitch = false
+    /// "Add a food": words asked of the AI, whose foods join the list.
+    public var addText = ""
+    public private(set) var adding = false
     /// One check per item: checked foods are logged and counted (all checked whenever a list arrives).
     public private(set) var selected: [Bool] = []
     public private(set) var busy = false
@@ -43,15 +57,52 @@ public final class EstimateModel {
     public var totalCalories: Int { Int(chosen.reduce(0) { $0 + $1.calories }.rounded()) }
 
     public var selectedCount: Int { selected.filter { $0 }.count }
-    public var canLog: Bool { selectedCount > 0 && !busy }
-
-    /// A new list (or none): every food checked.
-    private func show(_ list: [EstimateItem]) {
-        items = list
-        selected = Array(repeating: true, count: list.count)
+    /// One meal logs every food listed; Separate items the checked ones. One meal needs a name.
+    public var canLog: Bool {
+        guard !busy, !adding, !chosen.isEmpty else { return false }
+        return !isMeal || !mealName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var chosen: [EstimateItem] { items.indices.filter { selected[$0] }.map { items[$0] } }
+    private var isMeal: Bool { showsSwitch && mode == .meal }
+
+    /// A new list (or none): every food checked; a name for several foods opens on One meal (design decision 1).
+    private func show(_ list: [EstimateItem], mealName name: String? = nil) {
+        items = list
+        selected = Array(repeating: true, count: list.count)
+        showsSwitch = name != nil && list.count > 1
+        mealName = name ?? ""
+        mode = showsSwitch ? .meal : .items
+        saveToMyFoods = false
+        addText = ""
+    }
+
+    private var chosen: [EstimateItem] { isMeal ? items : items.indices.filter { selected[$0] }.map { items[$0] } }
+
+    /// Takes one food off the list (both views).
+    public func remove(at i: Int) {
+        guard items.indices.contains(i) else { return }
+        items.remove(at: i)
+        selected.remove(at: i)
+    }
+
+    /// "Add a food": asks the AI for `addText` and adds what it finds (checked) to the list.
+    public func addFood() async {
+        let words = addText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard words.count >= 2, !adding else { return }
+        adding = true
+        defer { adding = false }
+        message = nil
+        do {
+            let result = try await api.send(FoodAPI.estimateItems(words))
+            items += result.items
+            selected += Array(repeating: true, count: result.items.count)
+            addText = ""
+        } catch APIError.server(503, _) {
+            message = Self.needsAI
+        } catch {
+            message = Self.text(error)
+        }
+    }
 
     /// Check or uncheck one food: an unchecked one stays listed but isn't logged.
     public func toggle(at i: Int) {
@@ -85,7 +136,7 @@ public final class EstimateModel {
         do {
             let result = try await api.send(FoodAPI.estimateItems(words))
             guard mine == describing else { return } // cleared (or described again) while this was on its way
-            show(result.items)
+            show(result.items, mealName: result.mealName)
             if result.assumed, let taken = result.interpretedAs { assumedNote = "Took it as “\(taken)”" }
         } catch APIError.server(503, _) {
             guard mine == describing else { return }
@@ -166,7 +217,8 @@ public final class EstimateModel {
         busy = true
         defer { busy = false }
         do {
-            _ = try await api.send(FoodAPI.logEstimates(chosen, day: dayStore.selected, meal: meal))
+            let combine = isMeal ? (name: mealName.trimmingCharacters(in: .whitespacesAndNewlines), save: saveToMyFoods) : nil
+            _ = try await api.send(FoodAPI.logEstimates(chosen, day: dayStore.selected, meal: meal, combine: combine))
             show([])
             text = ""
             assumedNote = nil
