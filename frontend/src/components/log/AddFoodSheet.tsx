@@ -20,7 +20,8 @@ import CuluryTrack from "./CuluryTrack";
 import RestaurantsView, { newRestaurantsMemo } from "./RestaurantsView";
 import PhotoPicker, { MAX_PHOTOS, analyzePhotos, usePhotoInput } from "./PhotoPicker";
 import FoodPic from "./FoodPic";
-import { AiWorking, useEstimate, worthAsking, type Estimate } from "./useEstimate";
+import { AiWorking, useEstimate, worthAsking, type Estimate, type ItemsEstimate } from "./useEstimate";
+import DescribeResult from "./DescribeResult";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
 import { field, noAutofill, primaryButton, secondaryButton } from "../ui/styles";
@@ -30,6 +31,8 @@ type View =
   | { k: "search" }
   // guess: the AI's estimate when it assumed what was meant ("Did you mean Cheerios?"), waiting for Yes or No
   | { k: "describe"; from?: "restaurants"; guess?: Estimate }
+  // several foods (or one at another amount): One meal or Separate items
+  | { k: "described"; result: ItemsEstimate }
   | { k: "photo"; files: File[]; mode: PhotoMode }
   // photos: the photo(s) a label draft was read from, so a barcode photo can still be added
   // barcodeFill: the barcode a barcode photo added to that draft found, merged into the form as it stands
@@ -302,11 +305,21 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose, b
     });
 
   const estimating = useEstimate();
+  // One food at one serving goes on as before (New food, or Did you mean); anything more opens One meal / Separate items
+  const itemsOrOne = async (text: string): Promise<Estimate | null> => {
+    const out = await estimating.runItems(text);
+    if (!out) return null;
+    const [only] = out.items;
+    if (out.items.length === 1 && only.quantity === 1 && only.servingIndex === 0) return { food: only.food, assumed: out.assumed, interpretedAs: out.interpretedAs };
+    setView({ k: "described", result: out });
+    return null;
+  };
   const estimate = async (from?: "restaurants") => {
     setMsg(null);
     try {
-      const out = await estimating.run(describe);
-      if (!out) return; // cancelled
+      // A restaurant dish is one food; a description may be several (with a name for them together)
+      const out: Estimate | null = from === "restaurants" ? await estimating.run(describe) : await itemsOrOne(describe);
+      if (!out) return; // cancelled, or several foods (their view is open)
       setView(worthAsking(describe, out) ? { k: "describe", from, guess: out } : { k: "form", mode: { kind: "create" }, draft: draftOf(out.food) });
     } catch (e) {
       setMsg(errorMsg(e));
@@ -424,6 +437,21 @@ export default function AddFoodSheet({ day, meal: initialMeal, photo, onClose, b
           onCreate={(barcode) => setView({ k: "form", mode: { kind: "create" }, draft: emptyDraft({ barcode }) })}
           onTypeNumber={() => {
             setBarcodeOpen(true);
+            setView({ k: "search" });
+          }}
+        />
+      </Sheet>
+    );
+  }
+  if (view.k === "described") {
+    return (
+      <Sheet tall label={label} heading="Describe it" onClose={onClose} onBack={() => setView({ k: "describe" })}>
+        <DescribeResult
+          result={view.result}
+          day={day}
+          meal={meal}
+          onLogged={(what) => {
+            setMsg({ ok: true, text: `Logged ${what}` });
             setView({ k: "search" });
           }}
         />

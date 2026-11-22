@@ -224,7 +224,7 @@ describe("Add food", () => {
       category: "bananas",
     };
     const server = open({
-      "POST /api/ai/estimate": () => ({ food: draft }),
+      "POST /api/ai/estimate-items": () => ({ items: [{ food: draft, servingIndex: 0, quantity: 1 }], mealName: null }),
       "POST /api/my-foods": (b) => ({ food: { ...draft, ...b, kind: "user_food", id: 11, source: "mine" } }),
     });
     const user = userEvent.setup();
@@ -232,7 +232,7 @@ describe("Add food", () => {
     await user.click(within(sheet).getByRole("button", { name: "Describe it" }));
     await user.type(within(sheet).getByRole("textbox", { name: "Describe the food" }), "a large banana");
     await user.click(within(sheet).getByRole("button", { name: "Estimate" }));
-    expect(server.writes()).toContainEqual(expect.objectContaining({ path: "/api/ai/estimate", body: { text: "a large banana" } }));
+    expect(server.writes()).toContainEqual(expect.objectContaining({ path: "/api/ai/estimate-items", body: { text: "a large banana" } }));
     expect(await within(sheet).findByRole("heading", { name: "New food" })).toBeInTheDocument();
     expect(within(sheet).getByLabelText("Name")).toHaveValue("Banana");
     expect(within(sheet).getAllByText("AI estimate")).toHaveLength(4);

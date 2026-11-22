@@ -7,7 +7,8 @@ import { fakeServer } from "../../test/fakeServer";
 import { renderWithSession } from "../../test/renderWithSession";
 import { culuryOff, dayJson, restaurantRoutes, settingsMe } from "../../test/fixtures";
 
-// Describe it (§23): feedback while the AI works, Cancel, "Did you mean", and plain errors
+// Describe it (§23): feedback while the AI works, Cancel, "Did you mean", and plain errors. Describe asks for the
+// foods in the description (POST /api/ai/estimate-items); one food at one serving carries on to New food as before.
 
 const cheerios = {
   name: "Cheerios",
@@ -22,6 +23,9 @@ const cheerios = {
   source: "ai",
   category: "cereal",
 };
+
+// One food as the items estimate answers it
+const one = ({ food, ...rest }: { food: unknown; assumed?: boolean; interpretedAs?: string }) => ({ items: [{ food, servingIndex: 0, quantity: 1 }], mealName: null, ...rest });
 
 // An answer the server streams as lines; the test sends each line when it wants
 function streamed() {
@@ -43,7 +47,7 @@ function open(estimate: (b: any) => unknown) {
     "GET /api/foods/recent": () => ({ foods: [] }),
     "GET /api/foods/search": () => ({ groups: [], errors: [] }),
     ...restaurantRoutes,
-    "POST /api/ai/estimate": estimate,
+    "POST /api/ai/estimate-items": estimate,
   });
   renderWithSession(
     <SelectedDayProvider timeZone="America/Denver">
@@ -78,13 +82,13 @@ describe("Describe it", () => {
     expect(within(sheet).getByRole("button", { name: "Estimate" })).toBeDisabled();
     expect(within(sheet).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     // asked for progress as lines
-    expect(server.sent.find((s) => s.path === "/api/ai/estimate")!.headers.accept).toMatch(/application\/x-ndjson/);
+    expect(server.sent.find((s) => s.path === "/api/ai/estimate-items")!.headers.accept).toMatch(/application\/x-ndjson/);
 
     answer.send({ progress: "another" });
     await waitFor(() => expect(within(sheet).getByRole("status")).toHaveTextContent("Still estimating… trying another AI"));
     expect(sheet).not.toHaveTextContent(/OpenRouter|Home AI|OpenAI|Claude|Gemini/);
 
-    answer.send({ food: cheerios, assumed: false });
+    answer.send(one({ food: cheerios, assumed: false }));
     answer.end();
     expect(await within(sheet).findByRole("heading", { name: "New food" })).toBeInTheDocument();
     expect(within(sheet).getByLabelText("Name")).toHaveValue("Cheerios");
@@ -97,7 +101,7 @@ describe("Describe it", () => {
     await within(sheet).findByRole("status");
     await user.click(within(sheet).getByRole("button", { name: "Cancel" }));
 
-    expect(server.sent.find((s) => s.path === "/api/ai/estimate")!.signal?.aborted).toBe(true);
+    expect(server.sent.find((s) => s.path === "/api/ai/estimate-items")!.signal?.aborted).toBe(true);
     expect(within(sheet).getByRole("status")).toBeEmptyDOMElement(); // the live region stays, emptied
     expect(within(sheet).queryByRole("alert")).not.toBeInTheDocument();
     expect(within(sheet).getByRole("textbox", { name: "Describe the food" })).toHaveValue("cherios");
@@ -112,7 +116,7 @@ describe("Describe it", () => {
     const sheet = await describeIt(user, "cherios");
     await within(sheet).findByText("Estimating… asking AI");
     await user.click(within(sheet).getByRole("button", { name: "‹ Back" }));
-    expect(server.sent.find((s) => s.path === "/api/ai/estimate")!.signal?.aborted).toBe(true);
+    expect(server.sent.find((s) => s.path === "/api/ai/estimate-items")!.signal?.aborted).toBe(true);
     // back at search; nothing jumps to the New food form afterwards
     expect(within(sheet).queryByRole("textbox", { name: "Describe the food" })).not.toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 50));
@@ -138,7 +142,7 @@ describe("Describe it", () => {
   });
 
   it("a guess worth confirming: Did you mean Cheerios? Yes carries on with that estimate", async () => {
-    open(() => ({ food: cheerios, assumed: true, interpretedAs: "Cheerios" }));
+    open(() => one({ food: cheerios, assumed: true, interpretedAs: "Cheerios" }));
     const user = userEvent.setup();
     const sheet = await describeIt(user, "cherios");
     const question = await within(sheet).findByRole("heading", { name: "Did you mean Cheerios?" });
@@ -167,7 +171,7 @@ describe("Describe it", () => {
   });
 
   it("no Did you mean when the AI only tidied what was typed (case, spacing, punctuation)", async () => {
-    open(() => ({ food: { ...cheerios, name: "Cherios" }, assumed: true, interpretedAs: "Cherios!" }));
+    open(() => one({ food: { ...cheerios, name: "Cherios" }, assumed: true, interpretedAs: "Cherios!" }));
     const user = userEvent.setup();
     const sheet = await describeIt(user, "  cherios ");
     expect(await within(sheet).findByRole("heading", { name: "New food" })).toBeInTheDocument();
@@ -175,7 +179,7 @@ describe("Describe it", () => {
   });
 
   it("No, change it: back to the text box with the person's words, ready to edit", async () => {
-    open(() => ({ food: cheerios, assumed: true, interpretedAs: "Cheerios" }));
+    open(() => one({ food: cheerios, assumed: true, interpretedAs: "Cheerios" }));
     const user = userEvent.setup();
     const sheet = await describeIt(user, "cherios");
     await user.click(await within(sheet).findByRole("button", { name: "No, change it" }));
