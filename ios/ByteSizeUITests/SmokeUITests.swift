@@ -835,6 +835,22 @@ final class SmokeUITests: XCTestCase {
         shot("14-scan-again")
     }
 
+    /// 2026-11-22: the sources disagree on a barcode: a short list; picking one opens it; None of these offers the label.
+    func testABarcodeTheSourcesDisagreeOnGivesAShortList() {
+        signedIn()
+        openAction("Scan Food")
+        let field = app.textFields["barcodeField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("0018400312944")
+        app.buttons["lookUpBarcode"].tap()
+        XCTAssertTrue(app.buttons["choice-Cappuccino mix"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["choice-Hills bros"].exists)
+        XCTAssertTrue(app.buttons["noneOfThese"].exists)
+        app.buttons["choice-Cappuccino mix"].tap()
+        XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5), "the picked product opens")
+    }
+
     func testTypedBarcodeNotFoundOffersLabel() {
         signedIn()
         openAction("Scan Food")

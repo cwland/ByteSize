@@ -133,6 +133,8 @@ public struct SearchResult: Codable, Equatable, Sendable {
 public struct BarcodeResult: Codable, Equatable, Sendable {
     public let code: String
     public let food: Food?
+    /// The sources disagree on what this barcode is: the different products, the likeliest first (absent or empty otherwise).
+    public let choices: [Food]?
 }
 
 public struct FoodList: Codable, Equatable, Sendable { public let foods: [Food] }
