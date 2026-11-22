@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
-import { aiAnswers, aiSettings, lastAiPrompt } from "./foodFakes.js";
+import { aiAnswers, aiSettings, HOME_AI, lastAiPrompt } from "./foodFakes.js";
 
 // Describe Food in the iPhone app (iOS design §6.7 change 5): one description can hold several foods,
 // each a draft with how much of it. Nothing is saved.
@@ -28,6 +28,47 @@ describe("estimate several foods", () => {
     expect(r.body.assumed).toBe(false);
     expect(lastAiPrompt(t)).toContain("2 eggs, toast and coffee");
     expect(lastAiPrompt(t)).toMatch(/each separate food/i);
+  });
+
+  it("several foods come with a short name for them together (One meal)", async () => {
+    await t.api("PUT", "/api/settings/ai", aiSettings);
+    aiAnswers(t, { items: [egg, toast, coffee], mealName: "Egg and toast breakfast", assumed: false });
+    const r = await estimate("2 eggs, toast and coffee");
+    expect(r.status).toBe(200);
+    expect(r.body.mealName).toBe("Egg and toast breakfast");
+    expect(lastAiPrompt(t)).toMatch(/mealName/);
+  });
+
+  it("one food has no meal name, so there is nothing to switch between", async () => {
+    await t.api("PUT", "/api/settings/ai", aiSettings);
+    aiAnswers(t, { items: [toast], mealName: "Toast", assumed: false });
+    const r = await estimate("a slice of toast");
+    expect(r.body.mealName).toBeNull();
+  });
+
+  it("several foods without a usable meal name are named after their foods", async () => {
+    await t.api("PUT", "/api/settings/ai", aiSettings);
+    aiAnswers(t, { items: [egg, toast], mealName: "   ", assumed: false });
+    expect((await estimate("2 eggs and toast")).body.mealName).toBe("Egg, large and Toast");
+    aiAnswers(t, { items: [egg, toast, coffee], assumed: false });
+    expect((await estimate("2 eggs, toast and coffee")).body.mealName).toBe("Egg, large, Toast and Black coffee");
+  });
+
+  it("asked for as lines, it says how it's going and ends with the answer or an error (the web's Describe)", async () => {
+    await t.api("PUT", "/api/settings/ai", { ...aiSettings, services: [...aiSettings.services, { name: "Cloud", provider: "openrouter", apiKey: "or-key", model: "small" }] });
+    t.ai.respond = (url: string) =>
+      url.startsWith(HOME_AI) ? { status: 503, json: { error: { message: "loading model" } } } : { status: 200, json: { choices: [{ message: { content: JSON.stringify({ items: [egg, toast], mealName: "Eggs on toast", assumed: false }) } }] } };
+    const r = await t.api("POST", "/api/ai/estimate-items", { text: "2 eggs and toast" }, { accept: "application/x-ndjson" });
+    expect(r.status).toBe(200);
+    expect(r.headers["content-type"]).toMatch(/application\/x-ndjson/);
+    expect(r.headers["x-accel-buffering"]).toBe("no");
+    const lines = String(r.body).trim().split("\n").map((l) => JSON.parse(l));
+    expect(lines[0]).toEqual({ progress: "another" });
+    expect(lines[1]).toMatchObject({ mealName: "Eggs on toast", assumed: false, items: [{ food: { name: "Egg, large" } }, { food: { name: "Toast" } }] });
+    expect(String(r.body)).not.toMatch(/Home AI|Cloud/);
+    t.ai.down = true;
+    const bad = await t.api("POST", "/api/ai/estimate-items", { text: "2 eggs and toast" }, { accept: "application/x-ndjson" });
+    expect(String(bad.body).trim().split("\n").map((l) => JSON.parse(l)).at(-1)).toEqual({ error: "The AI couldn't estimate that. Try again, or describe it differently.", status: 502 });
   });
 
   it("a long serving name from the AI is shortened, and the AI is asked for short ones", async () => {
