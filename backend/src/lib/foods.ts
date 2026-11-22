@@ -424,7 +424,7 @@ export async function lookupBarcode(
     return {
       ...none(),
       food: toResult(picked.row, "cache"),
-      from: picked.row.source as GroupSource,
+      from: "cache", // a kept copy is "Saved", as before
     };
   }
 
@@ -524,7 +524,7 @@ export async function lookupBarcode(
     return {
       ...none(),
       food: toResult(any, "cache"),
-      from: any.source as GroupSource,
+      from: "cache",
     };
   }
   if (found.every((a) => !a.fetched)) countUsage(app, userId, "lookups_saved");
@@ -542,7 +542,7 @@ export async function lookupBarcode(
   return {
     code,
     food: result(ranked[0]),
-    from: ranked[0].row.source as GroupSource,
+    from: ranked[0].fetched ? (ranked[0].row.source as GroupSource) : "cache", // a kept copy is "Saved", as before
     errors,
     choices:
       products.length > 1
@@ -1569,13 +1569,11 @@ export function aiDraft(json: unknown): AiDraft | null {
     icon: iconFor(category, f.name),
     barcode: null,
     // At most 20 servings, and no weight/volume a log entry can't hold (100,000 g or ml): Log all mustn't fail on them
-    servings: f.servings
-      .slice(0, 20)
-      .map((s) => ({
-        label: s.label,
-        ...(s.grams && s.grams <= 100000 ? { grams: s.grams } : {}),
-        ...(s.ml && s.ml <= 100000 ? { ml: s.ml } : {}),
-      })),
+    servings: f.servings.slice(0, 20).map((s) => ({
+      label: s.label,
+      ...(s.grams && s.grams <= 100000 ? { grams: s.grams } : {}),
+      ...(s.ml && s.ml <= 100000 ? { ml: s.ml } : {}),
+    })),
     nutrients,
     aiFields: Object.keys(nutrients),
     imageUrl: null,
