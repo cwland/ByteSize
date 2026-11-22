@@ -843,6 +843,7 @@ final class SmokeUITests: XCTestCase {
         let field = app.textFields["barcodeField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.tap()
+        if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { field.tap() } // a first tap can miss while the sheet settles
         field.typeText("0018400312944")
         app.buttons["lookUpBarcode"].tap()
         XCTAssertTrue(app.buttons["choice-Cappuccino mix"].waitForExistence(timeout: 5))
@@ -850,7 +851,6 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["noneOfThese"].exists)
         XCTAssertTrue(app.buttons["quickAdd-Cappuccino mix"].exists, "each choice can be logged with +")
         app.buttons["choice-Cappuccino mix"].tap()
-        sleep(2); shot("dbg-choice")
         XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5), "the picked product opens")
     }
 
