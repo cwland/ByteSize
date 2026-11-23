@@ -1,4 +1,4 @@
-import type { Serving } from "./nutrients.js";
+import type { Serving, Unit } from "./nutrients.js";
 
 // L1 (SPEC-01): the units a person counts a food in, worked out from its servings when it's looked up (never stored
 // on the food): "1 prune" from "5 prunes", "1 slice" from "4 slices (56g)", and small / medium / large for whole
@@ -44,6 +44,19 @@ export const SIZE_TABLE: { match: RegExp; grams: [number, number, number] }[] = 
   { match: /\bavocados?\b/i, grams: [136, 150, 201] },
 ];
 
+/** Words that only describe the thing ("fresh organic apples", "large egg"), not make it a dish. */
+const DESCRIBING = new Set(["fresh", "raw", "whole", "organic", "ripe", "small", "medium", "large", "extra", "jumbo", "boneless", "skinless", "hard", "boiled", "baked", "grilled", "red", "green", "yellow", "white", "sweet"]);
+
+/** The name is the food itself (its part before a comma or bracket is only it and describing words): "Bananas, raw",
+ * "Large egg" — not a dish that has it in its name ("Banana bread", "Turkey avocado sandwich"). */
+function isItself(name: string, match: RegExp): boolean {
+  const head = name.split(/[,(]/)[0].trim();
+  const m = match.exec(head);
+  if (!m) return false;
+  const rest = (head.slice(0, m.index) + " " + head.slice(m.index + m[0].length)).toLowerCase().split(/\s+/).filter(Boolean);
+  return rest.every((w) => DESCRIBING.has(w));
+}
+
 const positive = (n: number | undefined): n is number => typeof n === "number" && Number.isFinite(n) && n > 0;
 const round = (n: number) => Math.round(n * 100) / 100;
 
@@ -62,6 +75,85 @@ function countedOne(s: Serving, i: number, base: Serving): Serving | null {
   return null;
 }
 
+/** "2", "2.5", "1/2", "2 1/2", "2½", "½" → the number; null when it isn't one. */
+export function amountOf(text: string): number | null {
+  const t = text.trim().replace(/([0-9])\s*([½⅓⅔¼¾⅛])/, "$1 $2");
+  const vulgar: Record<string, number> = { "½": 0.5, "⅓": 1 / 3, "⅔": 2 / 3, "¼": 0.25, "¾": 0.75, "⅛": 0.125 };
+  let m = /^(\d+(?:\.\d+)?)?\s*([½⅓⅔¼¾⅛])$/.exec(t);
+  if (m) return Number(m[1] ?? 0) + vulgar[m[2]];
+  m = /^(?:(\d+)\s+)?(\d+)\/(\d+)$/.exec(t);
+  if (m) return Number(m[3]) > 0 ? Number(m[1] ?? 0) + Number(m[2]) / Number(m[3]) : null;
+  m = /^\d+(?:\.\d+)?$/.exec(t);
+  return m ? Number(t) : null;
+}
+
+const NUMBER = "(\\d+(?:\\.\\d+)?(?:\\s*[½⅓⅔¼¾⅛])?|\\d+\\s+\\d+\\/\\d+|\\d+\\/\\d+|[½⅓⅔¼¾⅛])";
+const SPOONS: Record<string, "tbsp" | "tsp" | "cup"> = {
+  tbsp: "tbsp", tbs: "tbsp", tbl: "tbsp", tablespoon: "tbsp", tablespoons: "tbsp",
+  tsp: "tsp", teaspoon: "tsp", teaspoons: "tsp", cup: "cup", cups: "cup", c: "cup",
+};
+const SPOON = new RegExp(`^\\s*${NUMBER}\\s*(tbsp|tbs|tbl|tablespoons?|tsp|teaspoons?|cups?|c)\\.?\\b`, "i");
+const BARE = new RegExp(`^\\s*${NUMBER}\\s*(g|grams?|ml|millilit(?:er|re)s?|oz|fl\\.?\\s*oz)\\s*$`, "i");
+
+/** "2½ tbsp (15 g)" → 2.5 of a tablespoon. */
+function spoonOf(label: string): { count: number; spoon: "tbsp" | "tsp" | "cup" } | null {
+  const m = SPOON.exec(label);
+  if (!m) return null;
+  const count = amountOf(m[1]);
+  const spoon = SPOONS[m[2].toLowerCase()];
+  return count && count > 0 && spoon ? { count, spoon } : null;
+}
+
+/** One spoon of a spoon serving measured by weight ("2 Tbsp", 12 g → "1 tbsp", 6 g); by volume the wheel has spoons already. */
+function spoonOne(s: Serving, i: number, base: Serving): Serving | null {
+  const sp = spoonOf(s.label);
+  if (!sp || positive(s.ml)) return null;
+  if (sp.count === 1 && /^\s*1\s/.test(s.label)) return null; // "1 tsp" already is one
+  const label = `1 ${sp.spoon}`;
+  if (positive(s.grams) && positive(base.grams)) return { label, grams: round(s.grams / sp.count), derived: true };
+  if (positive(s.grams)) return null;
+  // no weight ("2.5 tbsp" from FatSecret): one spoon as a share of the serving
+  if (i === 0) return { label, per: 1 / sp.count, derived: true };
+  if (positive(s.per)) return { label, per: s.per / sp.count, derived: true };
+  return null;
+}
+
+export type Start = { servingIndex: number; unit: Unit; quantity: number };
+
+/** Where a food's amount starts: its package serving, written its own way — "2 | tbsp", "15 | g", "1 | slice" (never "1 × 100 g"). */
+export function startingAmount(servings: Serving[]): Start {
+  const base = servings[0];
+  if (!base) return { servingIndex: 0, unit: "serving", quantity: 1 };
+  // servings[1] is the package's serving ("1 slice" after "100 g"); a plain 100 g / 100 ml after a serving is only a base to weigh by
+  const weighingBase = (s: Serving) => /^\s*100\s*(g|ml)\s*$/i.test(s.label);
+  const ownIndex = servings.length > 1 && !servings[1].derived && !(weighingBase(servings[1]) && !weighingBase(base)) ? 1 : 0;
+  const own = servings[ownIndex];
+  const derivedIndex = (label: string) => servings.findIndex((s) => s.derived && s.label.toLowerCase() === label.toLowerCase());
+
+  const sp = spoonOf(own.label);
+  if (sp) {
+    const i = derivedIndex(`1 ${sp.spoon}`);
+    if (i >= 0) return { servingIndex: i, unit: "serving", quantity: sp.count };
+    if (positive(base.ml)) return { servingIndex: 0, unit: sp.spoon, quantity: sp.count };
+  }
+
+  const bare = BARE.exec(own.label);
+  if (bare) {
+    const n = amountOf(bare[1]) ?? 0;
+    const word = bare[2].toLowerCase().replace(/\s|\./g, "");
+    const unit: Unit = word === "floz" ? "fl_oz" : word === "oz" ? "oz" : word.startsWith("g") ? "g" : "ml";
+    const fits = unit === "g" || unit === "oz" ? positive(base.grams) : positive(base.ml);
+    if (n > 0 && fits) return { servingIndex: 0, unit, quantity: n };
+  }
+
+  const counted = COUNTED.exec(own.label);
+  if (counted && Number(counted[1]) > 1) {
+    const i = derivedIndex(`1 ${singular(counted[2].trim())}`);
+    if (i >= 0) return { servingIndex: i, unit: "serving", quantity: Number(counted[1]) };
+  }
+  return { servingIndex: ownIndex, unit: "serving", quantity: 1 };
+}
+
 /** The food's servings, then the counted and sized units it can also be logged in. */
 export function withMeasures(servings: Serving[], name: string | null | undefined): Serving[] {
   const own = servings.filter((s) => !s.derived);
@@ -74,9 +166,10 @@ export function withMeasures(servings: Serving[], name: string | null | undefine
   };
 
   own.forEach((s, i) => add(countedOne(s, i, base)));
+  own.forEach((s, i) => add(spoonOne(s, i, base)));
 
   const sized = own.some((s) => /\b(small|medium|large)\b/i.test(s.label));
-  const row = name ? SIZE_TABLE.find((r) => r.match.test(name)) : undefined;
+  const row = name ? SIZE_TABLE.find((r) => isItself(name, r.match)) : undefined;
   if (row && !sized && positive(base.grams)) {
     (["small", "medium", "large"] as const).forEach((size, k) => add({ label: `1 ${size}`, grams: row.grams[k], derived: true }));
   }

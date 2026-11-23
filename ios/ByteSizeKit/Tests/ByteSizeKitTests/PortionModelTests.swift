@@ -21,6 +21,40 @@ final class PortionModelTests: XCTestCase {
         XCTAssertEqual(p.previewCalories, 150)
     }
 
+    private func scanned(_ servings: String, start: String) throws -> Food {
+        try JSONDecoder().decode(Food.self, from: Data("""
+        {"kind":"cache","id":5,"name":"Mix","brand":null,"icon":"🥤","barcode":null,"servings":\(servings),"nutrients":{"calories":70},"aiFields":[],"source":"off","start":\(start)}
+        """.utf8))
+    }
+
+    func testAScannedFoodStartsAtItsPackageServingWrittenItsOwnWay() throws {
+        let mix = PortionModel(food: try scanned(#"[{"label":"100 g","grams":100},{"label":"2 Tbsp","grams":12},{"label":"1 tbsp","grams":6,"derived":true}]"#,
+                                                 start: #"{"servingIndex":2,"unit":"serving","quantity":2}"#), meal: .breakfast)
+        XCTAssertEqual(mix.whole, 2)
+        XCTAssertEqual(mix.choice, .serving(2))
+        XCTAssertEqual(mix.label(for: mix.choice), "tbsp", "2 | tbsp, not 2 | 1 tbsp")
+
+        let mix15 = PortionModel(food: try scanned(#"[{"label":"100 g","grams":100},{"label":"15 g","grams":15}]"#,
+                                                   start: #"{"servingIndex":0,"unit":"g","quantity":15}"#), meal: .breakfast)
+        XCTAssertEqual(mix15.whole, 15)
+        XCTAssertEqual(mix15.choice, .unit(.g))
+
+        let half = PortionModel(food: try scanned(#"[{"label":"2½ tbsp","grams":15},{"label":"1 tbsp","grams":6,"derived":true}]"#,
+                                                  start: #"{"servingIndex":1,"unit":"serving","quantity":2.5}"#), meal: .breakfast)
+        XCTAssertEqual(half.whole, 2)
+        XCTAssertEqual(half.fraction, 0.5)
+        XCTAssertEqual(half.previewCalories, 70)
+    }
+
+    func testOneOfSomethingReadsWithoutTheOne() {
+        let p = portion([Serving(label: "100 g", grams: 100), Serving(label: "1 SLICE (30 g)", grams: 30)])
+        XCTAssertEqual(p.label(for: .serving(1)), "SLICE (30 g)")
+        XCTAssertEqual(p.label(for: .serving(0)), "100 g")
+        XCTAssertEqual(p.label(for: .unit(.g)), "g")
+        let drink = portion([Serving(label: "1 cup", ml: 240)])
+        XCTAssertEqual(drink.label(for: .serving(0)), "1 cup", "keeps its 1: cup is a volume on the wheel too")
+    }
+
     func testSixPrunesFromAFivePruneFood() {
         let p = portion(prunes)
         p.choice = .serving(1)
@@ -55,6 +89,7 @@ final class PortionModelTests: XCTestCase {
         XCTAssertEqual(p.previewCalories, 375)
         XCTAssertTrue(p.wholeRange.contains(100))
         XCTAssertTrue(p.wholeRange.contains(1000))
+        XCTAssertEqual(p.wholeRange, Array(0...1000), "every gram, no skipping: 144 g is there")
         p.choice = .serving(0)
         p.whole = 2
         p.fraction = 0.5

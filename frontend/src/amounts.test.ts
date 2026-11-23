@@ -165,8 +165,8 @@ describe("splitWhole", () => {
 describe("unitChoices", () => {
   it("offers the food's servings, then weights, then volumes", () => {
     expect(unitChoices(milk)).toEqual([
-      { value: "s:0", label: "1 cup" },
-      { value: "s:1", label: "1 bottle" },
+      { value: "s:0", label: "1 cup" }, // keeps its 1: "cup" is the volume below
+      { value: "s:1", label: "bottle" },
       { value: "ml", label: "ml" },
       { value: "fl_oz", label: "fl oz" },
       { value: "cup", label: "cup" },

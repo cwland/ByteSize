@@ -143,11 +143,15 @@ export function formatAmount(servings: Serving[], servingIndex: number, unit: Un
 export function unitChoices(servings: Serving[]): { value: string; label: string }[] {
   const base = servings[0];
   const approx = base?.approx ? "≈ " : "";
-  return [
-    ...servings.map((s, i) => ({ value: `s:${i}`, label: s.label })),
+  const units = [
     ...(base?.grams ? (["g", "oz"] as Unit[]) : []).map((u) => ({ value: u, label: UNIT_TEXT[u] })),
     ...(base?.ml ? VOLUME : []).map((u) => ({ value: u, label: `${approx}${UNIT_TEXT[u]}` })),
   ];
+  const taken = new Set(units.map((u) => u.label.replace(/^≈ /, "").toLowerCase()));
+  // one of a thing reads without the 1 beside the number (2 | tbsp, 6 | prune, 1 | SLICE (30 g)), unless that
+  // would read the same as a unit already offered ("1 cup" of a drink that also has cups)
+  const own = (label: string) => (/^1 \S/.test(label) && !taken.has(label.slice(2).toLowerCase()) ? label.slice(2) : label);
+  return [...servings.map((s, i) => ({ value: `s:${i}`, label: own(s.label) })), ...units];
 }
 
 // 1.5 → { whole: 1, fraction: 0.5 }: the nearest whole + picker fraction

@@ -3,7 +3,7 @@ import FoodPic from "./FoodPic";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { formatAmount, isBigAmount } from "../../amounts";
 import { amountFactor, scaleNutrients } from "../../nutrition";
-import type { NutrientKey, Nutrients, Portion, Serving } from "../../types";
+import type { NutrientKey, Nutrients, Portion, Serving, Start } from "../../types";
 import { fmt } from "../../units";
 import AmountPicker from "./AmountPicker";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
@@ -39,10 +39,15 @@ export function defaultPortion(servings: Serving[], units: "imperial" | "metric"
 
 // Where a food from search starts: a recipe, quick meal or restaurant item at 1 serving (a recipe's "100 g", a
 // restaurant drink's ml must not turn into 8 fl oz), anything else as above
-export const startingPortion = (food: { servings: Serving[]; foodKind?: string; source?: string }, units: "imperial" | "metric" = "imperial"): Portion =>
-  food.foodKind === "recipe" || food.foodKind === "quick_meal" || food.source === "spoonacular" || food.source === "fatsecret"
+// A food the server sent a start for (0.15+) begins there — its package serving written its own way (2 | tbsp,
+// 15 | g, 1 | slice) — unless it's a drink, which keeps its fl oz / ml start.
+export const startingPortion = (food: { servings: Serving[]; foodKind?: string; source?: string; start?: Start }, units: "imperial" | "metric" = "imperial"): Portion => {
+  if (food.foodKind === "recipe" || food.foodKind === "quick_meal") return { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 };
+  if (food.start && !food.servings[0]?.ml) return { ...food.start, fraction: 1 };
+  return food.source === "spoonacular" || food.source === "fatsecret"
     ? { servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 }
     : defaultPortion(food.servings, units);
+};
 
 // Nutrients for an amount ({} = unknown when the amount can't be measured)
 export function nutrientsFor(food: { servings: Serving[]; nutrients: Nutrients }, p: Portion): Nutrients {

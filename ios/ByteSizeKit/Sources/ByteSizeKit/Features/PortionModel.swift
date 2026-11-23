@@ -35,8 +35,8 @@ public final class PortionModel {
 
     public convenience init(food: Food, meal: Meal) {
         self.init(name: food.name, icon: food.icon, servings: food.servings, nutrients: food.nutrients, meal: meal)
-        // Recent, favorites, same as yesterday: start at the amount it was last logged at
-        if let last = food.last, let unit = AmountUnit(rawValue: last.unit) {
+        // Recent, favorites, same as yesterday: the amount it was last logged at; else its package serving
+        if food.last != nil || food.start != nil, case let last = food.startingAmount, let unit = AmountUnit(rawValue: last.unit) {
             if unit == .serving {
                 guard food.servings.indices.contains(last.servingIndex) else { return }
                 choice = .serving(last.servingIndex)
@@ -99,6 +99,16 @@ public final class PortionModel {
         return out
     }
 
+    /// The unit as the wheel shows it: "tbsp" for a "1 tbsp" serving (2 | tbsp), "SLICE (30 g)" for "1 SLICE (30 g)".
+    public func label(for choice: UnitChoice) -> String {
+        let label = choices.first { $0.choice == choice }?.label ?? ""
+        guard case .serving = choice, label.hasPrefix("1 "), label.count > 2 else { return label }
+        let one = String(label.dropFirst(2))
+        // keeps its 1 when it would read the same as a unit on the wheel ("1 cup" of a drink that also has cups)
+        let units = choices.compactMap { if case .unit = $0.choice { return $0.label.lowercased() } else { return nil } }
+        return units.contains(one.lowercased()) ? label : one
+    }
+
     public var servingIndex: Int {
         if case .serving(let i) = choice { return i }
         return 0
@@ -124,12 +134,9 @@ public final class PortionModel {
     /// More than 20 servings or 2,000 calories: asks first.
     public var isBig: Bool { AmountMath.isBig(factor: factor ?? 0, calories: Double(previewCalories ?? 0)) }
 
-    /// The whole-number wheel: 0–20, and for grams and millilitres bigger steps up to 1,000 (as the web).
+    /// The whole-number wheel: 0–20, and for grams and millilitres every number to 1,000 (144 g is there; as the web).
     public var wholeRange: [Int] {
-        var out = Array(0...20)
-        if unit == .g || unit == .ml {
-            out += Array(stride(from: 25, through: 100, by: 5)) + Array(stride(from: 125, through: 500, by: 25)) + Array(stride(from: 550, through: 1000, by: 50))
-        }
+        var out = unit == .g || unit == .ml ? Array(0...1000) : Array(0...20)
         if !out.contains(whole) { out.append(whole) }
         return out.sorted()
     }

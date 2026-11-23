@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { asUser } from "./isolation.js";
+import { foodCache } from "../src/db/schema.js";
 import { HOME_AI, aiAnswers, aiSettings, lastAiPrompt, offKnows, offProduct } from "./foodFakes.js";
 
 let t: TestApp;
@@ -31,6 +32,7 @@ describe("my foods", () => {
       override: false,
       source: "mine",
       foodKind: "custom",
+      start: { servingIndex: 0, unit: "serving", quantity: 1 },
     });
     const id = made.body.food.id;
 
@@ -130,6 +132,43 @@ describe("AI estimate", () => {
     const web = await t.api("PATCH", `/api/my-foods/${saved.body.food.id}`, { name: "Burrito", brand: null, barcode: null, servings: burrito.servings, nutrients: { ...burrito.nutrients, calories: 700, fat_g: 25 }, aiFields: ["protein_g", "fiber_g"] });
     expect(web.status).toBe(200);
     expect(web.body.food).toMatchObject({ brand: null, barcode: null, aiFields: ["protein_g", "fiber_g"], source: "mine" });
+  });
+
+  describe("a branded product a food database knows: its serving, not the AI's guess", () => {
+    const mixGuess = {
+      name: "Hills Sugar-Free French Vanilla Instant Cappuccino Mix", brand: "Hills Bros", category: "beverage mix",
+      servings: [{ label: "3 tablespoons (dry mix)", grams: 21 }], nutrients: { calories: 70, carbs_g: 14 }, assumed: false,
+    };
+    const keep = (row: Record<string, unknown>) => t.db.insert(foodCache).values({ source: "fatsecret", sourceId: "2099813", name: "Sugar Free French Vanilla Cappuccino", brand: "Hills Bros.", servings: [{ label: "2.5 tbsp" }], nutrients: { calories: 70 }, ...row });
+
+    it("takes the kept database food's serving when its calories agree", async () => {
+      await t.api("PUT", "/api/settings/ai", aiSettings);
+      await keep({});
+      aiAnswers(t, mixGuess);
+      const r = await t.api("POST", "/api/ai/estimate", { text: "hills sugar free french vanilla cappuccino" });
+      expect(r.status).toBe(200);
+      expect(r.body.food.servings[0]).toEqual({ label: "2.5 tbsp" });
+      expect(r.body.food.nutrients.calories).toBe(70);
+      const saved = await t.api("POST", "/api/my-foods", { name: r.body.food.name, brand: r.body.food.brand, servings: r.body.food.servings, nutrients: r.body.food.nutrients });
+      expect(saved.body.food.start).toEqual({ servingIndex: 1, unit: "serving", quantity: 2.5 }); // saved, it opens at 2½ | tbsp
+    });
+
+    it("keeps the AI's serving when the calories disagree, or nothing kept is that product", async () => {
+      await t.api("PUT", "/api/settings/ai", aiSettings);
+      await keep({ nutrients: { calories: 140 } });
+      await keep({ sourceId: "x", name: "Sugar Free Hazelnut Coffee", nutrients: { calories: 70 } });
+      aiAnswers(t, mixGuess);
+      const r = await t.api("POST", "/api/ai/estimate", { text: "hills cappuccino" });
+      expect(r.body.food.servings[0]).toEqual({ label: "3 tablespoons (dry mix)", grams: 21 });
+    });
+
+    it("a food with no brand is left as the AI drafted it", async () => {
+      await t.api("PUT", "/api/settings/ai", aiSettings);
+      await keep({ name: "Chicken burrito", brand: null, servings: [{ label: "1 burrito", grams: 250 }], nutrients: { calories: 650 } });
+      aiAnswers(t, burrito);
+      const r = await t.api("POST", "/api/ai/estimate", { text: "chicken burrito" });
+      expect(r.body.food.servings).toEqual([{ label: "1 burrito", grams: 300 }]);
+    });
   });
 
   it("an AI answer that isn't a food is a clear error", async () => {

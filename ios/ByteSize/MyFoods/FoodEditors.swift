@@ -38,12 +38,24 @@ struct FoodEditorView: View {
             Section {
                 ForEach($model.servings) { $row in
                     let first = model.servings.first?.id == row.id
-                    HStack {
-                        TextField(first ? "Serving size, like 1 cup" : "Serving", text: $row.label)
-                            .accessibilityIdentifier(first ? "servingLabel" : "servingLabel-more")
-                        TextField("g", text: $row.grams).keyboardType(.decimalPad).frame(width: 56)
-                        TextField("ml", text: $row.ml).keyboardType(.decimalPad).frame(width: 56)
+                    // Each line says what goes where: the serving as the package writes it, then its weight and volume
+                    VStack(alignment: .leading, spacing: 8) {
+                        ServingBox(title: "Serving") {
+                            TextField("Like 2½ tbsp or 1 slice", text: $row.label)
+                                .accessibilityIdentifier(first ? "servingLabel" : "servingLabel-more")
+                        }
+                        HStack(spacing: 12) {
+                            ServingBox(title: "Weight (g)") {
+                                TextField("Optional", text: $row.grams).keyboardType(.decimalPad)
+                                    .accessibilityIdentifier(first ? "servingGrams" : "servingGrams-more")
+                            }
+                            ServingBox(title: "Volume (ml)") {
+                                TextField("Optional", text: $row.ml).keyboardType(.decimalPad)
+                                    .accessibilityIdentifier(first ? "servingMl" : "servingMl-more")
+                            }
+                        }
                     }
+                    .padding(.vertical, 4)
                     .deleteDisabled(first)
                 }
                 .onDelete { $0.forEach { model.removeServing(at: $0) } }
@@ -51,7 +63,7 @@ struct FoodEditorView: View {
             } header: {
                 Text("Servings")
             } footer: {
-                Text("The nutrients below are for the first serving.")
+                Text("The nutrients below are for the first serving. Swipe a serving left to remove it.")
             }
             Section("Per serving") {
                 ForEach(Nutrients.keys, id: \.key) { k in
@@ -390,5 +402,22 @@ private struct PickAmountView: View {
                     .accessibilityIdentifier("addPicked")
             }
         }
+    }
+}
+
+/// A box with its name above it, so a serving line says what to type where.
+private struct ServingBox<Field: View>: View {
+    let title: String
+    @ViewBuilder let field: Field
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+            field
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

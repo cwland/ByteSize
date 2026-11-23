@@ -17,7 +17,7 @@ struct AmountWheel: View {
             }
             .accessibilityIdentifier("wheelFraction")
             Picker("Unit", selection: $portion.choice) {
-                ForEach(portion.choices, id: \.choice) { Text($0.label).tag($0.choice) }
+                ForEach(portion.choices, id: \.choice) { Text(portion.label(for: $0.choice)).tag($0.choice) }
             }
             .frame(minWidth: 130)
             .accessibilityIdentifier("wheelUnit")

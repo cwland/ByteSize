@@ -131,10 +131,10 @@ public final class TrackFoodModel {
         }
     }
 
-    /// +: logs the food at the amount it was last logged at (one of its serving when it never was).
+    /// +: logs the food at the amount it was last logged at, else at its package serving (2 tbsp, 1 slice).
     public func quickLog(_ food: Food) async -> Bool {
         guard food.isLoggable else { return false }
-        let last = food.last ?? LastPortion(servingIndex: 0, unit: "serving", quantity: 1, fraction: 1)
+        let last = food.startingAmount
         let unit = AmountUnit(rawValue: last.unit) ?? .serving
         return await logged(food.name) {
             _ = try await self.api.send(FoodAPI.log(food: food, day: self.dayStore.selected, meal: self.meal, servingIndex: last.servingIndex, unit: unit, quantity: last.quantity * last.fraction, estimate: self.estimate(for: food)))

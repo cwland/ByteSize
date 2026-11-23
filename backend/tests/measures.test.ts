@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { foodCache } from "../src/db/schema.js";
-import { withMeasures } from "../src/lib/measures.js";
+import { startingAmount, withMeasures } from "../src/lib/measures.js";
 import { amountFactor } from "../src/lib/nutrients.js";
 
 // L1 (SPEC-01): a food offers the units people count in — 1 prune from "5 prunes", 1 slice from "4 slices (56g)",
@@ -28,13 +28,25 @@ describe("withMeasures", () => {
     expect(withMeasures([{ label: "1 cup (240 g)", grams: 240 }], "Milk")).toEqual([{ label: "1 cup (240 g)", grams: 240 }]);
     expect(withMeasures([{ label: "2 servings", grams: 60 }], "Mix")).toEqual([{ label: "2 servings", grams: 60 }]);
     expect(withMeasures([{ label: "3 oz", grams: 85 }], "Steak")).toEqual([{ label: "3 oz", grams: 85 }]);
-    expect(withMeasures([{ label: "2 tbsp (32g)", grams: 32 }], "Peanut butter")).toHaveLength(1);
   });
 
   it("plurals become one", () => {
     expect(withMeasures([{ label: "10 berries", grams: 50 }], "Strawberries")[1].label).toBe("1 berry");
     expect(withMeasures([{ label: "6 pieces", grams: 30 }], "Candy")[1].label).toBe("1 piece");
     expect(withMeasures([{ label: "8 wings", grams: 240 }], "Chicken wings")[1].label).toBe("1 wing");
+  });
+
+  it("sizes only for the food itself, not a dish that has it in its name", () => {
+    const sized = (name: string) => withMeasures([{ label: "1 sandwich", grams: 188 }], name).some((s) => s.label === "1 small");
+    expect(sized("Turkey avocado sandwich on wheat bread")).toBe(false);
+    expect(sized("Banana bread")).toBe(false);
+    expect(sized("Chicken breast sandwich")).toBe(false);
+    expect(sized("Apple pie")).toBe(false);
+    expect(sized("Avocado")).toBe(true);
+    expect(sized("Bananas, raw")).toBe(true);
+    expect(sized("Fresh organic apples")).toBe(true);
+    expect(sized("Chicken breast, grilled")).toBe(true);
+    expect(sized("Large egg")).toBe(true);
   });
 
   it("whole produce gets small, medium and large", () => {
@@ -112,5 +124,76 @@ describe("in the API", () => {
     const saved = (await t.api("GET", `/api/my-foods/${r.body.food.id}`)).body.food;
     expect(saved.servings.filter((s: { label: string }) => s.label === "1 cracker")).toHaveLength(1); // derived again on read, not stored twice
     expect(saved.servings[0]).toEqual({ label: "12 crackers" });
+  });
+});
+
+// A food opens at its package serving, written its own way: "2 | Tbsp", "15 | g", "1 | slice" — never "1 × 100 g".
+describe("spoon units", () => {
+  it("a spoon serving by weight gives one spoon of it", () => {
+    expect(withMeasures([{ label: "100 g", grams: 100 }, { label: "2 Tbsp", grams: 12 }], "Cappuccino mix")[2]).toEqual({ label: "1 tbsp", grams: 6, derived: true });
+    expect(withMeasures([{ label: "2 tbsp (32g)", grams: 32 }], "Peanut butter")[1]).toEqual({ label: "1 tbsp", grams: 16, derived: true });
+    expect(withMeasures([{ label: "2.5 tbsp", grams: 15 }], "Mix")[1]).toEqual({ label: "1 tbsp", grams: 6, derived: true });
+    expect(withMeasures([{ label: "2½ tablespoons (15 g)", grams: 15 }], "Mix")[1]).toEqual({ label: "1 tbsp", grams: 6, derived: true });
+    expect(withMeasures([{ label: "1/2 cup (40g)", grams: 40 }], "Oats")[1]).toEqual({ label: "1 cup", grams: 80, derived: true });
+    expect(withMeasures([{ label: "1 tsp", grams: 4 }, { label: "3 tsp", grams: 12 }], "Sugar")).toHaveLength(2); // "1 tsp" already is one
+  });
+
+  it("a spoon serving with no weight gives one spoon as a share of it (FatSecret's 2.5 tbsp)", () => {
+    const s = withMeasures([{ label: "2.5 tbsp" }], "Cappuccino mix");
+    expect(s[1]).toEqual({ label: "1 tbsp", per: 0.4, derived: true });
+    expect(startingAmount(s)).toEqual({ servingIndex: 1, unit: "serving", quantity: 2.5 });
+  });
+
+  it("a spoon serving by volume needs no spoon unit (the wheel has tbsp already)", () => {
+    expect(withMeasures([{ label: "2 tbsp (30 ml)", ml: 30 }], "Syrup")).toHaveLength(1);
+  });
+});
+
+describe("startingAmount", () => {
+  const bread = [{ label: "100 g", grams: 100 }, { label: "1 SLICE (30 g)", grams: 30 }];
+  it("starts at the package serving, not 100 g", () => {
+    expect(startingAmount(withMeasures(bread, "Bread"))).toEqual({ servingIndex: 1, unit: "serving", quantity: 1 });
+  });
+
+  it("a spoon serving starts at that many spoons", () => {
+    const s = withMeasures([{ label: "100 g", grams: 100 }, { label: "2 Tbsp", grams: 12 }], "Mix");
+    expect(startingAmount(s)).toEqual({ servingIndex: 2, unit: "serving", quantity: 2 });
+    expect(startingAmount(withMeasures([{ label: "2½ tbsp", grams: 15 }], "Mix"))).toEqual({ servingIndex: 1, unit: "serving", quantity: 2.5 });
+    expect(startingAmount([{ label: "100 ml", ml: 100 }, { label: "2 tbsp (30 ml)", ml: 30 }])).toEqual({ servingIndex: 0, unit: "tbsp", quantity: 2 });
+  });
+
+  it("a bare weight or volume starts in that unit", () => {
+    expect(startingAmount([{ label: "100 g", grams: 100 }, { label: "15 g", grams: 15 }])).toEqual({ servingIndex: 0, unit: "g", quantity: 15 });
+    expect(startingAmount([{ label: "100 ml", ml: 100 }, { label: "240 ml", ml: 240 }])).toEqual({ servingIndex: 0, unit: "ml", quantity: 240 });
+    expect(startingAmount([{ label: "100 g", grams: 100 }])).toEqual({ servingIndex: 0, unit: "g", quantity: 100 });
+  });
+
+  it("a counted serving starts at its count", () => {
+    expect(startingAmount(withMeasures([{ label: "4 slices (56g)", grams: 56 }], "Bread"))).toEqual({ servingIndex: 1, unit: "serving", quantity: 4 });
+    expect(startingAmount([{ label: "1 bar", grams: 40 }])).toEqual({ servingIndex: 0, unit: "serving", quantity: 1 });
+  });
+
+  it("a weighing base after the serving isn't the package serving (a recipe: 1 serving, not 100 g)", () => {
+    expect(startingAmount([{ label: "1 serving (320 g)", grams: 320 }, { label: "100 g", grams: 100 }])).toEqual({ servingIndex: 0, unit: "serving", quantity: 1 });
+  });
+
+  it("a server-derived unit is never the start on its own", () => {
+    expect(startingAmount(withMeasures([{ label: "1 medium", grams: 118 }], "Banana"))).toEqual({ servingIndex: 0, unit: "serving", quantity: 1 });
+  });
+});
+
+describe("start sent with a food", () => {
+  let t2: TestApp;
+  beforeAll(async () => { t2 = await setupTestApp(); });
+  afterAll(async () => { await t2.close(); });
+  beforeEach(async () => {
+    await t2.reset();
+    await t2.login();
+  });
+
+  it("a looked-up food says where its amount starts", async () => {
+    const row = (await t2.db.insert(foodCache).values({ source: "off", sourceId: "bread-1", name: "Wheat bread", servings: [{ label: "100 g", grams: 100 }, { label: "1 SLICE (30 g)", grams: 30 }], nutrients: { calories: 250 } }).returning())[0];
+    const r = await t2.api("GET", `/api/foods/cache/${row.id}`);
+    expect(r.body.food.start).toEqual({ servingIndex: 1, unit: "serving", quantity: 1 });
   });
 });
