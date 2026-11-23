@@ -29,6 +29,7 @@ struct PortionSheet: View {
     @Environment(\.palette) private var palette
     @State private var logging = false
     @State private var askingBig = false
+    @State private var wheelOpen = false
 
     private var logButton: some View {
         Button {
@@ -98,12 +99,11 @@ struct PortionSheet: View {
                         }
                     }
                 }
-                Section("Amount") {
-                    AmountWheel(portion: portion)
-                }
                 Section {
+                    ServingRow(portion: portion, open: $wheelOpen)
                     MealPicker(meal: $portion.meal)
                 }
+                NutritionSection(portion: portion)
                 if let message {
                     Section { Text(message).foregroundStyle(palette.color("error")) }
                 }
