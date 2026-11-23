@@ -45,7 +45,7 @@ import { fatsecretInUse } from "./restaurants/index.js";
 import { SourceError, type SourceFood } from "./foodSources/types.js";
 import { usdaByBarcode, usdaSearch } from "./foodSources/usda.js";
 import { countUsage, type UsageKey } from "./usage.js";
-import { withMeasures } from "./measures.js";
+import { startingAmount, withMeasures, type Start } from "./measures.js";
 import {
   NUTRIENT_KEYS,
   withLiquidVolumes,
@@ -77,6 +77,8 @@ export type FoodResult = {
   summary?: boolean;
   /** A correction (override): the database food it corrects. Absent on every other food. */
   baseCacheId?: number;
+  /** Where its amount starts: the package serving, written its own way ("2 | tbsp", "15 | g", "1 | slice"). */
+  start?: Start;
 };
 export type FoodKind = "custom" | "override" | "recipe" | "quick_meal";
 export const COMPOUND_KINDS = ["recipe", "quick_meal"] as const;
@@ -166,10 +168,12 @@ export function toResult(
     ),
     nutrients,
   };
+  const start = startingAmount(base.servings);
   if (kind === "cache") {
     const c = row as CacheRow;
     return {
       ...base,
+      start,
       aiFields: [],
       imageUrl: signImageUrl(c.imageUrl),
       override: false,
@@ -188,6 +192,7 @@ export function toResult(
   const allAi = keys.length > 0 && aiFields.length === keys.length;
   return {
     ...base,
+    start,
     aiFields,
     imageUrl: u.imagePath ? signImageUrl(photoUrl(u.imagePath)) : null,
     override: u.kind === "override",

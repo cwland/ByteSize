@@ -31,6 +31,7 @@ describe("my foods", () => {
       override: false,
       source: "mine",
       foodKind: "custom",
+      start: { servingIndex: 0, unit: "serving", quantity: 1 },
     });
     const id = made.body.food.id;
 

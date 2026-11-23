@@ -1211,7 +1211,7 @@ describe("fix round 1", () => {
       id: row.id,
       summary: false,
       nutrients: { fiber_g: 2 },
-      servings: [{ grams: 30 }],
+      servings: [{ grams: 30 }, { label: "1 cup", grams: 120, derived: true }], // "1/4 cup" → one cup of it
       savedAt: null,
     });
     expect((await t.api("GET", "/api/foods/cache/999999")).status).toBe(404);
