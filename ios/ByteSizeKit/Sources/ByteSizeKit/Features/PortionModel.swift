@@ -109,6 +109,43 @@ public final class PortionModel {
         return units.contains(one.lowercased()) ? label : one
     }
 
+    /// The amount as the Serving row reads it: "2½ tbsp", "144 g", "2 Tbsp" (one of a counted serving), "2 × 2 Tbsp".
+    public var amountText: String {
+        let frac = AmountMath.fractions.first { abs($0.value - fraction) < 0.001 && $0.value > 0 }?.label ?? ""
+        let number = whole == 0 && !frac.isEmpty ? frac : "\(whole)\(frac)"
+        // a unit, or one the server worked out ("1 tbsp", "1 prune"): 2½ tbsp, 144 g, 6 prune
+        if case .serving(let i) = choice, servings.indices.contains(i), servings[i].derived != true {
+            // the package's own serving keeps its name: "1 SLICE (30 g)", "2 × 1 cup", as in the food log
+            let own = servings[i].label
+            return whole == 1 && frac.isEmpty ? own : "\(number) × \(own)"
+        }
+        return "\(number) \(label(for: choice))"
+    }
+
+    /// One nutrient for the amount chosen: "Protein", 3.3, "g".
+    public struct Fact: Equatable, Sendable {
+        public let key: String
+        public let label: String
+        public let value: Double
+        public let unit: String
+    }
+
+    /// Every nutrient the food has, for the amount chosen, in the usual order.
+    public var facts: [Fact] {
+        let f = factor ?? 0
+        return Nutrients.keys.compactMap { k in
+            guard let v = nutrients.values[k.key] else { return nil }
+            // "Protein (g)" → "Protein", "g"; "Calories" has no unit
+            var label = k.label
+            var unit = ""
+            if let open = label.firstIndex(of: "("), label.hasSuffix(")") {
+                unit = String(label[label.index(after: open)..<label.index(before: label.endIndex)])
+                label = String(label[..<open]).trimmingCharacters(in: .whitespaces)
+            }
+            return Fact(key: k.key, label: label, value: v * f, unit: unit)
+        }
+    }
+
     public var servingIndex: Int {
         if case .serving(let i) = choice { return i }
         return 0

@@ -171,13 +171,31 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Greek yogurt"].waitForExistence(timeout: 5))
     }
 
+    func testALoggedFoodOpensToReadAndSaveShowsOnlyOnceSomethingChanges() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        XCTAssertTrue(app.staticTexts["Greek yogurt"].waitForExistence(timeout: 5))
+        app.staticTexts["Greek yogurt"].tap()
+        XCTAssertTrue(app.navigationBars["Logged food"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["fact-calories"].waitForExistence(timeout: 3), "its nutrition shows")
+        XCTAssertFalse(app.pickerWheels.firstMatch.exists, "not in edit mode")
+        XCTAssertFalse(app.buttons["saveEntry"].exists, "nothing to save yet")
+        XCTAssertEqual(app.buttons["servingRow"].value as? String, "2 × 1 cup")
+        shot("logged-food-read")
+        openWheel()
+        XCTAssertFalse(app.buttons["saveEntry"].exists, "opening the wheel changes nothing")
+        app.pickerWheels.element(boundBy: 1).adjust(toPickerWheelValue: "½")
+        XCTAssertTrue(app.buttons["saveEntry"].waitForExistence(timeout: 3), "Save once the amount changed")
+    }
+
     func testEditEntryAmount() {
         signedIn()
         app.buttons["Food Log"].tap()
         XCTAssertTrue(app.staticTexts["Greek yogurt"].waitForExistence(timeout: 5))
         app.staticTexts["Greek yogurt"].tap()
-        XCTAssertTrue(app.navigationBars["Edit"].waitForExistence(timeout: 3))
-        // L1: three wheels — whole | fraction | unit — starting at the entry's 2 × 1 cup
+        XCTAssertTrue(app.navigationBars["Logged food"].waitForExistence(timeout: 3))
+        // L1: three wheels — whole | fraction | unit — starting at the entry's 2 × 1 cup, once Serving is tapped
+        openWheel()
         let wheels = app.pickerWheels
         XCTAssertTrue(wheels.element(boundBy: 0).waitForExistence(timeout: 3))
         wheels.element(boundBy: 1).adjust(toPickerWheelValue: "½")
@@ -462,9 +480,35 @@ final class SmokeUITests: XCTestCase {
         XCTAssertEqual(app.buttons["sourcesToggle"].value as? String, "open")
     }
 
+    /// The amount screen shows the food, not the controls: "Serving  1 medium ›" opens the wheel; every nutrient is shown.
+    private func openWheel() {
+        let serving = app.buttons["servingRow"]
+        XCTAssertTrue(serving.waitForExistence(timeout: 5))
+        if !app.pickerWheels.firstMatch.exists { serving.tap() }
+        XCTAssertTrue(app.pickerWheels.firstMatch.waitForExistence(timeout: 3))
+    }
+
+    func testTheAmountScreenShowsServingAndNutritionWithTheWheelClosed() {
+        signedIn()
+        trackSearch("banana", pick: "Banana")
+        let serving = app.buttons["servingRow"]
+        XCTAssertTrue(serving.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.pickerWheels.firstMatch.exists, "no wheel until Serving is tapped")
+        XCTAssertTrue(app.descendants(matching: .any)["fact-calories"].exists, "the nutrition shows")
+        shot("amount-screen-closed")
+        serving.tap()
+        XCTAssertTrue(app.pickerWheels.firstMatch.waitForExistence(timeout: 3))
+        app.pickerWheels.element(boundBy: 0).adjust(toPickerWheelValue: "2")
+        XCTAssertTrue(waitUntil { (self.app.buttons["servingRow"].value as? String)?.hasPrefix("2") == true }, "the row follows the wheel")
+        XCTAssertTrue(waitUntil { self.app.descendants(matching: .any)["fact-calories"].label.contains("210") }, "and so does the nutrition")
+        serving.tap()
+        XCTAssertTrue(waitUntil { !self.app.pickerWheels.firstMatch.exists }, "tapping Serving again closes it")
+    }
+
     func testTrackPrunesBySix() {
         signedIn()
         trackSearch("prunes", pick: "Prunes")
+        openWheel()
         let wheels = app.pickerWheels
         wheels.element(boundBy: 2).adjust(toPickerWheelValue: "prune")
         wheels.element(boundBy: 0).adjust(toPickerWheelValue: "6")
@@ -808,6 +852,7 @@ final class SmokeUITests: XCTestCase {
     func testBigAmountAsks() {
         signedIn()
         trackSearch("banana", pick: "Banana")
+        openWheel()
         app.pickerWheels.element(boundBy: 0).adjust(toPickerWheelValue: "20")
         app.buttons["logButton"].tap()
         let ask = app.alerts["That's a lot — log 2,100 cal of Banana?"]
