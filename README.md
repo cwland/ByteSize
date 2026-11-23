@@ -1,4 +1,4 @@
-<p align="center"><img src="logo.jpg" alt="ByteSize logo" width="120"></p>
+<p align="center"><img src="frontend/public/icon-512.png" alt="ByteSize logo" width="120"></p>
 
 # ByteSize
 
