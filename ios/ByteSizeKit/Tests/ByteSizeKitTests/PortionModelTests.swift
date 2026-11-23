@@ -55,6 +55,38 @@ final class PortionModelTests: XCTestCase {
         XCTAssertEqual(drink.label(for: .serving(0)), "1 cup", "keeps its 1: cup is a volume on the wheel too")
     }
 
+    // The Serving row reads the amount the way the wheel shows it: "2½ tbsp", "144 g", "SLICE (30 g)", "2 × 2 Tbsp"
+    func testTheAmountInWords() {
+        let mix = portion([Serving(label: "100 g", grams: 100), Serving(label: "2 Tbsp", grams: 12), Serving(label: "1 tbsp", grams: 6, derived: true)])
+        mix.choice = .serving(2); mix.whole = 2; mix.fraction = 0.5
+        XCTAssertEqual(mix.amountText, "2½ tbsp")
+        mix.choice = .unit(.g); mix.whole = 144; mix.fraction = 0
+        XCTAssertEqual(mix.amountText, "144 g")
+        mix.choice = .serving(1); mix.whole = 1
+        XCTAssertEqual(mix.amountText, "2 Tbsp", "one of a counted serving is just its name")
+        mix.whole = 2
+        XCTAssertEqual(mix.amountText, "2 × 2 Tbsp")
+        mix.whole = 0; mix.fraction = 0.5
+        XCTAssertEqual(mix.amountText, "½ × 2 Tbsp")
+        let bread = portion([Serving(label: "100 g", grams: 100), Serving(label: "1 SLICE (30 g)", grams: 30)])
+        bread.choice = .serving(1)
+        XCTAssertEqual(bread.amountText, "1 SLICE (30 g)")
+    }
+
+    // Every nutrient the food has, for the amount chosen (not for its first serving)
+    func testNutritionForTheAmount() {
+        let p = PortionModel(name: "Asparagus", icon: "🥦", servings: [Serving(label: "100 g", grams: 100)],
+                             nutrients: Nutrients(["calories": 20, "protein_g": 2.2, "fiber_g": 2.1, "sodium_mg": 2]), meal: .dinner)
+        p.choice = .unit(.g); p.whole = 150
+        XCTAssertEqual(p.facts.map(\.key), ["calories", "protein_g", "fiber_g", "sodium_mg"], "the food's own, in the usual order")
+        XCTAssertEqual(p.facts.first?.value ?? 0, 30, accuracy: 0.001)
+        XCTAssertEqual(p.facts[1].value, 3.3, accuracy: 0.001)
+        XCTAssertEqual(p.facts[1].label, "Protein")
+        XCTAssertEqual(p.facts[1].unit, "g")
+        p.whole = 0
+        XCTAssertEqual(p.facts.first?.value ?? -1, 0, accuracy: 0.001)
+    }
+
     func testSixPrunesFromAFivePruneFood() {
         let p = portion(prunes)
         p.choice = .serving(1)
