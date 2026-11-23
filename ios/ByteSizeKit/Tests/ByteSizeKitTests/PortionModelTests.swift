@@ -89,6 +89,7 @@ final class PortionModelTests: XCTestCase {
         XCTAssertEqual(p.previewCalories, 375)
         XCTAssertTrue(p.wholeRange.contains(100))
         XCTAssertTrue(p.wholeRange.contains(1000))
+        XCTAssertEqual(p.wholeRange, Array(0...1000), "every gram, no skipping: 144 g is there")
         p.choice = .serving(0)
         p.whole = 2
         p.fraction = 0.5
