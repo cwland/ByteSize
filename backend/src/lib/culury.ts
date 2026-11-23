@@ -367,7 +367,7 @@ export function culuryFood(recipe: any): CuluryFood | null {
     if (typeof v === "number" && Number.isFinite(v) && v >= 0) nutrients[to] = round(v, decimals);
   }
   const grams = servingGrams(n?.servingSize);
-  const serving: Serving = { label: "1 serving", ...(grams ? { grams } : {}) };
+  const serving: Serving = { label: servingLabel(n?.servingSize), ...(grams ? { grams } : {}) };
   const keys = Object.keys(nutrients);
   return {
     food: {
@@ -413,6 +413,20 @@ export async function searchCulury(app: FastifyInstance, link: CuluryLink, q: st
     const d = details[i];
     return d.status === "fulfilled" ? d.value.food : f.food;
   });
+}
+
+const SERVING_NOTE_MAX = 60;
+
+/**
+ * A RecipeHub serving's name: "1 serving · About 1⅓ cups (330 g)" with RecipeHub's own note (spaces tidied, cut at
+ * 60 characters with "…"), or plain "1 serving" when there's no note. Starts with "1 serving", so measures.ts never
+ * reads it as a cup or spoon amount.
+ */
+export function servingLabel(note: unknown): string {
+  const t = typeof note === "string" ? note.replace(/\s+/g, " ").trim() : "";
+  if (!t) return "1 serving";
+  const shown = t.length > SERVING_NOTE_MAX ? `${t.slice(0, SERVING_NOTE_MAX - 1).trimEnd()}…` : t;
+  return `1 serving · ${shown}`;
 }
 
 /**

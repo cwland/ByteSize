@@ -8,7 +8,7 @@ import { and, eq } from "drizzle-orm";
 import { CULURY, CULURY_KEY, culuryCalls, culuryKnows, culuryRecipe, fakeDns, fullNutrition, resetFakeDns } from "./culuryFakes.js";
 import { appLog, userSettings } from "../src/db/schema.js";
 import { buildApp } from "../src/app.js";
-import { servingGrams } from "../src/lib/culury.js";
+import { servingGrams, servingLabel } from "../src/lib/culury.js";
 import { TEST_SECRET } from "./helpers.js";
 
 let t: TestApp;
@@ -248,7 +248,7 @@ describe("RecipeHub recipes as foods", () => {
         name: "Turkey chili",
         brand: null,
         barcode: null,
-        servings: [{ label: "1 serving", grams: 340 }],
+        servings: [{ label: "1 serving · About 1½ cups (340 g)", grams: 340 }],
         nutrients: { calories: 520, fat_g: 18, saturated_fat_g: 6, carbs_g: 48, fiber_g: 7, sugar_g: 9, added_sugar_g: 2, protein_g: 41, sodium_mg: 880 },
         aiFields: [],
         imageUrl: null,
@@ -259,8 +259,14 @@ describe("RecipeHub recipes as foods", () => {
     });
   });
 
-  it("no grams in the serving note: servings only", async () => {
+  it("no grams in the serving note: the note in the name, no grams", async () => {
     culuryKnows(t, { recipes: [culuryRecipe(7, "Soup", fullNutrition({ servingSize: "1 bowl" }))] });
+    await link();
+    expect((await t.api("GET", "/api/culury/recipes/7")).body.food.servings).toEqual([{ label: "1 serving · 1 bowl" }]);
+  });
+
+  it("no serving note: plain 1 serving", async () => {
+    culuryKnows(t, { recipes: [culuryRecipe(7, "Soup", fullNutrition({ servingSize: null }))] });
     await link();
     expect((await t.api("GET", "/api/culury/recipes/7")).body.food.servings).toEqual([{ label: "1 serving" }]);
   });
@@ -348,7 +354,7 @@ describe("Logging a RecipeHub recipe", () => {
     await link();
     const res = await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1.5 });
     expect(res.status).toBe(200);
-    expect(res.body.entry).toMatchObject({ name: "Turkey chili", source: "culury", sourceRef: "culury:7", aiEstimated: false, servings: [{ label: "1 serving", grams: 340 }] });
+    expect(res.body.entry).toMatchObject({ name: "Turkey chili", source: "culury", sourceRef: "culury:7", aiEstimated: false, servings: [{ label: "1 serving · About 1½ cups (340 g)", grams: 340 }] });
     expect(res.body.entry.nutrients).toMatchObject({ calories: 780, protein_g: 61.5, sodium_mg: 1320 });
 
     // RecipeHub changes the recipe: the logged day doesn't move
@@ -428,7 +434,7 @@ describe("fix round 1", () => {
       t.foodWeb.down = true;
       const again = await log({ day: "2026-11-18", food: { kind: "culury", id: 7 }, unit: "serving", quantity: 2 }); // another day: not combined
       expect(again.status).toBe(200);
-      expect(again.body.entry).toMatchObject({ name: "Turkey chili", sourceRef: "culury:7", source: "culury", nutrients: { calories: 1040 }, servings: [{ label: "1 serving", grams: 340 }] });
+      expect(again.body.entry).toMatchObject({ name: "Turkey chili", sourceRef: "culury:7", source: "culury", nutrients: { calories: 1040 }, servings: [{ label: "1 serving · About 1½ cups (340 g)", grams: 340 }] });
       // an estimate isn't taken over a snapshot that has nutrition
       expect((await log({ food: { kind: "culury", id: 7 }, unit: "serving", quantity: 1, nutrients: { calories: 1 } })).status).toBe(400);
       // never logged: still RecipeHub's failure
@@ -573,5 +579,17 @@ describe("fix round 1", () => {
     [null, undefined],
   ])("serving grams from %s", (text, grams) => {
     expect(servingGrams(text)).toBe(grams);
+  });
+
+  it.each([
+    ["About 1⅓ cups (330 g)", "1 serving · About 1⅓ cups (330 g)"],
+    ["  1   bowl \n", "1 serving · 1 bowl"],
+    [null, "1 serving"],
+    ["", "1 serving"],
+    ["   ", "1 serving"],
+    [42, "1 serving"],
+    ["About 2 cups of the chili with the toppings and a side of cornbread (450 g)", "1 serving · About 2 cups of the chili with the toppings and a side of c…"],
+  ])("serving name from %s", (text, label) => {
+    expect(servingLabel(text)).toBe(label);
   });
 });

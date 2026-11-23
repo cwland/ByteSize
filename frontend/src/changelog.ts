@@ -15,6 +15,11 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.16.2",
+    date: "2026-11-23",
+    changed: ["RecipeHub recipes show their serving size when RecipeHub has one — 1 serving · About 1⅓ cups (330 g) — in search, on the food and in the food log."],
+  },
+  {
     version: "0.16.1",
     date: "2026-11-22",
     changed: ["iPhone: a food in a list (a scan, search, recent) shows the calories for the amount it opens at — 80 cal · 1 slice — not per 100 g."],
