@@ -20,6 +20,14 @@ public struct Food: Codable, Identifiable, Hashable, Sendable {
     public let last: LastPortion?
     /// A correction: the database food it corrects (so a favorite stored as that one is found).
     public let baseCacheId: Int?
+    /// Where its amount starts: the package serving, written its own way (2 | tbsp, 15 | g, 1 | slice); servers before 0.15 don't send it.
+    public var start: StartAmount? = nil
+
+    /// The amount to start at: as it was last logged, else its package serving, else one of servings[0].
+    public var startingAmount: LastPortion {
+        last ?? start.map { LastPortion(servingIndex: $0.servingIndex, unit: $0.unit, quantity: $0.quantity, fraction: 1) }
+            ?? LastPortion(servingIndex: 0, unit: "serving", quantity: 1, fraction: 1)
+    }
 
     public var ref: String { "\(kind):\(id)" }
     /// A quick meal is logged item by item (My Foods); everything else, RecipeHub recipes included, logs here.
@@ -33,7 +41,7 @@ extension Food {
     /// The same food with other nutrition (a RecipeHub recipe's AI estimate for one serving).
     public func with(nutrients: Nutrients) -> Food {
         Food(kind: kind, id: id, name: name, brand: brand, icon: icon, barcode: barcode, servings: servings, nutrients: nutrients,
-             aiFields: Array(nutrients.values.keys), source: source, foodKind: foodKind, last: last, baseCacheId: baseCacheId)
+             aiFields: Array(nutrients.values.keys), source: source, foodKind: foodKind, last: last, baseCacheId: baseCacheId, start: start)
     }
 }
 
@@ -42,6 +50,13 @@ public struct CuluryRecipe: Codable, Sendable {
     public let food: Food
     public let hasNutrition: Bool
     public let outdated: Bool
+}
+
+/// Where a food's amount starts (the server's `start`): `quantity` of serving `servingIndex`, or of a unit.
+public struct StartAmount: Codable, Hashable, Sendable {
+    public let servingIndex: Int
+    public let unit: String
+    public let quantity: Double
 }
 
 public struct LastPortion: Codable, Hashable, Sendable {

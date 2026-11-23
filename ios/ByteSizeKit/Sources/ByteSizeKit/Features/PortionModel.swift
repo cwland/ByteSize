@@ -35,8 +35,8 @@ public final class PortionModel {
 
     public convenience init(food: Food, meal: Meal) {
         self.init(name: food.name, icon: food.icon, servings: food.servings, nutrients: food.nutrients, meal: meal)
-        // Recent, favorites, same as yesterday: start at the amount it was last logged at
-        if let last = food.last, let unit = AmountUnit(rawValue: last.unit) {
+        // Recent, favorites, same as yesterday: the amount it was last logged at; else its package serving
+        if food.last != nil || food.start != nil, case let last = food.startingAmount, let unit = AmountUnit(rawValue: last.unit) {
             if unit == .serving {
                 guard food.servings.indices.contains(last.servingIndex) else { return }
                 choice = .serving(last.servingIndex)
@@ -97,6 +97,13 @@ public final class PortionModel {
         if (base.grams ?? 0) > 0 { out += [AmountUnit.g, .oz].map { (UnitChoice.unit($0), $0.label) } }
         if (base.ml ?? 0) > 0 { out += [AmountUnit.ml, .fl_oz, .cup, .tbsp, .tsp].map { (UnitChoice.unit($0), $0.label) } }
         return out
+    }
+
+    /// The unit as the wheel shows it: "tbsp" for a "1 tbsp" serving (2 | tbsp), "SLICE (30 g)" for "1 SLICE (30 g)".
+    public func label(for choice: UnitChoice) -> String {
+        let label = choices.first { $0.choice == choice }?.label ?? ""
+        guard case .serving = choice, label.hasPrefix("1 "), label.count > 2 else { return label }
+        return String(label.dropFirst(2))
     }
 
     public var servingIndex: Int {
