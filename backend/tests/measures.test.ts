@@ -125,6 +125,12 @@ describe("spoon units", () => {
     expect(withMeasures([{ label: "1 tsp", grams: 4 }, { label: "3 tsp", grams: 12 }], "Sugar")).toHaveLength(2); // "1 tsp" already is one
   });
 
+  it("a spoon serving with no weight gives one spoon as a share of it (FatSecret's 2.5 tbsp)", () => {
+    const s = withMeasures([{ label: "2.5 tbsp" }], "Cappuccino mix");
+    expect(s[1]).toEqual({ label: "1 tbsp", per: 0.4, derived: true });
+    expect(startingAmount(s)).toEqual({ servingIndex: 1, unit: "serving", quantity: 2.5 });
+  });
+
   it("a spoon serving by volume needs no spoon unit (the wheel has tbsp already)", () => {
     expect(withMeasures([{ label: "2 tbsp (30 ml)", ml: 30 }], "Syrup")).toHaveLength(1);
   });

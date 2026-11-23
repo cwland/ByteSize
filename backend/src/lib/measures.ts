@@ -92,11 +92,17 @@ function spoonOf(label: string): { count: number; spoon: "tbsp" | "tsp" | "cup" 
 }
 
 /** One spoon of a spoon serving measured by weight ("2 Tbsp", 12 g → "1 tbsp", 6 g); by volume the wheel has spoons already. */
-function spoonOne(s: Serving, base: Serving): Serving | null {
+function spoonOne(s: Serving, i: number, base: Serving): Serving | null {
   const sp = spoonOf(s.label);
-  if (!sp || positive(s.ml) || !positive(s.grams) || !positive(base.grams)) return null;
+  if (!sp || positive(s.ml)) return null;
   if (sp.count === 1 && /^\s*1\s/.test(s.label)) return null; // "1 tsp" already is one
-  return { label: `1 ${sp.spoon}`, grams: round(s.grams / sp.count), derived: true };
+  const label = `1 ${sp.spoon}`;
+  if (positive(s.grams) && positive(base.grams)) return { label, grams: round(s.grams / sp.count), derived: true };
+  if (positive(s.grams)) return null;
+  // no weight ("2.5 tbsp" from FatSecret): one spoon as a share of the serving
+  if (i === 0) return { label, per: 1 / sp.count, derived: true };
+  if (positive(s.per)) return { label, per: s.per / sp.count, derived: true };
+  return null;
 }
 
 export type Start = { servingIndex: number; unit: Unit; quantity: number };
@@ -147,7 +153,7 @@ export function withMeasures(servings: Serving[], name: string | null | undefine
   };
 
   own.forEach((s, i) => add(countedOne(s, i, base)));
-  own.forEach((s) => add(spoonOne(s, base)));
+  own.forEach((s, i) => add(spoonOne(s, i, base)));
 
   const sized = own.some((s) => /\b(small|medium|large)\b/i.test(s.label));
   const row = name ? SIZE_TABLE.find((r) => r.match.test(name)) : undefined;

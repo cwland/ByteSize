@@ -46,6 +46,7 @@ import { SourceError, type SourceFood } from "./foodSources/types.js";
 import { usdaByBarcode, usdaSearch } from "./foodSources/usda.js";
 import { countUsage, type UsageKey } from "./usage.js";
 import { startingAmount, withMeasures, type Start } from "./measures.js";
+import { withDatabaseServing } from "./aiServing.js";
 import {
   NUTRIENT_KEYS,
   withLiquidVolumes,
@@ -1452,7 +1453,8 @@ export async function estimateFood(
     throw new HttpError(502, AI_COULDNT_ESTIMATE); // what went wrong is in Settings › Logs
   }
   if (json.unknown === true) throw new HttpError(422, AI_NO_IDEA);
-  const food = aiDraft(json);
+  const drafted = aiDraft(json);
+  const food = drafted && (await withDatabaseServing(app.db, drafted)); // a known product's serving, not a guess
   if (!food) {
     await logEvent(app.db, {
       category: "ai",

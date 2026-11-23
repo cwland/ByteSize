@@ -432,7 +432,7 @@ describe("typed search: kept answers per source, grouped My foods, Basic, FatSec
       kind: "cache",
       source: "fatsecret",
       brand: "Bear Naked",
-      servings: [{ label: "1/4 cup" }],
+      servings: [{ label: "1/4 cup" }, { label: "1 cup", per: 4, derived: true }], // one cup = 4 of its quarter cups
       nutrients: { calories: 140, fat_g: 20, carbs_g: 50, protein_g: 30 },
       savedAt: null,
     });
