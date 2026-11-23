@@ -113,10 +113,13 @@ public final class PortionModel {
     public var amountText: String {
         let frac = AmountMath.fractions.first { abs($0.value - fraction) < 0.001 && $0.value > 0 }?.label ?? ""
         let number = whole == 0 && !frac.isEmpty ? frac : "\(whole)\(frac)"
-        let unit = label(for: choice)
-        let counted = unit.first?.isNumber == true // "2 Tbsp", "100 g": a serving that already says how much
-        if counted { return whole == 1 && frac.isEmpty ? unit : "\(number) × \(unit)" }
-        return "\(number) \(unit)"
+        // a unit, or one the server worked out ("1 tbsp", "1 prune"): 2½ tbsp, 144 g, 6 prune
+        if case .serving(let i) = choice, servings.indices.contains(i), servings[i].derived != true {
+            // the package's own serving keeps its name: "1 SLICE (30 g)", "2 × 1 cup", as in the food log
+            let own = servings[i].label
+            return whole == 1 && frac.isEmpty ? own : "\(number) × \(own)"
+        }
+        return "\(number) \(label(for: choice))"
     }
 
     /// One nutrient for the amount chosen: "Protein", 3.3, "g".

@@ -12,12 +12,22 @@ struct EditEntrySheet: View {
     @State private var amount = ""
     @State private var portion: PortionModel
     @State private var askingBig = false
+    @State private var wheelOpen = false
+    @State private var shownWater = ""
+    /// The amount as it was logged: Save shows only once it's different
+    private let logged: (UnitChoice, Int, Double)
 
     init(entry: LogEntry, units: Units, log: FoodLogModel) {
         self.entry = entry
         self.units = units
         self.log = log
-        _portion = State(initialValue: PortionModel(entry: entry))
+        let p = PortionModel(entry: entry)
+        _portion = State(initialValue: p)
+        logged = (p.choice, p.whole, p.fraction)
+    }
+
+    private var changed: Bool {
+        entry.isWater ? amount != shownWater : (portion.choice, portion.whole, portion.fraction) != logged
     }
 
     var body: some View {
@@ -45,30 +55,39 @@ struct EditEntrySheet: View {
                         TextField("Amount", text: $amount).keyboardType(.decimalPad)
                     }
                 } else {
-                    Section("Amount") {
-                        AmountWheel(portion: portion)
+                    Section {
+                        ServingRow(portion: portion, open: $wheelOpen)
+                        HStack {
+                            Text("Meal")
+                            Spacer()
+                            Text(entry.meal.title).foregroundStyle(palette.color("subtle"))
+                        }
                     }
+                    NutritionSection(portion: portion)
                 }
             }
-            .navigationTitle("Edit")
+            .navigationTitle("Logged food")
             .navigationBarTitleDisplayMode(.inline)
             .alert(BigAmount.question(calories: portion.previewCalories ?? 0, name: entry.name), isPresented: $askingBig) {
                 Button("Change", role: .cancel) {}
                 Button("Log it") { save() }
             }
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        if !entry.isWater, portion.isBig { askingBig = true } else { save() }
+                ToolbarItem(placement: .cancellationAction) { Button(changed ? "Cancel" : "Close") { dismiss() } }
+                if changed {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") {
+                            if !entry.isWater, portion.isBig { askingBig = true } else { save() }
+                        }
+                        .disabled(entry.isWater ? typedWater == nil : !portion.canLog)
+                        .accessibilityIdentifier("saveEntry")
                     }
-                    .disabled(entry.isWater ? typedWater == nil : !portion.canLog)
-                    .accessibilityIdentifier("saveEntry")
                 }
             }
             .onAppear {
                 let shown = (units.waterValue(ml: entry.quantity) * 10).rounded() / 10
                 amount = shown.rounded() == shown ? String(Int(shown)) : String(shown)
+                shownWater = amount
             }
         }
     }

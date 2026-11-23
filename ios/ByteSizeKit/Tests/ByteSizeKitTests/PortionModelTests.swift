@@ -71,6 +71,12 @@ final class PortionModelTests: XCTestCase {
         let bread = portion([Serving(label: "100 g", grams: 100), Serving(label: "1 SLICE (30 g)", grams: 30)])
         bread.choice = .serving(1)
         XCTAssertEqual(bread.amountText, "1 SLICE (30 g)")
+        let yogurt = portion([Serving(label: "1 cup")])
+        yogurt.whole = 2
+        XCTAssertEqual(yogurt.amountText, "2 × 1 cup", "the package's own serving keeps its name, as in the food log")
+        let prunes = portion(self.prunes)
+        prunes.choice = .serving(1); prunes.whole = 6
+        XCTAssertEqual(prunes.amountText, "6 prune")
     }
 
     // Every nutrient the food has, for the amount chosen (not for its first serving)
