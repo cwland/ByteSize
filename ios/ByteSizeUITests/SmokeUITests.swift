@@ -1281,6 +1281,19 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Granola"].waitForExistence(timeout: 5))
     }
 
+    func testEachServingLineSaysWhatGoesInEachBox() {
+        signedInMyFoods()
+        newFromMenu("New food")
+        XCTAssertTrue(app.navigationBars["New food"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Serving"].waitForExistence(timeout: 5), "the name box is labelled")
+        XCTAssertTrue(app.staticTexts["Weight (g)"].exists)
+        XCTAssertTrue(app.staticTexts["Volume (ml)"].exists)
+        type("servingLabel", "2½ tbsp", clear: true)
+        type("servingGrams", "15")
+        shot("food-editor-servings")
+        XCTAssertEqual(app.textFields["servingGrams"].value as? String, "15")
+    }
+
     func testEditAFoodsName() {
         signedInMyFoods()
         app.buttons["myFood-201"].swipeLeft()
