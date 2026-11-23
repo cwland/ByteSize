@@ -171,13 +171,31 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Greek yogurt"].waitForExistence(timeout: 5))
     }
 
+    func testALoggedFoodOpensToReadAndSaveShowsOnlyOnceSomethingChanges() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        XCTAssertTrue(app.staticTexts["Greek yogurt"].waitForExistence(timeout: 5))
+        app.staticTexts["Greek yogurt"].tap()
+        XCTAssertTrue(app.navigationBars["Logged food"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["fact-calories"].waitForExistence(timeout: 3), "its nutrition shows")
+        XCTAssertFalse(app.pickerWheels.firstMatch.exists, "not in edit mode")
+        XCTAssertFalse(app.buttons["saveEntry"].exists, "nothing to save yet")
+        XCTAssertEqual(app.buttons["servingRow"].value as? String, "2 × 1 cup")
+        shot("logged-food-read")
+        openWheel()
+        XCTAssertFalse(app.buttons["saveEntry"].exists, "opening the wheel changes nothing")
+        app.pickerWheels.element(boundBy: 1).adjust(toPickerWheelValue: "½")
+        XCTAssertTrue(app.buttons["saveEntry"].waitForExistence(timeout: 3), "Save once the amount changed")
+    }
+
     func testEditEntryAmount() {
         signedIn()
         app.buttons["Food Log"].tap()
         XCTAssertTrue(app.staticTexts["Greek yogurt"].waitForExistence(timeout: 5))
         app.staticTexts["Greek yogurt"].tap()
-        XCTAssertTrue(app.navigationBars["Edit"].waitForExistence(timeout: 3))
-        // L1: three wheels — whole | fraction | unit — starting at the entry's 2 × 1 cup
+        XCTAssertTrue(app.navigationBars["Logged food"].waitForExistence(timeout: 3))
+        // L1: three wheels — whole | fraction | unit — starting at the entry's 2 × 1 cup, once Serving is tapped
+        openWheel()
         let wheels = app.pickerWheels
         XCTAssertTrue(wheels.element(boundBy: 0).waitForExistence(timeout: 3))
         wheels.element(boundBy: 1).adjust(toPickerWheelValue: "½")
