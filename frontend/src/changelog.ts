@@ -15,6 +15,12 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.15.1",
+    date: "2026-11-22",
+    changed: ["Move to… and Copy to… are a small, tidy window."],
+    fixed: ["Pop-up windows keep their padding at the bottom: the last button no longer sits on the edge."],
+  },
+  {
     version: "0.15.0",
     date: "2026-11-22",
     title: "Amounts start at the package's serving",
