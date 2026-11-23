@@ -44,6 +44,19 @@ export const SIZE_TABLE: { match: RegExp; grams: [number, number, number] }[] = 
   { match: /\bavocados?\b/i, grams: [136, 150, 201] },
 ];
 
+/** Words that only describe the thing ("fresh organic apples", "large egg"), not make it a dish. */
+const DESCRIBING = new Set(["fresh", "raw", "whole", "organic", "ripe", "small", "medium", "large", "extra", "jumbo", "boneless", "skinless", "hard", "boiled", "baked", "grilled", "red", "green", "yellow", "white", "sweet"]);
+
+/** The name is the food itself (its part before a comma or bracket is only it and describing words): "Bananas, raw",
+ * "Large egg" — not a dish that has it in its name ("Banana bread", "Turkey avocado sandwich"). */
+function isItself(name: string, match: RegExp): boolean {
+  const head = name.split(/[,(]/)[0].trim();
+  const m = match.exec(head);
+  if (!m) return false;
+  const rest = (head.slice(0, m.index) + " " + head.slice(m.index + m[0].length)).toLowerCase().split(/\s+/).filter(Boolean);
+  return rest.every((w) => DESCRIBING.has(w));
+}
+
 const positive = (n: number | undefined): n is number => typeof n === "number" && Number.isFinite(n) && n > 0;
 const round = (n: number) => Math.round(n * 100) / 100;
 
@@ -156,7 +169,7 @@ export function withMeasures(servings: Serving[], name: string | null | undefine
   own.forEach((s, i) => add(spoonOne(s, i, base)));
 
   const sized = own.some((s) => /\b(small|medium|large)\b/i.test(s.label));
-  const row = name ? SIZE_TABLE.find((r) => r.match.test(name)) : undefined;
+  const row = name ? SIZE_TABLE.find((r) => isItself(name, r.match)) : undefined;
   if (row && !sized && positive(base.grams)) {
     (["small", "medium", "large"] as const).forEach((size, k) => add({ label: `1 ${size}`, grams: row.grams[k], derived: true }));
   }

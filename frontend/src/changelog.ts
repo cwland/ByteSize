@@ -15,6 +15,20 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.15.0",
+    date: "2026-11-22",
+    title: "Amounts start at the package's serving",
+    changed: [
+      "A food's amount starts at its package serving, written its own way: 2 | tbsp, 15 | g, 1 | slice — never 1 × 100 g. On the iPhone, + on a scan logs that amount.",
+      "A spoon serving can be counted in spoons: 2½ tbsp, 3 tbsp, and so on.",
+      "An AI lookup of a branded product the food databases know uses their serving size instead of guessing it.",
+      "iPhone: each serving line in the food editor says what goes in each box (Serving, Weight (g), Volume (ml)).",
+    ],
+    fixed: [
+      "Small, medium and large sizes only show for the food itself (an avocado), not a dish with it in the name (a turkey avocado sandwich).",
+    ],
+  },
+  {
     version: "0.14.3",
     date: "2026-11-22",
     changed: [

@@ -36,6 +36,19 @@ describe("withMeasures", () => {
     expect(withMeasures([{ label: "8 wings", grams: 240 }], "Chicken wings")[1].label).toBe("1 wing");
   });
 
+  it("sizes only for the food itself, not a dish that has it in its name", () => {
+    const sized = (name: string) => withMeasures([{ label: "1 sandwich", grams: 188 }], name).some((s) => s.label === "1 small");
+    expect(sized("Turkey avocado sandwich on wheat bread")).toBe(false);
+    expect(sized("Banana bread")).toBe(false);
+    expect(sized("Chicken breast sandwich")).toBe(false);
+    expect(sized("Apple pie")).toBe(false);
+    expect(sized("Avocado")).toBe(true);
+    expect(sized("Bananas, raw")).toBe(true);
+    expect(sized("Fresh organic apples")).toBe(true);
+    expect(sized("Chicken breast, grilled")).toBe(true);
+    expect(sized("Large egg")).toBe(true);
+  });
+
   it("whole produce gets small, medium and large", () => {
     const out = withMeasures([{ label: "1 cup slices", grams: 110 }], "Apple, raw");
     expect(out.slice(1)).toEqual([
