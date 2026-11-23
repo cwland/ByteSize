@@ -116,7 +116,7 @@ describe("Add food with RecipeHub", () => {
     expect(await within(sheet).findByText(/RecipeHub has no nutrition for this recipe/)).toBeInTheDocument();
     await user.click(within(sheet).getByRole("button", { name: /^Serving/ }));
     const units = within(within(sheet).getByRole("combobox", { name: "Unit" })).getAllByRole("option").map((o) => o.textContent);
-    expect(units).toEqual(["1 serving"]); // no grams without a serving weight
+    expect(units).toEqual(["serving"]); // no grams without a serving weight
 
     await user.click(within(sheet).getByRole("button", { name: "Estimate with AI" }));
     expect(server.writes().find((w) => w.path === "/api/ai/estimate")!.body).toEqual({ text: "1 serving of Taco soup" });

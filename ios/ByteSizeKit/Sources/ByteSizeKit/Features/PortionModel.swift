@@ -103,7 +103,10 @@ public final class PortionModel {
     public func label(for choice: UnitChoice) -> String {
         let label = choices.first { $0.choice == choice }?.label ?? ""
         guard case .serving = choice, label.hasPrefix("1 "), label.count > 2 else { return label }
-        return String(label.dropFirst(2))
+        let one = String(label.dropFirst(2))
+        // keeps its 1 when it would read the same as a unit on the wheel ("1 cup" of a drink that also has cups)
+        let units = choices.compactMap { if case .unit = $0.choice { return $0.label.lowercased() } else { return nil } }
+        return units.contains(one.lowercased()) ? label : one
     }
 
     public var servingIndex: Int {

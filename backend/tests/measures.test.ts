@@ -154,6 +154,10 @@ describe("startingAmount", () => {
     expect(startingAmount([{ label: "1 bar", grams: 40 }])).toEqual({ servingIndex: 0, unit: "serving", quantity: 1 });
   });
 
+  it("a weighing base after the serving isn't the package serving (a recipe: 1 serving, not 100 g)", () => {
+    expect(startingAmount([{ label: "1 serving (320 g)", grams: 320 }, { label: "100 g", grams: 100 }])).toEqual({ servingIndex: 0, unit: "serving", quantity: 1 });
+  });
+
   it("a server-derived unit is never the start on its own", () => {
     expect(startingAmount(withMeasures([{ label: "1 medium", grams: 118 }], "Banana"))).toEqual({ servingIndex: 0, unit: "serving", quantity: 1 });
   });

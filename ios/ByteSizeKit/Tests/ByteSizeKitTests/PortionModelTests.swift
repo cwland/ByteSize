@@ -51,6 +51,8 @@ final class PortionModelTests: XCTestCase {
         XCTAssertEqual(p.label(for: .serving(1)), "SLICE (30 g)")
         XCTAssertEqual(p.label(for: .serving(0)), "100 g")
         XCTAssertEqual(p.label(for: .unit(.g)), "g")
+        let drink = portion([Serving(label: "1 cup", ml: 240)])
+        XCTAssertEqual(drink.label(for: .serving(0)), "1 cup", "keeps its 1: cup is a volume on the wheel too")
     }
 
     func testSixPrunesFromAFivePruneFood() {

@@ -105,7 +105,9 @@ export type Start = { servingIndex: number; unit: Unit; quantity: number };
 export function startingAmount(servings: Serving[]): Start {
   const base = servings[0];
   if (!base) return { servingIndex: 0, unit: "serving", quantity: 1 };
-  const ownIndex = servings.length > 1 && !servings[1].derived ? 1 : 0;
+  // servings[1] is the package's serving ("1 slice" after "100 g"); a plain 100 g / 100 ml after a serving is only a base to weigh by
+  const weighingBase = (s: Serving) => /^\s*100\s*(g|ml)\s*$/i.test(s.label);
+  const ownIndex = servings.length > 1 && !servings[1].derived && !(weighingBase(servings[1]) && !weighingBase(base)) ? 1 : 0;
   const own = servings[ownIndex];
   const derivedIndex = (label: string) => servings.findIndex((s) => s.derived && s.label.toLowerCase() === label.toLowerCase());
 

@@ -37,7 +37,9 @@ export type FoodResult = {
   foodKind: FoodKind;
   summary?: boolean; // a FatSecret search summary (calories, fat, carbs, protein): fetched whole when opened
   savedAt?: string | null; // a kept copy of an outside food: when it was fetched ("Saved copy from …"); null: fetched just now
+  start?: Start; // where its amount starts: the package serving, written its own way (2 | tbsp, 15 | g, 1 | slice)
 };
+export type Start = { servingIndex: number; unit: Unit; quantity: number };
 // POST /api/photos/analyze (multipart: images 1–2, mode). A barcode found in the photo is looked up
 // like a typed one (food); otherwise a nutrition label is read by the photo AI into a draft (nothing saved).
 export type PhotoMode = "auto" | "barcode" | "label";
