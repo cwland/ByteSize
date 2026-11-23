@@ -109,6 +109,20 @@ final class TrackFoodQuickTests: XCTestCase {
         XCTAssertEqual(m.lastLogged, "Prunes")
     }
 
+    func testPlusLogsAScannedFoodAtItsPackageServing() async throws {
+        serve()
+        let (m, _) = model()
+        let bread = """
+        {"kind":"cache","id":61,"name":"Wheat bread","brand":null,"icon":"🍞","barcode":"0072220100785","servings":[{"label":"100 g","grams":100},{"label":"1 SLICE (30 g)","grams":30}],"nutrients":{"calories":250},"aiFields":[],"source":"off","start":{"servingIndex":1,"unit":"serving","quantity":1}}
+        """
+        let ok = await m.quickLog(try food(bread))
+        XCTAssertTrue(ok)
+        let sent = try body(XCTUnwrap(requests("POST", "/api/log").first))
+        XCTAssertEqual(sent["servingIndex"] as? Int, 1, "one slice, not one 100 g")
+        XCTAssertEqual(sent["unit"] as? String, "serving")
+        XCTAssertEqual(sent["quantity"] as? Double, 1)
+    }
+
     func testCopyingOneOfYesterdaysEntries() async throws {
         serve()
         let (m, _) = model()
