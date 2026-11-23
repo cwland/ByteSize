@@ -122,6 +122,14 @@ public final class PortionModel {
         return "\(number) \(label(for: choice))"
     }
 
+    /// A list row's line for a food: the calories for the amount it opens at, then that amount —
+    /// "80 cal · 1 SLICE (30 g)", "70 cal · 2½ tbsp" (never per 100 g when the package has a serving).
+    public static func rowDetail(_ food: Food) -> String {
+        let p = PortionModel(food: food, meal: .snacks)
+        guard let kcal = p.previewCalories else { return p.amountText }
+        return "\(kcal) cal · \(p.amountText)"
+    }
+
     /// One nutrient for the amount chosen: "Protein", 3.3, "g".
     public struct Fact: Equatable, Sendable {
         public let key: String

@@ -15,6 +15,11 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.16.1",
+    date: "2026-11-22",
+    changed: ["iPhone: a food in a list (a scan, search, recent) shows the calories for the amount it opens at — 80 cal · 1 slice — not per 100 g."],
+  },
+  {
     version: "0.16.0",
     date: "2026-11-22",
     title: "A food shows its nutrition",

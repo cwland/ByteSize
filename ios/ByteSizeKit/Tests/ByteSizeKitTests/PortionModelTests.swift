@@ -93,6 +93,18 @@ final class PortionModelTests: XCTestCase {
         XCTAssertEqual(p.facts.first?.value ?? -1, 0, accuracy: 0.001)
     }
 
+    // A list row says what the food opens at, not what 100 g holds: "80 cal · 1 SLICE (30 g)"
+    func testARowShowsTheCaloriesForTheAmountItOpensAt() throws {
+        let bread = try scanned(#"[{"label":"100 g","grams":100},{"label":"1 SLICE (30 g)","grams":30}]"#,
+                                start: #"{"servingIndex":1,"unit":"serving","quantity":1}"#)
+        XCTAssertEqual(PortionModel.rowDetail(bread.with(nutrients: Nutrients(["calories": 266.7]))), "80 cal · 1 SLICE (30 g)")
+        let mix = try scanned(#"[{"label":"2.5 tbsp"},{"label":"1 tbsp","per":0.4,"derived":true}]"#,
+                              start: #"{"servingIndex":1,"unit":"serving","quantity":2.5}"#)
+        XCTAssertEqual(PortionModel.rowDetail(mix), "70 cal · 2½ tbsp")
+        let plain = try scanned(#"[{"label":"1 bar","grams":40}]"#, start: "null")
+        XCTAssertEqual(PortionModel.rowDetail(plain), "70 cal · 1 bar")
+    }
+
     func testSixPrunesFromAFivePruneFood() {
         let p = portion(prunes)
         p.choice = .serving(1)

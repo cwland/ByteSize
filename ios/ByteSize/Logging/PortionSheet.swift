@@ -204,7 +204,7 @@ struct FoodRow: View {
         let serving = food.servings.first?.label ?? "serving"
         detail = !food.isLoggable ? "Log quick meals from My Foods"
             : food.isCulury && food.nutrients.values.isEmpty ? "RecipeHub recipe · \(serving)"
-            : "≈ \(Int(food.calories.rounded())) cal / \(serving)"
+            : "≈ " + PortionModel.rowDetail(food)
     }
 }
 
