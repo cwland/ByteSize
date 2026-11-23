@@ -2,6 +2,9 @@
 
 SwiftUI app (iOS 17+). All logic is in the `ByteSizeKit` Swift package; the `ByteSize` target is views only.
 
+Step-by-step build instructions (what you need, signing, running on your iPhone, Apple Health, passkeys and
+TestFlight) are in the main README: [Build the iPhone app](../README.md#build-the-iphone-app). Quick reference:
+
 ```
 cd ios
 cp Local.xcconfig.example Local.xcconfig     # once: your team id and server address

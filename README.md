@@ -1,32 +1,111 @@
+<p align="center"><img src="logo.jpg" alt="ByteSize logo" width="120"></p>
+
 # ByteSize
 
-A self-hosted nutrition tracker built for people on a GLP-1: a calorie *range* instead of a hard cap, and
-protein, fiber and water floors front and center. Single server, separate data for every person on it.
+A self-hosted nutrition tracker with a web app and a native iPhone app. It was built for weight loss on a GLP-1, so
+it uses a calorie *range* instead of a hard cap and puts protein, fiber and water front and center. One server
+holds everyone's data, kept separate for each person.
 
-**What it does now:**
-- **Plan picker:** tell it your height, weight, goal, age and activity (and whether you're on a GLP-1) and it offers four
-  plans — Relaxed to Vigorous — with a safe, GLP-1-aware "Recommended for you". Your plan sets a calorie *range* plus
-  protein, fiber and water targets (editable under Goals).
-- **Dashboard:** calorie gauge counting down to the top of your range, protein/fiber/water rings that fill to their
-  minimums, quick water buttons, logging streak.
-- **Log:** Lose It!-style meal cards with food icons; add food from recents, search (your foods → USDA whole foods →
-  FatSecret → USDA branded → Open Food Facts), a barcode, or an AI estimate; ¼ ⅓ ½ ¾ portions; move or copy entries to
-  another day or meal.
-- **Local first:** every outside answer (barcodes, foods, typed and restaurant searches) is kept and reused until its
-  source's hours run out (Settings › Integrations › "Keep results for", 1–9999 hours; defaults follow each source's
-  terms: Open Food Facts and USDA 9999, FatSecret 24, Spoonacular 1). Barcodes: saved copy → Open Food Facts →
-  FatSecret (Premier plan only) → USDA; restaurants: saved copy → FatSecret → Spoonacular. A food from a kept copy shows
-  "Saved copy from <date>" with **Check for changes**. An hourly cleanup removes old copies except foods in use; the
-  admin's **Saved barcodes** card lists, refreshes and deletes kept barcodes. The order is shown at the top of
-  Settings › Integrations.
-- **Your foods:** create foods (with a barcode), and fix any database food — your correction sticks to that barcode.
-- **Import weight history:** Settings › Data › Import weight history reads a CSV (up to 5 MB) from Lose It, MyFitnessPal,
-  Happy Scale, Libra, Withings, Fitbit or your own sheet, shows a preview, then adds the weigh-ins. Apple Health only
-  exports XML: use an app that exports Health data as CSV (for example Health Auto Export, metric "Weight & Body Mass").
-- Sign-in with passwords, passkeys or OAuth / OpenID Connect, Forgot password by email, admin-managed accounts,
-  AI services with failover, activity logs.
+## Why this exists
 
-USDA search needs a free key from https://fdc.nal.usda.gov/api-key-signup — add it in Settings › Integrations › USDA (admin).
+ByteSize started as a way to **replace a subscription-based food-tracking app** with something I own, run on my own
+server and can change whenever I want. The paid app did the basics, but custom foods were hard to create, find and
+edit, foods weren't tied to their barcodes, and entries couldn't be moved to another day or meal. Rather than keep
+paying and living with that, the goal was to build a replacement, **using AI to help write the code**.
+
+> **Built mostly with AI.** Almost all of ByteSize's code (the Node/TypeScript server, the React web app, the
+> SwiftUI iPhone app, the tests and the GitHub Actions pipelines) was written by an AI coding assistant (Claude),
+> working from plain-language design notes and feedback. The human side was deciding what to build, reviewing
+> designs, testing every round on real devices and saying what to change. Read the code with that in mind, and
+> treat it as an example of what AI-assisted development can produce.
+
+## Screenshots
+
+### Web app
+
+| Dashboard | Track food |
+|---|---|
+| ![Dashboard: food log, calorie budget gauge, protein/fiber/water rings, day totals, insights and weight](docs/screenshots/web-dashboard.jpg) | ![Track food: searching "chicken" shows matches from My foods](docs/screenshots/web-track-food.jpg) |
+| **Goals** | **Insights** |
+| ![Goals: plan targets, goal date at the current pace, weight chart and goals](docs/screenshots/web-goals.jpg) | ![Insights: weekly recap and protein help with food swaps](docs/screenshots/web-insights.jpg) |
+| **GLP-1** | **My foods** |
+| ![GLP-1: medication, next shot, side-effect check-in and shot history](docs/screenshots/web-glp1.jpg) | ![My foods: your own foods, recipes and quick meals](docs/screenshots/web-myfoods.jpg) |
+| **Settings › Integrations** | |
+| ![Integrations: how ByteSize looks foods up, AI services and food sources](docs/screenshots/web-integrations.jpg) | |
+
+*Web screenshots use the built-in demo data (`npm run seed-demo`).*
+
+### iPhone app
+
+| Dashboard | Food log | Track Food | My Foods | Goals |
+|---|---|---|---|---|
+| ![iPhone dashboard](docs/screenshots/ios-dashboard.jpg) | ![iPhone food log](docs/screenshots/ios-food-log.jpg) | ![iPhone Track Food search with results from each source](docs/screenshots/ios-track-food.jpg) | ![iPhone My Foods](docs/screenshots/ios-my-foods.jpg) | ![iPhone goals and weight chart](docs/screenshots/ios-goals.jpg) |
+
+*Weight numbers are blurred in the iPhone screenshots.*
+
+## What it does
+
+- **Plan picker:** enter your height, weight, goal, age and activity (and whether you're on a GLP-1) and it offers four
+  plans, Relaxed to Vigorous, with a safe, GLP-1-aware "Recommended for you". Your plan sets a calorie *range* plus
+  protein, fiber and water targets (editable under Goals). Plans apply from the day you pick until you change them,
+  so past reports stay correct.
+- **Dashboard:** the day's food log by meal, a calorie gauge counting down to the top of your range,
+  protein/fiber/water rings that fill to their minimums, quick water buttons, steps and workouts, weight trend,
+  logging streak and badges. It's built from widgets you can rearrange (Edit dashboard).
+- **Fast logging:** add food from recents, search, a barcode (scanned on the iPhone, or a photo of one on the web), a
+  photo of your plate or a nutrition label, or **Describe it** ("two eggs and toast"), logged as one meal or as
+  separate items. Use ¼ ⅓ ½ ¾ portions, and move or copy entries to another day or meal.
+- **My foods:** create foods (with a barcode), recipes and quick meals, and fix any database food. Your correction
+  sticks to that barcode.
+- **Goals:** weight goal with a trend line and a goal date at your current pace (shown as a range), plus habit and
+  activity goals (logging days, protein, water, steps, workouts) with start/end dates and past goals.
+- **GLP-1:** medication and dose, shot day reminders in the app, injection-site history and side-effect check-ins.
+- **Insights:** an AI coach's weekly recap, protein help with food swaps, and a chat to ask about your eating, weight
+  or habits. The numbers are worked out by ByteSize; the AI only writes the words.
+- **Import weight history:** Settings › Data › Import weight history reads a CSV (up to 5 MB) from Lose It,
+  MyFitnessPal, Happy Scale, Libra, Withings, Fitbit or your own sheet, shows a preview, then adds the weigh-ins.
+  Apple Health only exports XML: use an app that exports Health data as CSV (for example Health Auto Export, metric
+  "Weight & Body Mass"), or use the iPhone app, which reads weight from Health directly.
+- **Self-hosting extras:** sign-in with passwords, passkeys or OAuth / OpenID Connect, Forgot password by email,
+  admin-managed accounts and email invites, daily backups and restore, personal API keys, activity logs.
+
+## Data sources and how they're used
+
+ByteSize doesn't come with its own food database. It asks public food databases and, if you set one up, an AI service.
+Everything goes through **your ByteSize server**: the web app and the iPhone app never call these services
+themselves, and the keys stay encrypted on the server (with `JWT_SECRET`). The admin turns each source on or off and
+enters its keys in **Settings › Integrations**.
+
+| Source | What ByteSize uses it for | Key | Results kept for (default) |
+|---|---|---|---|
+| **Your own foods** | Foods, recipes and quick meals you made, and your corrections to database foods. Always searched first. | none | always |
+| **[Open Food Facts](https://world.openfoodfacts.org)** | Packaged foods and barcodes (open, crowd-sourced data). | none | 9999 h |
+| **[USDA FoodData Central](https://fdc.nal.usda.gov)** | Whole foods ("Basic", from the Foundation and SR Legacy data) and US branded foods and barcodes. | free ([sign up](https://fdc.nal.usda.gov/api-key-signup)) | 9999 h |
+| **[FatSecret](https://platform.fatsecret.com)** | Restaurant menus and typed searches. On the paid **Premier** plan, barcodes too (switch Basic/Premier in settings). Your server's IP address must be allowed in the FatSecret account. | client ID + secret | 24 h |
+| **[Spoonacular](https://spoonacular.com/food-api)** | Restaurant menu items (US chains), asked after FatSecret. The free plan's 50 points a day is plenty for one person. | API key | 1 h |
+| **RecipeHub** (optional, per person) | Your own recipe/meal-planning app: pick items from your meal plan or search your recipes while logging. Read-only. | per-person key | n/a |
+| **AI services** | Plate photos, nutrition-label photos, **Describe it**, serving-size estimates, and Insights. Supports OpenAI, Claude (Anthropic), Gemini, OpenRouter and a local server (Ollama, LM Studio). List several and the next one is tried if one is down. | per service | n/a |
+| **Apple Health** (iPhone only) | Reads weight, steps and workouts. A weigh-in already in ByteSize wins; Health only fills empty days. Health workouts become ByteSize workouts. Nothing is written back to Health. | none | n/a |
+
+**Lookup order** (also shown at the top of Settings › Integrations; a source that's off is skipped). A saved copy is
+always checked first, and typed searches list your own foods and USDA Basic foods before the sources below:
+
+| Lookup | 1st | 2nd | 3rd |
+|---|---|---|---|
+| Barcode | Open Food Facts | FatSecret (Premier only) | USDA |
+| Restaurants | FatSecret | Spoonacular | — |
+| Typed search | FatSecret | USDA (branded) | Open Food Facts |
+
+**Local first.** Every outside answer (barcodes, foods, typed and restaurant searches) is saved on your server and
+reused until that source's "Keep results for" hours run out (1–9999, editable per source). The defaults follow each
+source's terms: open data (Open Food Facts, USDA) can be kept for as long as you like, while FatSecret allows 24 hours
+and Spoonacular 1. A food from a kept copy shows "Saved copy from <date>" with **Check for changes**. An hourly
+cleanup removes old copies except foods someone is using. The admin's **Saved barcodes** card lists, refreshes and
+deletes kept barcodes. When a barcode turns up in more than one source, ByteSize shows a short list so you can pick
+the right product.
+
+**Missing numbers count as 0.** Databases often leave nutrients blank; ByteSize treats unknown values as 0 in totals
+rather than showing "unknown".
 
 ## Run it (Docker)
 
@@ -46,10 +125,7 @@ the admin adds everyone else in Settings › Users.
 - Behind Nginx Proxy Manager / Traefik: proxy to port 4100. Passkeys need `https://` (or `localhost`);
   set `PASSKEY_ORIGINS=https://bytesize.example.com` to allow only your address.
 - iPhone app passkeys: set `IOS_APP_ID` to your Apple Team ID and the app's bundle ID
-  (`ABCDE12345.com.cwland.bytesize`; the Team ID is in Xcode › Signing & Capabilities). The server then serves
-  `/.well-known/apple-app-site-association`, which the proxy must pass through. The app's Associated Domains
-  entitlement names the host (`webcredentials:<your host>`); change it in `ios/ByteSize/ByteSize.entitlements`
-  if your address differs. Passkeys are created on the web and work on the phone at the same address.
+  (`ABCDE12345.com.cwland.bytesize`). See [Passkeys on the phone](#6-passkeys-on-the-phone-optional).
 
 ### Backups
 
@@ -183,3 +259,130 @@ npm test                          # backend (real Postgres test DB) + frontend
 
 Every push to GitHub runs the tests; pushes to `main` publish `ghcr.io/cwland/bytesize:latest` (linux/amd64).
 
+## Build the iPhone app
+
+The iPhone app is a SwiftUI app for iOS 17 or later, in the [`ios/`](ios) folder. It's a companion to your ByteSize
+server, not a standalone app: you sign in with your server's address, username and password. Account setup, goals and
+targets stay in the web app. The phone handles day-to-day tracking: Dashboard, Food log, Track Food (search, barcode
+scan, plate and label photos, Describe it), My Foods, Goals, and Apple Health.
+
+How it's organized:
+
+- `ios/ByteSizeKit/`: a Swift package with all the app's logic (API client, models, Health import), tested with `swift test`.
+- `ios/ByteSize/`: the app target, views only.
+- `ios/project.yml`: an [XcodeGen](https://github.com/yonaskolb/XcodeGen) spec. The Xcode project is generated and not committed.
+- `ios/Config.xcconfig` (committed) and `ios/Local.xcconfig` (yours, git-ignored): your Team ID and server address.
+
+### What you need
+
+- A Mac with **Xcode** (the CI uses Xcode 27) and the iOS Simulator installed from Xcode › Settings › Components.
+- **Homebrew** and **XcodeGen**: `brew install xcodegen`.
+- To run on a real iPhone: an Apple ID signed in under Xcode › Settings › Accounts. A paid **Apple Developer
+  Program** membership is recommended: it's needed for passkeys (Associated Domains) and TestFlight, and builds don't
+  expire after 7 days as they do with a free account.
+- A running ByteSize server (see [Run it](#run-it-docker)) that the phone can reach. Use `https://` for passkeys;
+  plain `http://` on your home network is fine for password sign-in.
+
+### 1. Get the code and set your values
+
+```sh
+git clone https://github.com/cwland/ByteSize.git
+cd ByteSize/ios
+cp Local.xcconfig.example Local.xcconfig
+```
+
+Edit `ios/Local.xcconfig`:
+
+```
+DEVELOPMENT_TEAM = ABCDE12345          // your Apple Team ID (developer.apple.com › Account › Membership)
+CODE_SIGN_STYLE = Automatic
+PASSKEY_DOMAIN = bytesize.example.com  // your server's host name, no https://
+```
+
+`Local.xcconfig` is git-ignored, so your Team ID and server address never go into the repository.
+
+If you're building your own copy rather than contributing, change the bundle ID `com.cwland.bytesize` (and
+`bundleIdPrefix`) in `ios/project.yml` to one of yours, because bundle IDs are unique per Apple account.
+
+### 2. Generate the Xcode project
+
+```sh
+cd ByteSize/ios && xcodegen generate
+```
+
+This creates `ByteSize.xcodeproj`. Run it again after pulling changes that add or remove files, or after editing
+`project.yml`.
+
+### 3. Run the tests
+
+```sh
+cd ByteSize/ios/ByteSizeKit && swift test
+cd ByteSize/ios && xcodebuild test -scheme ByteSize -destination 'platform=iOS Simulator,name=iPhone 17'
+```
+
+The first runs only the logic tests, in seconds. The second builds the app and runs the unit and UI tests in the
+simulator; use any simulator you have installed (`xcrun simctl list devices`).
+
+### 4. Run it
+
+```sh
+cd ByteSize/ios && open ByteSize.xcodeproj
+```
+
+- **Simulator:** pick an iPhone simulator in the toolbar and press ⌘R. The camera (barcode scanning, photos) doesn't
+  work in the simulator; everything else does.
+- **Your iPhone:** connect it (or use the same Wi-Fi after pairing once), select it in the toolbar, and press ⌘R. The
+  first time, turn on **Developer Mode** on the phone (Settings › Privacy & Security) and, with a free account, trust
+  your certificate under Settings › General › VPN & Device Management.
+- In Signing & Capabilities, the ByteSize target should show your team, with HealthKit and Associated Domains listed.
+  If Xcode reports a signing problem, check `DEVELOPMENT_TEAM` in `Local.xcconfig` and the bundle ID.
+
+On first launch, enter your server address (for example `https://bytesize.example.com`) and sign in.
+
+### 5. Turn on Apple Health (optional)
+
+In the app, tap the profile button (top right) and, under **Apple Health**, turn on Weight, Steps and/or Workouts. iOS
+asks for permission to read them (ByteSize never writes to Health). **Sync now** pulls the latest right away. If you said no earlier, change it in the Health app › Sharing › Apps › ByteSize.
+A weigh-in already in ByteSize always wins; Health only fills days without one.
+
+### 6. Passkeys on the phone (optional)
+
+Passkeys are created in the web app and then work on the phone at the same address. Two settings must agree:
+
+1. **Server:** set `IOS_APP_ID=<TeamID>.<bundle ID>` (for example `ABCDE12345.com.cwland.bytesize`) in `.env` and
+   restart. ByteSize then serves `/.well-known/apple-app-site-association`, which your reverse proxy must pass through.
+2. **App:** `PASSKEY_DOMAIN` in `Local.xcconfig` is your server's host name. It goes into the app's Associated
+   Domains entitlement (`webcredentials:<host>`).
+
+Without these, the app still signs in with a password.
+
+### 7. TestFlight releases (optional)
+
+Pushing a tag like `ios-v0.10.0` runs `.github/workflows/ios-testflight.yml` on GitHub's macOS runner. It generates
+the project, archives a Release build signed automatically with an App Store Connect API key, and uploads it to
+TestFlight. The tag sets the version; the run number sets the build number. Ordinary pushes that touch `ios/` run
+`ios-test.yml` (logic tests and an unsigned simulator build) instead.
+
+First, create the app in App Store Connect with your bundle ID, and make an App Store Connect API key (Users and Access
+› Integrations, **Admin** role). Then add these under the repository's Settings › Secrets and variables › Actions
+(nothing personal goes in the repo):
+
+| Name | Kind | What |
+|---|---|---|
+| `APPLE_TEAM_ID` | secret | your Apple developer Team ID |
+| `ASC_KEY_ID` | secret | App Store Connect API key ID |
+| `ASC_ISSUER_ID` | secret | App Store Connect issuer ID |
+| `ASC_KEY_P8_BASE64` | secret | the key file, base64-encoded: `base64 -i AuthKey_<id>.p8` |
+| `PASSKEY_DOMAIN` | variable | your ByteSize server's host name |
+
+```sh
+cd ByteSize && git tag ios-v0.10.0 && git push origin ios-v0.10.0
+```
+
+### Theme colors
+
+The app's colors are generated from the web app's theme, so the two stay in step:
+
+```sh
+cd ByteSize/frontend && npx tsx ../scripts/gen-ios-theme.ts
+```
