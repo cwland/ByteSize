@@ -8,6 +8,10 @@ name: iOS TestFlight
 #   ASC_KEY_ID           App Store Connect API key ID (Admin role, for automatic signing)
 #   ASC_ISSUER_ID        App Store Connect issuer ID
 #   ASC_KEY_P8_BASE64    the key's AuthKey_<id>.p8 file, base64-encoded
+#   SIGNING_CERT_P12_BASE64  one Apple Development certificate with its private key (.p12), base64-encoded
+#   SIGNING_CERT_PASSWORD    the password the .p12 was exported with
+# The saved certificate signs every archive. Without it Xcode made a new development certificate
+# on each run (the runner starts empty) until the account hit Apple's limit.
 # and this repository variable:
 #   PASSKEY_DOMAIN       your ByteSize server's host name, for passkey sign-in
 on:
@@ -59,6 +63,25 @@ jobs:
             if [ -z "${!v}" ]; then echo "::error::$v is not set"; exit 1; fi
           done
           if [ -z "${{ secrets.ASC_KEY_P8_BASE64 }}" ]; then echo "::error::ASC_KEY_P8_BASE64 is not set"; exit 1; fi
+          if [ -z "${{ secrets.SIGNING_CERT_P12_BASE64 }}" ]; then echo "::error::SIGNING_CERT_P12_BASE64 is not set"; exit 1; fi
+
+      - name: Put the saved signing certificate in a keychain
+        env:
+          P12_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "${{ secrets.SIGNING_CERT_P12_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/signing.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/signing.p12"
+          echo "SIGNING_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          security find-identity -v -p codesigning "$KEYCHAIN" | grep -q "Apple Development" \
+            || { echo "::error::SIGNING_CERT_P12_BASE64 holds no Apple Development certificate"; exit 1; }
 
       - name: Put the API key and signing settings in place
         run: |
@@ -88,13 +111,14 @@ jobs:
           brew install xcodegen
           xcodegen generate
 
-      - name: Archive (signed by Xcode with the API key)
+      - name: Archive (signed with the saved certificate; profiles fetched with the API key)
         working-directory: ios
         run: |
           xcodebuild archive -project ByteSize.xcodeproj -scheme ByteSize -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/ByteSize.xcarchive" \
             MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $SIGNING_KEYCHAIN" \
             -allowProvisioningUpdates \
             -authenticationKeyPath "$ASC_KEY_PATH" \
             -authenticationKeyID "$ASC_KEY_ID" \
@@ -112,6 +136,8 @@ jobs:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
           echo "Uploaded ByteSize $APP_VERSION ($BUILD_NUMBER) to App Store Connect. It shows in TestFlight after Apple finishes processing (usually 5-30 minutes)." >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Remove the API key
+      - name: Remove the API key and the signing keychain
         if: always()
-        run: rm -rf "$RUNNER_TEMP/keys" ios/Local.xcconfig
+        run: |
+          rm -rf "$RUNNER_TEMP/keys" ios/Local.xcconfig
+          [ -n "$SIGNING_KEYCHAIN" ] && security delete-keychain "$SIGNING_KEYCHAIN" || true
