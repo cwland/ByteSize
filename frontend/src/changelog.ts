@@ -26,6 +26,7 @@ export const CHANGELOG: Release[] = [
     ],
     fixed: [
       "Small, medium and large sizes only show for the food itself (an avocado), not a dish with it in the name (a turkey avocado sandwich).",
+      "Grams and ml go through every number on the amount wheel, so 144 g is there (it used to skip in 5s, 25s and 50s above 20).",
     ],
   },
   {

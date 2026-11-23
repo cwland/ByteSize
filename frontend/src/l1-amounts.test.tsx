@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { FRACTION_CHOICES, isBigAmount, splitWhole, unitChoices } from "./amounts";
 import { amountFactor } from "./nutrition";
 import FoodDetail, { defaultPortion, startingPortion } from "./components/log/FoodDetail";
+import { wholeChoices } from "./components/log/AmountPicker";
 import type { Serving, Unit } from "./types";
 
 // L1 (SPEC-01 / SPEC-09): eighths, counted units from the server ("1 prune"), and a check before a big amount.
@@ -58,6 +59,14 @@ describe("the server's starting amount", () => {
     expect(startingPortion(milk)).toMatchObject({ unit: "fl_oz" });
     const recipe = { servings: [{ label: "1 serving (320 g)", grams: 320 }, { label: "100 g", grams: 100 }], foodKind: "recipe", source: "mine", start: { servingIndex: 0, unit: "serving" as Unit, quantity: 1 } };
     expect(startingPortion(recipe)).toEqual({ servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
+  });
+});
+
+describe("the whole-number list", () => {
+  it("grams and ml go through every number to 1,000 (144 g, not 125 then 150)", () => {
+    expect(wholeChoices("g", 1)).toEqual(Array.from({ length: 1001 }, (_, i) => i));
+    expect(wholeChoices("ml", 1)).toContain(144);
+    expect(wholeChoices("serving", 1)).toEqual(Array.from({ length: 21 }, (_, i) => i));
   });
 });
 

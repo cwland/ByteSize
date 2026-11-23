@@ -134,12 +134,9 @@ public final class PortionModel {
     /// More than 20 servings or 2,000 calories: asks first.
     public var isBig: Bool { AmountMath.isBig(factor: factor ?? 0, calories: Double(previewCalories ?? 0)) }
 
-    /// The whole-number wheel: 0–20, and for grams and millilitres bigger steps up to 1,000 (as the web).
+    /// The whole-number wheel: 0–20, and for grams and millilitres every number to 1,000 (144 g is there; as the web).
     public var wholeRange: [Int] {
-        var out = Array(0...20)
-        if unit == .g || unit == .ml {
-            out += Array(stride(from: 25, through: 100, by: 5)) + Array(stride(from: 125, through: 500, by: 25)) + Array(stride(from: 550, through: 1000, by: 50))
-        }
+        var out = unit == .g || unit == .ml ? Array(0...1000) : Array(0...20)
         if !out.contains(whole) { out.append(whole) }
         return out.sorted()
     }

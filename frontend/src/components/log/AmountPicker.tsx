@@ -3,14 +3,9 @@ import type { Portion, Serving, Unit } from "../../types";
 
 const select = "w-full rounded-xl border border-line bg-page px-2 py-2.5 text-center text-lg font-semibold text-ink outline-none focus:border-action";
 
-// Whole numbers 0–20; grams and ml go further in bigger steps
-function wholeChoices(unit: Unit, current: number) {
-  const out = Array.from({ length: 21 }, (_, i) => i);
-  if (unit === "g" || unit === "ml") {
-    for (let n = 25; n <= 100; n += 5) out.push(n);
-    for (let n = 125; n <= 500; n += 25) out.push(n);
-    for (let n = 550; n <= 1000; n += 50) out.push(n);
-  }
+// Whole numbers 0–20; grams and ml every number to 1,000 (144 g is there, nothing skipped)
+export function wholeChoices(unit: Unit, current: number) {
+  const out = Array.from({ length: unit === "g" || unit === "ml" ? 1001 : 21 }, (_, i) => i);
   if (!out.includes(current)) out.push(current);
   return out.sort((a, b) => a - b);
 }
