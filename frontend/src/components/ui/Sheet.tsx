@@ -8,7 +8,8 @@ import { IconButton } from "./IconButton";
 // heading: a title (default: the label) or your own header content (e.g. a dropdown)
 // top: content pinned under the header (e.g. a search box); then only the children scroll, in a region named bodyLabel
 // bottom: content pinned under the scrolling part (e.g. a chat's message box)
-export function Sheet({ label, heading = label, onClose, onBack, tall = false, top, bottom, bodyLabel = "Content", children }: { label: string; heading?: ReactNode; onClose: () => void; onBack?: () => void; tall?: boolean; top?: ReactNode; bottom?: ReactNode; bodyLabel?: string; children: ReactNode }) {
+// small: a few lines (Move to…): a narrow window from 640 px, not a wide one
+export function Sheet({ label, heading = label, onClose, onBack, tall = false, small = false, top, bottom, bodyLabel = "Content", children }: { label: string; heading?: ReactNode; onClose: () => void; onBack?: () => void; tall?: boolean; small?: boolean; top?: ReactNode; bottom?: ReactNode; bodyLabel?: string; children: ReactNode }) {
   const pinned = top !== undefined;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -21,7 +22,7 @@ export function Sheet({ label, heading = label, onClose, onBack, tall = false, t
         role="dialog"
         aria-modal="true"
         aria-label={label}
-        className={`pb-safe max-h-[92vh] ${tall ? "min-h-[92vh] lg:h-[85vh] lg:min-h-0" : ""} flex flex-col overflow-hidden w-full max-w-[560px] rounded-t-3xl bg-container p-5 sm:rounded-3xl lg:max-h-[85vh] lg:max-w-[640px] lg:rounded-3xl lg:shadow-2xl lg:shadow-black/50`}
+        className={`max-h-[92vh] ${tall ? "min-h-[92vh] lg:h-[85vh] lg:min-h-0" : ""} flex flex-col overflow-hidden w-full ${small ? "max-w-[560px] sm:max-w-[400px]" : "max-w-[560px] lg:max-w-[640px]"} rounded-t-3xl bg-container p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:rounded-3xl lg:max-h-[85vh] lg:rounded-3xl lg:shadow-2xl lg:shadow-black/50`}
       >
         <div className="mb-4 flex shrink-0 items-center gap-2">
           {onBack && (

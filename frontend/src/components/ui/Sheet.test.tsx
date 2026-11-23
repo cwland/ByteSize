@@ -18,6 +18,28 @@ function Harness() {
 }
 
 describe("Sheet", () => {
+  it("keeps its padding at the bottom: the home-bar space adds to it, never replaces it (a button touching the edge)", () => {
+    render(
+      <Sheet label="Move to…" onClose={() => {}}>
+        <button type="button">Move here</button>
+      </Sheet>,
+    );
+    const panel = screen.getByRole("dialog", { name: "Move to…" });
+    expect(panel).not.toHaveClass("pb-safe");
+    expect(panel.className).toContain("pb-[max(1.25rem,env(safe-area-inset-bottom))]");
+  });
+
+  it("a small sheet is a small window, not a wide one with a few lines in it", () => {
+    render(
+      <Sheet label="Move to…" onClose={() => {}} small>
+        <p>a day and a meal</p>
+      </Sheet>,
+    );
+    const panel = screen.getByRole("dialog", { name: "Move to…" });
+    expect(panel.className).toContain("sm:max-w-[400px]");
+    expect(panel.className).not.toContain("lg:max-w-[640px]");
+  });
+
   it("scrolls inside, never the rounded panel itself (a scrollbar on the panel squares its right corners)", () => {
     render(
       <Sheet label="Edit entry" onClose={() => {}}>
