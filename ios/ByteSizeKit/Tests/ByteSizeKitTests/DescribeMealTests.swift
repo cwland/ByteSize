@@ -51,10 +51,11 @@ final class DescribeMealTests: XCTestCase {
         return m
     }
 
-    func testSeveralFoodsOpenOnOneMealWithTheirName() async {
+    // 2026-11-23: several foods open on Separate items (each its own entry); One meal is still a tap away
+    func testSeveralFoodsOpenOnSeparateItemsWithTheirName() async {
         let m = await described()
         XCTAssertTrue(m.showsSwitch)
-        XCTAssertEqual(m.mode, .meal)
+        XCTAssertEqual(m.mode, .items)
         XCTAssertEqual(m.mealName, "Eggs and toast")
         XCTAssertFalse(m.saveToMyFoods)
         XCTAssertEqual(m.totalCalories, 224)
@@ -68,6 +69,7 @@ final class DescribeMealTests: XCTestCase {
 
     func testOneMealLogsEveryFoodAsOneEntry() async throws {
         let m = await described()
+        m.mode = .meal
         m.toggle(at: 1) // a check only counts in Separate items
         XCTAssertEqual(m.totalCalories, 224)
         XCTAssertTrue(m.canLog)
@@ -78,6 +80,41 @@ final class DescribeMealTests: XCTestCase {
         let combine = try XCTUnwrap(body["combine"] as? [String: Any])
         XCTAssertEqual(combine["name"] as? String, "Eggs and toast")
         XCTAssertEqual(combine["save"] as? Bool, false)
+    }
+
+    // + on a row logs that food on its own; the list stays, with it marked logged and out of the total
+    func testPlusLogsOneFoodOnItsOwn() async throws {
+        let m = await described()
+        let ok = await m.logOne(at: 0)
+        XCTAssertTrue(ok)
+        let body = try logged()
+        XCTAssertNil(body["combine"])
+        XCTAssertEqual((body["items"] as? [[String: Any]])?.map { $0["name"] as? String }, ["Egg, large"])
+        XCTAssertEqual(m.items.count, 2, "the list stays for the rest")
+        XCTAssertEqual(m.logged, [true, false])
+        XCTAssertEqual(m.totalCalories, 80, "what's left: the toast")
+        XCTAssertEqual(m.remainingCount, 1)
+        XCTAssertFalse(await m.logOne(at: 0), "logged once is enough")
+    }
+
+    // Log all: every food not yet logged, each as its own entry
+    func testLogAllLogsTheRestOneEntryEach() async throws {
+        let m = await described()
+        _ = await m.logOne(at: 0)
+        let ok = await m.logSelected()
+        XCTAssertTrue(ok)
+        let body = try logged()
+        XCTAssertNil(body["combine"])
+        XCTAssertEqual((body["items"] as? [[String: Any]])?.map { $0["name"] as? String }, ["Toast"])
+    }
+
+    func testOneMealLeavesOutWhatWasAlreadyLogged() async throws {
+        let m = await described()
+        _ = await m.logOne(at: 0)
+        m.mode = .meal
+        XCTAssertEqual(m.totalCalories, 80)
+        _ = await m.logSelected()
+        XCTAssertEqual((try logged()["items"] as? [[String: Any]])?.map { $0["name"] as? String }, ["Toast"])
     }
 
     func testSeparateItemsLogsOnlyTheCheckedOnes() async throws {
@@ -93,6 +130,7 @@ final class DescribeMealTests: XCTestCase {
 
     func testANewNameAndSaveGoWithTheMeal() async throws {
         let m = await described()
+        m.mode = .meal
         m.mealName = "  "
         XCTAssertFalse(m.canLog, "One meal needs a name")
         m.mealName = "My breakfast"
