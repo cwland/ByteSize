@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import type { FastifyInstance } from "fastify";
 import { and, eq, inArray, isNull, lt } from "drizzle-orm";
-import sharp from "sharp";
+import sharp, { type Metadata } from "sharp";
 import { prepareZXingModule, readBarcodes } from "zxing-wasm/reader";
 import type { Db } from "../db/index.js";
 import { uploads, users } from "../db/schema.js";
@@ -85,7 +85,7 @@ export function unsignImageUrl(url: string | null): string | null {
 
 /** Upright (EXIF rotation applied), at most 1600 px on its longest side, JPEG, metadata (GPS...) dropped. Not an image → 400. */
 export async function normalisePhoto(input: Buffer, log?: PhotoLog): Promise<Buffer> {
-  let meta: sharp.Metadata;
+  let meta: Metadata;
   try {
     meta = await sharp(input, { limitInputPixels: false }).metadata(); // the header only
   } catch {

@@ -15,6 +15,13 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.16.6",
+    date: "2026-11-24",
+    fixed: [
+      "Security: updated the photo reader, the email sender and the web file server to versions with known security holes fixed.",
+    ],
+  },
+  {
     version: "0.16.5",
     date: "2026-11-24",
     fixed: [
