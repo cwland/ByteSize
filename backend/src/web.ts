@@ -16,7 +16,7 @@ export async function serveWeb(app: FastifyInstance, dir: string) {
     cacheControl: false, // set below instead
     // Built files in assets/ have a hash in their name and never change; everything else
     // (index.html, the icon, the manifest) is checked each time
-    setHeaders: (res, file) => res.setHeader("Cache-Control", file.startsWith(path.join(dir, "assets") + path.sep) ? "public, max-age=31536000, immutable" : "no-cache"),
+    setHeaders: (reply, file) => reply.header("Cache-Control", file.startsWith(path.join(dir, "assets") + path.sep) ? "public, max-age=31536000, immutable" : "no-cache"),
   });
   app.get("/*", async (req, reply) => {
     let rel: string;
