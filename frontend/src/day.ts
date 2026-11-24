@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { DEFAULT_DATE_FORMAT } from "./dateFormat";
 import { SessionContext } from "./session";
@@ -17,15 +17,22 @@ export const onDayChanged = (on: () => void) => {
 const SETTINGS_EVENT = "bytesize:settings-changed";
 export const notifySettingsChanged = () => window.dispatchEvent(new Event(SETTINGS_EVENT));
 
-// GET /api/day/:date for the given day, reloaded when the log changes
+// How often an open page checks its day for changes made elsewhere (the iPhone)
+export const DAY_CHECK_MS = 30_000;
+
+// GET /api/day/:date for the given day, reloaded when the log changes — here, or elsewhere: the day is checked
+// again quietly when you come back to the page and every 30 s while it shows. Only a day that came back different
+// updates the screen (and tells the other screens — the week strip, the day picker — to reload too).
 export function useDay(day: string) {
   const [data, setData] = useState<Day | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const seen = useRef<string | null>(null); // the day as last shown
   const load = useCallback(() => {
     let live = true;
     api<Day>("GET", `/api/day/${day}`)
       .then((d) => {
         if (live) {
+          seen.current = JSON.stringify(d);
           setData(d);
           setError(null);
         }
@@ -39,12 +46,29 @@ export function useDay(day: string) {
       stop();
       stop = load();
     };
+    let checking = false;
+    const check = () => {
+      if (document.visibilityState !== "visible" || checking || seen.current === null) return;
+      checking = true;
+      api<Day>("GET", `/api/day/${day}`)
+        .then((d) => {
+          if (JSON.stringify(d) !== seen.current) notifyDayChanged(); // this screen and the others reload
+        })
+        .catch(() => {}) // a missed check is tried again in 30 s
+        .finally(() => void (checking = false));
+    };
     window.addEventListener(EVENT, on);
+    window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", check);
+    const timer = window.setInterval(check, DAY_CHECK_MS);
     return () => {
       stop();
       window.removeEventListener(EVENT, on);
+      window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", check);
+      window.clearInterval(timer);
     };
-  }, [load]);
+  }, [load, day]);
   return { data, error };
 }
 
