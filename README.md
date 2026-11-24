@@ -124,6 +124,10 @@ the admin adds everyone else in Settings › Users.
 - Health check: `GET /health` → `{"ok":true,"db":true,"version":"…"}`.
 - Behind Nginx Proxy Manager / Traefik: proxy to port 4100. Passkeys need `https://` (or `localhost`);
   set `PASSKEY_ORIGINS=https://bytesize.example.com` to allow only your address.
+- Behind a proxy, also set `TRUST_PROXY` to the address ByteSize sees the proxy connect from (its Docker IP or network),
+  so sign-in lockouts and rate limits are per person. Without it everyone looks like the proxy, and five wrong
+  passwords from anyone lock everyone out for 15 minutes. Best: put the proxy and ByteSize on a shared Docker network,
+  point the proxy at `bytesize:4100`, and remove `ports:` so nothing else on your network can reach ByteSize directly.
 - iPhone app passkeys: set `IOS_APP_ID` to your Apple Team ID and the app's bundle ID
   (`ABCDE12345.com.cwland.bytesize`). See [Passkeys on the phone](#6-passkeys-on-the-phone-optional).
 
