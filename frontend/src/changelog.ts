@@ -18,8 +18,7 @@ export const CHANGELOG: Release[] = [
     version: "0.16.3",
     date: "2026-11-23",
     changed: [
-      "iPhone Describe: each food has a + to log it on its own; tap the food for its amount. Log all logs the rest, each as its own entry.",
-      "iPhone Describe opens on Separate items; One meal (one combined entry) is still a tap away.",
+      "iPhone Describe works like Photo: every food it finds is checked; uncheck what you don't want and Log selected logs each as its own entry. One meal (one combined entry) is still a tap away.",
     ],
   },
   {

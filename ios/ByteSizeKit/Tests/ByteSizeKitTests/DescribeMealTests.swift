@@ -86,12 +86,8 @@ final class DescribeMealTests: XCTestCase {
     // Log selected straight away: every food, each as its own entry (not one combined one)
     func testLogSelectedLogsEachFoodAsItsOwnEntry() async throws {
         let m = await described()
-<<<<<<< Updated upstream
         let ok = await m.logSelected()
         XCTAssertTrue(ok)
-=======
-        XCTAssertTrue(await m.logSelected())
->>>>>>> Stashed changes
         let body = try logged()
         XCTAssertNil(body["combine"], "not one combined entry")
         XCTAssertEqual((body["items"] as? [[String: Any]])?.map { $0["name"] as? String }, ["Egg, large", "Toast"])
