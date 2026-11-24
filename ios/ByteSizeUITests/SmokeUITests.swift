@@ -386,9 +386,9 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "back on the search, ready to type")
     }
 
-    /// Describe with several foods that have a name together: opens on One meal (name shown, no checkboxes);
-    /// Separate items brings the checkboxes back; One meal logs one entry under the name.
-    func testDescribeOpensOnOneMealAndLogsOneEntry() {
+    /// Describe with several foods that have a name together: opens on Separate items, all checked (2026-11-23);
+    /// One meal (name shown, no checkboxes) is a tap away and logs one entry under the name.
+    func testDescribeOpensOnSeparateItemsAndOneMealIsATapAway() {
         signedIn()
         openAction("Track Food")
         XCTAssertTrue(app.buttons["hub-describe"].waitForExistence(timeout: 5))
@@ -399,12 +399,12 @@ final class SmokeUITests: XCTestCase {
         app.buttons["estimateButton"].tap()
         let oneMeal = app.buttons["One meal"]
         XCTAssertTrue(oneMeal.waitForExistence(timeout: 5), "the switch shows for several foods")
-        XCTAssertTrue(oneMeal.isSelected, "opens on One meal")
+        XCTAssertTrue(app.buttons["Separate items"].isSelected, "opens on Separate items")
+        XCTAssertTrue(app.buttons["check-Egg"].isSelected, "every food checked")
+        XCTAssertEqual(app.buttons["logSelected"].label, "Log selected")
+        oneMeal.tap()
         XCTAssertEqual(app.textFields["mealName"].value as? String, "Egg sandwich")
         XCTAssertFalse(app.buttons["check-Egg"].exists, "no checkboxes in One meal")
-        app.buttons["Separate items"].tap()
-        XCTAssertTrue(app.buttons["check-Egg"].waitForExistence(timeout: 3))
-        app.buttons["One meal"].tap()
         XCTAssertTrue(app.switches["saveToMyFoods"].exists)
         XCTAssertEqual(app.switches["saveToMyFoods"].value as? String, "0", "Save to My foods starts off")
         reveal(app.buttons["logSelected"]).tap()

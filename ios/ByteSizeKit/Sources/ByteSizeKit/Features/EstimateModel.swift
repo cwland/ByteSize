@@ -65,13 +65,13 @@ public final class EstimateModel {
 
     private var isMeal: Bool { showsSwitch && mode == .meal }
 
-    /// A new list (or none): every food checked; a name for several foods opens on One meal (design decision 1).
+    /// A new list (or none): every food checked; opens on Separate items (2026-11-23).
     private func show(_ list: [EstimateItem], mealName name: String? = nil) {
         items = list
         selected = Array(repeating: true, count: list.count)
         showsSwitch = name != nil && list.count > 1
         mealName = name ?? ""
-        mode = showsSwitch ? .meal : .items
+        mode = .items // 2026-11-23: each checked food its own entry first; One meal is a tap away
         saveToMyFoods = false
         addText = ""
     }

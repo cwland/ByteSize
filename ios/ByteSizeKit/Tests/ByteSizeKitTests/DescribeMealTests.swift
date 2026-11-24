@@ -51,10 +51,12 @@ final class DescribeMealTests: XCTestCase {
         return m
     }
 
-    func testSeveralFoodsOpenOnOneMealWithTheirName() async {
+    // 2026-11-23: several foods open on Separate items, all checked (each its own entry); One meal is a tap away
+    func testSeveralFoodsOpenOnSeparateItemsAllCheckedWithTheirName() async {
         let m = await described()
         XCTAssertTrue(m.showsSwitch)
-        XCTAssertEqual(m.mode, .meal)
+        XCTAssertEqual(m.mode, .items)
+        XCTAssertEqual(m.selected, [true, true])
         XCTAssertEqual(m.mealName, "Eggs and toast")
         XCTAssertFalse(m.saveToMyFoods)
         XCTAssertEqual(m.totalCalories, 224)
@@ -68,6 +70,7 @@ final class DescribeMealTests: XCTestCase {
 
     func testOneMealLogsEveryFoodAsOneEntry() async throws {
         let m = await described()
+        m.mode = .meal
         m.toggle(at: 1) // a check only counts in Separate items
         XCTAssertEqual(m.totalCalories, 224)
         XCTAssertTrue(m.canLog)
@@ -78,6 +81,16 @@ final class DescribeMealTests: XCTestCase {
         let combine = try XCTUnwrap(body["combine"] as? [String: Any])
         XCTAssertEqual(combine["name"] as? String, "Eggs and toast")
         XCTAssertEqual(combine["save"] as? Bool, false)
+    }
+
+    // Log selected straight away: every food, each as its own entry (not one combined one)
+    func testLogSelectedLogsEachFoodAsItsOwnEntry() async throws {
+        let m = await described()
+        let ok = await m.logSelected()
+        XCTAssertTrue(ok)
+        let body = try logged()
+        XCTAssertNil(body["combine"], "not one combined entry")
+        XCTAssertEqual((body["items"] as? [[String: Any]])?.map { $0["name"] as? String }, ["Egg, large", "Toast"])
     }
 
     func testSeparateItemsLogsOnlyTheCheckedOnes() async throws {
@@ -93,6 +106,7 @@ final class DescribeMealTests: XCTestCase {
 
     func testANewNameAndSaveGoWithTheMeal() async throws {
         let m = await described()
+        m.mode = .meal
         m.mealName = "  "
         XCTAssertFalse(m.canLog, "One meal needs a name")
         m.mealName = "My breakfast"
