@@ -109,7 +109,9 @@ export interface AppOptions {
 }
 
 export function buildApp(opts: AppOptions): FastifyInstance {
-  const app = Fastify({ logger: opts.logger ?? false, trustProxy: process.env.TRUST_PROXY ?? "loopback, linklocal, uniquelocal" });
+  // X-Forwarded-For is only believed from TRUST_PROXY (your reverse proxy's address). By default only this machine
+  // is trusted: trusting every private address let any device on the network fake a new address on each try.
+  const app = Fastify({ logger: opts.logger ?? false, trustProxy: process.env.TRUST_PROXY || "loopback" });
   app.decorate("db", opts.db);
   app.decorate("jwtSecret", opts.jwtSecret);
   app.decorate("now", opts.now ?? (() => new Date()));

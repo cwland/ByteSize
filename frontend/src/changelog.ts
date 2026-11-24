@@ -15,6 +15,13 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.16.7",
+    date: "2026-11-24",
+    fixed: [
+      "Security: a device on your network can no longer pretend to be a different address on each try to get around the sign-in lockout. Behind a reverse proxy, set TRUST_PROXY to the proxy's address (see the README).",
+    ],
+  },
+  {
     version: "0.16.6",
     date: "2026-11-24",
     fixed: [
