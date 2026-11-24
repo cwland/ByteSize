@@ -22,11 +22,20 @@ export const DAY_CHECK_MS = 30_000;
 
 // GET /api/day/:date for the given day, reloaded when the log changes — here, or elsewhere: the day is checked
 // again quietly when you come back to the page and every 30 s while it shows. Only a day that came back different
-// updates the screen (and tells the other screens — the week strip, the day picker — to reload too).
+// updates the screen (and tells the other screens — the week strip, the day picker — to reload too). A day that
+// failed to load is tried again at the next check, and a new day never shows the previous day's food.
 export function useDay(day: string) {
   const [data, setData] = useState<Day | null>(null);
   const [error, setError] = useState<string | null>(null);
   const seen = useRef<string | null>(null); // the day as last shown
+  // Another day (the date moved on overnight, or you picked one): its own food or nothing, never the last day's
+  const [shownDay, setShownDay] = useState(day);
+  if (shownDay !== day) {
+    setShownDay(day);
+    setData(null);
+    setError(null);
+    seen.current = null;
+  }
   const load = useCallback(() => {
     let live = true;
     api<Day>("GET", `/api/day/${day}`)
@@ -48,7 +57,13 @@ export function useDay(day: string) {
     };
     let checking = false;
     const check = () => {
-      if (document.visibilityState !== "visible" || checking || seen.current === null) return;
+      if (document.visibilityState !== "visible" || checking) return;
+      // Never loaded (the first try failed, e.g. just after the computer woke): try the load again
+      if (seen.current === null) {
+        stop();
+        stop = load();
+        return;
+      }
       checking = true;
       api<Day>("GET", `/api/day/${day}`)
         .then((d) => {

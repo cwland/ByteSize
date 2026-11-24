@@ -76,3 +76,64 @@ describe("the day follows changes made elsewhere", () => {
     expect(dayGets(sent)).toBe(before);
   });
 });
+
+// Left open overnight (2026-11-24): the date moved to Tuesday but Monday's food stayed — the first load after the
+// computer woke failed, and a failed load kept the old day on screen with nothing trying again.
+function DayProbe({ day }: { day: string }) {
+  const { data, error } = useDay(day);
+  const d = data as unknown as { day: string } | null;
+  return (
+    <>
+      <p data-testid="shown">{d ? d.day : "…"}</p>
+      <p data-testid="err">{error ?? ""}</p>
+    </>
+  );
+}
+
+describe("a new day never shows the old one", () => {
+  beforeEach(() => {
+    setVisible("visible");
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("moving to another day clears the old day's food straight away", async () => {
+    let release: (() => void) | null = null;
+    fakeServer({
+      "GET /api/day/:d": (_b: unknown, path: string) => {
+        const d = path.split("/").pop()!;
+        if (d === "2026-11-24") return new Promise((r) => (release = () => r({ day: d, entries: [], totals: { calories: 0 } })));
+        return { day: d, entries: [], totals: { calories: 1800 } };
+      },
+    });
+    const { rerender } = render(<DayProbe day="2026-11-23" />);
+    await waitFor(() => expect(screen.getByTestId("shown")).toHaveTextContent("2026-11-23"));
+    rerender(<DayProbe day="2026-11-24" />);
+    expect(screen.getByTestId("shown")).toHaveTextContent("…"); // not Monday's food under Tuesday
+    await act(async () => release!());
+    await waitFor(() => expect(screen.getByTestId("shown")).toHaveTextContent("2026-11-24"));
+  });
+
+  it("a day that failed to load is tried again on the next check", async () => {
+    let up = false; // the network after the computer wakes
+    fakeServer({
+      "GET /api/day/:d": (_b: unknown, path: string) => {
+        const d = path.split("/").pop()!;
+        if (d === "2026-11-24" && !up) return { status: 503, json: { error: "Couldn't reach the server" } };
+        return { day: d, entries: [], totals: { calories: 0 } };
+      },
+    });
+    const { rerender } = render(<DayProbe day="2026-11-23" />);
+    await waitFor(() => expect(screen.getByTestId("shown")).toHaveTextContent("2026-11-23"));
+    rerender(<DayProbe day="2026-11-24" />);
+    await waitFor(() => expect(screen.getByTestId("err")).not.toHaveTextContent(/^$/));
+    expect(screen.getByTestId("shown")).toHaveTextContent("…");
+    up = true;
+    await act(async () => void vi.advanceTimersByTime(DAY_CHECK_MS));
+    await waitFor(() => expect(screen.getByTestId("shown")).toHaveTextContent("2026-11-24"));
+    expect(screen.getByTestId("err")).toHaveTextContent(/^$/);
+  });
+});
