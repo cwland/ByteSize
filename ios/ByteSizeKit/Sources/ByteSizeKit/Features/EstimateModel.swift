@@ -35,8 +35,6 @@ public final class EstimateModel {
     public private(set) var adding = false
     /// One check per item: checked foods are logged and counted (all checked whenever a list arrives).
     public private(set) var selected: [Bool] = []
-    /// Foods already logged on their own with + (Describe): they stay on the list, marked, out of the total.
-    public private(set) var logged: [Bool] = []
     public private(set) var busy = false
     public private(set) var message: String?
     public private(set) var assumedNote: String?
@@ -59,8 +57,6 @@ public final class EstimateModel {
     public var totalCalories: Int { Int(chosen.reduce(0) { $0 + $1.calories }.rounded()) }
 
     public var selectedCount: Int { selected.filter { $0 }.count }
-    /// Foods not yet logged with + ("Log all 2").
-    public var remainingCount: Int { logged.filter { !$0 }.count }
     /// One meal logs every food listed; Separate items the checked ones. One meal needs a name.
     public var canLog: Bool {
         guard !busy, !adding, !chosen.isEmpty else { return false }
@@ -69,46 +65,24 @@ public final class EstimateModel {
 
     private var isMeal: Bool { showsSwitch && mode == .meal }
 
-    /// A new list (or none): every food checked, none logged yet; opens on Separate items.
+    /// A new list (or none): every food checked; opens on Separate items (2026-11-23).
     private func show(_ list: [EstimateItem], mealName name: String? = nil) {
         items = list
         selected = Array(repeating: true, count: list.count)
-        logged = Array(repeating: false, count: list.count)
         showsSwitch = name != nil && list.count > 1
         mealName = name ?? ""
-        mode = .items // 2026-11-23: each food its own entry first; One meal is a tap away
+        mode = .items // 2026-11-23: each checked food its own entry first; One meal is a tap away
         saveToMyFoods = false
         addText = ""
     }
 
-    private var chosen: [EstimateItem] {
-        items.indices.filter { !logged[$0] && (isMeal || selected[$0]) }.map { items[$0] }
-    }
-
-    /// +: logs this one food on its own (its own entry), on the day being looked at, in `meal`. The list stays,
-    /// with the food marked logged and out of the total.
-    public func logOne(at i: Int) async -> Bool {
-        guard items.indices.contains(i), !logged[i], !busy else { return false }
-        busy = true
-        defer { busy = false }
-        do {
-            _ = try await api.send(FoodAPI.logEstimates([items[i]], day: dayStore.selected, meal: meal, combine: nil))
-            logged[i] = true
-            message = nil
-            await dayStore.reload()
-            return true
-        } catch {
-            message = Self.text(error)
-            return false
-        }
-    }
+    private var chosen: [EstimateItem] { isMeal ? items : items.indices.filter { selected[$0] }.map { items[$0] } }
 
     /// Takes one food off the list (both views).
     public func remove(at i: Int) {
         guard items.indices.contains(i) else { return }
         items.remove(at: i)
         selected.remove(at: i)
-        logged.remove(at: i)
     }
 
     /// "Add a food": asks the AI for `addText` and adds what it finds (checked) to the list.
@@ -122,7 +96,6 @@ public final class EstimateModel {
             let result = try await api.send(FoodAPI.estimateItems(words))
             items += result.items
             selected += Array(repeating: true, count: result.items.count)
-            logged += Array(repeating: false, count: result.items.count)
             addText = ""
         } catch APIError.server(503, _) {
             message = Self.needsAI

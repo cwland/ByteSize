@@ -1,8 +1,8 @@
 import ByteSizeKit
 import SwiftUI
 
-/// The foods the AI listed (Describe, plate photos). Describe: tap a food for its amount, + to log just that one,
-/// Log all for the rest (each its own entry). Photos: each checked to start, then Log selected. Several described foods with a name together (2026-11-22 design)
+/// The foods the AI listed (Describe, plate photos): each checked to start; uncheck what you don't want, tap a food
+/// for its amount, pick a meal, then Log selected. Several described foods with a name together (2026-11-22 design)
 /// get a One meal / Separate items switch, opening on One meal: one entry under the (renameable) name, optionally
 /// saved to My foods. A food can be swiped away (or removed on its amount screen) and, in Describe, more added.
 struct EstimateItemsView: View {
@@ -16,8 +16,6 @@ struct EstimateItemsView: View {
     @Environment(\.palette) private var palette
 
     private var isMeal: Bool { model.showsSwitch && model.mode == .meal }
-    /// Describe lists each food with a + (log it on its own; tap the row for its amount); photos keep checkboxes.
-    private var plusRows: Bool { allowAdd }
 
     var body: some View {
         if model.showsSwitch {
@@ -37,10 +35,9 @@ struct EstimateItemsView: View {
         }
         Section(isMeal ? "Made with" : "What the AI found") {
             ForEach(Array(model.items.enumerated()), id: \.offset) { i, item in
-                let done = model.logged.indices.contains(i) && model.logged[i]
-                let on = !done && (isMeal || plusRows || (model.selected.indices.contains(i) && model.selected[i]))
+                let on = isMeal || (model.selected.indices.contains(i) && model.selected[i])
                 HStack(spacing: 12) {
-                    if !isMeal && !plusRows {
+                    if !isMeal {
                         Button { model.toggle(at: i) } label: {
                             Image(systemName: on ? "checkmark.circle.fill" : "circle")
                                 .font(.title2)
@@ -71,20 +68,6 @@ struct EstimateItemsView: View {
                     }
                     .buttonStyle(.borderless)
                     .accessibilityIdentifier("item-\(item.food.name)")
-                    // Describe: + logs just this food (its own entry); a ✓ once it's logged
-                    if plusRows && !isMeal {
-                        Button {
-                            Task { if await model.logOne(at: i) { Haptics.logged() } }
-                        } label: {
-                            Image(systemName: done ? "checkmark.circle.fill" : "plus.circle.fill")
-                                .font(.title2)
-                                .foregroundStyle(palette.color(done ? "subtle" : "primary"))
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(done || model.busy)
-                        .accessibilityLabel(done ? "\(item.food.name) logged" : "Log \(item.food.name)")
-                        .accessibilityIdentifier("plus-\(item.food.name)")
-                    }
                 }
                 .swipeActions {
                     Button(role: .destructive) { model.remove(at: i) } label: { Label("Remove", systemImage: "trash") }
@@ -120,24 +103,18 @@ struct EstimateItemsView: View {
             Button {
                 Task {
                     let meal = isMeal ? model.mealName.trimmingCharacters(in: .whitespacesAndNewlines) : nil
-                    let names = model.items.indices.filter { model.selected[$0] && !model.logged[$0] }.map { model.items[$0].food.name }
+                    let names = model.items.indices.filter { model.selected[$0] }.map { model.items[$0].food.name }
                     if await model.logSelected() {
                         Haptics.logged()
                         onLogged(meal ?? (names.count == 1 ? names[0] : "\(names.count) foods"))
                     }
                 }
             } label: {
-                HStack { Spacer(); Text(logTitle).bold(); Spacer() }
+                HStack { Spacer(); Text(isMeal ? "Log \(model.mealName.trimmingCharacters(in: .whitespacesAndNewlines))" : "Log selected").bold(); Spacer() }
             }
             .disabled(!model.canLog)
             .accessibilityIdentifier("logSelected")
         }
-    }
-
-    /// One meal: "Log Egg sandwich"; Describe: "Log all 2" (each its own entry); photos: "Log selected".
-    private var logTitle: String {
-        if isMeal { return "Log \(model.mealName.trimmingCharacters(in: .whitespacesAndNewlines))" }
-        return plusRows ? "Log all \(model.remainingCount)" : "Log selected"
     }
 }
 
