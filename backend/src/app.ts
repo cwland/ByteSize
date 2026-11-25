@@ -36,6 +36,8 @@ import goalRoutes from "./routes/goals.js";
 import trendRoutes from "./routes/trends.js";
 import culuryRoutes from "./routes/culury.js";
 import restaurantRoutes from "./routes/restaurants.js";
+import restaurantBrandRoutes from "./routes/restaurant-brands.js";
+import { restaurantFlagsHook } from "./lib/restaurantBrands.js";
 import backupRoutes from "./routes/backups.js";
 import { scheduleBackups } from "./lib/backup.js";
 import exportRoutes from "./routes/export.js";
@@ -206,6 +208,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     throw new HttpError(401, "Not logged in");
   });
 
+  restaurantFlagsHook(app); // every answer with foods or log entries says which are restaurants (on the root: all routes)
   app.register(healthRoutes);
   app.register(authRoutes);
   app.register(passwordResetRoutes); // forgot password: an emailed 6-digit code
@@ -233,6 +236,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.register(trendRoutes); // weekly trends, badges, vacations
   app.register(culuryRoutes); // the person's RecipeHub link: meal plan and recipes
   app.register(restaurantRoutes); // restaurant menus (Spoonacular, FatSecret)
+  app.register(restaurantBrandRoutes); // "Treat <brand> as a restaurant" / "Not a restaurant"
   app.register(backupRoutes); // admin: whole-server backups and restore
   app.register(exportRoutes); // Download my data
   app.register(appInfoRoutes); // Settings › App info: fun usage numbers

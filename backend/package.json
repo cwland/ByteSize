@@ -1,6 +1,6 @@
 {
   "name": "bytesize-api",
-  "version": "0.16.7",
+  "version": "0.17.0",
   "license": "MIT",
   "private": true,
   "type": "module",

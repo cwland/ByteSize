@@ -42,6 +42,8 @@ public final class DashboardModel {
             waterButtonsMl = me.waterButtonsMl
             glp1On = me.glp1On
             dayStore.weekStart = me.weekStart
+            dayStore.mealWindows = me.mealWindows
+            dayStore.dateFormat = DateFormat(key: me.dateFormat)
         }
         if let columns = saved?.layout?.columns {
             widgets = columns.first.map { $0.compactMap(DashboardWidget.init(rawValue:)) } ?? []

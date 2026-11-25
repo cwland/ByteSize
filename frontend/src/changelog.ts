@@ -15,6 +15,21 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.17.0",
+    date: "2026-11-25",
+    title: "Meal times, restaurant tags and meal pills",
+    added: [
+      "Settings › Profile: set your own meal times (when breakfast, lunch, snacks and dinner end). They decide which meal new food goes to by default.",
+      "Restaurant tags: food from a restaurant shows the restaurant's name as a teal tag in search and in your food log, on the web and the iPhone. Big chains are known already; mark any other brand in Edit entry (or long-press on the iPhone) with \"Treat … as a restaurant\", or say a brand isn't one.",
+      "iPhone: Profile › Settings changes your units, week start, date format and meal times. They're saved to your account, so the web app matches.",
+    ],
+    changed: [
+      "iPhone: the amount screen picks the meal with Breakfast · Lunch · Dinner · Snacks pills at the bottom, and the Log button says which meal (\"Log to Dinner\").",
+      "iPhone: the default meal and the dates follow your own meal times and date format.",
+      "Food log on the web: each entry shows its brand.",
+    ],
+  },
+  {
     version: "0.16.7",
     date: "2026-11-24",
     fixed: [

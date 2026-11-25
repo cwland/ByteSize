@@ -5,6 +5,7 @@ import SwiftUI
 /// The Goals tab: today's targets and the active goals (read only — set on the web), the weight chart, and the
 /// weigh-in history with logging and swipe to delete.
 struct GoalsView: View {
+    @Environment(\.dateLook) private var dateLook
     @Bindable var model: GoalsModel
     @Environment(\.palette) private var palette
     @State private var logging = false
@@ -144,7 +145,7 @@ struct GoalsView: View {
             stat("Start", w?.start.map { units.weight(kg: $0.weightKg) })
             stat("Trend", w?.trendKg.map { units.weight(kg: $0) })
             stat("Lost", w?.lostKg.map { units.weight(kg: $0) })
-            stat("Goal date", w?.goalDate?.date.map(DayText.short))
+            stat("Goal date", w?.goalDate?.date.map { DayText.short($0, dateLook) })
         }
     }
 
@@ -163,7 +164,7 @@ struct GoalsView: View {
         Section("History") {
             ForEach(model.shownHistory) { row in
                 HStack {
-                    Text(DayText.long(row.day)).foregroundStyle(palette.color("ink"))
+                    Text(DayText.long(row.day, dateLook)).foregroundStyle(palette.color("ink"))
                     Spacer()
                     Text(units.weight(kg: row.weightKg)).monospacedDigit().foregroundStyle(palette.color("ink"))
                     change(row.changeKg).frame(minWidth: 70, alignment: .trailing)

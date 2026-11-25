@@ -38,6 +38,7 @@ export type FoodResult = {
   summary?: boolean; // a FatSecret search summary (calories, fat, carbs, protein): fetched whole when opened
   savedAt?: string | null; // a kept copy of an outside food: when it was fetched ("Saved copy from …"); null: fetched just now
   start?: Start; // where its amount starts: the package serving, written its own way (2 | tbsp, 15 | g, 1 | slice)
+  restaurant?: boolean; // its brand is a restaurant (the chain list, the person's own say, or a menu item)
 };
 export type Start = { servingIndex: number; unit: Unit; quantity: number };
 // POST /api/photos/analyze (multipart: images 1–2, mode). A barcode found in the photo is looked up
@@ -89,6 +90,7 @@ export type LogEntry = {
   source: string;
   sourceRef: string | null;
   treat?: boolean; // §40b: paid from the weekly workout-calorie bank on purpose
+  restaurant?: boolean; // its brand is a restaurant (the chain list, the person's own say, or a menu item)
 };
 export type Range = { min: number; max: number };
 export type PlanId = "maintenance" | "relaxed" | "steady" | "accelerated" | "vigorous";

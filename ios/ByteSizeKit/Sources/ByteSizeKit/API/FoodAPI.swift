@@ -37,6 +37,15 @@ public enum FoodAPI {
 
     struct FavoriteBody: Encodable { let food: FoodRef }
 
+    /// "Treat <brand> as a restaurant" / "<brand> is not a restaurant": the person's own say, which beats the chain list.
+    public struct RestaurantMark: Codable, Equatable, Sendable {
+        public let brand: String
+        public let restaurant: Bool
+    }
+    public static func markRestaurant(brand: String, _ restaurant: Bool) -> Endpoint<RestaurantMark> {
+        Endpoint("PUT", "/api/restaurant-brands", json: RestaurantMark(brand: brand, restaurant: restaurant))
+    }
+
     public static func addFavorite(_ food: Food) -> Endpoint<FavoriteRefs> {
         Endpoint("PUT", "/api/foods/favorites", json: FavoriteBody(food: FoodRef(kind: food.kind, id: food.id)))
     }

@@ -64,21 +64,11 @@ struct NoticeBanner: View {
 }
 
 enum DayText {
-    /// "Thursday, Nov 19"
-    static func long(_ day: String) -> String {
-        let f = DateFormatter()
-        f.timeZone = TimeZone(identifier: "UTC")
-        f.setLocalizedDateFormatFromTemplate("EEEEMMMd")
-        return f.string(from: DayMath.noon(day))
-    }
+    /// The day with its weekday, the account's way ("Thursday, Nov 19" by default).
+    static func long(_ day: String, _ look: DateLook) -> String { look.format.long(day) }
 
-    /// "Nov 19"
-    static func short(_ day: String) -> String {
-        let f = DateFormatter()
-        f.timeZone = TimeZone(identifier: "UTC")
-        f.setLocalizedDateFormatFromTemplate("MMMd")
-        return f.string(from: DayMath.noon(day))
-    }
+    /// The day without its weekday, the account's way ("Nov 19"; the year when it isn't this year's).
+    static func short(_ day: String, _ look: DateLook) -> String { look.format.short(day, today: look.today) }
 
     /// "T" for Thursday
     static func weekdayLetter(_ day: String) -> String {
@@ -109,5 +99,29 @@ enum ShotSite {
         guard parts.count == 2 else { return id }
         let place = ["abdomen": "Abdomen", "thigh": "Thigh", "arm": "Upper arm"][String(parts[0])] ?? String(parts[0])
         return "\(place) · \(parts[1])"
+    }
+}
+
+/// How dates are written on screen: the account's date format, and today (for whether to add the year).
+/// Set once at the top of the signed-in tabs from the DayStore, which follows the account's settings.
+struct DateLook: Equatable {
+    var format: DateFormat = .default
+    var today: String = DateLook.localToday()
+
+    /// "2026-11-25" on this phone's calendar (until the account's today is known).
+    static func localToday() -> String {
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        return String(format: "%04d-%02d-%02d", c.year ?? 1970, c.month ?? 1, c.day ?? 1)
+    }
+}
+
+private struct DateLookKey: EnvironmentKey {
+    static let defaultValue = DateLook()
+}
+
+extension EnvironmentValues {
+    var dateLook: DateLook {
+        get { self[DateLookKey.self] }
+        set { self[DateLookKey.self] = newValue }
     }
 }

@@ -1,7 +1,7 @@
 import ByteSizeKit
 import SwiftUI
 
-/// How much to log: a serving, an amount, a fraction and the meal, with an ≈ calorie preview.
+/// How much to log: a serving, an amount, a fraction and the meal (pills at the bottom), with an ≈ calorie preview.
 struct PortionSheet: View {
     @Bindable var portion: PortionModel
     /// Logs it; true closes the sheet.
@@ -24,6 +24,11 @@ struct PortionSheet: View {
         let action: () -> Void
     }
     var again: Again?
+    /// The food's brand under its name; a restaurant's as its tag.
+    var brand: String? = nil
+    var restaurant = false
+    /// Room for the tab bar under a screen pushed inside a tab (My Foods): Log and the pills sit above the raised (+).
+    @Environment(\.tabBarClearance) private var tabBarClearance
     @State private var estimating = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.palette) private var palette
@@ -35,7 +40,7 @@ struct PortionSheet: View {
         Button {
             if portion.isBig { askingBig = true } else { log() }
         } label: {
-            Text("Log").bold().frame(maxWidth: again == nil ? nil : .infinity)
+            Text("Log to \(portion.meal.title)").bold().frame(maxWidth: .infinity)
         }
         .disabled(!portion.canLog || logging)
         .accessibilityIdentifier("logButton")
@@ -67,7 +72,10 @@ struct PortionSheet: View {
                 Section {
                     HStack(spacing: 12) {
                         Text(portion.icon).font(.largeTitle)
-                        Text(portion.name).font(.headline)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(portion.name).font(.headline)
+                            if brand != nil { BrandLine(brand: brand, restaurant: restaurant, detail: "") }
+                        }
                         Spacer()
                         // ≈: the server's numbers rule once it's logged
                         Text(portion.previewCalories.map { "≈ \($0) cal" } ?? "—")
@@ -101,7 +109,6 @@ struct PortionSheet: View {
                 }
                 Section {
                     ServingRow(portion: portion, open: $wheelOpen)
-                    MealPicker(meal: $portion.meal)
                 }
                 NutritionSection(portion: portion)
                 if let message {
@@ -127,28 +134,68 @@ struct PortionSheet: View {
                         .accessibilityIdentifier("bookmark")
                     }
                 }
-                // From a scan or photo, Log sits at the bottom with "Scan again" (owner's ask); elsewhere, in the bar
-                if again == nil {
-                    ToolbarItem(placement: .confirmationAction) { logButton.bold() }
-                }
             }
+            // The meal as pills and Log at the bottom, in reach of a thumb (with "Scan again" after a scan or photo)
             .safeAreaInset(edge: .bottom) {
-                if let again {
-                    VStack(spacing: 10) {
-                        logButton
-                            .frame(maxWidth: .infinity)
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.large)
+                VStack(spacing: 10) {
+                    MealPills(meal: $portion.meal)
+                    logButton
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                    if let again {
                         Button(action: again.action) { Text(again.title).frame(maxWidth: .infinity) }
                             .buttonStyle(.bordered)
                             .controlSize(.large)
                             .accessibilityIdentifier("again")
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 10)
-                    .background(palette.color("page"))
                 }
+                .padding(.horizontal)
+                .padding(.top, 10)
+                .padding(.bottom, 10 + tabBarClearance)
+                .background(palette.color("page"))
             }
+    }
+}
+
+private struct TabBarClearanceKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    /// How much of the bottom the tab bar covers: set on the tabs' navigation, so screens pushed there keep clear of it.
+    var tabBarClearance: CGFloat {
+        get { self[TabBarClearanceKey.self] }
+        set { self[TabBarClearanceKey.self] = newValue }
+    }
+}
+
+/// Breakfast · Lunch · Dinner · Snacks as one-tap pills, the chosen one filled (the amount screen's meal).
+struct MealPills: View {
+    @Binding var meal: Meal
+    @Environment(\.palette) private var palette
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(Meal.allCases.filter(\.addable)) { m in
+                let on = m == meal
+                Button { meal = m } label: {
+                    Text(m.title)
+                        .font(.subheadline.weight(on ? .bold : .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .foregroundStyle(on ? palette.color("on-primary") : palette.color("ink"))
+                        .background(on ? palette.color("primary") : palette.color("container"), in: Capsule())
+                        .overlay(Capsule().strokeBorder(on ? Color.clear : palette.color("line")))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("mealPill-\(m.rawValue)")
+                .accessibilityAddTraits(on ? [.isSelected] : [])
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Meal")
     }
 }
 
@@ -173,6 +220,7 @@ struct FoodRow: View {
     let name: String
     let brand: String?
     let detail: String
+    var restaurant = false
     @Environment(\.palette) private var palette
 
     var body: some View {
@@ -180,9 +228,7 @@ struct FoodRow: View {
             Text(icon).font(.title2)
             VStack(alignment: .leading, spacing: 2) {
                 Text(name).foregroundStyle(palette.color("ink"))
-                Text([brand, detail].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.caption)
-                    .foregroundStyle(palette.color("subtle"))
+                BrandLine(brand: brand, restaurant: restaurant, detail: detail)
             }
             Spacer()
         }
@@ -190,17 +236,19 @@ struct FoodRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    init(icon: String, name: String, brand: String?, detail: String) {
+    init(icon: String, name: String, brand: String?, detail: String, restaurant: Bool = false) {
         self.icon = icon
         self.name = name
         self.brand = brand
         self.detail = detail
+        self.restaurant = restaurant
     }
 
     init(food: Food) {
         icon = food.icon
         name = food.name
         brand = food.brand
+        restaurant = food.isRestaurant
         let serving = food.servings.first?.label ?? "serving"
         detail = !food.isLoggable ? "Log quick meals from My Foods"
             : food.isCulury && food.nutrients.values.isEmpty ? "RecipeHub recipe · \(serving)"
@@ -253,6 +301,7 @@ struct FoodPortionView: View {
     var body: some View {
         // The model's message read here, so a failed bookmark or log shows while this screen is open
         PortionSheet(portion: portion, onLog: { await log(food, portion) }, message: favorites?.message ?? message, pushed: pushed, bookmark: bookmark,
-                     note: food.isCulury ? favorites?.recipeNote : nil, estimate: estimate, again: again)
+                     note: food.isCulury ? favorites?.recipeNote : nil, estimate: estimate, again: again,
+                     brand: food.brand, restaurant: food.isRestaurant)
     }
 }

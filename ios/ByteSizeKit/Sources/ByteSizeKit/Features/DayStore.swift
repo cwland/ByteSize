@@ -53,6 +53,10 @@ public final class DayStore {
     public private(set) var dayIsFor: String?
     /// 0 = Sunday … 6 = Saturday (the account's setting; the Dashboard fills it in once settings load)
     public var weekStart: Int
+    /// When each meal ends (the account's setting; the Dashboard fills it in once settings load)
+    public var mealWindows: MealWindows = .defaults
+    /// How dates are written (the account's setting; the Dashboard fills it in once settings load)
+    public var dateFormat: DateFormat = .default
 
     private let api: APIClient
     private let timeZone: TimeZone

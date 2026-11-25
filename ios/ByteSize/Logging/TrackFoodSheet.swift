@@ -285,11 +285,17 @@ struct TrackFoodSheet: View {
                             if let food = item.food, food.isLoggable { open(food) }
                         } label: {
                             FoodRow(icon: item.entry.icon, name: item.entry.name, brand: item.entry.brand,
-                                    detail: "\(item.entry.amountText(units: units)) · \(Int(item.entry.calories.rounded())) cal")
+                                    detail: "\(item.entry.amountText(units: units)) · \(Int(item.entry.calories.rounded())) cal",
+                                    restaurant: item.entry.isRestaurant)
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("food-\(item.entry.name)")
                         quickAdd(item.entry.name) { await model.copyYesterday(item) }
+                    }
+                    .contextMenu {
+                        RestaurantMenu(brand: item.entry.brand, restaurant: item.entry.isRestaurant) { brand, on in
+                            Task { await model.markRestaurant(brand: brand, on) }
+                        }
                     }
                 }
             } header: {
@@ -348,6 +354,11 @@ struct TrackFoodSheet: View {
                                 if food.isCulury, food.nutrients.values.isEmpty { open(food); return false }
                                 return await model.quickLog(food)
                             }
+                        }
+                    }
+                    .contextMenu {
+                        RestaurantMenu(brand: food.brand, restaurant: food.isRestaurant) { brand, on in
+                            Task { await model.markRestaurant(brand: brand, on) }
                         }
                     }
                 }

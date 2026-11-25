@@ -5,6 +5,7 @@ import SwiftUI
 /// calendar), and a row of days that scrolls and snaps one day at a time, the chosen one centred. A year back to a
 /// week ahead; days after today are shown, not chosen. Logged days have a dot.
 struct DayStrip: View {
+    @Environment(\.dateLook) private var dateLook
     static let visibleDays = 7
     static let spacing: CGFloat = 4
     let days: DayStore
@@ -16,13 +17,13 @@ struct DayStrip: View {
         VStack(spacing: 8) {
             Button { pickingDay = true } label: {
                 HStack(spacing: 4) {
-                    Text(days.isToday ? "Today" : DayText.long(days.selected)).font(.headline)
+                    Text(days.isToday ? "Today" : DayText.long(days.selected, dateLook)).font(.headline)
                     Image(systemName: "chevron.down").font(.caption.weight(.semibold))
                 }
                 .foregroundStyle(palette.color("ink"))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(days.isToday ? "Today" : DayText.long(days.selected))
+            .accessibilityLabel(days.isToday ? "Today" : DayText.long(days.selected, dateLook))
             .accessibilityHint("Opens a month calendar")
             .accessibilityIdentifier("dayHeader")
 
@@ -68,7 +69,7 @@ struct DayStrip: View {
         // Exactly a seventh of the row (spacing included), so the strip always shows seven whole days, never a cut-off one
         .containerRelativeFrame(.horizontal, count: Self.visibleDays, spacing: Self.spacing)
         .disabled(!choosable)
-        .accessibilityLabel(DayText.long(day) + (days.loggedDays.contains(day) ? ", logged" : ""))
+        .accessibilityLabel(DayText.long(day, dateLook) + (days.loggedDays.contains(day) ? ", logged" : ""))
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("day-\(day)")
     }

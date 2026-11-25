@@ -22,6 +22,10 @@ public struct Food: Codable, Identifiable, Hashable, Sendable {
     public let baseCacheId: Int?
     /// Where its amount starts: the package serving, written its own way (2 | tbsp, 15 | g, 1 | slice); servers before 0.15 don't send it.
     public var start: StartAmount? = nil
+    /// Its brand is a restaurant (the server's chain list, the person's own say, or a menu item); servers before 0.17 don't send it.
+    public var restaurant: Bool? = nil
+
+    public var isRestaurant: Bool { restaurant == true && brand != nil }
 
     /// The amount to start at: as it was last logged, else its package serving, else one of servings[0].
     public var startingAmount: LastPortion {

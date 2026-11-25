@@ -55,7 +55,7 @@ public final class TrackFoodModel {
     public init(api: APIClient, dayStore: DayStore, meal: Meal? = nil, now: @escaping () -> Date = Date.init) {
         self.api = api
         self.dayStore = dayStore
-        self.meal = meal ?? Meal.suggested(at: now(), in: dayStore.zone)
+        self.meal = meal ?? Meal.suggested(at: now(), in: dayStore.zone, windows: dayStore.mealWindows)
     }
 
     public func load() async {
@@ -234,6 +234,19 @@ public final class TrackFoodModel {
         favorites.contains { fav in
             fav.ref == food.ref || Self.same(fav, food.ref) || (fav.baseCacheId != nil && fav.baseCacheId == food.baseCacheId)
         }
+    }
+
+    /// Long-press › "Treat <brand> as a restaurant" / "<brand> is not a restaurant"; the lists come back with the new tags.
+    public func markRestaurant(brand: String, _ on: Bool) async {
+        do {
+            _ = try await api.send(FoodAPI.markRestaurant(brand: brand, on))
+            message = nil
+        } catch {
+            message = (error as? APIError)?.message ?? error.localizedDescription
+            return
+        }
+        await load()
+        if !query.trimmingCharacters(in: .whitespaces).isEmpty { await search() }
     }
 
     /// The bookmark: on → stored; off → removed (with the database food it corrects, which may be how it's stored).

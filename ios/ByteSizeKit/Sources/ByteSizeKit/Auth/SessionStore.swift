@@ -93,6 +93,13 @@ public final class SessionStore {
         Task.detached { _ = try? await tellServer.send(Auth.logout()) }
     }
 
+    /// The account changed (units saved on the phone): remember it and show it everywhere.
+    public func update(_ user: User) {
+        guard case .signedIn = state else { return }
+        defaults.set(try? JSONEncoder().encode(user), forKey: Key.lastUser)
+        state = .signedIn(user)
+    }
+
     func handleUnauthorized(from made: Int) {
         guard made == generation else { return } // an earlier login's request
         if case .signedOut = state { return }

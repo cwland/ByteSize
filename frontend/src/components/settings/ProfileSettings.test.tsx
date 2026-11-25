@@ -113,3 +113,95 @@ describe("ProfileSettings GLP-1 shots (§40a)", () => {
     expect(screen.queryByRole("region", { name: "GLP-1" })).not.toBeInTheDocument();
   });
 });
+
+describe("ProfileSettings meal times", () => {
+  const ORDER_ERROR = "Meal times must go breakfast, lunch, snacks, dinner, each later than the one before";
+  const field = (name: string) => screen.getByLabelText(name) as HTMLInputElement;
+
+  it("shows the saved meal times under Week starts on", async () => {
+    fakeServer({ "GET /api/settings/me": () => settingsMe, "PATCH /api/profile": (b) => ({ user: userJson(b) }) });
+    renderWithSession(<ProfileSettings />);
+    await waitFor(() => expect(field("Breakfast until")).toHaveValue("10:30"));
+    expect(field("Lunch until")).toHaveValue("14:30");
+    expect(field("Snacks until")).toHaveValue("17:00");
+    expect(field("Dinner until")).toHaveValue("21:00");
+    const weekStart = screen.getByRole("combobox", { name: "Week starts on" });
+    expect(weekStart.compareDocumentPosition(field("Breakfast until")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("After dinner counts as snacks.")).toBeInTheDocument();
+  });
+
+  it("fields are disabled until the settings load", async () => {
+    fakeServer({ "GET /api/settings/me": () => new Promise(() => {}), "PATCH /api/profile": (b) => ({ user: userJson(b) }) });
+    renderWithSession(<ProfileSettings />);
+    expect(field("Breakfast until")).toBeDisabled();
+    expect(field("Dinner until")).toBeDisabled();
+  });
+
+  it("saves changed meal times with the profile", async () => {
+    const server = fakeServer({
+      "GET /api/settings/me": () => settingsMe,
+      "PATCH /api/profile": (b) => ({ user: userJson(b) }),
+      "PUT /api/settings/me": (b) => b,
+    });
+    renderWithSession(<ProfileSettings />);
+    await waitFor(() => expect(field("Lunch until")).toHaveValue("14:30"));
+    const user = userEvent.setup();
+    await user.clear(field("Lunch until"));
+    await user.type(field("Lunch until"), "13:00");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    expect(server.writes().find((w) => w.path === "/api/settings/me")).toMatchObject({
+      method: "PUT",
+      body: {
+        mealWindows: { breakfast: "10:30", lunch: "13:00", snacks: "17:00", dinner: "21:00" },
+        waterButtonsMl: settingsMe.waterButtonsMl,
+        weekStart: settingsMe.weekStart,
+        dateFormat: settingsMe.dateFormat,
+      },
+    });
+  });
+
+  it("unchanged meal times aren't sent", async () => {
+    const server = fakeServer({
+      "GET /api/settings/me": () => settingsMe,
+      "PATCH /api/profile": (b) => ({ user: userJson(b) }),
+      "PUT /api/settings/me": (b) => b,
+    });
+    renderWithSession(<ProfileSettings />);
+    await waitFor(() => expect(field("Breakfast until")).toHaveValue("10:30"));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    expect(server.writes().some((w) => w.path === "/api/settings/me")).toBe(false);
+  });
+
+  it("shows the server's order error", async () => {
+    fakeServer({
+      "GET /api/settings/me": () => settingsMe,
+      "PATCH /api/profile": (b) => ({ user: userJson(b) }),
+      "PUT /api/settings/me": () => ({ status: 400, json: { error: ORDER_ERROR } }),
+    });
+    renderWithSession(<ProfileSettings />);
+    await waitFor(() => expect(field("Lunch until")).toHaveValue("14:30"));
+    const user = userEvent.setup();
+    await user.clear(field("Lunch until"));
+    await user.type(field("Lunch until"), "08:00");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(ORDER_ERROR)).toBeInTheDocument();
+  });
+
+  it("Reset to defaults puts the default times back without saving", async () => {
+    const server = fakeServer({
+      "GET /api/settings/me": () => ({ ...settingsMe, mealWindows: { breakfast: "09:00", lunch: "13:00", snacks: "16:30", dinner: "20:00" } }),
+      "PATCH /api/profile": (b) => ({ user: userJson(b) }),
+      "PUT /api/settings/me": (b) => b,
+    });
+    renderWithSession(<ProfileSettings />);
+    await waitFor(() => expect(field("Breakfast until")).toHaveValue("09:00"));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Reset to defaults" }));
+    expect(field("Breakfast until")).toHaveValue("10:30");
+    expect(field("Lunch until")).toHaveValue("14:30");
+    expect(field("Snacks until")).toHaveValue("17:00");
+    expect(field("Dinner until")).toHaveValue("21:00");
+    expect(server.writes().some((w) => w.path === "/api/settings/me")).toBe(false);
+  });
+});

@@ -8,11 +8,11 @@ final class DashboardModelTests: XCTestCase {
     private let noon = ISO8601DateFormatter().date(from: "2026-11-19T19:00:00Z")!
 
     /// A small server: settings, layout, weight, GLP-1, badges, a day, and the writes.
-    private func serve(layout: String = #"{"layout":null}"#, glp1On: Bool = true, weightError: Bool = false) {
+    private func serve(layout: String = #"{"layout":null}"#, glp1On: Bool = true, weightError: Bool = false, extraSettings: String = "") {
         HTTPStub.requests = []
         HTTPStub.handler = { req in
             switch (req.httpMethod ?? "", req.url?.path() ?? "") {
-            case ("GET", "/api/settings/me"): return .json(200, #"{"waterButtonsMl":[237,473],"weekStart":0,"glp1On":\#(glp1On)}"#)
+            case ("GET", "/api/settings/me"): return .json(200, #"{\#(extraSettings)"waterButtonsMl":[237,473],"weekStart":0,"glp1On":\#(glp1On)}"#)
             case ("GET", "/api/layouts/ios"): return .json(200, layout)
             case ("PUT", "/api/layouts/ios"): return .json(200, #"{"layout":{"version":1,"columns":[[]]}}"#)
             case ("GET", "/api/weight"): return .json(200, #"{"weighIns":[{"day":"2026-11-12","weightKg":83.0,"trendKg":83.1},{"day":"2026-11-19","weightKg":82.28,"trendKg":82.6}],"latest":{"day":"2026-11-19","weightKg":82.28},"goalKg":75}"#)
@@ -154,5 +154,19 @@ final class DashboardModelTests: XCTestCase {
         HTTPStub.requests = []
         await m.addWater(ml: 237)
         XCTAssertTrue(requests("POST", "/api/log").isEmpty)
+    }
+
+    func testLoadAppliesMealWindowsToTheDayStore() async {
+        serve(extraSettings: #""mealWindows":{"breakfast":"09:00","lunch":"13:00","snacks":"16:30","dinner":"20:00"},"#)
+        let (m, days) = model()
+        await m.load()
+        XCTAssertEqual(days.mealWindows, MealWindows(breakfast: "09:00", lunch: "13:00", snacks: "16:30", dinner: "20:00"))
+    }
+
+    func testLoadAppliesDateFormatToTheDayStore() async {
+        serve(extraSettings: #""dateFormat":"dmy-dot","#)
+        let (m, days) = model()
+        await m.load()
+        XCTAssertEqual(days.dateFormat, .dmyDot)
     }
 }

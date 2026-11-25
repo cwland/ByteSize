@@ -4,6 +4,7 @@ import SwiftUI
 /// The day at a glance: the calorie budget bar (range band, "N to go"), protein / fiber / water rings full at
 /// the range minimum. The chevron (SPEC-02) opens the full daily totals, as on the web; it stays as left.
 struct OverviewCard: View {
+    @Environment(\.dateLook) private var dateLook
     let days: DayStore
     let units: Units
     @Environment(\.palette) private var palette
@@ -12,7 +13,7 @@ struct OverviewCard: View {
     var body: some View {
         Card {
             HStack {
-                Text(days.isToday ? "Today's overview" : "Overview · \(DayText.short(days.selected))")
+                Text(days.isToday ? "Today's overview" : "Overview · \(DayText.short(days.selected, dateLook))")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(palette.color("subtle"))
                 Spacer()

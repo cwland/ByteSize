@@ -31,6 +31,8 @@
   /* Nutrient pills: calories use primary; protein and fiber have their own hues (readable in light and dark) */
   --color-protein: #5b9cf5;
   --color-fiber: var(--color-success);
+  /* Restaurant tags (a restaurant's name in search and the log): teal, readable in light and dark, apart from the orange actions */
+  --color-restaurant: light-dark(#07645b, #3cc8b4);
 }
 
 @layer base {

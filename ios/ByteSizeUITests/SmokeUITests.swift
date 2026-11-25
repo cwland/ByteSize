@@ -40,7 +40,8 @@ final class SmokeUITests: XCTestCase {
         app.buttons["Close"].firstMatch.tap()
 
         app.buttons["Profile"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Account and goals are set up in the ByteSize web app."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["settingsUnits"].waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(app.staticTexts["Goals are set up in the ByteSize web app."]).exists)
         shot("4-profile")
         app.buttons["Sign out"].firstMatch.tap()
         let confirm = app.sheets.buttons["Sign out"].exists ? app.sheets.buttons["Sign out"] : app.buttons.matching(identifier: "Sign out").element(boundBy: 1)
@@ -124,6 +125,9 @@ final class SmokeUITests: XCTestCase {
     // MARK: - Round 2: Dashboard and Food Log (stub day: 1138 cal of 1500–2000, 500 ml water)
 
     /// Polls `condition` for up to `timeout` seconds.
+    /// An element's label and value together (a picker row shows its choice as the value).
+    private func text(_ e: XCUIElement) -> String { e.label + " " + ((e.value as? String) ?? "") }
+
     private func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -150,6 +154,54 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(waitUntil { water.label == "25 fl oz" }, "water went up by 8 fl oz")
         app.swipeUp()
         shot("6-dashboard-lower")
+    }
+
+    /// Profile › Settings: the week start is saved to the account and shows again next time Profile opens.
+    func testProfileSettingsWeekStart() {
+        signedIn()
+        app.buttons["Profile"].firstMatch.tap()
+        let weekStart = app.buttons["settingsWeekStart"]
+        XCTAssertTrue(weekStart.waitForExistence(timeout: 5))
+        for row in ["settingsUnits", "settingsDateFormat", "settingsMealTimes"] {
+            XCTAssertTrue(app.buttons[row].exists, "missing \(row)")
+        }
+        XCTAssertTrue(waitUntil { weekStart.isEnabled }, "enabled once the settings load")
+        weekStart.tap()
+        app.buttons["Monday"].firstMatch.tap()
+        let showsMonday = waitUntil { self.text(weekStart).contains("Monday") }
+        if !showsMonday { try? app.debugDescription.write(toFile: "/tmp/bs-weekstart-tree.txt", atomically: true, encoding: .utf8) }
+        XCTAssertTrue(showsMonday, "shows the new week start")
+        shot("7-profile-settings")
+        app.buttons["Done"].firstMatch.tap()
+        app.buttons["Profile"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["settingsWeekStart"].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil { self.text(self.app.buttons["settingsWeekStart"]).contains("Monday") }, "saved to the account")
+
+        // Meal times opens with the four times and Reset
+        reveal(app.buttons["settingsMealTimes"]).tap()
+        XCTAssertTrue(app.navigationBars["Meal times"].waitForExistence(timeout: 5))
+        for name in ["Breakfast until", "Lunch until", "Snacks until", "Dinner until"] {
+            XCTAssertTrue(label(name).exists, "missing \(name)")
+        }
+        XCTAssertTrue(app.buttons["Reset to defaults"].exists)
+        shot("8-meal-times")
+    }
+
+    /// Profile › Settings › Units: metric is saved to the account; Profile stays open and the Dashboard shows ml.
+    func testProfileUnitsToMetric() {
+        signedIn()
+        let water = app.staticTexts["waterTotal"]
+        XCTAssertTrue(water.waitForExistence(timeout: 5))
+        XCTAssertEqual(water.label, "17 fl oz")
+        app.buttons["Profile"].firstMatch.tap()
+        let units = app.buttons["settingsUnits"]
+        XCTAssertTrue(units.waitForExistence(timeout: 5))
+        units.tap()
+        app.buttons["Metric (kg, ml)"].firstMatch.tap()
+        XCTAssertTrue(waitUntil { self.text(self.app.buttons["settingsUnits"]).contains("Metric") }, "shows metric")
+        XCTAssertTrue(app.buttons["Done"].firstMatch.exists, "Profile is still open")
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(waitUntil { self.app.staticTexts["waterTotal"].label == "500 ml" }, "the Dashboard shows ml")
     }
 
     func testFoodLogSwipeDeleteAndUndo() {
@@ -292,7 +344,9 @@ final class SmokeUITests: XCTestCase {
         let row = app.buttons["food-\(name)"]
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
-        XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5))
+        let opened = app.buttons["logButton"].waitForExistence(timeout: 5)
+        if !opened { try? app.debugDescription.write(toFile: "/tmp/bs-track-tree.txt", atomically: true, encoding: .utf8) }
+        XCTAssertTrue(opened)
     }
 
     private func trackSearch(_ text: String, pick name: String) {
@@ -568,6 +622,51 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(add.waitForExistence(timeout: 5), "an empty meal still shows, with its Add")
         add.tap()
         XCTAssertTrue(app.textFields["trackSearch"].waitForExistence(timeout: 5))
+    }
+
+    /// The amount screen picks the meal with four pills at the bottom (no Meal dropdown); the Log button names it.
+    func testAmountScreenMealPills() {
+        signedIn()
+        openDinnerFromTheFoodLog()
+        trackSearchHere("banana", pick: "Banana")
+        let dinner = app.buttons["mealPill-dinner"]
+        XCTAssertTrue(dinner.waitForExistence(timeout: 3))
+        XCTAssertTrue(dinner.isSelected, "opened from Dinner's Add")
+        for meal in ["breakfast", "lunch", "snacks"] {
+            XCTAssertTrue(app.buttons["mealPill-\(meal)"].exists, "missing \(meal)")
+            XCTAssertFalse(app.buttons["mealPill-\(meal)"].isSelected)
+        }
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Meal")).firstMatch.exists, "the dropdown is gone")
+        let log = app.buttons["logButton"]
+        XCTAssertEqual(log.label, "Log to Dinner")
+        app.buttons["mealPill-lunch"].tap()
+        XCTAssertTrue(waitUntil { self.app.buttons["mealPill-lunch"].isSelected && log.label == "Log to Lunch" })
+        XCTAssertFalse(dinner.isSelected)
+        shot("9-meal-pills")
+        log.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
+    }
+
+    /// Restaurant tags: long-press a Food Log entry › "Treat Fage as a restaurant" → its brand shows as a restaurant tag.
+    func testLongPressMarksABrandAsARestaurant() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        let yogurt = label("Greek yogurt").exists ? label("Greek yogurt") : app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Greek yogurt")).firstMatch
+        XCTAssertTrue(yogurt.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Restaurant: Fage")).firstMatch.exists)
+        yogurt.press(forDuration: 1.2)
+        let treat = app.buttons["Treat Fage as a restaurant"]
+        XCTAssertTrue(treat.waitForExistence(timeout: 3))
+        treat.tap()
+        let tag = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Restaurant: Fage")).firstMatch
+        XCTAssertTrue(tag.waitForExistence(timeout: 5), "the brand shows as a restaurant")
+        shot("10-restaurant-tag")
+        // and back
+        tag.press(forDuration: 1.2)
+        let not = app.buttons["Fage is not a restaurant"]
+        XCTAssertTrue(not.waitForExistence(timeout: 3))
+        not.tap()
+        XCTAssertTrue(waitUntil { !tag.exists }, "plain brand again")
     }
 
     func testEmptyMealsHaveAddAndOpenInThatMeal() {
@@ -1067,7 +1166,9 @@ final class SmokeUITests: XCTestCase {
         let log = app.buttons["logButton"]
         XCTAssertTrue(log.waitForExistence(timeout: 5))
         log.tap()
-        XCTAssertTrue(app.buttons["filter-all"].waitForExistence(timeout: 5), "back on the list after logging")
+        let back = app.buttons["filter-all"].waitForExistence(timeout: 5)
+        if !back { try? app.debugDescription.write(toFile: "/tmp/bs-recipe-tree.txt", atomically: true, encoding: .utf8) }
+        XCTAssertTrue(back, "back on the list after logging")
         XCTAssertTrue(foodLogShows("Chili"))
     }
 
@@ -1119,6 +1220,7 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(reveal(weight).waitForExistence(timeout: 5))
         weight.switches.firstMatch.tap()
         let status = app.descendants(matching: .any)["healthStatus"]
+        _ = reveal(status) // under the switches, below the Settings section
         XCTAssertTrue(waitUntil(timeout: 8) { status.exists && status.label.contains("1 weigh-in") }, status.exists ? status.label : "no status")
         shot("41-health")
         app.buttons["Done"].tap()

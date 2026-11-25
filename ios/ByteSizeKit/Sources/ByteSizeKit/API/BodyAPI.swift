@@ -2,9 +2,23 @@ import Foundation
 
 /// The person's own settings that the phone needs (GET /api/settings/me).
 public struct MySettings: Codable, Equatable, Sendable {
-    public let waterButtonsMl: [Int]
-    public let weekStart: Int
-    public let glp1On: Bool
+    public var mealWindows: MealWindows
+    public var waterButtonsMl: [Int]
+    public var weekStart: Int
+    /// A key of DateFormat; nil = the default look.
+    public var dateFormat: String?
+    public var glp1On: Bool
+
+    private enum CodingKeys: String, CodingKey { case mealWindows, waterButtonsMl, weekStart, dateFormat, glp1On }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        mealWindows = (try? c.decodeIfPresent(MealWindows.self, forKey: .mealWindows)) ?? .defaults // missing or partial: the defaults
+        waterButtonsMl = try c.decode([Int].self, forKey: .waterButtonsMl)
+        weekStart = try c.decode(Int.self, forKey: .weekStart)
+        dateFormat = try c.decodeIfPresent(String.self, forKey: .dateFormat)
+        glp1On = try c.decodeIfPresent(Bool.self, forKey: .glp1On) ?? false
+    }
 }
 
 public struct WeighIn: Codable, Equatable, Sendable {
@@ -94,6 +108,28 @@ public struct LayoutResponse: Codable, Equatable, Sendable { public let layout: 
 /// Weight, shots, badges, settings and the phone's Dashboard layout.
 public enum BodyAPI {
     public static func settings() -> Endpoint<MySettings> { Endpoint("GET", "/api/settings/me") }
+
+    /// PUT /api/settings/me needs every one of these each time (the phone sends the saved ones with one changed).
+    public struct SettingsBody: Encodable, Sendable {
+        public let mealWindows: MealWindows
+        public let waterButtonsMl: [Int]
+        public let weekStart: Int
+        public let dateFormat: String
+        public init(_ s: MySettings) {
+            mealWindows = s.mealWindows
+            waterButtonsMl = s.waterButtonsMl
+            weekStart = s.weekStart
+            dateFormat = DateFormat(key: s.dateFormat).rawValue
+        }
+    }
+    public static func saveSettings(_ body: SettingsBody) -> Endpoint<MySettings> { Endpoint("PUT", "/api/settings/me", json: body) }
+
+    public struct ProfileResponse: Decodable, Sendable { public let user: User }
+    struct UnitsBody: Encodable { let units: String }
+    /// The account's units live on the account (PATCH /api/profile), not in the settings.
+    public static func saveUnits(_ units: Units) -> Endpoint<ProfileResponse> {
+        Endpoint("PATCH", "/api/profile", json: UnitsBody(units: units == .metric ? "metric" : "imperial"))
+    }
 
     public static func weight(from: String? = nil) -> Endpoint<WeightView> {
         Endpoint("GET", "/api/weight", query: from.map { [URLQueryItem(name: "from", value: $0)] } ?? [])
