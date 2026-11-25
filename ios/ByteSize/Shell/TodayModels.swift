@@ -18,11 +18,14 @@ final class TodayModels {
     /// Profile › Settings: units, week start, date format, meal times
     let accountSettings: AccountSettingsModel
     let userId: Int
+    /// The account these were made for: a changed one (units saved in Profile) makes fresh models.
+    let user: User
 
     /// `account`: the server and user, so Health switches belong to this sign-in.
     init(api: APIClient, user: User, account: String, session: SessionStore) {
         self.api = api
         userId = user.id
+        self.user = user
         let units = Units(user.units)
         let zone = user.timezone.flatMap(TimeZone.init(identifier:)) ?? .current
         let days = DayStore(api: api, timeZone: zone)

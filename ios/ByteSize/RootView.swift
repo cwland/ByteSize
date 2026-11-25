@@ -54,6 +54,7 @@ struct RootView: View {
 
     private func startToday(_ user: User) {
         guard let api = session.api else { return }
+        if today?.user == user { return } // already made for this account (sign-in shows the app and reports the change)
         today = TodayModels(api: api, user: user, account: "\(session.server?.host ?? "")|\(user.id)", session: session)
     }
 }
