@@ -19,7 +19,8 @@ const cached = async (name: string, brand: string | null, source = "usda") =>
   ({ ...(await t.db.insert(foodCache).values({ source, sourceId: `${source}-${name}-${brand}`, name, brand, servings: [{ label: "1 serving", grams: 100 }], nutrients: { calories: 300 } }).returning())[0], kind: "cache" });
 const logFood = async (food: { kind: string; id: number }) =>
   (await t.api("POST", "/api/log", { day: DAY, meal: "dinner", food: { kind: food.kind, id: food.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 })).body.entry;
-const dayEntries = async (as = t.api) => (await as("GET", `/api/day/${DAY}`)).body.entries as { name: string; brand: string | null; restaurant: boolean }[];
+type Caller = (method: string, url: string, body?: unknown) => Promise<{ body: any }>;
+const dayEntries = async (as: Caller = t.api) => (await as("GET", `/api/day/${DAY}`)).body.entries as { name: string; brand: string | null; restaurant: boolean }[];
 const flagOf = (entries: { name: string; restaurant: boolean }[], name: string) => entries.find((e) => e.name === name)?.restaurant;
 
 describe("brand keys", () => {
