@@ -319,4 +319,12 @@ final class TrackFoodModelTests: XCTestCase {
         XCTAssertTrue(ok)
         XCTAssertEqual(m.meal, .dinner, "a three-item dinner shouldn't need the meal changed three times")
     }
+
+    func testStartsOnTheMealFromThePersonsMealTimes() {
+        let days = DayStore(api: api, timeZone: denver, now: { self.morning })
+        // With breakfast ending at 05:00, the morning is lunch
+        days.mealWindows = MealWindows(breakfast: "05:00", lunch: "23:00", snacks: "23:30", dinner: "23:45")
+        let m = TrackFoodModel(api: api, dayStore: days, now: { self.morning })
+        XCTAssertEqual(m.meal, .lunch)
+    }
 }

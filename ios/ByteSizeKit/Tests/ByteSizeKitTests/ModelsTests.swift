@@ -93,6 +93,48 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(Meal.suggested(at: at("2026-11-20T05:00:00Z"), in: denver), .snacks) // 22:00
     }
 
+    private func at(_ iso: String) -> Date { ISO8601DateFormatter().date(from: iso)! }
+
+    func testSuggestedUsesCustomWindows() {
+        let utc = TimeZone(identifier: "UTC")!
+        let w = MealWindows(breakfast: "09:00", lunch: "13:00", snacks: "16:30", dinner: "20:00")
+        XCTAssertEqual(Meal.suggested(at: at("2026-11-19T12:59:00Z"), in: utc, windows: w), .lunch)
+        XCTAssertEqual(Meal.suggested(at: at("2026-11-19T13:00:00Z"), in: utc, windows: w), .snacks)
+        XCTAssertEqual(Meal.suggested(at: at("2026-11-19T19:59:00Z"), in: utc, windows: w), .dinner)
+        XCTAssertEqual(Meal.suggested(at: at("2026-11-19T20:30:00Z"), in: utc, windows: w), .snacks)
+        XCTAssertEqual(Meal.suggested(at: at("2026-11-19T08:59:00Z"), in: utc, windows: w), .breakfast)
+    }
+
+    func testBoundaryGoesToNextMeal() {
+        let utc = TimeZone(identifier: "UTC")!
+        XCTAssertEqual(Meal.suggested(at: at("2026-11-19T10:30:00Z"), in: utc, windows: .defaults), .lunch)
+        XCTAssertEqual(Meal.suggested(at: at("2026-11-19T10:29:59Z"), in: utc, windows: .defaults), .breakfast)
+    }
+
+    func testUsesAccountZone() {
+        // 16:00 UTC is 09:00 in Boise (UTC-7): breakfast there, though lunch in UTC
+        let boise = TimeZone(identifier: "America/Boise")!
+        let w = MealWindows(breakfast: "10:00", lunch: "14:00", snacks: "17:00", dinner: "21:00")
+        XCTAssertEqual(Meal.suggested(at: at("2026-11-19T16:00:00Z"), in: boise, windows: w), .breakfast)
+    }
+
+    func testSuggestedFallsBackToDefaults() {
+        XCTAssertEqual(MealWindows.defaults, MealWindows(breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00"))
+        XCTAssertEqual(Meal.suggested(at: at("2026-11-19T15:00:00Z"), in: TimeZone(identifier: "UTC")!), .snacks)
+    }
+
+    func testDecodesWithoutNewKeys() throws {
+        let s = try JSONDecoder().decode(MySettings.self, from: Data(#"{"waterButtonsMl":[237],"weekStart":0,"glp1On":false}"#.utf8))
+        XCTAssertEqual(s.mealWindows, .defaults)
+        XCTAssertNil(s.dateFormat)
+    }
+
+    func testDecodesMealWindowsAndDateFormat() throws {
+        let s = try JSONDecoder().decode(MySettings.self, from: Data(#"{"mealWindows":{"breakfast":"09:00","lunch":"13:00","snacks":"16:30","dinner":"20:00"},"waterButtonsMl":[237],"weekStart":1,"dateFormat":"iso","glp1On":true}"#.utf8))
+        XCTAssertEqual(s.mealWindows, MealWindows(breakfast: "09:00", lunch: "13:00", snacks: "16:30", dinner: "20:00"))
+        XCTAssertEqual(s.dateFormat, "iso")
+    }
+
     func testAmountText() throws {
         let d = try Fixtures.decodeDay()
         XCTAssertEqual(d.entries[0].amountText(units: .imperial), "2 × 1 cup")

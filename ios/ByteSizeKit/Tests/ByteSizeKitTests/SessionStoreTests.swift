@@ -144,4 +144,15 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(s.state, .signedOut(notice: nil))
         XCTAssertNil(tokens.read())
     }
+
+    func testUpdateKeepsSignedInWithNewUser() async throws {
+        let s = try await signedInStore()
+        let metric = try JSONDecoder().decode(User.self, from: Data(userJSON.replacingOccurrences(of: #""units":"imperial""#, with: #""units":"metric""#).utf8))
+        s.update(metric)
+        guard case .signedIn(let user) = s.state else { return XCTFail("not signed in: \(s.state)") }
+        XCTAssertEqual(user.units, "metric")
+        // Remembered for the next launch too
+        let saved = defaults.data(forKey: "lastUser").flatMap { try? JSONDecoder().decode(User.self, from: $0) }
+        XCTAssertEqual(saved?.units, "metric")
+    }
 }
