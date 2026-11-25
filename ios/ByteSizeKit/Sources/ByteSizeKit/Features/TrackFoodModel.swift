@@ -55,7 +55,7 @@ public final class TrackFoodModel {
     public init(api: APIClient, dayStore: DayStore, meal: Meal? = nil, now: @escaping () -> Date = Date.init) {
         self.api = api
         self.dayStore = dayStore
-        self.meal = meal ?? Meal.suggested(at: now(), in: dayStore.zone)
+        self.meal = meal ?? Meal.suggested(at: now(), in: dayStore.zone, windows: dayStore.mealWindows)
     }
 
     public func load() async {

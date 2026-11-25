@@ -62,7 +62,7 @@ public final class MyFoodsModel {
     /// "Removed", "Hidden (it's in use)" or "Saved": the last change made here.
     public private(set) var notice: String?
     /// The meal new portions start in: the time of day's meal, worked out when it's used (the model lives all session).
-    public var meal: Meal { Meal.suggested(at: now(), in: dayStore.zone) }
+    public var meal: Meal { Meal.suggested(at: now(), in: dayStore.zone, windows: dayStore.mealWindows) }
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let dayStore: DayStore

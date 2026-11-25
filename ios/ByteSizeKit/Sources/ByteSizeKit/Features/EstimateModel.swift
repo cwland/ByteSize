@@ -50,7 +50,7 @@ public final class EstimateModel {
     public init(api: APIClient, dayStore: DayStore, now: () -> Date = Date.init) {
         self.api = api
         self.dayStore = dayStore
-        self.meal = Meal.suggested(at: now(), in: dayStore.zone)
+        self.meal = Meal.suggested(at: now(), in: dayStore.zone, windows: dayStore.mealWindows)
     }
 
     /// ≈ calories of the checked foods (the server's numbers rule once logged).

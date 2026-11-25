@@ -6,8 +6,8 @@ final class AccountSettingsModelTests: XCTestCase {
     private let server = ServerAddress("https://h.test")!
     private let api = APIClient(base: ServerAddress("https://h.test")!, token: { "t" }, session: HTTPStub.session)
     private let denver = TimeZone(identifier: "America/Denver")!
-    private static let orderError = "Meal times must go breakfast, lunch, snacks, dinner, each later than the one before"
-    private static let settingsJSON = #"{"mealWindows":{"breakfast":"10:30","lunch":"14:30","snacks":"17:00","dinner":"21:00"},"waterButtonsMl":[237,473],"weekStart":0,"dateFormat":"weekday-long-month-short","glp1On":false}"#
+    nonisolated private static let orderError = "Meal times must go breakfast, lunch, snacks, dinner, each later than the one before"
+    nonisolated private static let settingsJSON = #"{"mealWindows":{"breakfast":"10:30","lunch":"14:30","snacks":"17:00","dinner":"21:00"},"waterButtonsMl":[237,473],"weekStart":0,"dateFormat":"weekday-long-month-short","glp1On":false}"#
 
     private var session: SessionStore!
     private var days: DayStore!

@@ -19,19 +19,16 @@ public enum Meal: String, Codable, CaseIterable, Identifiable, Sendable {
     /// The four meals the Food Log always shows, each with its Add (SPEC-07); not supplements & water.
     public var addable: Bool { self != .supplements }
 
-    /// The meal for a time of day, using the server's default meal windows (settings-me DEFAULT_MEAL_WINDOWS):
-    /// breakfast until 10:30, lunch until 14:30, snacks until 17:00, dinner until 21:00, snacks after.
-    public static func suggested(at date: Date, in zone: TimeZone) -> Meal {
+    /// The meal for a time of day in the account's zone, from the person's meal times (the server's `mealFor`).
+    public static func suggested(at date: Date, in zone: TimeZone, windows: MealWindows = .defaults) -> Meal {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = zone
         let parts = cal.dateComponents([.hour, .minute], from: date)
-        let minutes = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
-        switch minutes {
-        case ..<630: return .breakfast
-        case ..<870: return .lunch
-        case ..<1020: return .snacks
-        case ..<1260: return .dinner
-        default: return .snacks
-        }
+        let hhmm = String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+        if hhmm < windows.breakfast { return .breakfast }
+        if hhmm < windows.lunch { return .lunch }
+        if hhmm < windows.snacks { return .snacks }
+        if hhmm < windows.dinner { return .dinner }
+        return .snacks
     }
 }
