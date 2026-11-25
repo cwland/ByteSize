@@ -27,6 +27,7 @@ struct MainTabView: View {
                         }
                     }
             }
+            .environment(\.tabBarClearance, TabBar.height) // screens pushed in a tab (My Foods' amount screen) keep clear of the bar
 
             RadialMenu(shell: shell)
             TabBar(shell: shell)

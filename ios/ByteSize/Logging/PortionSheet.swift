@@ -27,6 +27,8 @@ struct PortionSheet: View {
     /// The food's brand under its name; a restaurant's as its tag.
     var brand: String? = nil
     var restaurant = false
+    /// Room for the tab bar under a screen pushed inside a tab (My Foods): Log and the pills sit above the raised (+).
+    @Environment(\.tabBarClearance) private var tabBarClearance
     @State private var estimating = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.palette) private var palette
@@ -148,9 +150,22 @@ struct PortionSheet: View {
                     }
                 }
                 .padding(.horizontal)
-                .padding(.vertical, 10)
+                .padding(.top, 10)
+                .padding(.bottom, 10 + tabBarClearance)
                 .background(palette.color("page"))
             }
+    }
+}
+
+private struct TabBarClearanceKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    /// How much of the bottom the tab bar covers: set on the tabs' navigation, so screens pushed there keep clear of it.
+    var tabBarClearance: CGFloat {
+        get { self[TabBarClearanceKey.self] }
+        set { self[TabBarClearanceKey.self] = newValue }
     }
 }
 

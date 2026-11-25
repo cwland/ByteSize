@@ -344,7 +344,9 @@ final class SmokeUITests: XCTestCase {
         let row = app.buttons["food-\(name)"]
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
-        XCTAssertTrue(app.buttons["logButton"].waitForExistence(timeout: 5))
+        let opened = app.buttons["logButton"].waitForExistence(timeout: 5)
+        if !opened { try? app.debugDescription.write(toFile: "/tmp/bs-track-tree.txt", atomically: true, encoding: .utf8) }
+        XCTAssertTrue(opened)
     }
 
     private func trackSearch(_ text: String, pick name: String) {
