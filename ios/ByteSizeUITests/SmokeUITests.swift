@@ -40,7 +40,7 @@ final class SmokeUITests: XCTestCase {
         app.buttons["Close"].firstMatch.tap()
 
         app.buttons["Profile"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Account and goals are set up in the ByteSize web app."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Goals are set up in the ByteSize web app."].waitForExistence(timeout: 5))
         shot("4-profile")
         app.buttons["Sign out"].firstMatch.tap()
         let confirm = app.sheets.buttons["Sign out"].exists ? app.sheets.buttons["Sign out"] : app.buttons.matching(identifier: "Sign out").element(boundBy: 1)
@@ -150,6 +150,49 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(waitUntil { water.label == "25 fl oz" }, "water went up by 8 fl oz")
         app.swipeUp()
         shot("6-dashboard-lower")
+    }
+
+    /// Profile › Settings: the week start is saved to the account and shows again next time Profile opens.
+    func testProfileSettingsWeekStart() {
+        signedIn()
+        app.buttons["Profile"].firstMatch.tap()
+        let weekStart = app.buttons["settingsWeekStart"]
+        XCTAssertTrue(weekStart.waitForExistence(timeout: 5))
+        for row in ["settingsUnits", "settingsDateFormat", "settingsMealTimes"] {
+            XCTAssertTrue(app.buttons[row].exists, "missing \(row)")
+        }
+        XCTAssertTrue(waitUntil { weekStart.isEnabled }, "enabled once the settings load")
+        weekStart.tap()
+        app.buttons["Monday"].firstMatch.tap()
+        XCTAssertTrue(waitUntil { weekStart.label.contains("Monday") }, "shows the new week start")
+        shot("7-profile-settings")
+        app.buttons["Done"].firstMatch.tap()
+        app.buttons["Profile"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["settingsWeekStart"].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil { self.app.buttons["settingsWeekStart"].label.contains("Monday") }, "saved to the account")
+
+        // Meal times opens with the four times and Reset
+        app.buttons["settingsMealTimes"].tap()
+        XCTAssertTrue(app.staticTexts["Lunch until"].waitForExistence(timeout: 3) || app.datePickers["Lunch until"].exists)
+        XCTAssertTrue(app.buttons["Reset to defaults"].exists)
+        shot("8-meal-times")
+    }
+
+    /// Profile › Settings › Units: metric is saved to the account; Profile stays open and the Dashboard shows ml.
+    func testProfileUnitsToMetric() {
+        signedIn()
+        let water = app.staticTexts["waterTotal"]
+        XCTAssertTrue(water.waitForExistence(timeout: 5))
+        XCTAssertEqual(water.label, "17 fl oz")
+        app.buttons["Profile"].firstMatch.tap()
+        let units = app.buttons["settingsUnits"]
+        XCTAssertTrue(units.waitForExistence(timeout: 5))
+        units.tap()
+        app.buttons["Metric (kg, ml)"].firstMatch.tap()
+        XCTAssertTrue(waitUntil { self.app.buttons["settingsUnits"].label.contains("Metric") }, "shows metric")
+        XCTAssertTrue(app.buttons["Done"].firstMatch.exists, "Profile is still open")
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(waitUntil { self.app.staticTexts["waterTotal"].label == "500 ml" }, "the Dashboard shows ml")
     }
 
     func testFoodLogSwipeDeleteAndUndo() {

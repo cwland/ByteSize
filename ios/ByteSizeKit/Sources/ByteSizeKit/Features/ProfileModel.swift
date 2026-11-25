@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// The Profile sheet: who's signed in, this phone's look (theme and light/dark, following the account unless
-/// overridden here), and sign out. Account settings themselves are edited in the web app.
+/// overridden here), and sign out. The account's own settings are in AccountSettingsModel.
 @MainActor
 @Observable
 public final class ProfileModel {

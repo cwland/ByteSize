@@ -44,7 +44,8 @@ struct RootView: View {
                 signIn = SignInModel(session: session)
                 today = nil
             case .signedIn(let user):
-                shell = ShellModel() // each sign-in starts on the Dashboard
+                // The same person with a changed account (units saved in Profile): fresh models, same screen
+                if today?.userId != user.id { shell = ShellModel() } // each sign-in starts on the Dashboard
                 startToday(user)
             case .restoring: break
             }
@@ -53,6 +54,6 @@ struct RootView: View {
 
     private func startToday(_ user: User) {
         guard let api = session.api else { return }
-        today = TodayModels(api: api, user: user, account: "\(session.server?.host ?? "")|\(user.id)")
+        today = TodayModels(api: api, user: user, account: "\(session.server?.host ?? "")|\(user.id)", session: session)
     }
 }

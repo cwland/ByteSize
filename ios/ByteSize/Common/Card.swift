@@ -106,7 +106,13 @@ enum ShotSite {
 /// Set once at the top of the signed-in tabs from the DayStore, which follows the account's settings.
 struct DateLook: Equatable {
     var format: DateFormat = .default
-    var today: String = DayMath.string(Date(), in: .current)
+    var today: String = DateLook.localToday()
+
+    /// "2026-11-25" on this phone's calendar (until the account's today is known).
+    static func localToday() -> String {
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        return String(format: "%04d-%02d-%02d", c.year ?? 1970, c.month ?? 1, c.day ?? 1)
+    }
 }
 
 private struct DateLookKey: EnvironmentKey {

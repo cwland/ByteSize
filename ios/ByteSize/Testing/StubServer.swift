@@ -25,7 +25,9 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         return UserDefaults(suiteName: name)!
     }
 
-    private static let user = #"{"id":1,"username":"alex","displayName":"Alex","email":"alex@example.com","isAdmin":true,"theme":"avocado","colorMode":"dark","units":"imperial"}"#
+    private static func user(units: String = "imperial") -> String {
+        #"{"id":1,"username":"alex","displayName":"Alex","email":"alex@example.com","isAdmin":true,"theme":"avocado","colorMode":"dark","units":"\#(units)"}"#
+    }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -94,6 +96,12 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         private var trash: [Int: Entry] = [:]
         private var nextId = 100
         private var layout: [String]?
+        /// Profile › Settings: the account's units and /api/settings/me, kept as the phone saves them
+        private var units = "imperial"
+        private var settings: [String: Any] = [
+            "mealWindows": ["breakfast": "10:30", "lunch": "14:30", "snacks": "17:00", "dinner": "21:00"],
+            "waterButtonsMl": [237, 473], "weekStart": 0, "dateFormat": "weekday-long-month-short", "glp1On": true,
+        ]
         /// GLP-1 shots, newest first (Today polish: the Log shot sheet), and the current dose.
         private var shotLog: [(day: String, dose: Double, unit: String, site: String, note: String?)] = [("2026-11-13", 5, "mg", "abdomen_left", nil)]
         private var currentDose: Double = 5
@@ -186,12 +194,18 @@ final class StubServer: URLProtocol, @unchecked Sendable {
             case ("GET", "/api/auth/status"): return (200, #"{"setupRequired":false,"passwords":true,"forgotPassword":true,"oauth":{"label":"Authentik"}}"#)
             case ("POST", "/api/auth/login"):
                 if body["username"] as? String == "alex", body["password"] as? String == "pw" {
-                    return (200, #"{"token":"stub-token","user":\#(StubServer.user)}"#)
+                    return (200, #"{"token":"stub-token","user":\#(StubServer.user(units: units))}"#)
                 }
                 return (401, #"{"error":"Wrong username or password"}"#)
-            case ("GET", "/api/auth/me"): return (200, #"{"user":\#(StubServer.user)}"#)
+            case ("GET", "/api/auth/me"): return (200, #"{"user":\#(StubServer.user(units: units))}"#)
             case ("POST", "/api/auth/logout"): return (200, #"{"ok":true}"#)
-            case ("GET", "/api/settings/me"): return (200, #"{"waterButtonsMl":[237,473],"weekStart":0,"glp1On":true}"#)
+            case ("GET", "/api/settings/me"): return (200, json(settings))
+            case ("PUT", "/api/settings/me"):
+                for key in ["mealWindows", "waterButtonsMl", "weekStart", "dateFormat"] { if let v = body[key] { settings[key] = v } }
+                return (200, json(settings))
+            case ("PATCH", "/api/profile"):
+                if let u = body["units"] as? String { units = u }
+                return (200, #"{"user":\#(StubServer.user(units: units))}"#)
             case ("GET", "/api/layouts/ios"):
                 return (200, layout.map { json(["layout": ["version": 1, "columns": [$0]]]) } ?? #"{"layout":null}"#)
             case ("PUT", "/api/layouts/ios"):

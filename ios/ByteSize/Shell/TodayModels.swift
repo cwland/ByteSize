@@ -15,10 +15,14 @@ final class TodayModels {
     /// Track Food's source chips and Sources row, remembered for this sign-in.
     let sources: SourceFilter
     let units: Units
+    /// Profile › Settings: units, week start, date format, meal times
+    let accountSettings: AccountSettingsModel
+    let userId: Int
 
     /// `account`: the server and user, so Health switches belong to this sign-in.
-    init(api: APIClient, user: User, account: String) {
+    init(api: APIClient, user: User, account: String, session: SessionStore) {
         self.api = api
+        userId = user.id
         let units = Units(user.units)
         let zone = user.timezone.flatMap(TimeZone.init(identifier:)) ?? .current
         let days = DayStore(api: api, timeZone: zone)
@@ -32,6 +36,7 @@ final class TodayModels {
         myFoods = MyFoodsModel(api: api, dayStore: days)
         health = HealthSync(api: api, dayStore: days, store: Self.healthStore, defaults: Self.appDefaults, account: account)
         sources = SourceFilter(defaults: Self.appDefaults, account: account)
+        accountSettings = AccountSettingsModel(api: api, dayStore: days, session: session)
     }
 
     private static var healthStore: HealthStore {

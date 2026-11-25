@@ -37,11 +37,11 @@ struct MainTabView: View {
                 .presentationDetents([.large])
         }
         .sheet(isPresented: $shell.profileOpen) {
-            ProfileSheet(profile: profile, health: today.health) { await today.dashboard.reloadWeight() }
+            ProfileSheet(profile: profile, settings: today.accountSettings, health: today.health) { await today.dashboard.reloadWeight() }
         }
         // Dates on every tab and sheet in the account's format (it follows Profile › Settings at once)
         .environment(\.dateLook, DateLook(format: today.days.dateFormat, today: today.days.today))
-        .task {
+        .task(id: ObjectIdentifier(today)) { // again when the account changes (units saved in Profile)
             await today.load()
             await today.syncHealth()
         }
