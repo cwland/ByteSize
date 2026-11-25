@@ -28,6 +28,7 @@ final class TrackFoodModelTests: XCTestCase {
             case ("POST", "/api/log"): return log
             case ("GET", "/api/culury/recipes/7"): return recipe
             case ("POST", "/api/ai/estimate-items"): return estimate
+            case ("PUT", "/api/restaurant-brands"): return .json(200, #"{"brand":"Joe's Diner","key":"joes diner","restaurant":true}"#)
             default: return .json(404, #"{"error":"Not found"}"#)
             }
         }
@@ -326,5 +327,18 @@ final class TrackFoodModelTests: XCTestCase {
         days.mealWindows = MealWindows(breakfast: "05:00", lunch: "23:00", snacks: "23:30", dinner: "23:45")
         let m = TrackFoodModel(api: api, dayStore: days, now: { self.morning })
         XCTAssertEqual(m.meal, .lunch)
+    }
+
+    func testMarkingABrandSavesItAndSearchesAgain() async throws {
+        serve()
+        let (m, _) = model()
+        m.query = "banana"
+        await m.search()
+        let searches = requests("GET", "/api/foods/search").count
+        await m.markRestaurant(brand: "Joe's Diner", true)
+        let put = try XCTUnwrap(requests("PUT", "/api/restaurant-brands").last?.json)
+        XCTAssertEqual(put["brand"] as? String, "Joe's Diner")
+        XCTAssertEqual(put["restaurant"] as? Bool, true)
+        XCTAssertGreaterThan(requests("GET", "/api/foods/search").count, searches, "the results come back with the new tags")
     }
 }

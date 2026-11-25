@@ -20,6 +20,7 @@ final class FoodLogModelTests: XCTestCase {
             case ("DELETE", "/api/log/11"): return deleteStatus == 204 ? .raw(204, contentType: "", body: "") : .json(deleteStatus, #"{"error":"Entry not found"}"#)
             case ("POST", "/api/log/11/restore"): return restore
             case ("POST", "/api/log/move"): return .json(200, #"{"entries":[],"combined":[]}"#)
+            case ("PUT", "/api/restaurant-brands"): return .json(200, #"{"brand":"Fage","key":"fage","restaurant":true}"#)
             default: return .json(404, #"{"error":"Not found"}"#)
             }
         }
@@ -157,5 +158,18 @@ final class FoodLogModelTests: XCTestCase {
         XCTAssertEqual(patch["fraction"] as? Double, 1)
         XCTAssertEqual(patch["unit"] as? String, "serving")
         XCTAssertFalse(requests("GET", "/api/day/2026-11-19").isEmpty, "the day reloads")
+    }
+
+    func testMarkingABrandAsARestaurantSavesItAndReloads() async throws {
+        serve()
+        let (m, days) = await model()
+        let before = HTTPStub.requests.filter { $0.request.url?.path().hasPrefix("/api/day/") == true }.count
+        await m.markRestaurant(try entry(11, in: days), true)
+        let put = try XCTUnwrap(requests("PUT", "/api/restaurant-brands").last?.json)
+        XCTAssertEqual(put["brand"] as? String, "Fage")
+        XCTAssertEqual(put["restaurant"] as? Bool, true)
+        let after = HTTPStub.requests.filter { $0.request.url?.path().hasPrefix("/api/day/") == true }.count
+        XCTAssertGreaterThan(after, before, "the day reloads with the new flag")
+        XCTAssertNil(m.message)
     }
 }

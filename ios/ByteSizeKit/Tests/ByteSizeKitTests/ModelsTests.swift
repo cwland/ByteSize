@@ -134,6 +134,15 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(s.mealWindows, .defaults)
     }
 
+    func testRestaurantFlagDecodes() throws {
+        let entry = #"{"id":1,"day":"2026-11-25","meal":"dinner","name":"Kung Pao Chicken","brand":"Panda Express","icon":"🍗","servingIndex":0,"unit":"serving","quantity":2,"fraction":1,"servings":[{"label":"1 serving"}],"nutrients":{"calories":640},"aiEstimated":false,"source":"cache","sourceRef":"cache:5","restaurant":true}"#
+        XCTAssertTrue(try JSONDecoder().decode(LogEntry.self, from: Data(entry.utf8)).isRestaurant)
+        let older = entry.replacingOccurrences(of: #","restaurant":true"#, with: "")
+        XCTAssertFalse(try JSONDecoder().decode(LogEntry.self, from: Data(older.utf8)).isRestaurant, "servers before 0.17 don't send it")
+        let food = #"{"kind":"cache","id":5,"name":"Kung Pao Chicken","brand":"Panda Express","icon":"🍗","barcode":null,"servings":[{"label":"1 serving"}],"nutrients":{"calories":290},"aiFields":[],"source":"usda","restaurant":true}"#
+        XCTAssertTrue(try JSONDecoder().decode(Food.self, from: Data(food.utf8)).isRestaurant)
+    }
+
     func testDecodesMealWindowsAndDateFormat() throws {
         let s = try JSONDecoder().decode(MySettings.self, from: Data(#"{"mealWindows":{"breakfast":"09:00","lunch":"13:00","snacks":"16:30","dinner":"20:00"},"waterButtonsMl":[237],"weekStart":1,"dateFormat":"iso","glp1On":true}"#.utf8))
         XCTAssertEqual(s.mealWindows, MealWindows(breakfast: "09:00", lunch: "13:00", snacks: "16:30", dinner: "20:00"))
