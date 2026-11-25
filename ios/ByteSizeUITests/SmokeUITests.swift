@@ -40,7 +40,8 @@ final class SmokeUITests: XCTestCase {
         app.buttons["Close"].firstMatch.tap()
 
         app.buttons["Profile"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Goals are set up in the ByteSize web app."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["settingsUnits"].waitForExistence(timeout: 5))
+        XCTAssertTrue(reveal(app.staticTexts["Goals are set up in the ByteSize web app."]).exists)
         shot("4-profile")
         app.buttons["Sign out"].firstMatch.tap()
         let confirm = app.sheets.buttons["Sign out"].exists ? app.sheets.buttons["Sign out"] : app.buttons.matching(identifier: "Sign out").element(boundBy: 1)
@@ -177,8 +178,11 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(waitUntil { self.text(self.app.buttons["settingsWeekStart"]).contains("Monday") }, "saved to the account")
 
         // Meal times opens with the four times and Reset
-        app.buttons["settingsMealTimes"].tap()
-        XCTAssertTrue(app.staticTexts["Lunch until"].waitForExistence(timeout: 3) || app.datePickers["Lunch until"].exists)
+        reveal(app.buttons["settingsMealTimes"]).tap()
+        XCTAssertTrue(app.navigationBars["Meal times"].waitForExistence(timeout: 5))
+        for name in ["Breakfast until", "Lunch until", "Snacks until", "Dinner until"] {
+            XCTAssertTrue(label(name).exists, "missing \(name)")
+        }
         XCTAssertTrue(app.buttons["Reset to defaults"].exists)
         shot("8-meal-times")
     }

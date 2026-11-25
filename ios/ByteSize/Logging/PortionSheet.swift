@@ -1,7 +1,7 @@
 import ByteSizeKit
 import SwiftUI
 
-/// How much to log: a serving, an amount, a fraction and the meal, with an ≈ calorie preview.
+/// How much to log: a serving, an amount, a fraction and the meal (pills at the bottom), with an ≈ calorie preview.
 struct PortionSheet: View {
     @Bindable var portion: PortionModel
     /// Logs it; true closes the sheet.
@@ -35,7 +35,7 @@ struct PortionSheet: View {
         Button {
             if portion.isBig { askingBig = true } else { log() }
         } label: {
-            Text("Log").bold().frame(maxWidth: again == nil ? nil : .infinity)
+            Text("Log to \(portion.meal.title)").bold().frame(maxWidth: .infinity)
         }
         .disabled(!portion.canLog || logging)
         .accessibilityIdentifier("logButton")
@@ -101,7 +101,6 @@ struct PortionSheet: View {
                 }
                 Section {
                     ServingRow(portion: portion, open: $wheelOpen)
-                    MealPicker(meal: $portion.meal)
                 }
                 NutritionSection(portion: portion)
                 if let message {
@@ -127,28 +126,55 @@ struct PortionSheet: View {
                         .accessibilityIdentifier("bookmark")
                     }
                 }
-                // From a scan or photo, Log sits at the bottom with "Scan again" (owner's ask); elsewhere, in the bar
-                if again == nil {
-                    ToolbarItem(placement: .confirmationAction) { logButton.bold() }
-                }
             }
+            // The meal as pills and Log at the bottom, in reach of a thumb (with "Scan again" after a scan or photo)
             .safeAreaInset(edge: .bottom) {
-                if let again {
-                    VStack(spacing: 10) {
-                        logButton
-                            .frame(maxWidth: .infinity)
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.large)
+                VStack(spacing: 10) {
+                    MealPills(meal: $portion.meal)
+                    logButton
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                    if let again {
                         Button(action: again.action) { Text(again.title).frame(maxWidth: .infinity) }
                             .buttonStyle(.bordered)
                             .controlSize(.large)
                             .accessibilityIdentifier("again")
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 10)
-                    .background(palette.color("page"))
                 }
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+                .background(palette.color("page"))
             }
+    }
+}
+
+/// Breakfast · Lunch · Dinner · Snacks as one-tap pills, the chosen one filled (the amount screen's meal).
+struct MealPills: View {
+    @Binding var meal: Meal
+    @Environment(\.palette) private var palette
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(Meal.allCases.filter(\.addable)) { m in
+                let on = m == meal
+                Button { meal = m } label: {
+                    Text(m.title)
+                        .font(.subheadline.weight(on ? .bold : .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .foregroundStyle(on ? palette.color("on-primary") : palette.color("ink"))
+                        .background(on ? palette.color("primary") : palette.color("container"), in: Capsule())
+                        .overlay(Capsule().strokeBorder(on ? Color.clear : palette.color("line")))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("mealPill-\(m.rawValue)")
+                .accessibilityAddTraits(on ? [.isSelected] : [])
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Meal")
     }
 }
 
