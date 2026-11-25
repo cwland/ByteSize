@@ -13,7 +13,7 @@ public struct MySettings: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        mealWindows = try c.decodeIfPresent(MealWindows.self, forKey: .mealWindows) ?? .defaults
+        mealWindows = (try? c.decodeIfPresent(MealWindows.self, forKey: .mealWindows)) ?? .defaults // missing or partial: the defaults
         waterButtonsMl = try c.decode([Int].self, forKey: .waterButtonsMl)
         weekStart = try c.decode(Int.self, forKey: .weekStart)
         dateFormat = try c.decodeIfPresent(String.self, forKey: .dateFormat)

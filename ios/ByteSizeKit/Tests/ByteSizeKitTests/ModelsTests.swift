@@ -129,6 +129,11 @@ final class ModelsTests: XCTestCase {
         XCTAssertNil(s.dateFormat)
     }
 
+    func testPartialMealWindowsUseDefaults() throws {
+        let s = try JSONDecoder().decode(MySettings.self, from: Data(#"{"mealWindows":{},"waterButtonsMl":[237],"weekStart":0,"glp1On":false}"#.utf8))
+        XCTAssertEqual(s.mealWindows, .defaults)
+    }
+
     func testDecodesMealWindowsAndDateFormat() throws {
         let s = try JSONDecoder().decode(MySettings.self, from: Data(#"{"mealWindows":{"breakfast":"09:00","lunch":"13:00","snacks":"16:30","dinner":"20:00"},"waterButtonsMl":[237],"weekStart":1,"dateFormat":"iso","glp1On":true}"#.utf8))
         XCTAssertEqual(s.mealWindows, MealWindows(breakfast: "09:00", lunch: "13:00", snacks: "16:30", dinner: "20:00"))

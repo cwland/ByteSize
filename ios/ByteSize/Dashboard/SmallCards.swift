@@ -42,6 +42,7 @@ struct WaterCard: View {
 
 /// The latest weigh-in, its change from the one before, and a quick way to log today's.
 struct WeightCard: View {
+    @Environment(\.dateLook) private var dateLook
     let dashboard: DashboardModel
     let days: DayStore
     let units: Units
@@ -59,7 +60,7 @@ struct WeightCard: View {
                             .foregroundStyle(palette.color(change > 0 ? "error" : change < 0 ? "success" : "muted"))
                     }
                 }
-                Text("Last weigh-in \(DayText.short(latest.day))").font(.caption).foregroundStyle(palette.color("muted"))
+                Text("Last weigh-in \(DayText.short(latest.day, dateLook))").font(.caption).foregroundStyle(palette.color("muted"))
             } else {
                 Text("No weigh-ins yet").foregroundStyle(palette.color("subtle"))
             }
@@ -182,6 +183,7 @@ struct BadgesCard: View {
 
 /// GLP-1: the last shot, when the next is due, the suggested site, and Log shot.
 struct ShotCard: View {
+    @Environment(\.dateLook) private var dateLook
     let dashboard: DashboardModel
     let days: DayStore
     @Environment(\.palette) private var palette
@@ -195,7 +197,7 @@ struct ShotCard: View {
                         .foregroundStyle(palette.color(g.status == "overdue" ? "error" : g.status == "due" ? "warning" : "ink"))
                 }
                 if let last = g.lastShot {
-                    Text("Last: \(DayText.short(last.day)) · \(last.doseText) · \(ShotSite.name(last.site))")
+                    Text("Last: \(DayText.short(last.day, dateLook)) · \(last.doseText) · \(ShotSite.name(last.site))")
                         .font(.caption).foregroundStyle(palette.color("subtle"))
                 }
                 Text("Next site: \(ShotSite.name(g.suggestedSite))").font(.caption).foregroundStyle(palette.color("subtle"))
@@ -214,7 +216,7 @@ struct ShotCard: View {
         switch g.status {
         case "due": "Shot due today"
         case "overdue": g.overdueDays == 1 ? "1 day overdue" : "\(g.overdueDays) days overdue"
-        default: "Next shot \(DayText.short(due))"
+        default: "Next shot \(DayText.short(due, dateLook))"
         }
     }
 

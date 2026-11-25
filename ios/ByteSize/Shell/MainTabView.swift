@@ -39,6 +39,8 @@ struct MainTabView: View {
         .sheet(isPresented: $shell.profileOpen) {
             ProfileSheet(profile: profile, health: today.health) { await today.dashboard.reloadWeight() }
         }
+        // Dates on every tab and sheet in the account's format (it follows Profile › Settings at once)
+        .environment(\.dateLook, DateLook(format: today.days.dateFormat, today: today.days.today))
         .task {
             await today.load()
             await today.syncHealth()
