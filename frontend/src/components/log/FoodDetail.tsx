@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import FoodPic from "./FoodPic";
+import { RestaurantTag } from "./FoodRow";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { formatAmount, isBigAmount } from "../../amounts";
 import { amountFactor, scaleNutrients } from "../../nutrition";
@@ -9,7 +10,7 @@ import AmountPicker from "./AmountPicker";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { linkButton, primaryButton } from "../ui/styles";
 
-export type DetailFood = { name: string; brand?: string | null; icon: string; imageUrl?: string | null; servings: Serving[]; nutrients: Nutrients /* per servings[0] */ };
+export type DetailFood = { name: string; brand?: string | null; restaurant?: boolean; icon: string; imageUrl?: string | null; servings: Serving[]; nutrients: Nutrients /* per servings[0] */ };
 
 // A sensible first portion: the food's own serving (e.g. "1 bar") rather than "100 g"
 const ML_PER_FL_OZ = 29.5735;
@@ -149,7 +150,7 @@ export default function FoodDetail({
         <FoodPic icon={food.icon} imageUrl={food.imageUrl} size="size-12" />
         <div className="min-w-0">
           <h3 className="text-xl font-bold">{food.name}</h3>
-          {food.brand && <p className="text-sm text-subtle">{food.brand}</p>}
+          {food.brand && <p className="text-sm text-subtle">{food.restaurant ? <RestaurantTag brand={food.brand} /> : food.brand}</p>}
           {note}
           {onEditFood && (
             <button type="button" onClick={onEditFood} className={`${linkButton} text-sm`}>

@@ -13,18 +13,19 @@ export function brandKey(brand: string): string {
     .replace(/[̀-ͯ]/g, "") // accents
     .toLowerCase()
     .replace(/&/g, " and ")
-    .replace(/['’`´.]/g, "") // "P.F. Chang's" → "pf changs"
+    .replace(/['’‘ʼ`´.]/g, "") // "P.F. Chang's" → "pf changs"
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .replace(/^the /, "");
 }
 
-// Big US restaurant chains, as brand keys. A brand matches a chain when it is the chain's key or starts with it
-// followed by more words ("Chipotle Mexican Grill", "Starbucks Coffee"). Grocery-only brands stay off the list; a
-// chain's own grocery products ("P.F. Chang's" frozen meals) show as restaurants until the person marks them not.
+// Big US restaurant chains, as brand keys. A brand matches a chain when it is the chain's key, or the chain's key
+// followed by restaurant words only ("Chipotle Mexican Grill", "Starbucks Coffee", "Sonic Drive-In") — so "Sonic
+// Bloom" or "Just Salad Dressing" don't. Chains better known for grocery products (Cracker Barrel cheese, Bob Evans
+// sides) stay off the list; a chain's own grocery products show as restaurants until the person marks them not.
 const CHAINS = [
   // burgers, chicken, sandwiches
-  "mcdonalds", "burger king", "wendys", "five guys", "in n out", "in n out burger", "shake shack", "whataburger",
+  "mcdonalds", "mc donalds", "burger king", "wendys", "five guys", "in n out", "in n out burger", "shake shack", "whataburger",
   "carls jr", "hardees", "jack in the box", "sonic", "sonic drive in", "culvers", "white castle", "krystal",
   "smashburger", "habit burger grill", "fatburger", "steak n shake", "checkers", "rallys",
   "freddys frozen custard and steakburgers", "freddys", "red robin", "fuddruckers", "dairy queen",
@@ -50,9 +51,9 @@ const CHAINS = [
   // casual dining, steak, seafood
   "applebees", "chilis", "tgi fridays", "ruby tuesday", "olive garden", "red lobster", "outback",
   "outback steakhouse", "longhorn steakhouse", "texas roadhouse", "logans roadhouse", "saltgrass steak house",
-  "ruths chris", "ruths chris steak house", "the capital grille", "capital grille", "flemings", "mortons",
+  "ruths chris", "mortons steakhouse", "mortons the steakhouse", "chuck e cheeses", "moes", "churchs", "ruths chris steak house", "the capital grille", "capital grille", "flemings",
   "cheesecake factory", "bjs restaurant", "bjs restaurant and brewhouse", "yard house", "dave and busters",
-  "cracker barrel", "bob evans", "dennys", "ihop", "waffle house", "perkins", "first watch", "huddle house",
+  "dennys", "ihop", "waffle house", "perkins", "first watch", "huddle house",
   "village inn", "black bear diner", "bonefish grill", "joes crab shack", "bubba gump", "landrys",
   "long john silvers", "captain ds", "red robin gourmet burgers", "twin peaks", "miller s ale house",
   "millers ale house", "bar louie", "hooters", "o charleys", "ocharleys", "famous daves", "sonny s bbq",
@@ -75,13 +76,21 @@ const CHAINS = [
 
 const CHAIN_SET = new Set<string>(CHAINS.map(brandKey));
 
-/** Whether a brand key is (or starts with) a chain on the built-in list. */
+// Words that can follow a chain's name and still mean the restaurant
+const RESTAURANT_WORDS = new Set([
+  "restaurant", "restaurants", "grill", "grille", "kitchen", "cafe", "coffee", "coffeehouse", "pizza", "pizzeria", "burger", "burgers",
+  "tacos", "taqueria", "cantina", "bbq", "barbecue", "steakhouse", "steak", "house", "diner", "bakery", "bagels", "donuts", "eatery",
+  "deli", "subs", "sandwiches", "chicken", "wings", "express", "drive", "in", "bar", "brewhouse", "tavern", "co", "company",
+  "inc", "llc", "us", "usa", "the", "and", "mexican", "italian", "chinese", "japanese", "bistro", "shack", "joint", "roadhouse",
+]);
+
+/** Whether a brand key is a chain on the built-in list, or one followed only by restaurant words. */
 export function isChain(key: string): boolean {
   if (!key) return false;
   if (CHAIN_SET.has(key)) return true;
   const words = key.split(" ");
   for (let n = words.length - 1; n >= 1; n--) {
-    if (CHAIN_SET.has(words.slice(0, n).join(" "))) return true;
+    if (CHAIN_SET.has(words.slice(0, n).join(" ")) && words.slice(n).every((w) => RESTAURANT_WORDS.has(w))) return true;
   }
   return false;
 }
@@ -146,7 +155,12 @@ const SKIP = ["/api/export", "/api/admin/backups", "/api/backups"];
 export function restaurantFlagsHook(app: FastifyInstance) {
   app.addHook("preSerialization", async (req: FastifyRequest, _reply, payload) => {
     if (!req.auth || !req.url.startsWith("/api/") || SKIP.some((p) => req.url.startsWith(p))) return payload;
-    await flagRestaurants(app, req.auth.userId, payload);
+    try {
+      await flagRestaurants(app, req.auth.userId, payload);
+    } catch (err) {
+      // The tags are a nicety: the answer (maybe a log just written) still goes back, untagged
+      req.log.warn({ err }, "restaurant tags skipped");
+    }
     return payload;
   });
 }

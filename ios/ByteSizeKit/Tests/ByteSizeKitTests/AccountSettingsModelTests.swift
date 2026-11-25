@@ -22,12 +22,14 @@ final class AccountSettingsModelTests: XCTestCase {
     }
 
     /// GET answers the saved settings; PUT echoes the body (or the order error); PATCH /api/profile returns the user with the units sent.
-    private func serve(putError: Bool = false) {
+    private func serve(putError: Bool = false, getError: Bool = false, meUnits: String = "imperial") {
         HTTPStub.requests = []
         HTTPStub.handler = { req in
             let body = HTTPStub.requests.last?.body ?? Data() // the stub read the body stream when it recorded the request
             switch (req.httpMethod ?? "", req.url?.path() ?? "") {
-            case ("GET", "/api/settings/me"): return .json(200, Self.settingsJSON)
+            case ("GET", "/api/settings/me"): return getError ? .json(500, #"{"error":"Something went wrong"}"#) : .json(200, Self.settingsJSON)
+            case ("GET", "/api/auth/me"):
+                return .json(200, #"{"user":\#(AuthServiceTests.userJSON.replacingOccurrences(of: #""units":"imperial""#, with: #""units":"\#(meUnits)""#))}"#)
             case ("PUT", "/api/settings/me"):
                 if putError { return .json(400, #"{"error":"\#(Self.orderError)"}"#) }
                 var json = (try? JSONSerialization.jsonObject(with: body) as? [String: Any]) ?? [:]
@@ -121,5 +123,34 @@ final class AccountSettingsModelTests: XCTestCase {
         guard case .signedIn(let user) = session.state else { return XCTFail("not signed in") }
         XCTAssertEqual(user.units, "metric")
         XCTAssertEqual(m.units, .metric)
+    }
+
+    func testLoadClearsAnOldMessage() async {
+        serve(getError: true)
+        let m = model()
+        await m.load()
+        XCTAssertEqual(m.message, "Something went wrong")
+        serve()
+        await m.load()
+        XCTAssertNil(m.message, "settings loaded fine this time")
+    }
+
+    func testRefreshPicksUpChangesMadeOnTheWeb() async {
+        serve(meUnits: "metric")
+        let m = model()
+        await m.refresh()
+        guard case .signedIn(let user) = session.state else { return XCTFail("not signed in") }
+        XCTAssertEqual(user.units, "metric", "units changed on the web")
+        XCTAssertEqual(m.settings?.weekStart, 0)
+        XCTAssertEqual(days.mealWindows, .defaults)
+    }
+
+    func testRefreshLeavesTheSameAccountAlone() async {
+        serve()
+        let m = model()
+        guard case .signedIn(let before) = session.state else { return XCTFail("not signed in") }
+        await m.refresh()
+        guard case .signedIn(let after) = session.state else { return XCTFail("not signed in") }
+        XCTAssertEqual(before, after)
     }
 }

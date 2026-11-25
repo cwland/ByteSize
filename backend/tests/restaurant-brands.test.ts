@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { sql } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { twoUsers } from "./isolation.js";
 import { foodCache } from "../src/db/schema.js";
@@ -43,7 +44,33 @@ describe("brand keys", () => {
   });
 });
 
+describe("chain list false positives (review)", () => {
+  it("grocery brands that share a chain's name aren't restaurants", () => {
+    for (const b of ["Cracker Barrel", "Bob Evans", "Morton's", "Sonic Bloom", "Subway Series", "Swig Life", "Garbanzo Beans Co", "Just Salad Dressing"]) {
+      expect(isChain(brandKey(b)), b).toBe(false);
+    }
+  });
+
+  it("a chain followed by a restaurant word still is one", () => {
+    for (const b of ["Starbucks Coffee", "Chipotle Mexican Grill", "Morton's Steakhouse", "Sonic Drive-In", "Subway Restaurants", "Mc Donald's", "McDonald‘s"]) {
+      expect(isChain(brandKey(b)), b).toBe(true);
+    }
+  });
+});
+
 describe("restaurant flag", () => {
+  it("if the restaurant lookup fails, the answer still comes back (unflagged)", async () => {
+    await logFood(await cached("Kung Pao Chicken", "Panda Express"));
+    await t.db.execute(sql`alter table restaurant_brands rename to restaurant_brands_away`);
+    try {
+      const r = await t.api("GET", `/api/day/${DAY}`);
+      expect(r.status).toBe(200);
+      expect(r.body.entries.map((e: { name: string }) => e.name)).toEqual(["Kung Pao Chicken"]);
+    } finally {
+      await t.db.execute(sql`alter table restaurant_brands_away rename to restaurant_brands`);
+    }
+  });
+
   it("log entries from a chain carry restaurant: true; grocery brands and no brand don't", async () => {
     await logFood(await cached("Kung Pao Chicken", "Panda Express"));
     await logFood(await cached("Light Sour Cream", "Daisy"));

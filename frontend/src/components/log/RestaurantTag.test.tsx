@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import FoodRow from "./FoodRow";
 import MealCard from "./MealCard";
@@ -59,5 +60,27 @@ describe("marking a brand from Edit entry", () => {
   it("no brand, no option", () => {
     render(<EditEntrySheet entry={entry({ brand: null, restaurant: false })} onClose={() => {}} onMove={() => {}} onDelete={() => {}} />);
     expect(screen.queryByRole("button", { name: /restaurant/ })).toBeNull();
+  });
+});
+
+describe("review fixes", () => {
+  it("Edit entry shows the restaurant tag under the food's name", () => {
+    render(<EditEntrySheet entry={entry()} onClose={() => {}} onMove={() => {}} onDelete={() => {}} />);
+    expect(screen.getByTitle("Restaurant: Panda Express")).toBeInTheDocument();
+  });
+
+  it("the light teal reads at 4.5:1 or better on its 15% tint over the lightest backgrounds", () => {
+    const css = readFileSync("src/index.css", "utf8") // tests run from frontend/;
+    const light = /--color-restaurant:\s*light-dark\((#[0-9a-f]{6})/i.exec(css)![1];
+    const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const lum = (c: number[]) => {
+      const f = (v: number) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]);
+    };
+    for (const bg of ["#ffffff", "#f4f4f6", "#ececf0"]) {
+      const tint = rgb(light).map((v, i) => v * 0.15 + rgb(bg)[i] * 0.85);
+      const [a, b] = [lum(rgb(light)), lum(tint)].sort((x, y) => y - x);
+      expect((a + 0.05) / (b + 0.05), bg).toBeGreaterThanOrEqual(4.5);
+    }
   });
 });

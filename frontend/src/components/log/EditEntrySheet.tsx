@@ -58,7 +58,7 @@ export default function EditEntrySheet({ entry, onClose, onMove, onDelete, bank 
     <Sheet label="Edit portion" heading={heading} onClose={onClose}>
       <Notice msg={markMsg} />
       <FoodDetail
-        food={{ name: entry.name, brand: entry.brand, icon: entry.icon, imageUrl: entry.imageUrl, servings: entry.servings, nutrients: perServing(entry) }}
+        food={{ name: entry.name, brand: entry.brand, restaurant, icon: entry.icon, imageUrl: entry.imageUrl, servings: entry.servings, nutrients: perServing(entry) }}
         initial={{ servingIndex: entry.servingIndex, unit: entry.unit, quantity: entry.quantity, fraction: entry.fraction }}
         submitLabel="Save"
         treat={bank !== null || entry.treat ? { initial: !!entry.treat, bank: bank ?? 0 } : undefined}
