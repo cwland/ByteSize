@@ -645,6 +645,28 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
     }
 
+    /// Restaurant tags: long-press a Food Log entry › "Treat Fage as a restaurant" → its brand shows as a restaurant tag.
+    func testLongPressMarksABrandAsARestaurant() {
+        signedIn()
+        app.buttons["Food Log"].tap()
+        let yogurt = label("Greek yogurt").exists ? label("Greek yogurt") : app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Greek yogurt")).firstMatch
+        XCTAssertTrue(yogurt.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Restaurant: Fage")).firstMatch.exists)
+        yogurt.press(forDuration: 1.2)
+        let treat = app.buttons["Treat Fage as a restaurant"]
+        XCTAssertTrue(treat.waitForExistence(timeout: 3))
+        treat.tap()
+        let tag = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Restaurant: Fage")).firstMatch
+        XCTAssertTrue(tag.waitForExistence(timeout: 5), "the brand shows as a restaurant")
+        shot("10-restaurant-tag")
+        // and back
+        tag.press(forDuration: 1.2)
+        let not = app.buttons["Fage is not a restaurant"]
+        XCTAssertTrue(not.waitForExistence(timeout: 3))
+        not.tap()
+        XCTAssertTrue(waitUntil { !tag.exists }, "plain brand again")
+    }
+
     func testEmptyMealsHaveAddAndOpenInThatMeal() {
         signedIn()
         app.buttons["Food Log"].tap()

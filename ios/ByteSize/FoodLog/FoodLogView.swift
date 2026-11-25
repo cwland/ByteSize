@@ -35,6 +35,11 @@ struct FoodLogView: View {
                         EntryRow(entry: entry, units: units)
                             .contentShape(Rectangle())
                             .onTapGesture { editing = entry }
+                            .contextMenu {
+                                RestaurantMenu(brand: entry.brand, restaurant: entry.isRestaurant) { _, on in
+                                    Task { await log.markRestaurant(entry, on) }
+                                }
+                            }
                             .swipeActions(edge: .leading) {
                                 Button { moving = MoveRequest(entry: entry, copy: true) } label: { Label("Copy", systemImage: "doc.on.doc") }
                                     .tint(palette.color("link"))
@@ -149,8 +154,7 @@ struct EntryRow: View {
                             .accessibilityLabel("AI estimated")
                     }
                 }
-                Text([entry.brand, entry.amountText(units: units)].compactMap { $0 }.joined(separator: " · "))
-                    .font(.caption).foregroundStyle(palette.color("subtle")).lineLimit(1)
+                BrandLine(brand: entry.brand, restaurant: entry.isRestaurant, detail: entry.amountText(units: units))
             }
             Spacer()
             if !entry.isWater {

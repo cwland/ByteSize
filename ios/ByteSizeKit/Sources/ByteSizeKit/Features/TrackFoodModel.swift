@@ -236,6 +236,19 @@ public final class TrackFoodModel {
         }
     }
 
+    /// Long-press › "Treat <brand> as a restaurant" / "<brand> is not a restaurant"; the lists come back with the new tags.
+    public func markRestaurant(brand: String, _ on: Bool) async {
+        do {
+            _ = try await api.send(FoodAPI.markRestaurant(brand: brand, on))
+            message = nil
+        } catch {
+            message = (error as? APIError)?.message ?? error.localizedDescription
+            return
+        }
+        await load()
+        if !query.trimmingCharacters(in: .whitespaces).isEmpty { await search() }
+    }
+
     /// The bookmark: on → stored; off → removed (with the database food it corrects, which may be how it's stored).
     /// Shown at once; put back with the message if the server says no.
     public func toggleFavorite(_ food: Food) async {

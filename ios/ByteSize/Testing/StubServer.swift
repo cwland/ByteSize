@@ -96,6 +96,8 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         private var trash: [Int: Entry] = [:]
         private var nextId = 100
         private var layout: [String]?
+        /// Brands marked as restaurants (long-press › Treat … as a restaurant)
+        private var restaurants: Set<String> = []
         /// Profile › Settings: the account's units and /api/settings/me, kept as the phone saves them
         private var units = "imperial"
         private var settings: [String: Any] = [
@@ -203,6 +205,10 @@ final class StubServer: URLProtocol, @unchecked Sendable {
             case ("PUT", "/api/settings/me"):
                 for key in ["mealWindows", "waterButtonsMl", "weekStart", "dateFormat"] { if let v = body[key] { settings[key] = v } }
                 return (200, json(settings))
+            case ("PUT", "/api/restaurant-brands"):
+                let brand = body["brand"] as? String ?? ""
+                if body["restaurant"] as? Bool == true { restaurants.insert(brand) } else { restaurants.remove(brand) }
+                return (200, json(["brand": brand, "key": brand.lowercased(), "restaurant": body["restaurant"] as? Bool ?? false]))
             case ("PATCH", "/api/profile"):
                 if let u = body["units"] as? String { units = u }
                 return (200, #"{"user":\#(StubServer.user(units: units))}"#)
@@ -449,7 +455,11 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                 acc[m] = ["calories": s["calories"] ?? 0, "protein_g": s["protein_g"] ?? 0, "carbs_g": s["carbs_g"] ?? 0, "fat_g": s["fat_g"] ?? 0, "fiber_g": s["fiber_g"] ?? 0]
             }
             return [
-                "day": day, "entries": mine.map(\.json), "totals": sum(mine), "meals": meals,
+                "day": day, "entries": mine.map { e -> [String: Any] in
+                    var j = e.json
+                    j["restaurant"] = e.brand.map { restaurants.contains($0) } ?? false
+                    return j
+                }, "totals": sum(mine), "meals": meals,
                 "targets": ["calories": ["min": 1500, "max": 2000], "protein_g": ["min": 110, "max": 130], "fiber_g": ["min": 25, "max": 35], "water_ml": ["min": 2000, "max": 3000]],
                 "streak": 12,
             ]

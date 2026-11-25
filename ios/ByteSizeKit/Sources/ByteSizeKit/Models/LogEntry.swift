@@ -42,6 +42,10 @@ public struct LogEntry: Codable, Identifiable, Equatable, Sendable {
     public let source: String
     /// The food it came from ("cache:42", "user_food:9"); nil for AI estimates and water.
     public let sourceRef: String?
+    /// Its brand is a restaurant (the server's chain list, the person's own say, or a menu item); servers before 0.17 don't send it.
+    public var restaurant: Bool? = nil
+
+    public var isRestaurant: Bool { restaurant == true && brand != nil }
 
     public var isWater: Bool { source == "water" }
     public var calories: Double { nutrients["calories"] }

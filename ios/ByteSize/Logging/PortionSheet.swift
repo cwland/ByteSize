@@ -199,6 +199,7 @@ struct FoodRow: View {
     let name: String
     let brand: String?
     let detail: String
+    var restaurant = false
     @Environment(\.palette) private var palette
 
     var body: some View {
@@ -206,9 +207,7 @@ struct FoodRow: View {
             Text(icon).font(.title2)
             VStack(alignment: .leading, spacing: 2) {
                 Text(name).foregroundStyle(palette.color("ink"))
-                Text([brand, detail].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.caption)
-                    .foregroundStyle(palette.color("subtle"))
+                BrandLine(brand: brand, restaurant: restaurant, detail: detail)
             }
             Spacer()
         }
@@ -216,17 +215,19 @@ struct FoodRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    init(icon: String, name: String, brand: String?, detail: String) {
+    init(icon: String, name: String, brand: String?, detail: String, restaurant: Bool = false) {
         self.icon = icon
         self.name = name
         self.brand = brand
         self.detail = detail
+        self.restaurant = restaurant
     }
 
     init(food: Food) {
         icon = food.icon
         name = food.name
         brand = food.brand
+        restaurant = food.isRestaurant
         let serving = food.servings.first?.label ?? "serving"
         detail = !food.isLoggable ? "Log quick meals from My Foods"
             : food.isCulury && food.nutrients.values.isEmpty ? "RecipeHub recipe · \(serving)"

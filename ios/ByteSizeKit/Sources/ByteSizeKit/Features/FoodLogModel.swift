@@ -86,6 +86,12 @@ public final class FoodLogModel {
         await write { _ = try await self.api.send(LogAPI.restore(id: offer.entryId)) }
     }
 
+    /// Long-press › "Treat <brand> as a restaurant" / "<brand> is not a restaurant"; the day reloads with the new tags.
+    public func markRestaurant(_ entry: LogEntry, _ on: Bool) async {
+        guard let brand = entry.brand else { return }
+        await write { _ = try await self.api.send(FoodAPI.markRestaurant(brand: brand, on)) }
+    }
+
     public func dismissUndo() { undo = nil }
     public func clearMessage() { message = nil }
 
