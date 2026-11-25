@@ -1,16 +1,16 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../../api";
-import { notifySettingsChanged, useSettingsMe } from "../../day";
+import { DEFAULT_SETTINGS, notifySettingsChanged, useSettingsMe } from "../../day";
 import { DATE_FORMATS, DEFAULT_DATE_FORMAT, formatDate } from "../../dateFormat";
 import { todayIn } from "../../selectedDay";
-import type { SettingsMe } from "../../types";
+import type { MealWindows, SettingsMe } from "../../types";
 import { useSession, type User } from "../../session";
 import { THEMES, applyMode, applyTheme, useTheme, type ColorMode } from "../../themes";
 import { Card } from "../ui/Card";
 import { Choice, UNIT_OPTIONS } from "../ui/Choice";
 import { Field } from "../ui/Field";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
-import { field, label, primaryButton } from "../ui/styles";
+import { field, label, noAutofill, primaryButton } from "../ui/styles";
 import { TimezoneSelect } from "../ui/TimezoneSelect";
 import VacationMode from "./VacationMode";
 import { ChevronRight, Syringe } from "lucide-react";
@@ -46,7 +46,16 @@ function Glp1Shots() {
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-// Name, email, units, time zone and the day weeks start on (that one lives in /api/settings/me)
+// Each meal's end time: the default meal for new food comes from the clock (after dinner is snacks)
+const MEAL_TIMES: { key: keyof MealWindows; label: string }[] = [
+  { key: "breakfast", label: "Breakfast until" },
+  { key: "lunch", label: "Lunch until" },
+  { key: "snacks", label: "Snacks until" },
+  { key: "dinner", label: "Dinner until" },
+];
+const sameWindows = (a: MealWindows, b: MealWindows) => MEAL_TIMES.every(({ key }) => a[key] === b[key]);
+
+// Name, email, units, time zone, plus the date format, week start and meal times (those live in /api/settings/me)
 function AboutYou() {
   const { user, setUser } = useSession();
   const [displayName, setDisplayName] = useState(user.displayName ?? "");
@@ -60,12 +69,14 @@ function AboutYou() {
   const [settings, setSettings] = useState<SettingsMe | null>(null);
   const [weekStart, setWeekStart] = useState(0);
   const [dateFormat, setDateFormat] = useState<string>(DEFAULT_DATE_FORMAT);
+  const [mealWindows, setMealWindows] = useState<MealWindows>(DEFAULT_SETTINGS.mealWindows);
   useEffect(() => {
     api<SettingsMe>("GET", "/api/settings/me")
       .then((s) => {
         setSettings(s);
         setWeekStart(s.weekStart);
         setDateFormat(s.dateFormat ?? DEFAULT_DATE_FORMAT);
+        setMealWindows(s.mealWindows);
       })
       .catch(() => {});
   }, []);
@@ -77,8 +88,9 @@ function AboutYou() {
     try {
       const r = await api<{ user: User }>("PATCH", "/api/profile", { displayName: displayName.trim() || null, email: email.trim() || null, units, timezone });
       setUser(r.user);
-      if (settings && (weekStart !== settings.weekStart || dateFormat !== (settings.dateFormat ?? DEFAULT_DATE_FORMAT))) {
-        const saved = await api<SettingsMe>("PUT", "/api/settings/me", { mealWindows: settings.mealWindows, waterButtonsMl: settings.waterButtonsMl, weekStart, dateFormat });
+      const changed = settings && (weekStart !== settings.weekStart || dateFormat !== (settings.dateFormat ?? DEFAULT_DATE_FORMAT) || !sameWindows(mealWindows, settings.mealWindows));
+      if (settings && changed) {
+        const saved = await api<SettingsMe>("PUT", "/api/settings/me", { mealWindows, waterButtonsMl: settings.waterButtonsMl, weekStart, dateFormat });
         setSettings(saved);
         notifySettingsChanged();
       }
@@ -122,6 +134,31 @@ function AboutYou() {
             ))}
           </select>
         </label>
+        <fieldset className="mt-4">
+          <legend className={label}>Meal times</legend>
+          <div className="mt-1 grid grid-cols-2 gap-3">
+            {MEAL_TIMES.map(({ key, label: name }) => (
+              <label key={key} className="block text-sm text-subtle">
+                {name}
+                <input
+                  type="time"
+                  {...noAutofill}
+                  aria-label={name}
+                  value={mealWindows[key]}
+                  disabled={!settings}
+                  onChange={(e) => setMealWindows((w) => ({ ...w, [key]: e.target.value }))}
+                  className={field}
+                />
+              </label>
+            ))}
+          </div>
+          <p className="mt-1 flex items-center justify-between gap-2 text-sm text-subtle">
+            <span>After dinner counts as snacks.</span>
+            <button type="button" disabled={!settings} onClick={() => setMealWindows(DEFAULT_SETTINGS.mealWindows)} className="text-link hover:underline disabled:opacity-60">
+              Reset to defaults
+            </button>
+          </p>
+        </fieldset>
         <Notice msg={msg} />
         <button type="submit" disabled={busy} className={`${primaryButton} mt-5`}>
           Save
