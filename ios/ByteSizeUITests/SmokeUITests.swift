@@ -613,6 +613,29 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.textFields["trackSearch"].waitForExistence(timeout: 5))
     }
 
+    /// The amount screen picks the meal with four pills at the bottom (no Meal dropdown); the Log button names it.
+    func testAmountScreenMealPills() {
+        signedIn()
+        openDinnerFromTheFoodLog()
+        trackSearchHere("banana", pick: "Banana")
+        let dinner = app.buttons["mealPill-dinner"]
+        XCTAssertTrue(dinner.waitForExistence(timeout: 3))
+        XCTAssertTrue(dinner.isSelected, "opened from Dinner's Add")
+        for meal in ["breakfast", "lunch", "snacks"] {
+            XCTAssertTrue(app.buttons["mealPill-\(meal)"].exists, "missing \(meal)")
+            XCTAssertFalse(app.buttons["mealPill-\(meal)"].isSelected)
+        }
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Meal")).firstMatch.exists, "the dropdown is gone")
+        let log = app.buttons["logButton"]
+        XCTAssertEqual(log.label, "Log to Dinner")
+        app.buttons["mealPill-lunch"].tap()
+        XCTAssertTrue(waitUntil { self.app.buttons["mealPill-lunch"].isSelected && log.label == "Log to Lunch" })
+        XCTAssertFalse(dinner.isSelected)
+        shot("9-meal-pills")
+        log.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["loggedToast"].waitForExistence(timeout: 5))
+    }
+
     func testEmptyMealsHaveAddAndOpenInThatMeal() {
         signedIn()
         app.buttons["Food Log"].tap()
