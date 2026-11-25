@@ -230,6 +230,7 @@ export function FoodPicker({ title, allowed, onAdd, onClose }: { title: string; 
                     icon={f.icon}
                     imageUrl={f.imageUrl}
                     brand={f.brand}
+                    restaurant={f.restaurant}
                     tag={tagOf(f.foodKind)}
                     amount={formatAmount(f.servings, p.servingIndex, p.unit, p.quantity, p.fraction)}
                     nutrients={nutrientsFor(f, p)}

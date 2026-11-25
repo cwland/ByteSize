@@ -935,6 +935,7 @@ export default function AddFoodSheet({
       imageUrl={f.imageUrl}
       amount={amountOf(f.servings, p)}
       brand={f.brand}
+      restaurant={f.restaurant}
       tag={f.kind === "culury" ? "RecipeHub" : tagOf(f.foodKind)}
       nutrients={nutrientsFor(f, p)}
       busy={culuryRow(f) && opening === f.id}

@@ -1,10 +1,12 @@
-import { ArrowRightLeft, Copy, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { ArrowRightLeft, Copy, Trash2, Utensils, UtensilsCrossed } from "lucide-react";
 import { api } from "../../api";
 import { notifyDayChanged } from "../../day";
 import { amountFactor } from "../../nutrition";
 import type { LogEntry, Nutrients } from "../../types";
 import FoodDetail from "./FoodDetail";
 import { Sheet } from "../ui/Sheet";
+import { Notice, errorMsg, type Msg } from "../ui/Notice";
 
 // What one base serving of a logged food has (entries keep the scaled numbers; the preview needs per-serving)
 function perServing(e: LogEntry): Nutrients {
@@ -26,9 +28,27 @@ export default function EditEntrySheet({ entry, onClose, onMove, onDelete, bank 
       {el}
     </button>
   );
+  // Restaurant tags: the person's own say on this brand ("Treat … as a restaurant" / "… is not a restaurant")
+  const [restaurant, setRestaurant] = useState(!!entry.restaurant);
+  const [markMsg, setMarkMsg] = useState<Msg>(null);
+  async function mark(brand: string, on: boolean) {
+    setMarkMsg(null);
+    try {
+      await api("PUT", "/api/restaurant-brands", { brand, restaurant: on });
+      setRestaurant(on);
+      setMarkMsg({ ok: true, text: on ? `${brand} is a restaurant` : `${brand} isn't a restaurant` });
+      notifyDayChanged();
+    } catch (err) {
+      setMarkMsg(errorMsg(err));
+    }
+  }
   const heading = (
     <div className="flex items-center gap-1">
       <h2 className="flex-1 truncate text-lg font-bold">Edit entry</h2>
+      {entry.brand &&
+        (restaurant
+          ? icon(`${entry.brand} is not a restaurant`, <UtensilsCrossed aria-hidden="true" className="size-5" />, () => mark(entry.brand!, false), "text-restaurant hover:text-ink")
+          : icon(`Treat ${entry.brand} as a restaurant`, <Utensils aria-hidden="true" className="size-5" />, () => mark(entry.brand!, true)))}
       {icon("Move to another meal or day", <ArrowRightLeft aria-hidden="true" className="size-5" />, () => onMove(false))}
       {icon("Copy", <Copy aria-hidden="true" className="size-5" />, () => onMove(true))}
       {icon("Delete", <Trash2 aria-hidden="true" className="size-5" />, onDelete, "text-error")}
@@ -36,6 +56,7 @@ export default function EditEntrySheet({ entry, onClose, onMove, onDelete, bank 
   );
   return (
     <Sheet label="Edit portion" heading={heading} onClose={onClose}>
+      <Notice msg={markMsg} />
       <FoodDetail
         food={{ name: entry.name, brand: entry.brand, icon: entry.icon, imageUrl: entry.imageUrl, servings: entry.servings, nutrients: perServing(entry) }}
         initial={{ servingIndex: entry.servingIndex, unit: entry.unit, quantity: entry.quantity, fraction: entry.fraction }}

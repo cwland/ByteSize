@@ -7,7 +7,7 @@ import { formatAmount } from "../../amounts";
 import type { LogEntry, Meal, MealTotals, Units } from "../../types";
 import { fmt } from "../../units";
 import Pills from "./Pills";
-import { Tag } from "./FoodRow";
+import { BrandText, Tag } from "./FoodRow";
 import { Field } from "../ui/Field";
 import { Notice, errorMsg, type Msg } from "../ui/Notice";
 import { Sheet } from "../ui/Sheet";
@@ -50,7 +50,10 @@ function EntryRow({ entry, units, selecting, selected, onOpen, onLongPress }: { 
             <span className="truncate font-semibold">{entry.name}</span>
             {entry.treat && <Tag text="Treat" />}
           </span>
-          <span className="block truncate text-sm text-subtle">{formatAmount(entry.servings, entry.servingIndex, entry.unit, entry.quantity, entry.fraction, units)}</span>
+          <span className="block truncate text-sm text-subtle">
+            {formatAmount(entry.servings, entry.servingIndex, entry.unit, entry.quantity, entry.fraction, units)}
+            {entry.brand && <BrandText brand={entry.brand} restaurant={entry.restaurant} />}
+          </span>
           {!water && (
             <span className="mt-1 block">
               <Pills n={entry.nutrients} />

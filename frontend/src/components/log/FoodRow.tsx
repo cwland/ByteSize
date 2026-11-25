@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Check, Plus } from "lucide-react";
+import { Check, Plus, Utensils } from "lucide-react";
 import type { FoodKind, Nutrients } from "../../types";
 import Pills from "./Pills";
 import FoodPic from "./FoodPic";
@@ -7,6 +7,28 @@ import { IconButton } from "../ui/IconButton";
 
 // The small tag on a recipe or quick meal row (database and own foods have none)
 export const tagOf = (k: FoodKind | undefined) => (k === "recipe" ? "Recipe" : k === "quick_meal" ? "Meal" : null);
+
+// A restaurant's name as a teal tag with a fork (2026-11-25 §3, Option B), the same look as on the iPhone
+export function RestaurantTag({ brand }: { brand: string }) {
+  return (
+    <span title={`Restaurant: ${brand}`} className="inline-flex max-w-full items-center gap-1 rounded-full bg-restaurant/15 px-1.5 py-px align-middle text-xs font-bold text-restaurant">
+      <Utensils aria-hidden="true" className="size-3 shrink-0" strokeWidth={2.5} />
+      <span className="truncate">{brand}</span>
+    </span>
+  );
+}
+
+// "· Daisy" for a grocery brand; a restaurant's name as its tag
+export function BrandText({ brand, restaurant }: { brand: string; restaurant?: boolean }) {
+  return restaurant ? (
+    <>
+      {" · "}
+      <RestaurantTag brand={brand} />
+    </>
+  ) : (
+    <span>{` · ${brand}`}</span>
+  );
+}
 
 export function Tag({ text }: { text: string }) {
   return <span className="shrink-0 rounded-full bg-active px-1.5 py-px text-[10px] font-bold text-action">{text}</span>;
@@ -60,6 +82,7 @@ export default function FoodRow({
   imageUrl,
   amount,
   brand,
+  restaurant,
   tag,
   nutrients,
   onOpen,
@@ -72,6 +95,7 @@ export default function FoodRow({
   imageUrl?: string | null;
   amount: string;
   brand?: string | null;
+  restaurant?: boolean;
   tag?: string | null;
   nutrients: Nutrients;
   onOpen: () => void;
@@ -92,7 +116,7 @@ export default function FoodRow({
             </span>
             <span className="block truncate text-sm text-subtle">
               <span>{busy ? "Opening…" : amount}</span>
-              {brand && !busy && <span>{` · ${brand}`}</span>}
+              {brand && !busy && <BrandText brand={brand} restaurant={restaurant} />}
             </span>
             <span className="mt-1 block">
               <Pills n={nutrients} />
