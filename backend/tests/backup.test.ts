@@ -1,4 +1,4 @@
-import { barcodePicks, favorites, weighInSkips, workoutSkips } from "../src/db/schema.js";
+import { barcodePicks, favorites, restaurantBrands, weighInSkips, workoutSkips } from "../src/db/schema.js";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -117,6 +117,7 @@ async function seed() {
     ]);
     await t.db.insert(usageCounts).values([{ userId: u.id, key: "barcodes_scanned", count: 3 + i }, { userId: u.id, key: "outside_off", count: 1 }]); // App info's numbers are the person's own data
     await t.db.insert(restaurantFavourites).values({ userId: u.id, cacheId: cache.id, chain: "Acme Diner" });
+    await t.db.insert(restaurantBrands).values({ userId: u.id, brandKey: "joes diner", brand: "Joe's Diner", isRestaurant: i === 0 }); // their say on a brand
     await t.db.insert(dashboardLayouts).values({ userId: u.id, columns: i ? [["food"], [], ["budget"]] : [["budget", "water"], ["food"]] }); // the person's Dashboard
     // §40c: an active goal (its widget on the Goals page) and a finished one with its kept result
     const [walk] = await t.db

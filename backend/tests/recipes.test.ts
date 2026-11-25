@@ -58,6 +58,7 @@ describe("recipes", () => {
       foodKind: "custom",
       name: "Ground beef",
       brand: null,
+      restaurant: false,
       icon: b.icon,
       imageUrl: null,
       servingIndex: 0,

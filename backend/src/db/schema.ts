@@ -559,6 +559,21 @@ export const restaurantFavourites = pgTable(
   (t) => [uniqueIndex("restaurant_favourites_user_cache_idx").on(t.userId, t.cacheId)]
 );
 
+// A person's own say on whether a brand is a restaurant (restaurant tags, 2026-11-25 §3): beats the built-in chain
+// list both ways. brand_key is lib/restaurantBrands.ts brandKey(); brand is how they saw it written.
+export const restaurantBrands = pgTable(
+  "restaurant_brands",
+  {
+    id: serial("id").primaryKey(),
+    userId: userRef(),
+    brandKey: text("brand_key").notNull(),
+    brand: text("brand").notNull(),
+    isRestaurant: boolean("is_restaurant").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("restaurant_brands_user_key_idx").on(t.userId, t.brandKey)]
+);
+
 // Restaurant search answers (Spoonacular, FatSecret) kept for their source's hours, shared by everyone: not anyone's own data.
 // query is lowercased with single spaces.
 export const restaurantSearches = pgTable(

@@ -45,6 +45,7 @@ describe("food log", () => {
       meal: "breakfast",
       name: "Crunchy bar",
       brand: "Acme",
+      restaurant: false, // Acme isn't a restaurant (restaurant tags)
       icon: food.icon,
       imageUrl: null,
       servingIndex: 1,
@@ -218,6 +219,7 @@ describe("food log", () => {
       meal: "supplements",
       name: "Water",
       brand: null,
+      restaurant: false,
       icon: "💧",
       imageUrl: null,
       servingIndex: 0,

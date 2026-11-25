@@ -218,6 +218,13 @@
       "when": 1795363891122,
       "tag": "0030_barcode_picks",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1795621417369,
+      "tag": "0031_restaurant_brands",
+      "breakpoints": true
     }
   ]
 }

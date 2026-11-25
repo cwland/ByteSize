@@ -23,6 +23,7 @@ describe("my foods", () => {
       id: expect.any(Number),
       name: "Morning protein shake",
       brand: "Fairlife",
+      restaurant: false,
       icon: "🥤",
       barcode: null,
       servings: [{ label: "1 bottle", ml: 340 }],
