@@ -124,6 +124,9 @@ final class SmokeUITests: XCTestCase {
     // MARK: - Round 2: Dashboard and Food Log (stub day: 1138 cal of 1500–2000, 500 ml water)
 
     /// Polls `condition` for up to `timeout` seconds.
+    /// An element's label and value together (a picker row shows its choice as the value).
+    private func text(_ e: XCUIElement) -> String { e.label + " " + ((e.value as? String) ?? "") }
+
     private func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -164,12 +167,14 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(waitUntil { weekStart.isEnabled }, "enabled once the settings load")
         weekStart.tap()
         app.buttons["Monday"].firstMatch.tap()
-        XCTAssertTrue(waitUntil { weekStart.label.contains("Monday") }, "shows the new week start")
+        let showsMonday = waitUntil { self.text(weekStart).contains("Monday") }
+        if !showsMonday { try? app.debugDescription.write(toFile: "/tmp/bs-weekstart-tree.txt", atomically: true, encoding: .utf8) }
+        XCTAssertTrue(showsMonday, "shows the new week start")
         shot("7-profile-settings")
         app.buttons["Done"].firstMatch.tap()
         app.buttons["Profile"].firstMatch.tap()
         XCTAssertTrue(app.buttons["settingsWeekStart"].waitForExistence(timeout: 5))
-        XCTAssertTrue(waitUntil { self.app.buttons["settingsWeekStart"].label.contains("Monday") }, "saved to the account")
+        XCTAssertTrue(waitUntil { self.text(self.app.buttons["settingsWeekStart"]).contains("Monday") }, "saved to the account")
 
         // Meal times opens with the four times and Reset
         app.buttons["settingsMealTimes"].tap()
@@ -189,7 +194,7 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(units.waitForExistence(timeout: 5))
         units.tap()
         app.buttons["Metric (kg, ml)"].firstMatch.tap()
-        XCTAssertTrue(waitUntil { self.app.buttons["settingsUnits"].label.contains("Metric") }, "shows metric")
+        XCTAssertTrue(waitUntil { self.text(self.app.buttons["settingsUnits"]).contains("Metric") }, "shows metric")
         XCTAssertTrue(app.buttons["Done"].firstMatch.exists, "Profile is still open")
         app.buttons["Done"].firstMatch.tap()
         XCTAssertTrue(waitUntil { self.app.staticTexts["waterTotal"].label == "500 ml" }, "the Dashboard shows ml")
