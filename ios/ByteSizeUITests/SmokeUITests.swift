@@ -1164,7 +1164,9 @@ final class SmokeUITests: XCTestCase {
         let log = app.buttons["logButton"]
         XCTAssertTrue(log.waitForExistence(timeout: 5))
         log.tap()
-        XCTAssertTrue(app.buttons["filter-all"].waitForExistence(timeout: 5), "back on the list after logging")
+        let back = app.buttons["filter-all"].waitForExistence(timeout: 5)
+        if !back { try? app.debugDescription.write(toFile: "/tmp/bs-recipe-tree.txt", atomically: true, encoding: .utf8) }
+        XCTAssertTrue(back, "back on the list after logging")
         XCTAssertTrue(foodLogShows("Chili"))
     }
 
@@ -1216,6 +1218,7 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(reveal(weight).waitForExistence(timeout: 5))
         weight.switches.firstMatch.tap()
         let status = app.descendants(matching: .any)["healthStatus"]
+        _ = reveal(status) // under the switches, below the Settings section
         XCTAssertTrue(waitUntil(timeout: 8) { status.exists && status.label.contains("1 weigh-in") }, status.exists ? status.label : "no status")
         shot("41-health")
         app.buttons["Done"].tap()

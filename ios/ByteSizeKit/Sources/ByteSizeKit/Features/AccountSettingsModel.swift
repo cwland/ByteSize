@@ -30,11 +30,23 @@ public final class AccountSettingsModel {
             let loaded = try await api.send(BodyAPI.settings())
             settings = loaded
             apply(loaded)
+            message = nil
         } catch {
             message = Self.text(error)
         }
         if case .signedIn(let user) = session.state { units = Units(user.units) }
     }
+
+    /// Back in the app: what may have changed on the web since — the settings, and the account (units).
+    /// A changed account is handed to the session, which makes the app's models afresh.
+    public func refresh() async {
+        await load()
+        guard let me = try? await api.send(Auth.me()), case .signedIn(let current) = session.state, me.user != current else { return }
+        session.update(me.user)
+        units = Units(me.user.units)
+    }
+
+    public func clearMessage() { message = nil }
 
     public func setWeekStart(_ day: Int) async { await save { $0.weekStart = day } }
     public func setDateFormat(_ format: DateFormat) async { await save { $0.dateFormat = format.rawValue } }

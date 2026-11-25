@@ -7,7 +7,7 @@ struct RestaurantTag: View {
     @Environment(\.colorScheme) private var scheme
 
     static func color(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(hex: "#3cc8b4") : Color(hex: "#0b7d72")
+        scheme == .dark ? Color(hex: "#3cc8b4") : Color(hex: "#07645b")
     }
 
     var body: some View {
@@ -20,7 +20,7 @@ struct RestaurantTag: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 1)
         .foregroundStyle(teal)
-        .background(teal.opacity(0.16), in: Capsule())
+        .background(teal.opacity(0.15), in: Capsule())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Restaurant: \(brand)")
     }

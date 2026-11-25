@@ -52,6 +52,8 @@ struct MealTimesView: View {
             }
         }
         .environment(\.timeZone, Self.utc) // the times are wall-clock "HH:mm", shown as they are
+        .onAppear { settings.clearMessage() }
+        .onDisappear { settings.clearMessage() } // a refused save isn't Profile's message
     }
 
     private func row(_ title: String, _ key: WritableKeyPath<MealWindows, String>) -> some View {

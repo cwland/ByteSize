@@ -24,6 +24,9 @@ struct PortionSheet: View {
         let action: () -> Void
     }
     var again: Again?
+    /// The food's brand under its name; a restaurant's as its tag.
+    var brand: String? = nil
+    var restaurant = false
     @State private var estimating = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.palette) private var palette
@@ -67,7 +70,10 @@ struct PortionSheet: View {
                 Section {
                     HStack(spacing: 12) {
                         Text(portion.icon).font(.largeTitle)
-                        Text(portion.name).font(.headline)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(portion.name).font(.headline)
+                            if brand != nil { BrandLine(brand: brand, restaurant: restaurant, detail: "") }
+                        }
                         Spacer()
                         // ≈: the server's numbers rule once it's logged
                         Text(portion.previewCalories.map { "≈ \($0) cal" } ?? "—")
@@ -280,6 +286,7 @@ struct FoodPortionView: View {
     var body: some View {
         // The model's message read here, so a failed bookmark or log shows while this screen is open
         PortionSheet(portion: portion, onLog: { await log(food, portion) }, message: favorites?.message ?? message, pushed: pushed, bookmark: bookmark,
-                     note: food.isCulury ? favorites?.recipeNote : nil, estimate: estimate, again: again)
+                     note: food.isCulury ? favorites?.recipeNote : nil, estimate: estimate, again: again,
+                     brand: food.brand, restaurant: food.isRestaurant)
     }
 }

@@ -50,6 +50,7 @@ struct MainTabView: View {
             if phase == .active {
                 Task {
                     await today.days.dayMayHaveChanged()
+                    await today.accountSettings.refresh() // meal times, dates and units changed on the web
                     await today.syncHealth()
                 }
             }
