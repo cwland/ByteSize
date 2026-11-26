@@ -16,8 +16,21 @@ export type Projection = {
 export const KG_PER_LB = 0.45359237;
 
 const SMOOTHING = 0.9;
-export const PROJECTION_DAYS = 28;
 const MIN_SPAN_DAYS = 7;
+/**
+ * How the goal estimate is worked out (the person's Settings › Profile › Goal estimate): a line through the scale
+ * weigh-ins or through the trend, over the last `days` days (6, 12 or 26 weeks).
+ */
+export type EstimateBasis = "scale" | "trend";
+export const ESTIMATE_WEEKS = [6, 12, 26] as const;
+export type EstimateWeeks = (typeof ESTIMATE_WEEKS)[number];
+export type EstimateOptions = { basis: EstimateBasis; days: number };
+export const DEFAULT_ESTIMATE_WEEKS: EstimateWeeks = 12;
+export const DEFAULT_ESTIMATE: EstimateOptions = { basis: "scale", days: DEFAULT_ESTIMATE_WEEKS * 7 };
+/** A point's weight for the basis: its weigh-in (scale; the trend when the point has none) or its trend */
+type EstimatePoint = TrendPoint & { weightKg?: number };
+const valueFor = (basis: EstimateBasis) => (p: EstimatePoint) => (basis === "scale" ? (p.weightKg ?? p.trendKg) : p.trendKg);
+
 /** A goal date further out than 3 years is shown as "Not losing right now" */
 export const MAX_PROJECTION_DAYS = 1095;
 /** 10 lb: the latest weight this far from the plan's weight suggests a re-plan */
@@ -42,25 +55,26 @@ export function trendOf<P extends WeighInPoint>(points: readonly P[]): (P & { tr
 }
 
 /**
- * Where the trend is heading: least-squares slope of the trend over the last 28 days (needs ≥ 2 weigh-ins at
- * least 7 days apart). Losing → goal day = today + (trend − goal) ÷ rate. At or below a goal under the starting
- * weight → reached; at or below a goal at or above the start (nothing to lose toward) → not_losing.
+ * Where the weight is heading: least-squares slope of the basis (weigh-ins or trend) over the last `opts.days` days
+ * (needs ≥ 2 weigh-ins at least 7 days apart). Losing → goal day = today + (latest − goal) ÷ rate. At or below a goal
+ * under the starting weight → reached; at or below a goal at or above the start (nothing to lose toward) → not_losing.
  * `trendPoints` sorted by day (as trendOf gives them); `today` is the person's local day.
  */
-export function projectionOf(trendPoints: readonly TrendPoint[], goalKg: number | null, today: string): Projection {
+export function projectionOf(trendPoints: readonly EstimatePoint[], goalKg: number | null, today: string, opts: EstimateOptions): Projection {
+  const v = valueFor(opts.basis);
   const last = trendPoints[trendPoints.length - 1];
   if (!last) return { status: "not_enough" };
   // The start is the first weigh-in (trend₀ = w₀). A goal at or above it has nothing to lose toward: never "reached"
-  if (goalKg !== null && last.trendKg <= goalKg) return goalKg < trendPoints[0].trendKg ? { status: "reached" } : { status: "not_losing" };
+  if (goalKg !== null && v(last) <= goalKg) return goalKg < trendPoints[0].trendKg ? { status: "reached" } : { status: "not_losing" };
 
-  const from = addDays(today, -(PROJECTION_DAYS - 1));
+  const from = addDays(today, -(opts.days - 1));
   const recent = trendPoints.filter((p) => p.day >= from && p.day <= today);
   if (recent.length < 2 || dayNumber(recent[recent.length - 1].day) - dayNumber(recent[0].day) < MIN_SPAN_DAYS) {
     return { status: "not_enough" };
   }
 
   const xs = recent.map((p) => dayNumber(p.day));
-  const ys = recent.map((p) => p.trendKg);
+  const ys = recent.map(v);
   const mx = xs.reduce((s, x) => s + x, 0) / xs.length;
   const my = ys.reduce((s, y) => s + y, 0) / ys.length;
   let sxy = 0;
@@ -75,8 +89,8 @@ export function projectionOf(trendPoints: readonly TrendPoint[], goalKg: number 
   if (!(kgPerWeek > 0)) return { status: "not_losing", kgPerWeek };
   if (goalKg === null) return { status: "ok", kgPerWeek };
 
-  // From where the trend is today, not at the last weigh-in (already past the goal by now: tomorrow)
-  const trendToday = last.trendKg - lossPerDay * (dayNumber(today) - dayNumber(last.day));
+  // From where the line puts today, not at the last weigh-in (already past the goal by now: tomorrow)
+  const trendToday = v(last) - lossPerDay * (dayNumber(today) - dayNumber(last.day));
   // Round to 1e-6 day so float noise can't push ceil() a day later
   const days = Math.max(1, Math.ceil(Math.round(((trendToday - goalKg) / lossPerDay) * 1e6) / 1e6));
   // A plateau's tiny slope would put the goal centuries away (and past what a date can hold)
@@ -115,7 +129,7 @@ export type GoalDate =
       status: "ok";
       /** kg lost a week by the trend (the pace) */
       kgPerWeek: number;
-      /** latest trend − goal */
+      /** latest weigh-in (scale basis) or trend − goal */
       toGoKg: number;
       /** whole weeks from today to the earliest and latest day */
       weeks: { min: number; max: number };
@@ -125,7 +139,6 @@ export type GoalDate =
       latest: string;
     };
 
-export const GOAL_DATE_DAYS = 42; // the last 6 weeks
 export const GOAL_DATE_MIN_DAYS = 14; // first to last weigh-in in the window, both counted
 export const GOAL_DATE_MIN_WEIGH_INS = 6;
 const GOAL_DATE_SE = 1.5; // the range: the pace ± 1.5 standard errors of the slope...
@@ -133,27 +146,28 @@ const GOAL_DATE_SPREAD = 0.05; // ...and at least ±5% of the pace
 const GOAL_DATE_SLOWEST = 0.5; // its slow end at most twice the time (an unsure slope would make it endless)
 
 /**
- * The Goal date widget (§40a): when the trend reaches the goal at the current pace, as a range. Over the last 6 weeks'
+ * The Goal date widget (§40a): when the basis (weigh-ins or trend) reaches the goal at the current pace, as a range. Over the window's
  * trend points (≥ 14 days, ≥ 6 weigh-ins): pace = least-squares slope of the trend; the range is the pace ± 1.5
  * standard errors of the slope of the weigh-ins themselves over those days (at least ±5% of the pace), so steady
  * weigh-ins give a tight range and bumpy ones a wider one. Days are
  * counted from the last weigh-in's trend; every day is after today. `trendPoints` sorted by day (as trendOf gives them).
  */
-export function goalDateOf(trendPoints: readonly (TrendPoint & { weightKg?: number })[], goalKg: number | null, today: string): GoalDate {
+export function goalDateOf(trendPoints: readonly EstimatePoint[], goalKg: number | null, today: string, opts: EstimateOptions): GoalDate {
   if (goalKg === null) return { status: "no_goal" };
-  const recent = trendPoints.filter((p) => p.day > addDays(today, -GOAL_DATE_DAYS) && p.day <= today);
+  const v = valueFor(opts.basis);
+  const recent = trendPoints.filter((p) => p.day > addDays(today, -opts.days) && p.day <= today);
   const last = recent[recent.length - 1] ?? trendPoints.filter((p) => p.day <= today).at(-1);
-  if (last && last.trendKg <= goalKg) return { status: "reached" };
+  if (last && v(last) <= goalKg) return { status: "reached" };
   if (!last || recent.length < GOAL_DATE_MIN_WEIGH_INS || dayNumber(last.day) - dayNumber(recent[0].day) + 1 < GOAL_DATE_MIN_DAYS) {
     return { status: "not_enough" };
   }
 
   // Round away float noise so a flat line isn't "losing" 1e-15 kg a week
-  const lossPerDay = -lineOf(recent, (i) => recent[i].trendKg).slope;
+  const lossPerDay = -lineOf(recent, (i) => v(recent[i])).slope;
   // How sure the pace is: from the weigh-ins themselves (the trend smooths their ups and downs away)
   const { slopeSe } = lineOf(recent, (i) => recent[i].weightKg ?? recent[i].trendKg);
   const kgPerWeek = Math.round(lossPerDay * 7 * 1e9) / 1e9 + 0; // + 0: never −0
-  const toGoKg = last.trendKg - goalKg;
+  const toGoKg = v(last) - goalKg;
   const spread = Math.max(GOAL_DATE_SE * slopeSe, GOAL_DATE_SPREAD * lossPerDay);
   const fast = lossPerDay + spread;
   const slow = Math.max(lossPerDay - spread, lossPerDay * GOAL_DATE_SLOWEST);
