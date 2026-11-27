@@ -43,12 +43,18 @@ final class HealthSyncTests: XCTestCase {
 
     private func iso(_ s: String) -> Date { ISO8601DateFormatter().date(from: s)! }
 
-    /// Weigh-ins answer skipped for the days in `skipped`; `failWeight` answers 500.
-    private func serve(skipped: Set<String> = [], failWeight: Bool = false) {
+    /// Weigh-ins answer skipped for the days in `skipped`; `failWeight` answers 500. `firstWeighIn`: the day of the
+    /// account's first weigh-in (GET /api/weight's start; nil = none); `failMatch`: the one-time match answers 500.
+    private func serve(skipped: Set<String> = [], failWeight: Bool = false, firstWeighIn: String? = nil, failMatch: Bool = false) {
         HTTPStub.requests = []
         HTTPStub.handler = { req in
             let path = req.url?.path() ?? ""
             switch (req.httpMethod ?? "", path) {
+            case ("GET", "/api/weight"):
+                let start = firstWeighIn.map { #"{"day":"\#($0)","weightKg":120}"# } ?? "null"
+                return .json(200, #"{"weighIns":[],"start":\#(start),"latest":null,"goalKg":null,"trendKg":null,"lostKg":null}"#)
+            case ("POST", "/api/weigh-ins/health-match"):
+                return failMatch ? .json(500, #"{"error":"ByteSize didn't answer"}"#) : .json(200, #"{"matched":1}"#)
             case ("PUT", _) where path.hasPrefix("/api/weigh-ins/"):
                 if failWeight { return .json(500, #"{"error":"ByteSize didn't answer"}"#) }
                 let day = String(path.dropFirst("/api/weigh-ins/".count))
@@ -69,6 +75,9 @@ final class HealthSyncTests: XCTestCase {
         return HealthSync(api: api, dayStore: days, store: store, defaults: defaults, account: account, now: now)
     }
 
+    /// Everything that would change something on the server (reads like GET /api/weight left out)
+    private var writes: [HTTPStub.Recorded] { HTTPStub.requests.filter { $0.request.httpMethod != "GET" } }
+
     private func sent(_ method: String, _ prefix: String) -> [HTTPStub.Recorded] {
         HTTPStub.requests.filter { $0.request.httpMethod == method && ($0.request.url?.path() ?? "").hasPrefix(prefix) }
     }
@@ -87,7 +96,7 @@ final class HealthSyncTests: XCTestCase {
         XCTAssertFalse(s.isOn(.weight))
         await s.syncNow()
         XCTAssertTrue(store.asked.isEmpty)
-        XCTAssertTrue(HTTPStub.requests.isEmpty)
+        XCTAssertTrue(writes.isEmpty)
         XCTAssertEqual(HealthKind.allCases.map(\.title), ["Weight", "Steps", "Workouts"])
     }
 
@@ -191,7 +200,7 @@ final class HealthSyncTests: XCTestCase {
         await s.setOn(.weight, true)
         await s.setOn(.steps, true)
         await s.setOn(.workouts, true)
-        XCTAssertTrue(HTTPStub.requests.isEmpty)
+        XCTAssertTrue(writes.isEmpty)
         XCTAssertEqual(s.result, "Up to date")
     }
 
@@ -203,7 +212,7 @@ final class HealthSyncTests: XCTestCase {
         let s = sync(store)
         await s.setOn(.weight, true)
         await s.setOn(.workouts, true)
-        XCTAssertTrue(HTTPStub.requests.isEmpty)
+        XCTAssertTrue(writes.isEmpty)
     }
 
     func testResultCountsOnlyWhatWasAdded() async {
@@ -244,7 +253,7 @@ final class HealthSyncTests: XCTestCase {
         store.weightList = [HealthWeight(date: iso("2026-11-18T14:00:00Z"), kg: 80, fromByteSize: false)]
         let s = sync(store)
         await s.setOn(.weight, true)
-        XCTAssertTrue(HTTPStub.requests.isEmpty)
+        XCTAssertTrue(writes.isEmpty)
         XCTAssertNil(s.lastSynced(for: .weight))
         XCTAssertNotNil(s.message)
     }
@@ -277,7 +286,7 @@ final class HealthSyncTests: XCTestCase {
         await s.setOn(.weight, false)
         HTTPStub.requests = []
         await s.syncNow()
-        XCTAssertTrue(HTTPStub.requests.isEmpty)
+        XCTAssertTrue(writes.isEmpty)
     }
 
     func testABackgroundSyncUsesTheSavedSwitches() async {
@@ -342,5 +351,76 @@ final class HealthSyncTests: XCTestCase {
         let s = sync(store)
         await s.setOn(.weight, true)
         XCTAssertEqual(sent("PUT", "/api/weigh-ins/").count, 1)
+    }
+
+    // MARK: - The one-time match (old weigh-ins tagged from Apple Health)
+
+    private var matches: [HTTPStub.Recorded] { sent("POST", "/api/weigh-ins/health-match") }
+
+    func testOldWeighInsAreMatchedOnceFromTheFirstWeighIn() async {
+        serve(firstWeighIn: "2026-08-01")
+        let store = FakeHealthStore()
+        store.weightList = [
+            HealthWeight(date: iso("2026-08-02T21:00:00Z"), kg: 119.6, fromByteSize: false), // Aug 2, 3 pm
+            HealthWeight(date: iso("2026-08-02T13:00:00Z"), kg: 119.2, fromByteSize: false), // Aug 2, 7 am: first
+            HealthWeight(date: iso("2026-08-03T13:00:00Z"), kg: 90, fromByteSize: true), // written by ByteSize: left out
+            HealthWeight(date: iso("2026-11-18T14:10:00Z"), kg: 82.4, fromByteSize: false),
+        ]
+        let s = sync(store)
+        await s.setOn(.weight, true)
+        XCTAssertTrue(store.asked.contains { $0.kind == "weight" && $0.from == startOfDay("2026-08-01") })
+        XCTAssertEqual(matches.count, 1)
+        let items = matches.first?.json?["items"] as? [[String: Any]]
+        XCTAssertEqual(items?.map { $0["day"] as? String }, ["2026-08-02", "2026-11-18"])
+        XCTAssertEqual(items?.map { $0["weightKg"] as? Double }, [119.2, 82.4])
+        await s.syncNow()
+        XCTAssertEqual(matches.count, 1, "only once per account and phone")
+    }
+
+    func testTheMatchTriesAgainAfterAFailure() async {
+        serve(firstWeighIn: "2026-11-01", failMatch: true)
+        let store = FakeHealthStore()
+        store.weightList = [HealthWeight(date: iso("2026-11-18T14:10:00Z"), kg: 82.4, fromByteSize: false)]
+        let s = sync(store)
+        await s.setOn(.weight, true)
+        XCTAssertEqual(matches.count, 1)
+        XCTAssertNil(s.message, "the weight sync itself went fine")
+        serve(firstWeighIn: "2026-11-01")
+        await s.syncNow()
+        XCTAssertEqual(matches.count, 1)
+        serve(firstWeighIn: "2026-11-01")
+        await s.syncNow()
+        XCTAssertEqual(matches.count, 0, "done after the one that worked")
+    }
+
+    func testNoMatchWhenWeightIsOff() async {
+        serve(firstWeighIn: "2026-11-01")
+        let store = FakeHealthStore()
+        store.steps = ["2026-11-18": 100]
+        let s = sync(store)
+        await s.setOn(.steps, true)
+        XCTAssertTrue(matches.isEmpty)
+        XCTAssertTrue(sent("GET", "/api/weight").isEmpty)
+    }
+
+    func testNoWeighInsYetMeansNothingToMatch() async {
+        serve(firstWeighIn: nil)
+        let store = FakeHealthStore()
+        let s = sync(store)
+        await s.setOn(.weight, true)
+        XCTAssertTrue(matches.isEmpty)
+        serve(firstWeighIn: "2026-11-01")
+        await s.syncNow()
+        XCTAssertTrue(sent("GET", "/api/weight").isEmpty, "nothing left to do")
+    }
+
+    func testTheMatchIsSentAtMost1000DaysAtATime() async {
+        serve(firstWeighIn: "2023-01-01")
+        let store = FakeHealthStore()
+        let start = iso("2023-01-01T19:00:00Z")
+        store.weightList = (0..<1001).map { HealthWeight(date: start.addingTimeInterval(Double($0) * 86_400), kg: 100, fromByteSize: false) }
+        let s = sync(store)
+        await s.setOn(.weight, true)
+        XCTAssertEqual(matches.map { ($0.json?["items"] as? [Any])?.count }, [1000, 1])
     }
 }

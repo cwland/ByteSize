@@ -45,6 +45,12 @@ final class GoalsModelTests: XCTestCase {
         HTTPStub.requests.filter { $0.request.httpMethod == method && ($0.request.url?.path() ?? "").hasPrefix(prefix) }.count
     }
 
+    func testAWeighInSaysWhereItCameFrom() throws {
+        let json = #"[{"day":"2026-11-01","weightKg":90,"trendKg":90,"note":null,"source":"health"},{"day":"2026-11-02","weightKg":89,"trendKg":89.9,"note":null,"source":null},{"day":"2026-11-03","weightKg":88,"trendKg":89.8,"note":null}]"#
+        let list = try JSONDecoder().decode([WeighIn].self, from: Data(json.utf8))
+        XCTAssertEqual(list.map(\.source), ["health", nil, nil])
+    }
+
     func testAnOlderServerWithoutTheTrendFigureLoads() async {
         serve(weight: { GoalsModelTests.weight().replacingOccurrences(of: #","lostTrendKg":6.8"#, with: "") })
         let m = model()
