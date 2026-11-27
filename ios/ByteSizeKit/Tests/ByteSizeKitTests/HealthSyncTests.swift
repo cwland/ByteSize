@@ -45,7 +45,7 @@ final class HealthSyncTests: XCTestCase {
 
     /// Weigh-ins answer skipped for the days in `skipped`; `failWeight` answers 500. `firstWeighIn`: the day of the
     /// account's first weigh-in (GET /api/weight's start; nil = none); `failMatch`: the one-time match answers 500.
-    private func serve(skipped: Set<String> = [], failWeight: Bool = false, firstWeighIn: String? = nil, failMatch: Bool = false) {
+    private func serve(skipped: Set<String> = [], failWeight: Bool = false, firstWeighIn: String? = nil, failMatch: Bool = false, matchMissing: Bool = false) {
         HTTPStub.requests = []
         HTTPStub.handler = { req in
             let path = req.url?.path() ?? ""
@@ -54,6 +54,7 @@ final class HealthSyncTests: XCTestCase {
                 let start = firstWeighIn.map { #"{"day":"\#($0)","weightKg":120}"# } ?? "null"
                 return .json(200, #"{"weighIns":[],"start":\#(start),"latest":null,"goalKg":null,"trendKg":null,"lostKg":null}"#)
             case ("POST", "/api/weigh-ins/health-match"):
+                if matchMissing { return .json(404, #"{"error":"Not found"}"#) } // a server before 0.19.0
                 return failMatch ? .json(500, #"{"error":"ByteSize didn't answer"}"#) : .json(200, #"{"matched":1}"#)
             case ("PUT", _) where path.hasPrefix("/api/weigh-ins/"):
                 if failWeight { return .json(500, #"{"error":"ByteSize didn't answer"}"#) }
@@ -391,6 +392,29 @@ final class HealthSyncTests: XCTestCase {
         serve(firstWeighIn: "2026-11-01")
         await s.syncNow()
         XCTAssertEqual(matches.count, 0, "done after the one that worked")
+    }
+
+    func testAServerWithoutTheMatchIsNotAskedAgain() async {
+        serve(firstWeighIn: "2026-11-01", matchMissing: true)
+        let store = FakeHealthStore()
+        store.weightList = [HealthWeight(date: iso("2026-11-18T14:10:00Z"), kg: 82.4, fromByteSize: false)]
+        let s = sync(store)
+        await s.setOn(.weight, true)
+        XCTAssertEqual(matches.count, 1)
+        serve(firstWeighIn: "2026-11-01", matchMissing: true)
+        await s.syncNow()
+        XCTAssertTrue(matches.isEmpty)
+        XCTAssertTrue(sent("GET", "/api/weight").isEmpty, "no long Health read every sync")
+    }
+
+    func testAFailedMatchStillCountsTheWeightSync() async {
+        serve(firstWeighIn: "2026-11-01", failMatch: true)
+        let store = FakeHealthStore()
+        store.weightList = [HealthWeight(date: iso("2026-11-18T14:10:00Z"), kg: 82.4, fromByteSize: false)]
+        let s = sync(store)
+        await s.setOn(.weight, true)
+        XCTAssertEqual(s.lastSynced, noon)
+        XCTAssertEqual(s.result, "1 weigh-in")
     }
 
     func testNoMatchWhenWeightIsOff() async {

@@ -147,6 +147,10 @@ final class GoalsModelTests: XCTestCase {
         XCTAssertEqual(GoalsModel.change(0.06, units: .metric), .init(kind: .gain, text: "0.1 kg"))
         XCTAssertEqual(GoalsModel.change(-0.04, units: .metric), .init(kind: .none, text: "0.0 kg"))
         XCTAssertNil(GoalsModel.change(nil, units: .metric))
+        // With the weigh-in's own weight, the pill follows the two weights as shown: 82.24 → 82.26 kg shows
+        // 82.2 → 82.3, so +0.1, not a neutral 0.0 next to two different numbers
+        XCTAssertEqual(GoalsModel.change(0.02, weightKg: 82.26, units: .metric), .init(kind: .gain, text: "0.1 kg"))
+        XCTAssertEqual(GoalsModel.change(-0.02, weightKg: 82.24, units: .metric), .init(kind: .none, text: "0.0 kg"))
     }
 
     func testLostNeverGoesBelowZero() {
@@ -155,6 +159,9 @@ final class GoalsModelTests: XCTestCase {
         XCTAssertEqual(GoalsModel.lost(-2 * lb, units: .imperial), .init(text: "0.0 lb", isLoss: false))
         XCTAssertEqual(GoalsModel.lost(0, units: .metric), .init(text: "0.0 kg", isLoss: false))
         XCTAssertEqual(GoalsModel.lost(0.02, units: .metric), .init(text: "0.0 kg", isLoss: false))
+        // a tiny gain rounds to −0.0: still shown as "0.0", never "-0.0"
+        XCTAssertEqual(GoalsModel.lost(-0.02, units: .metric), .init(text: "0.0 kg", isLoss: false))
+        XCTAssertEqual(GoalsModel.lost(-0.03 * lb, units: .imperial), .init(text: "0.0 lb", isLoss: false))
         XCTAssertNil(GoalsModel.lost(nil, units: .metric))
     }
 
