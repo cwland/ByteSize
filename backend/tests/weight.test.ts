@@ -2,11 +2,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
 import { projectionOf, trendOf, type EstimateOptions } from "../src/lib/weight.js";
-const T28: EstimateOptions = { basis: "trend", days: 28 }; // the old Goals-tab projection
 import { addDays } from "../src/lib/days.js";
 import { userBody, weighInSkips } from "../src/db/schema.js";
 
-// Trend: trend₀ = w₀; trend += (w − trend) × (1 − 0.9^gapDays). Projection over the last 28 days.
+const T28: EstimateOptions = { basis: "trend", days: 28 }; // these tests pin the trend over 28 days (the old default)
+
+// Trend: trend₀ = w₀; trend += (w − trend) × (1 − 0.9^gapDays). The projection tests below pin the trend over 28 days
+// (T28); scale weigh-ins and other windows are in estimate-options.test.ts.
 describe("trendOf", () => {
   it("smooths a known series, weighting a 14-day gap by 1 − 0.9^14", () => {
     const out = trendOf([

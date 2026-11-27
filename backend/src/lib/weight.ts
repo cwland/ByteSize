@@ -8,7 +8,7 @@ export type Projection = {
   status: "ok" | "not_enough" | "not_losing" | "reached";
   /** ok with a goal: the projected goal day (YYYY-MM-DD), always after today */
   date?: string;
-  /** ok / not_losing: kg lost per week by the trend (negative = gaining) */
+  /** ok / not_losing: kg lost per week by the basis' line (negative = gaining) */
   kgPerWeek?: number;
 };
 
@@ -89,7 +89,7 @@ export function projectionOf(trendPoints: readonly EstimatePoint[], goalKg: numb
   if (!(kgPerWeek > 0)) return { status: "not_losing", kgPerWeek };
   if (goalKg === null) return { status: "ok", kgPerWeek };
 
-  // From where the line puts today, not at the last weigh-in (already past the goal by now: tomorrow)
+  // From the latest point (weigh-in or trend), carried on to today at the line's pace (already past the goal: tomorrow)
   const trendToday = v(last) - lossPerDay * (dayNumber(today) - dayNumber(last.day));
   // Round to 1e-6 day so float noise can't push ceil() a day later
   const days = Math.max(1, Math.ceil(Math.round(((trendToday - goalKg) / lossPerDay) * 1e6) / 1e6));
@@ -127,7 +127,7 @@ export type GoalDate =
   | { status: "not_heading"; kgPerWeek: number }
   | {
       status: "ok";
-      /** kg lost a week by the trend (the pace) */
+      /** kg lost a week by the basis' line (the pace) */
       kgPerWeek: number;
       /** latest weigh-in (scale basis) or trend − goal */
       toGoKg: number;
@@ -146,11 +146,11 @@ const GOAL_DATE_SPREAD = 0.05; // ...and at least ±5% of the pace
 const GOAL_DATE_SLOWEST = 0.5; // its slow end at most twice the time (an unsure slope would make it endless)
 
 /**
- * The Goal date widget (§40a): when the basis (weigh-ins or trend) reaches the goal at the current pace, as a range. Over the window's
- * trend points (≥ 14 days, ≥ 6 weigh-ins): pace = least-squares slope of the trend; the range is the pace ± 1.5
+ * The Goal date widget (§40a): when the basis (weigh-ins or trend) reaches the goal at the current pace, as a range. Over
+ * the window's points (≥ 14 days, ≥ 6 weigh-ins): pace = least-squares slope of the basis; the range is the pace ± 1.5
  * standard errors of the slope of the weigh-ins themselves over those days (at least ±5% of the pace), so steady
- * weigh-ins give a tight range and bumpy ones a wider one. Days are
- * counted from the last weigh-in's trend; every day is after today. `trendPoints` sorted by day (as trendOf gives them).
+ * weigh-ins give a tight range and bumpy ones a wider one. Days are counted from the latest point's weigh-in (scale)
+ * or trend; every day is after today. `trendPoints` sorted by day (as trendOf gives them).
  */
 export function goalDateOf(trendPoints: readonly EstimatePoint[], goalKg: number | null, today: string, opts: EstimateOptions): GoalDate {
   if (goalKg === null) return { status: "no_goal" };

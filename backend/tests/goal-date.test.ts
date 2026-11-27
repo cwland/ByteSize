@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { goalDateOf, trendOf, type TrendPoint, type EstimateOptions } from "../src/lib/weight.js";
-const T42: EstimateOptions = { basis: "trend", days: 42 }; // the old Goal date widget
 import { addDays } from "../src/lib/days.js";
 
-// The Goal date widget's numbers (§40a): the trend over the last 6 weeks (≥ 14 days and ≥ 6 weigh-ins), the pace
+const T42: EstimateOptions = { basis: "trend", days: 42 }; // these tests pin the trend over 6 weeks (the old default)
+
+// The Goal date widget's numbers (§40a), pinned here to the trend over the last 6 weeks (T42; scale weigh-ins and other
+// windows are in estimate-options.test.ts) (≥ 14 days and ≥ 6 weigh-ins), the pace
 // from a least-squares line through it, and a range of the pace ± 1.5 standard errors of the slope of the weigh-ins
 // themselves over the same days (at least ±5%): steady weigh-ins give a tight range, bumpy ones a wider one.
 const TODAY = "2026-11-18";

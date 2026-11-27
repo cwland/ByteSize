@@ -4,10 +4,6 @@ import { DEFAULT_SETTINGS, notifySettingsChanged, useSettingsMe } from "../../da
 import { DATE_FORMATS, DEFAULT_DATE_FORMAT, formatDate } from "../../dateFormat";
 import { todayIn } from "../../selectedDay";
 import { GOAL_ESTIMATE_WEEKS, type GoalEstimateBasis, type GoalEstimateWeeks, type MealWindows, type SettingsMe } from "../../types";
-
-// The goal estimate before anyone chooses (the server's defaults)
-const DEFAULT_ESTIMATE_BASIS: GoalEstimateBasis = "scale";
-const DEFAULT_ESTIMATE_WEEKS: GoalEstimateWeeks = 12;
 import { useSession, type User } from "../../session";
 import { THEMES, applyMode, applyTheme, useTheme, type ColorMode } from "../../themes";
 import { Card } from "../ui/Card";
@@ -18,6 +14,10 @@ import { field, label, noAutofill, primaryButton } from "../ui/styles";
 import { TimezoneSelect } from "../ui/TimezoneSelect";
 import VacationMode from "./VacationMode";
 import { ChevronRight, Syringe } from "lucide-react";
+
+// The goal estimate before anyone chooses (the server's defaults)
+const DEFAULT_ESTIMATE_BASIS: GoalEstimateBasis = "scale";
+const DEFAULT_ESTIMATE_WEEKS: GoalEstimateWeeks = 12;
 
 export default function ProfileSettings() {
   return (
