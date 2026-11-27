@@ -2,11 +2,11 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { isLatest, saveWeighIn, syncBodyWeight } from "../lib/weighIns.js";
-import { userBody, weighInSkips, weighIns } from "../db/schema.js";
+import { userBody, userSettings, weighInSkips, weighIns } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
 import { requireUser } from "../lib/guards.js";
 import { DAY, todayFor } from "../lib/days.js";
-import { goalDateOf, projectionOf, replanHint, trendOf } from "../lib/weight.js";
+import { DEFAULT_ESTIMATE, goalDateOf, projectionOf, replanHint, trendOf, type EstimateOptions } from "../lib/weight.js";
 import { targetsOn } from "./body-plans.js";
 
 // Weigh-ins (one per day, in kg) and the weight trend toward the goal (design §13 A).
@@ -86,6 +86,12 @@ export default async function weightRoutes(app: FastifyInstance) {
       .select({ goalKg: userBody.goalWeightKg, targetsWeightKg: userBody.targetsWeightKg })
       .from(userBody)
       .where(eq(userBody.userId, userId));
+    // The person's goal estimate (Settings › Profile); no settings row: scale weigh-ins over 12 weeks
+    const [settings] = await db
+      .select({ basis: userSettings.goalEstimateBasis, weeks: userSettings.goalEstimateWeeks })
+      .from(userSettings)
+      .where(eq(userSettings.userId, userId));
+    const estimate: EstimateOptions = settings ? { basis: settings.basis, days: settings.weeks * 7 } : DEFAULT_ESTIMATE;
     const all = trendOf(rows);
     const first = all[0];
     const last = all[all.length - 1];
@@ -101,9 +107,11 @@ export default async function weightRoutes(app: FastifyInstance) {
       latest: last ? { day: last.day, weightKg: last.weightKg } : null,
       trendKg: last ? last.trendKg : null,
       goalKg,
-      lostKg: first && last ? first.weightKg - last.trendKg : null,
-      projection: projectionOf(all, goalKg, today),
-      goalDate: goalDateOf(all, goalKg, today), // §40a: the Goal date widget
+      // Lost so far by the scale (first − latest weigh-in) and by the trend (first − latest trend)
+      lostKg: first && last ? first.weightKg - last.weightKg : null,
+      lostTrendKg: first && last ? first.weightKg - last.trendKg : null,
+      projection: projectionOf(all, goalKg, today, estimate),
+      goalDate: goalDateOf(all, goalKg, today, estimate), // §40a: the Goal date widget
       replanHint: replanHint(last?.weightKg ?? null, basisKg),
     };
   });

@@ -23,6 +23,7 @@ describe("WeightSection (Goals)", () => {
     expect(within(section).getByTestId("weight-now")).toHaveTextContent("221.4 lb");
     expect(within(section).getByTestId("weight-goal")).toHaveTextContent("180 lb");
     expect(within(section).getByTestId("weight-lost")).toHaveTextContent("3.9 lb");
+    expect(within(section).queryByTestId("weight-lost-trend")).not.toBeInTheDocument(); // the fixture has no trend figure
     expect(within(section).getByText("Losing 1.2 lb a week — goal around Jun 29, 2027")).toBeInTheDocument();
     expect(within(section).getByRole("img", { name: /^Weight from Oct 20 to Nov 17/ })).toBeInTheDocument();
     // One request for every weigh-in; the ranges are cut here (the goal date needs them all anyway)
@@ -198,5 +199,14 @@ describe("WeightSection (Goals)", () => {
     renderWithSession(<WeightSection onReplan={() => {}} />);
     expect(await screen.findByText("No weigh-ins in this range")).toBeInTheDocument();
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it("shows lost so far by the scale and, under it, by the trend", async () => {
+    fakeServer({ "GET /api/weight": () => weightJson({ lostKg: 24.5 * KG, lostTrendKg: 22.3 * KG }) });
+    renderWithSession(<WeightSection onReplan={() => {}} />);
+    expect(await screen.findByTestId("weight-lost")).toHaveTextContent("24.5 lb");
+    const trend = screen.getByTestId("weight-lost-trend");
+    expect(trend).toHaveTextContent("22.3 lb");
+    expect(trend.closest("p")).toHaveTextContent("By trend");
   });
 });

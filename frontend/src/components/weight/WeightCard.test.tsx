@@ -20,6 +20,22 @@ describe("WeightCard", () => {
     expect(within(card).getByText("3.9 lb lost so far")).toBeInTheDocument();
   });
 
+  it("shows lost so far by the scale and by the trend", async () => {
+    fakeServer({ "GET /api/weight": () => weightJson({ lostKg: 24.5 * KG, lostTrendKg: 22.3 * KG }) });
+    renderWithSession(<WeightCard />);
+    const card = await screen.findByRole("region", { name: "Weight" });
+    expect(await within(card).findByText("24.5 lb lost so far")).toBeInTheDocument();
+    expect(within(card).getByText("22.3 lb by trend")).toBeInTheDocument();
+  });
+
+  it("an older server without the trend figure shows the scale line alone", async () => {
+    fakeServer({ "GET /api/weight": () => weightJson() });
+    renderWithSession(<WeightCard />);
+    const card = await screen.findByRole("region", { name: "Weight" });
+    await within(card).findByText("3.9 lb lost so far");
+    expect(within(card).queryByText(/by trend/)).not.toBeInTheDocument();
+  });
+
   it("shows kg for metric", async () => {
     fakeServer({ "GET /api/weight": () => weightJson() });
     renderWithSession(<WeightCard />, { units: "metric" });

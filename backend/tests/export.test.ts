@@ -184,6 +184,12 @@ describe("GET /api/export", () => {
     expect(rows).toEqual(expect.arrayContaining([expect.objectContaining({ page: "dashboard", columns: dash.columns }), expect.objectContaining({ page: "goals", columns: goals.columns })]));
   });
 
+  it("the json carries the goal estimate choice", async () => {
+    await t.api("PUT", "/api/settings/me", { mealWindows: { breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" }, waterButtonsMl: [237], goalEstimateBasis: "trend", goalEstimateWeeks: 6 });
+    const json = JSON.parse((await download()).text("bytesize-export.json"));
+    expect(json.tables.user_settings).toMatchObject([{ goalEstimateBasis: "trend", goalEstimateWeeks: 6 }]);
+  });
+
   it("the json carries the date format choice with the rest of the person's settings", async () => {
     await t.api("PUT", "/api/settings/me", { mealWindows: { breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" }, waterButtonsMl: [237], dateFormat: "dmy-dot" });
     const json = JSON.parse((await download()).text("bytesize-export.json"));

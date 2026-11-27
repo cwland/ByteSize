@@ -144,18 +144,23 @@ struct GoalsView: View {
         return HStack {
             stat("Start", w?.start.map { units.weight(kg: $0.weightKg) })
             stat("Trend", w?.trendKg.map { units.weight(kg: $0) })
-            stat("Lost", w?.lostKg.map { units.weight(kg: $0) })
+            stat("Lost", w?.lostKg.map { units.weight(kg: $0) }, detail: w?.lostTrendKg.map { "\(units.weight(kg: $0)) by trend" })
             stat("Goal date", w?.goalDate?.date.map { DayText.short($0, dateLook) })
         }
     }
 
-    private func stat(_ name: String, _ value: String?) -> some View {
+    /// detail: a smaller line under the name (Lost: the trend figure)
+    private func stat(_ name: String, _ value: String?, detail: String? = nil) -> some View {
         VStack(spacing: 2) {
             Text(value ?? "—").font(.subheadline.weight(.semibold)).foregroundStyle(palette.color("ink")).monospacedDigit()
             Text(name).font(.caption).foregroundStyle(palette.color("subtle"))
+            if let detail {
+                Text(detail).font(.caption2).foregroundStyle(palette.color("muted")).monospacedDigit()
+            }
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("stat-\(name)")
     }
 
     // MARK: - History

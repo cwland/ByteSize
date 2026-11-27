@@ -1,11 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { setupTestApp, type TestApp } from "./helpers.js";
-import { projectionOf, trendOf } from "../src/lib/weight.js";
+import { projectionOf, trendOf, type EstimateOptions } from "../src/lib/weight.js";
 import { addDays } from "../src/lib/days.js";
 import { userBody, weighInSkips } from "../src/db/schema.js";
 
-// Trend: trend₀ = w₀; trend += (w − trend) × (1 − 0.9^gapDays). Projection over the last 28 days.
+const T28: EstimateOptions = { basis: "trend", days: 28 }; // these tests pin the trend over 28 days (the old default)
+
+// Trend: trend₀ = w₀; trend += (w − trend) × (1 − 0.9^gapDays). The projection tests below pin the trend over 28 days
+// (T28); scale weigh-ins and other windows are in estimate-options.test.ts.
 describe("trendOf", () => {
   it("smooths a known series, weighting a 14-day gap by 1 − 0.9^14", () => {
     const out = trendOf([
@@ -42,8 +45,8 @@ describe("projectionOf", () => {
     Array.from({ length: days + 1 }, (_, i) => ({ day: addDays(today, i - days), trendKg: end + ((days - i) * 0.5) / 7 }));
 
   it("needs at least two weigh-ins", () => {
-    expect(projectionOf([], 80, today)).toEqual({ status: "not_enough" });
-    expect(projectionOf([{ day: today, trendKg: 100 }], 80, today)).toEqual({ status: "not_enough" });
+    expect(projectionOf([], 80, today, T28)).toEqual({ status: "not_enough" });
+    expect(projectionOf([{ day: today, trendKg: 100 }], 80, today, T28)).toEqual({ status: "not_enough" });
   });
 
   it("needs them at least 7 days apart within the last 28 days", () => {
@@ -51,21 +54,21 @@ describe("projectionOf", () => {
       { day: addDays(today, -6), trendKg: 101 },
       { day: today, trendKg: 100 },
     ];
-    expect(projectionOf(close, 80, today)).toEqual({ status: "not_enough" });
+    expect(projectionOf(close, 80, today, T28)).toEqual({ status: "not_enough" });
     // 7 days apart is enough
-    expect(projectionOf([{ day: addDays(today, -7), trendKg: 101 }, close[1]], 80, today).status).toBe("ok");
+    expect(projectionOf([{ day: addDays(today, -7), trendKg: 101 }, close[1]], 80, today, T28).status).toBe("ok");
     // ...but not when the older one is outside the 28-day window
     const old = [
       { day: addDays(today, -40), trendKg: 105 },
       { day: addDays(today, -30), trendKg: 103 },
       { day: addDays(today, -2), trendKg: 100 },
     ];
-    expect(projectionOf(old, 80, today)).toEqual({ status: "not_enough" });
+    expect(projectionOf(old, 80, today, T28)).toEqual({ status: "not_enough" });
   });
 
   it("projects the goal date for a steady 0.5 kg/week loss", () => {
     // 95 → 90 at 0.5 kg/week is 10 weeks
-    const p = projectionOf(steady(95), 90, today);
+    const p = projectionOf(steady(95), 90, today, T28);
     expect(p.status).toBe("ok");
     expect(p.kgPerWeek).toBeCloseTo(0.5, 9);
     expect(p.date).toBe(addDays(today, 70));
@@ -73,7 +76,7 @@ describe("projectionOf", () => {
 
   it("projects from today even when the last weigh-in was days ago, and never into the past", () => {
     const pts = steady(90.01).slice(0, -3); // last weigh-in 3 days ago, a hair above goal
-    const p = projectionOf(pts, 90, today);
+    const p = projectionOf(pts, 90, today, T28);
     expect(p.status).toBe("ok");
     expect(p.date! > today).toBe(true);
   });
@@ -82,50 +85,50 @@ describe("projectionOf", () => {
     // The line reaches 95 today; the last weigh-in (10 days ago) had it at 95 + 10 × 0.5/7
     const pts = steady(95).slice(0, -10);
     expect(pts[pts.length - 1].day).toBe(addDays(today, -10));
-    const p = projectionOf(pts, 90, today);
+    const p = projectionOf(pts, 90, today, T28);
     expect(p).toEqual({ status: "ok", date: addDays(today, 70), kgPerWeek: expect.closeTo(0.5, 9) });
     // Already past the goal by today's estimate: tomorrow, still ok
-    expect(projectionOf(steady(89.7).slice(0, -10), 90, today)).toEqual({ status: "ok", date: addDays(today, 1), kgPerWeek: expect.closeTo(0.5, 9) });
+    expect(projectionOf(steady(89.7).slice(0, -10), 90, today, T28)).toEqual({ status: "ok", date: addDays(today, 1), kgPerWeek: expect.closeTo(0.5, 9) });
   });
 
   it("a plateau after a loss is not_losing, not a goal date thousands of years away", () => {
     const start = "2026-04-01";
     const series = [{ day: start, weightKg: 100 }, ...Array.from({ length: 200 }, (_, i) => ({ day: addDays(start, i + 1), weightKg: 90 }))];
     const last = series[series.length - 1].day;
-    const p = projectionOf(trendOf(series), 80, last);
+    const p = projectionOf(trendOf(series), 80, last, T28);
     expect(p.status).toBe("not_losing");
     expect(p.date).toBeUndefined();
   });
 
   it("a goal more than 3 years away is not_losing", () => {
     // 0.5 kg/week: 1095 days is 78.2 kg away
-    expect(projectionOf(steady(95), 95 - (1095 * 0.5) / 7 + 0.01, today).status).toBe("ok");
-    expect(projectionOf(steady(95), 95 - (1096 * 0.5) / 7, today)).toEqual({ status: "not_losing", kgPerWeek: expect.closeTo(0.5, 9) });
+    expect(projectionOf(steady(95), 95 - (1095 * 0.5) / 7 + 0.01, today, T28).status).toBe("ok");
+    expect(projectionOf(steady(95), 95 - (1096 * 0.5) / 7, today, T28)).toEqual({ status: "not_losing", kgPerWeek: expect.closeTo(0.5, 9) });
   });
 
   it("is not_losing for a gain or a flat trend", () => {
     const gain = steady(95).map((p, i, all) => ({ ...p, trendKg: all[all.length - 1 - i].trendKg }));
-    const g = projectionOf(gain, 90, today);
+    const g = projectionOf(gain, 90, today, T28);
     expect(g.status).toBe("not_losing");
     expect(g.kgPerWeek).toBeCloseTo(-0.5, 9);
     expect(g.date).toBeUndefined();
     const flat = steady(95).map((p) => ({ ...p, trendKg: 95 }));
-    expect(projectionOf(flat, 90, today).status).toBe("not_losing");
+    expect(projectionOf(flat, 90, today, T28).status).toBe("not_losing");
   });
 
   it("is reached at or below a goal under the starting weight, even without 7 days of weigh-ins", () => {
-    expect(projectionOf(steady(90), 90, today)).toEqual({ status: "reached" });
-    expect(projectionOf([{ day: addDays(today, -1), trendKg: 95 }, { day: today, trendKg: 85 }], 90, today)).toEqual({ status: "reached" });
+    expect(projectionOf(steady(90), 90, today, T28)).toEqual({ status: "reached" });
+    expect(projectionOf([{ day: addDays(today, -1), trendKg: 95 }, { day: today, trendKg: 85 }], 90, today, T28)).toEqual({ status: "reached" });
   });
 
   it("a goal at or above the starting weight is never reached: nothing to lose toward is not_losing", () => {
-    expect(projectionOf([{ day: today, trendKg: 85 }], 90, today)).toEqual({ status: "not_losing" });
-    expect(projectionOf([{ day: today, trendKg: 90 }], 90, today)).toEqual({ status: "not_losing" });
-    expect(projectionOf(steady(90).map((p) => ({ ...p, trendKg: 90 })), 92, today)).toEqual({ status: "not_losing" });
+    expect(projectionOf([{ day: today, trendKg: 85 }], 90, today, T28)).toEqual({ status: "not_losing" });
+    expect(projectionOf([{ day: today, trendKg: 90 }], 90, today, T28)).toEqual({ status: "not_losing" });
+    expect(projectionOf(steady(90).map((p) => ({ ...p, trendKg: 90 })), 92, today, T28)).toEqual({ status: "not_losing" });
   });
 
   it("gives the rate but no date without a goal", () => {
-    const p = projectionOf(steady(95), null, today);
+    const p = projectionOf(steady(95), null, today, T28);
     expect(p.status).toBe("ok");
     expect(p.date).toBeUndefined();
     expect(p.kgPerWeek).toBeCloseTo(0.5, 9);
@@ -318,21 +321,31 @@ describe("GET /api/weight", () => {
       trendKg: null,
       goalKg: null,
       lostKg: null,
+      lostTrendKg: null,
       projection: { status: "not_enough" },
       goalDate: { status: "no_goal" },
       replanHint: false,
     });
   });
 
-  it("gives the goal date (§40a) from the last 6 weeks' trend, whatever window is asked for", async () => {
+  it("gives the goal date (§40a) by default from the last 12 weeks' weigh-ins, whatever window is asked for", async () => {
     await t.api("PUT", "/api/body", BODY); // goal 80 kg
     for (let i = 0; i < 21; i++) await weigh(addDays(TODAY, -2 * (20 - i)), 100 - 0.2 * i); // every other day for 6 weeks
     const w = (await t.api("GET", `/api/weight?from=${TODAY}&to=${TODAY}`)).body;
     expect(w.goalDate).toMatchObject({ status: "ok", kgPerWeek: expect.any(Number), toGoKg: expect.any(Number), weeks: { min: expect.any(Number), max: expect.any(Number) } });
     expect(w.goalDate.kgPerWeek).toBeGreaterThan(0);
-    expect(w.goalDate.toGoKg).toBeCloseTo(w.trendKg - 80, 9);
+    expect(w.goalDate.toGoKg).toBeCloseTo(w.latest.weightKg - 80, 9); // scale: from the latest weigh-in
     expect(w.goalDate.earliest <= w.goalDate.date && w.goalDate.date <= w.goalDate.latest).toBe(true);
     expect(w.goalDate.earliest > TODAY).toBe(true);
+  });
+
+  it("the goal estimate follows the person's setting: trend over 6 weeks counts to go from the trend", async () => {
+    await t.api("PUT", "/api/body", BODY); // goal 80 kg
+    for (let i = 0; i < 21; i++) await weigh(addDays(TODAY, -2 * (20 - i)), 100 - 0.2 * i);
+    await t.api("PUT", "/api/settings/me", { mealWindows: { breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" }, waterButtonsMl: [237], goalEstimateBasis: "trend", goalEstimateWeeks: 6 });
+    const w = (await t.api("GET", "/api/weight")).body;
+    expect(w.goalDate.toGoKg).toBeCloseTo(w.trendKg - 80, 9);
+    expect(w.goalDate.toGoKg).not.toBeCloseTo(w.latest.weightKg - 80, 3);
   });
 
   it("gives start, latest, trend, goal, lost so far and a projection; trend is over all weigh-ins, then windowed", async () => {
@@ -352,7 +365,8 @@ describe("GET /api/weight", () => {
     expect(w.latest).toEqual({ day: TODAY, weightKg: 96 });
     expect(w.trendKg).toBeCloseTo(t17, 9);
     expect(w.goalKg).toBe(80);
-    expect(w.lostKg).toBeCloseTo(100 - t17, 9);
+    expect(w.lostKg).toBeCloseTo(100 - 96, 9); // by the scale: first weigh-in − latest weigh-in
+    expect(w.lostTrendKg).toBeCloseTo(100 - t17, 9); // by the trend
     expect(w.projection.status).toBe("ok");
     expect(w.projection.date > TODAY).toBe(true);
     expect(w.projection.kgPerWeek).toBeGreaterThan(0);

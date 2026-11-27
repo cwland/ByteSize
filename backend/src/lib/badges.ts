@@ -4,7 +4,7 @@
 // and carries how many goals were met.
 
 import { addDays, daysBetween } from "./days.js";
-import { KG_PER_LB, trendOf, type WeighInPoint } from "./weight.js";
+import { KG_PER_LB, type WeighInPoint } from "./weight.js";
 
 export const STREAKS = [7, 30, 100] as const;
 const SHOTS_IN_A_ROW = 4;
@@ -36,18 +36,19 @@ export function earnedBadges(h: BadgeHistory): Map<string, string> {
     if (!earned.has(id)) earned.set(id, day);
   };
 
-  // Weight: start = the first weigh-in; lost = start − trend (in lb thresholds); halfway / goal against the goal
-  const series = trendOf(h.weighIns);
+  // Weight, by the scale: start = the first weigh-in; lost = start − that day's weigh-in (in lb thresholds); halfway /
+  // goal against the goal. Earned once, kept after a heavier day (stored, never removed)
+  const series = [...h.weighIns].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
   if (series.length) {
     const start = series[0].weightKg;
     earn("first_weigh_in", series[0].day);
     const losing = h.goalKg !== null && h.goalKg < start; // a goal at or above the start has nothing to lose toward
     let next = 0;
     for (const p of series) {
-      const lost = start - p.trendKg;
+      const lost = start - p.weightKg;
       while (lost + EPS >= lostLb(next) * KG_PER_LB) earn(lostId(lostLb(next++)), p.day);
-      if (losing && p.trendKg <= start - (start - h.goalKg!) / 2 + EPS) earn("halfway", p.day);
-      if (losing && p.trendKg <= h.goalKg! + EPS) earn("goal_reached", p.day);
+      if (losing && p.weightKg <= start - (start - h.goalKg!) / 2 + EPS) earn("halfway", p.day);
+      if (losing && p.weightKg <= h.goalKg! + EPS) earn("goal_reached", p.day);
     }
   }
 

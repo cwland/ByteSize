@@ -15,6 +15,19 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.18.0",
+    date: "2026-11-26",
+    title: "Weight lost by the scale and the trend, and a steadier goal date",
+    added: [
+      "Settings › Profile › Goal estimate: choose whether your goal date goes by your scale weigh-ins or your trend, and how far back it looks (6, 12 or 26 weeks).",
+    ],
+    changed: [
+      "Weight lost so far shows what your scale says, with the trend's figure beside it (Dashboard, Goals, App info and the iPhone Goals tab).",
+      "Weight badges (pounds lost, Halfway, Goal reached) are earned on the day your weigh-in gets there, without waiting for the trend. Badges you've earned stay earned.",
+      "Your goal date now looks at your last 12 weeks of weigh-ins by default, so one slow month doesn't push it far out. The Goals page and the Goal date widget give the same date.",
+    ],
+  },
+  {
     version: "0.17.0",
     date: "2026-11-25",
     title: "Meal times, restaurant tags and meal pills",

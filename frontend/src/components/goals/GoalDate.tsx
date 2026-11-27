@@ -44,7 +44,8 @@ export function goalDateCopy(g: GoalDate, units: Units, dateFormat: string | und
   }
 }
 
-// Goal date (Goals page; also offered on the Dashboard): when the trend reaches the goal weight at the current pace
+// Goal date (Goals page; also offered on the Dashboard): when you reach the goal weight at the current pace (by your
+// weigh-ins or the trend, over the look-back chosen in Settings › Profile › Goal estimate)
 export default function GoalDateWidget() {
   const { user } = useSession();
   const { dateFormat } = useSettingsMe();

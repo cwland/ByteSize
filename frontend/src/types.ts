@@ -143,11 +143,17 @@ export type WorkoutBank = {
 };
 export type DayWorkoutCalories = WorkoutCalorieSettings & { earned: number; added: number; planCalories: Range | null; status: "below" | "in" | "above" | null; bank: WorkoutBank | null };
 export type MealWindows = { breakfast: string; lunch: string; snacks: string; dinner: string };
+export type GoalEstimateBasis = "scale" | "trend";
+export const GOAL_ESTIMATE_WEEKS = [6, 12, 26] as const;
+export type GoalEstimateWeeks = (typeof GOAL_ESTIMATE_WEEKS)[number];
 export type SettingsMe = {
   mealWindows: MealWindows;
   waterButtonsMl: number[];
   weekStart: number /* 0 = Sunday … 6 = Saturday */;
   dateFormat?: string /* a key of dateFormat.ts */;
+  /** Goal estimate (Profile): a line through the scale weigh-ins or the trend, over the last 6, 12 or 26 weeks */
+  goalEstimateBasis?: GoalEstimateBasis;
+  goalEstimateWeeks?: GoalEstimateWeeks;
   glp1On?: boolean /* tracking a GLP-1: set up, or the body profile says so (§46) */;
 };
 export type Units = "imperial" | "metric";
@@ -165,7 +171,10 @@ export type Weight = {
   latest: { day: string; weightKg: number } | null;
   trendKg: number | null;
   goalKg: number | null;
+  /** lost so far by the scale (first − latest weigh-in) */
   lostKg: number | null;
+  /** lost so far by the trend (first weigh-in − latest trend); missing from older servers */
+  lostTrendKg?: number | null;
   projection: WeightProjection;
   goalDate: GoalDate;
   replanHint: boolean;
@@ -243,6 +252,8 @@ export type AppInfo = {
   you: {
     daysLogged: number; foodsLogged: number; differentFoods: number; myFoods: number; weighIns: number;
     weightLost: { amount: number; unit: "lb" | "kg" } | null;
+    /** the same by the trend; missing from older servers */
+    weightLostTrend?: { amount: number; unit: "lb" | "kg" } | null;
     shots: number | null; longestStreak: number; memberSince: string;
     barcodesScanned: number; photosRead: number; aiEstimates: number; aiInsights?: number; lookupsSaved: number; outsideLookups: OutsideLookups;
   };

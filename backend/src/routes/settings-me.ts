@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { glp1Settings, userBody, userSettings, type MealWindows } from "../db/schema.js";
 import { requireUser } from "../lib/guards.js";
 import { DATE_FORMATS, DEFAULT_DATE_FORMAT } from "../lib/dateFormats.js";
+import { DEFAULT_ESTIMATE, DEFAULT_ESTIMATE_WEEKS, ESTIMATE_WEEKS } from "../lib/weight.js";
 
 // Your own logging settings: meal windows (end time of each meal, local "HH:MM") and the water buttons
 export const DEFAULT_MEAL_WINDOWS: MealWindows = { breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" };
@@ -20,6 +21,11 @@ const settingsSchema = z.object({
   waterButtonsMl: z.array(z.number().positive("Water amounts must be above 0").max(5000, "Water amounts must be 5,000 ml or less")).min(1, "Keep at least one water button").max(4, "Up to 4 water buttons"),
   weekStart: z.number().int("Choose a day of the week").min(0, "Choose a day of the week").max(6, "Choose a day of the week").optional(),
   dateFormat: z.enum(DATE_FORMATS, { error: "Choose one of the date formats" }).optional(),
+  goalEstimateBasis: z.enum(["scale", "trend"], { error: "Choose scale weigh-ins or trend" }).optional(),
+  goalEstimateWeeks: z
+    .number({ error: "Choose 6, 12 or 26 weeks" })
+    .refine((n) => (ESTIMATE_WEEKS as readonly number[]).includes(n), "Choose 6, 12 or 26 weeks")
+    .optional(),
 });
 
 export default async function settingsMeRoutes(app: FastifyInstance) {
@@ -37,6 +43,8 @@ export default async function settingsMeRoutes(app: FastifyInstance) {
       waterButtonsMl: row?.waterButtonsMl ?? DEFAULT_WATER_BUTTONS_ML,
       weekStart: row?.weekStart ?? DEFAULT_WEEK_START,
       dateFormat: row?.dateFormat ?? DEFAULT_DATE_FORMAT,
+      goalEstimateBasis: row?.goalEstimateBasis ?? DEFAULT_ESTIMATE.basis,
+      goalEstimateWeeks: row?.goalEstimateWeeks ?? DEFAULT_ESTIMATE_WEEKS,
       // Tracking a GLP-1: set up, or the body profile says so (the Next shot widget's rule). The side rail's GLP-1
       // item reads it here with the rest, instead of asking for GLP-1 and the body on every mount (§46)
       glp1On: !!glp1 || !!body?.glp1,
@@ -46,15 +54,18 @@ export default async function settingsMeRoutes(app: FastifyInstance) {
   app.put("/api/settings/me", async (req) => {
     const userId = requireUser(req);
     const s = settingsSchema.parse(req.body ?? {});
-    // weekStart and dateFormat left out keep the saved ones (or Sunday and the usual date for a first save)
+    // weekStart, dateFormat and the goal estimate left out keep the saved ones (or the defaults for a first save)
+    const optional = {
+      ...(s.weekStart === undefined ? {} : { weekStart: s.weekStart }),
+      ...(s.dateFormat === undefined ? {} : { dateFormat: s.dateFormat }),
+      ...(s.goalEstimateBasis === undefined ? {} : { goalEstimateBasis: s.goalEstimateBasis }),
+      ...(s.goalEstimateWeeks === undefined ? {} : { goalEstimateWeeks: s.goalEstimateWeeks }),
+    };
     const [saved] = await db
       .insert(userSettings)
-      .values({ userId, mealWindows: s.mealWindows, waterButtonsMl: s.waterButtonsMl, weekStart: s.weekStart ?? DEFAULT_WEEK_START, dateFormat: s.dateFormat ?? DEFAULT_DATE_FORMAT })
-      .onConflictDoUpdate({
-        target: userSettings.userId,
-        set: { mealWindows: s.mealWindows, waterButtonsMl: s.waterButtonsMl, ...(s.weekStart === undefined ? {} : { weekStart: s.weekStart }), ...(s.dateFormat === undefined ? {} : { dateFormat: s.dateFormat }) },
-      })
-      .returning({ weekStart: userSettings.weekStart, dateFormat: userSettings.dateFormat });
-    return { mealWindows: s.mealWindows, waterButtonsMl: s.waterButtonsMl, weekStart: saved.weekStart, dateFormat: saved.dateFormat };
+      .values({ userId, mealWindows: s.mealWindows, waterButtonsMl: s.waterButtonsMl, weekStart: DEFAULT_WEEK_START, dateFormat: DEFAULT_DATE_FORMAT, ...optional })
+      .onConflictDoUpdate({ target: userSettings.userId, set: { mealWindows: s.mealWindows, waterButtonsMl: s.waterButtonsMl, ...optional } })
+      .returning({ weekStart: userSettings.weekStart, dateFormat: userSettings.dateFormat, goalEstimateBasis: userSettings.goalEstimateBasis, goalEstimateWeeks: userSettings.goalEstimateWeeks });
+    return { mealWindows: s.mealWindows, waterButtonsMl: s.waterButtonsMl, ...saved };
   });
 }
