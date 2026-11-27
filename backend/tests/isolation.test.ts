@@ -319,7 +319,7 @@ describe("per-user isolation", () => {
     for (const day of ["2026-11-14", "2026-11-17"]) await a.as("POST", "/api/log", { day, meal: "breakfast", food: { kind: "user_food", id: food.id }, servingIndex: 0, unit: "serving", quantity: 1, fraction: 1 });
     const vacation = (await a.as("POST", "/api/vacations", { from: "2026-11-15", to: "2026-11-16" })).body.vacation;
     const annas = (await a.as("GET", "/api/badges")).body;
-    expect(annas.new).toEqual(["first_weigh_in", "lost_5", "lost_10", "shots_on_time_4"]);
+    expect(annas.new).toEqual(["first_weigh_in", "lost_5", "lost_10", "lost_20", "shots_on_time_4"]); // 22 lb on the scale
     expect((await a.as("GET", "/api/day/today")).body.streak).toBe(2);
 
     // ben sees nothing of anna's

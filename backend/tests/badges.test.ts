@@ -46,7 +46,7 @@ describe("badges", () => {
     expect(await getBadges()).toEqual({ badges: ALL_UNEARNED, new: [] });
   });
 
-  it("earns first weigh-in, lost 5/10/20 lb, halfway at their thresholds (start = first weigh-in, lost = start - trend)", async () => {
+  it("earns first weigh-in, lost 5/10/20 lb, halfway at their thresholds (start = first weigh-in, lost = start - weigh-in)", async () => {
     await body(80); // halfway at 90 kg
     // 60 days apart: the trend nearly catches up with each weigh-in
     await weigh("2026-01-01", 100);
@@ -59,6 +59,25 @@ describe("badges", () => {
     expect(res.new).toEqual(["first_weigh_in", "lost_5", "lost_10", "lost_20", "halfway"]);
   });
 
+  it("pounds lost, halfway and goal go by the weigh-in itself, not the lagging trend", async () => {
+    await body(96); // halfway at 98 kg
+    await weigh("2026-11-01", 100);
+    await weigh("2026-11-02", 97.7); // 5.07 lb on the scale; the trend (~99.8) hasn't caught up
+    await weigh("2026-11-03", 95.9); // past the 96 kg goal on the scale
+    expect(earned((await getBadges()).badges)).toEqual({ first_weigh_in: "2026-11-01", lost_5: "2026-11-02", halfway: "2026-11-02", goal_reached: "2026-11-03" });
+  });
+
+  it("a heavier weigh-in after a scale badge keeps it earned", async () => {
+    await body(80);
+    await weigh("2026-11-01", 100);
+    await weigh("2026-11-08", 95.4); // 10.1 lb lost on the scale
+    expect(earned((await getBadges()).badges)).toMatchObject({ lost_10: "2026-11-08" });
+    await weigh("2026-11-12", 97.9); // a salty day: back under 5 lb lost
+    const list = (await getBadges()).badges;
+    expect(earned(list)).toMatchObject({ lost_5: "2026-11-08", lost_10: "2026-11-08" });
+    expect(list.find((b: any) => b.id === "lost_20")).toMatchObject({ earnedOn: null });
+  });
+
   it("a weigh-in just short of a threshold doesn't earn it", async () => {
     await body(80);
     await weigh("2026-01-01", 100);
@@ -66,7 +85,7 @@ describe("badges", () => {
     expect(earned((await getBadges()).badges)).toEqual({ first_weigh_in: "2026-01-01" });
   });
 
-  it("goal reached when the trend reaches the goal; badges are stored once and kept after regaining", async () => {
+  it("goal reached when a weigh-in reaches the goal; badges are stored once and kept after regaining", async () => {
     await body(80);
     await weigh("2026-01-01", 100);
     await weigh("2026-06-30", 89);
