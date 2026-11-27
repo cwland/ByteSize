@@ -137,8 +137,9 @@ export default async function weightImportRoutes(app: FastifyInstance) {
       const rows = replace ? read.weighIns : read.weighIns.filter((w) => !existing.has(w.day));
       for (let i = 0; i < rows.length; i += CHUNK) {
         const insert = tx.insert(weighIns).values(rows.slice(i, i + CHUNK).map((w) => ({ userId, day: w.day, weightKg: w.weightKg, note: w.note })));
-        // Replacing: the file's weight; its note only when the file has one for that day (else the day keeps its note)
-        const set = { weightKg: sql`excluded.weight_kg`, note: sql`coalesce(excluded.note, ${weighIns.note})` };
+        // Replacing: the file's weight (so its source is now unknown); its note only when the file has one for that day
+        // (else the day keeps its note)
+        const set = { weightKg: sql`excluded.weight_kg`, note: sql`coalesce(excluded.note, ${weighIns.note})`, source: sql`null` };
         await (replace ? insert.onConflictDoUpdate({ target: [weighIns.userId, weighIns.day], set }) : insert.onConflictDoNothing());
       }
       // The body weight follows the latest weigh-in; an older history leaves it alone

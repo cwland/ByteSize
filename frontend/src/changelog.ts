@@ -15,6 +15,17 @@ export const changeCount = (r: Release) => (r.added?.length ?? 0) + (r.changed?.
 
 export const CHANGELOG: Release[] = [
   {
+    version: "0.19.0",
+    date: "2026-11-27",
+    title: "A cleaner weight log on the iPhone",
+    added: [
+      "iPhone Goals: Est. goal date sits under Goal weight, and the row under the chart is now Start · Current · Lost.",
+      "iPhone Goals: a Last weigh-in card, then your recent weigh-ins as cards with the weight above the date. Losses are green, gains red, no change gray.",
+      "Weigh-ins remember whether you typed them or they came from Apple Health; the iPhone marks Apple Health ones with a heart. Older weigh-ins are matched against Apple Health once, on your next sync.",
+    ],
+    changed: ["Lost so far never shows below 0.0."],
+  },
+  {
     version: "0.18.0",
     date: "2026-11-26",
     title: "Weight lost by the scale and the trend, and a steadier goal date",

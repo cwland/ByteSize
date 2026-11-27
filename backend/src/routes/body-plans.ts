@@ -176,7 +176,7 @@ export default async function bodyPlanRoutes(app: FastifyInstance) {
         .onConflictDoUpdate({ target: userBody.userId, set: row });
       // A new (or first) weight is also today's weigh-in, so weight has one history. Within 0.05 kg of the stored
       // weight is the same weight (e.g. saved in lb, read back and saved again): no weigh-in
-      if (!before || Math.abs(before.weightKg - body.weightKg) >= SAME_WEIGHT_KG - 1e-9) await saveWeighIn(tx, userId, day, body.weightKg, undefined, app.now());
+      if (!before || Math.abs(before.weightKg - body.weightKg) >= SAME_WEIGHT_KG - 1e-9) await saveWeighIn(tx, userId, day, body.weightKg, undefined, app.now(), "manual");
     });
     // As stored (height and weights are float4 columns), so PUT and GET agree
     return { body: await loadBody(db, userId) };

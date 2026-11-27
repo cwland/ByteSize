@@ -110,7 +110,12 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         /// Bookmarked foods, newest first ("cache:42").
         private var favoriteRefs: [String] = []
         /// I4: weigh-ins (oldest first), kept as the Goals tab logs and deletes them.
-        private var weighIns: [(day: String, kg: Double)] = [(StubData.offset(-60), 88.0), (StubData.offset(-30), 86.0), (StubData.offset(-21), 85.2), (StubData.offset(-14), 84.4), (StubData.offset(-7), 83.5), (StubData.offset(-1), 82.28)]
+        /// Source: "health", "manual" or nil (unknown). Day −12 is no change from −14; day −9 is a gain.
+        private var weighIns: [(day: String, kg: Double, source: String?)] = [
+            (StubData.offset(-60), 88.0, nil), (StubData.offset(-30), 86.0, "manual"), (StubData.offset(-21), 85.2, "health"),
+            (StubData.offset(-14), 84.4, "health"), (StubData.offset(-12), 84.4, "health"), (StubData.offset(-9), 84.9, "manual"),
+            (StubData.offset(-7), 83.5, "health"), (StubData.offset(-1), 82.28, "health"),
+        ]
 
         /// I4: My Foods — (id, name, icon, foodKind, calories per serving, serving label).
         static let seedFoods: [MyFood] = [
@@ -134,13 +139,13 @@ final class StubServer: URLProtocol, @unchecked Sendable {
         static func offset(_ days: Int) -> String { day(Calendar.current.date(byAdding: .day, value: days, to: Date()) ?? Date()) }
 
         private func weightJSON() -> String {
-            let list = weighIns.map { json(["day": $0.day, "weightKg": $0.kg, "trendKg": $0.kg + 0.3, "note": NSNull()]) }
+            let list = weighIns.map { json(["day": $0.day, "weightKg": $0.kg, "trendKg": $0.kg + 0.3, "note": NSNull(), "source": $0.source.map { $0 as Any } ?? NSNull()]) }
             let first = weighIns.first.map { json(["day": $0.day, "weightKg": $0.kg]) } ?? "null"
             let last = weighIns.last.map { json(["day": $0.day, "weightKg": $0.kg]) } ?? "null"
             // Lost by the scale (first − latest weigh-in) and by the trend (the stub's trend sits 0.3 kg above)
             let lost = (weighIns.first?.kg).flatMap { f in weighIns.last.map { f - $0.kg } }
             let lostTrend = lost.map { $0 - 0.3 }
-            return #"{"weighIns":[\#(list.joined(separator: ","))],"start":\#(first),"latest":\#(last),"trendKg":\#(weighIns.last.map { "\($0.kg + 0.3)" } ?? "null"),"goalKg":75,"lostKg":\#(lost.map { "\($0)" } ?? "null"),"lostTrendKg":\#(lostTrend.map { "\($0)" } ?? "null"),"goalDate":{"status":"ok","date":"\#(Self.offset(120))"}}"#
+            return #"{"weighIns":[\#(list.joined(separator: ","))],"start":\#(first),"latest":\#(last),"trendKg":\#(weighIns.last.map { "\($0.kg + 0.3)" } ?? "null"),"goalKg":75,"lostKg":\#(lost.map { "\($0)" } ?? "null"),"lostTrendKg":\#(lostTrend.map { "\($0)" } ?? "null"),"goalDate":{"status":"ok","date":"\#(Self.offset(120))","earliest":"\#(Self.offset(100))","latest":"\#(Self.offset(150))"}}"#
         }
 
         private static var goalsJSON: String {
@@ -236,7 +241,7 @@ final class StubServer: URLProtocol, @unchecked Sendable {
                     return (200, json(["weighIn": ["day": day, "weightKg": have.kg, "note": NSNull()], "skipped": true]))
                 }
                 weighIns.removeAll { $0.day == day }
-                weighIns.append((day, body["weightKg"] as? Double ?? 80))
+                weighIns.append((day, body["weightKg"] as? Double ?? 80, body["source"] as? String ?? "manual"))
                 weighIns.sort { $0.day < $1.day }
                 return (200, json(["weighIn": ["day": day, "weightKg": body["weightKg"] as? Double ?? 80, "note": NSNull()], "skipped": false]))
             case ("DELETE", _) where path.hasPrefix("/api/weigh-ins/"):

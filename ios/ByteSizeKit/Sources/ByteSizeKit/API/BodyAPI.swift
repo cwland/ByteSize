@@ -26,6 +26,8 @@ public struct WeighIn: Codable, Equatable, Sendable {
     public let weightKg: Double
     public let trendKg: Double?
     public let note: String?
+    /// "manual" (typed) or "health" (from Apple Health); nil = unknown, or a server from before 0.19.0
+    public let source: String?
 }
 
 public struct WeightPoint: Codable, Equatable, Sendable {
@@ -50,6 +52,9 @@ public struct WeightView: Codable, Equatable, Sendable {
 public struct GoalDateView: Codable, Equatable, Sendable {
     public let status: String
     public let date: String?
+    /// The likely range around `date` (servers before 0.19.0 may not send it)
+    public let earliest: String?
+    public let latest: String?
 }
 
 public struct Shot: Codable, Equatable, Sendable {
@@ -145,6 +150,14 @@ public enum BodyAPI {
     }
 
     public static func deleteWeight(day: String) -> Endpoint<Empty> { Endpoint("DELETE", "/api/weigh-ins/\(day)") }
+
+    struct HealthMatchItem: Encodable { let day: String; let weightKg: Double }
+    struct HealthMatchBody: Encodable { let items: [HealthMatchItem] }
+    public struct HealthMatchAnswer: Decodable, Sendable { public let matched: Int }
+    /// The one-time match: weigh-ins of unknown source whose weight is within 0.05 kg of Health's become "health".
+    public static func healthMatch(_ items: [(day: String, kg: Double)]) -> Endpoint<HealthMatchAnswer> {
+        Endpoint("POST", "/api/weigh-ins/health-match", json: HealthMatchBody(items: items.map { HealthMatchItem(day: $0.day, weightKg: $0.kg) }))
+    }
 
     public static func glp1() -> Endpoint<Glp1View> { Endpoint("GET", "/api/glp1") }
 

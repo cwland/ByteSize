@@ -91,7 +91,11 @@ public final class HealthSync {
             let started = now()
             do {
                 switch kind {
-                case .weight: weighIns = try await syncWeight()
+                case .weight:
+                    weighIns = try await syncWeight()
+                    // Once per account and phone: tag older weigh-ins that match Health. A failure only means it
+                    // runs again next sync; it doesn't spoil this one.
+                    if !defaults.bool(forKey: matchKey) { try? await matchOnce() }
                 case .steps: stepDays = try await syncSteps()
                 case .workouts: workouts = try await syncWorkouts()
                 }
@@ -112,11 +116,11 @@ public final class HealthSync {
 
     // MARK: - Each kind
 
-    /// The first reading of each day, sent oldest first; returns how many the server added.
-    private func syncWeight() async throws -> Int {
+    /// Each day's first reading from Health (not ByteSize's own; 30–350 kg, the server's range) up to today.
+    private func firstReadingOfEachDay(from: Date) async throws -> [String: HealthWeight] {
         let today = dayStore.today
-        // The server takes 30–350 kg; anything else (a child or a bag on the scale) is left out
-        let readings = try await store.weights(from: windowStart(.weight), to: now()).filter { !$0.fromByteSize && (30...350).contains($0.kg) }
+        // Anything outside 30–350 kg (a child or a bag on the scale) is left out
+        let readings = try await store.weights(from: from, to: now()).filter { !$0.fromByteSize && (30...350).contains($0.kg) }
         var firstOfDay: [String: HealthWeight] = [:]
         for r in readings {
             let day = DayMath.string(r.date, in: dayStore.zone)
@@ -124,6 +128,12 @@ public final class HealthSync {
             if let have = firstOfDay[day], have.date <= r.date { continue }
             firstOfDay[day] = r
         }
+        return firstOfDay
+    }
+
+    /// The first reading of each day, sent oldest first; returns how many the server added.
+    private func syncWeight() async throws -> Int {
+        let firstOfDay = try await firstReadingOfEachDay(from: windowStart(.weight))
         var added = 0
         for day in firstOfDay.keys.sorted() {
             guard stillOn(.weight) else { break }
@@ -188,11 +198,45 @@ public final class HealthSync {
         } else {
             day = DayMath.add(-(Self.firstDays - 1), to: today)
         }
+        return startOfDay(day)
+    }
+
+    /// Midnight starting `day` in the account's time zone.
+    private func startOfDay(_ day: String) -> Date {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = dayStore.zone
         let p = day.split(separator: "-").compactMap { Int($0) }
+        guard p.count == 3 else { return now() }
         return cal.date(from: DateComponents(year: p[0], month: p[1], day: p[2])) ?? now()
     }
 
     private func key(_ what: String, _ kind: HealthKind) -> String { "health.\(account).\(what).\(kind.rawValue)" }
+    private var matchKey: String { "health.\(account).matchDone" }
+
+    static let matchBatch = 1000
+
+    /// Sends Health's first reading of each day since the account's first weigh-in, so the server can tag the older
+    /// weigh-ins that came from Health. Marked done only when every batch went through.
+    private func matchOnce() async throws {
+        guard stillOn(.weight) else { return }
+        guard let first = try await api.send(BodyAPI.weight()).start?.day else {
+            defaults.set(true, forKey: matchKey) // no weigh-ins: nothing to match, ever
+            return
+        }
+        let readings = try await firstReadingOfEachDay(from: startOfDay(first))
+        let items = readings.keys.sorted().filter { $0 >= first }.map { (day: $0, kg: readings[$0]!.kg) }
+        var at = 0
+        while at < items.count {
+            guard stillOn(.weight) else { return }
+            do {
+                _ = try await api.send(BodyAPI.healthMatch(Array(items[at..<min(at + Self.matchBatch, items.count)])))
+            } catch APIError.server(let status, _) where (400..<500).contains(status) && status != 401 {
+                // The server can't do it (before 0.19.0, or it refuses): don't redo the long Health read every sync
+                defaults.set(true, forKey: matchKey)
+                return
+            }
+            at += Self.matchBatch
+        }
+        defaults.set(true, forKey: matchKey)
+    }
 }

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { isLatest, saveWeighIn, syncBodyWeight } from "../lib/weighIns.js";
 import { userBody, userSettings, weighInSkips, weighIns } from "../db/schema.js";
 import { HttpError, badRequest } from "../lib/errors.js";
@@ -22,6 +22,14 @@ const weighInBody = z.object({
   note: z.string().trim().max(500, "Keep the note under 500 characters").nullish(),
   // health (I5): from Apple Health — fills only a day with no weigh-in that was never deleted
   source: z.enum(["manual", "health"], { error: "Source is manual or health" }).default("manual"),
+});
+// The iPhone's one-time match against Apple Health: each day's first Health reading
+const MATCH_KG = 0.05; // plus a hair for floating point (30.07 − 30.02 comes out just over 0.05)
+const healthMatchBody = z.object({
+  items: z
+    .array(z.object({ day: DAY, weightKg: z.number({ error: WEIGHT }).min(30, WEIGHT).max(350, WEIGHT) }))
+    .min(1, "Send at least one day")
+    .max(1000, "Send at most 1000 days at a time"),
 });
 const rangeQuery = z
   .object({ from: DAY.optional(), to: DAY.optional() })
@@ -50,9 +58,29 @@ export default async function weightRoutes(app: FastifyInstance) {
       } else {
         await tx.delete(weighInSkips).where(and(eq(weighInSkips.userId, userId), eq(weighInSkips.day, day)));
       }
-      const row = await saveWeighIn(tx, userId, day, weightKg, note || null, app.now());
+      const row = await saveWeighIn(tx, userId, day, weightKg, note || null, app.now(), source);
       return { weighIn: view(row), skipped: false };
     });
+  });
+
+  // Tags the caller's weigh-ins of unknown source (imported, or saved before sources were kept) as Health when that
+  // day's weight is within 0.05 kg of the Health reading. Never changes a weight or a typed / Health weigh-in.
+  app.post("/api/weigh-ins/health-match", async (req) => {
+    const userId = requireUser(req);
+    const { items } = healthMatchBody.parse(req.body ?? {});
+    const matched = await db.transaction(async (tx) => {
+      let n = 0;
+      for (const { day, weightKg } of items) {
+        const done = await tx
+          .update(weighIns)
+          .set({ source: "health" })
+          .where(and(eq(weighIns.userId, userId), eq(weighIns.day, day), isNull(weighIns.source), sql`abs(${weighIns.weightKg} - ${weightKg}) <= ${MATCH_KG + 1e-9}`))
+          .returning({ id: weighIns.id });
+        n += done.length;
+      }
+      return n;
+    });
+    return { matched };
   });
 
   app.delete("/api/weigh-ins/:day", async (req, reply) => {
@@ -78,7 +106,7 @@ export default async function weightRoutes(app: FastifyInstance) {
     const userId = requireUser(req);
     const { from, to } = rangeQuery.parse(req.query ?? {});
     const rows = await db
-      .select({ day: weighIns.day, weightKg: weighIns.weightKg, note: weighIns.note })
+      .select({ day: weighIns.day, weightKg: weighIns.weightKg, note: weighIns.note, source: weighIns.source })
       .from(weighIns)
       .where(eq(weighIns.userId, userId))
       .orderBy(asc(weighIns.day));
@@ -102,7 +130,7 @@ export default async function weightRoutes(app: FastifyInstance) {
     return {
       weighIns: all
         .filter((p) => (!from || p.day >= from) && (!to || p.day <= to))
-        .map((p) => ({ day: p.day, weightKg: p.weightKg, trendKg: p.trendKg, note: p.note })),
+        .map((p) => ({ day: p.day, weightKg: p.weightKg, trendKg: p.trendKg, note: p.note, source: p.source ?? null })),
       start: first ? { day: first.day, weightKg: first.weightKg } : null,
       latest: last ? { day: last.day, weightKg: last.weightKg } : null,
       trendKg: last ? last.trendKg : null,

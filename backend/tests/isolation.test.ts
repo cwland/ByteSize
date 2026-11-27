@@ -249,7 +249,7 @@ describe("per-user isolation", () => {
     // ben's weigh-in on the same day is his own and only moves his body weight
     expect((await b.as("PUT", "/api/weigh-ins/2026-11-17", { weightKg: 118 })).status).toBe(200);
     expect((await b.as("GET", "/api/body")).body.body.weightKg).toBe(118);
-    expect((await b.as("GET", "/api/weight")).body.weighIns).toEqual([{ day: "2026-11-17", weightKg: 118, trendKg: 118, note: null }]);
+    expect((await b.as("GET", "/api/weight")).body.weighIns).toEqual([{ day: "2026-11-17", weightKg: 118, trendKg: 118, note: null, source: "manual" }]);
 
     const annas = (await a.as("GET", "/api/weight")).body;
     expect(annas.weighIns.map((w: any) => [w.day, w.weightKg, w.note])).toEqual([["2026-11-10", 89, "anna's"], ["2026-11-17", 85, null]]);
@@ -267,7 +267,7 @@ describe("per-user isolation", () => {
     };
     expect(await upload(a.token, "/api/weight/import/preview")).toMatchObject({ count: 2, existingDays: 0 });
     expect(await upload(a.token, "/api/weight/import", { existing: "replace" })).toMatchObject({ imported: 2, replaced: 0 });
-    expect((await b.as("GET", "/api/weight")).body.weighIns).toEqual([{ day: "2026-11-15", weightKg: 120, trendKg: 120, note: "ben's" }]);
+    expect((await b.as("GET", "/api/weight")).body.weighIns).toEqual([{ day: "2026-11-15", weightKg: 120, trendKg: 120, note: "ben's", source: "manual" }]);
     expect((await a.as("GET", "/api/weight")).body.weighIns.map((w: any) => [w.day, w.weightKg])).toEqual([["2026-11-15", 80], ["2026-11-16", 79]]);
     expect(await upload(b.token, "/api/weight/import/preview")).toMatchObject({ existingDays: 1 });
   });
