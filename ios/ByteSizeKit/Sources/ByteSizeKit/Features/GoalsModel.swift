@@ -20,12 +20,36 @@ public final class GoalsModel {
         }
     }
 
-    /// One weigh-in in the history, with its change from the one before (nil for the first).
+    /// One weigh-in in the history, with its change from the one before (nil for the first) and where it came from
+    /// ("health", "manual", or nil = unknown).
     public struct WeightRow: Identifiable, Equatable, Sendable {
         public let day: String
         public let weightKg: Double
         public let changeKg: Double?
+        public let source: String?
         public var id: String { day }
+    }
+
+    /// A weigh-in's change pill: green ↓ loss, red ↑ gain, neutral "0.0" when it rounds to nothing.
+    public enum ChangeKind: Equatable, Sendable { case loss, gain, none }
+    public struct Change: Equatable, Sendable {
+        public let kind: ChangeKind
+        public let text: String
+        public init(kind: ChangeKind, text: String) { self.kind = kind; self.text = text }
+    }
+
+    /// Lost so far as shown: never below zero ("0.0 lb"); `isLoss` (green) only when it shows more than 0.0.
+    public struct Lost: Equatable, Sendable {
+        public let text: String
+        public let isLoss: Bool
+        public init(text: String, isLoss: Bool) { self.text = text; self.isLoss = isLoss }
+    }
+
+    /// The Est. goal date row: the date (or the state in words) and the likely range under it.
+    public struct GoalDateLine: Equatable, Sendable {
+        public let main: String
+        public let detail: String?
+        public init(main: String, detail: String?) { self.main = main; self.detail = detail }
     }
 
     public private(set) var goals: [Goal] = []
@@ -78,17 +102,60 @@ public final class GoalsModel {
     public var history: [WeightRow] {
         let all = weight?.weighIns ?? []
         return all.enumerated().map { i, w in
-            WeightRow(day: w.day, weightKg: w.weightKg, changeKg: i == 0 ? nil : w.weightKg - all[i - 1].weightKg)
+            WeightRow(day: w.day, weightKg: w.weightKg, changeKg: i == 0 ? nil : w.weightKg - all[i - 1].weightKg, source: w.source)
         }.reversed()
     }
 
-    /// The history shows the last 5 weigh-ins until "Show all" (owner's ask).
+    /// The newest weigh-in has its own card; the 5 before it show as Recent until "Show all" (owner's ask).
     public static let historyLimit = 5
     public var showAllHistory = false
 
-    public var shownHistory: [WeightRow] { showAllHistory ? history : Array(history.prefix(Self.historyLimit)) }
+    public var latestRow: WeightRow? { history.first }
 
-    public var hiddenHistoryCount: Int { showAllHistory ? 0 : max(0, history.count - Self.historyLimit) }
+    public var recentRows: [WeightRow] {
+        let rest = Array(history.dropFirst())
+        return showAllHistory ? rest : Array(rest.prefix(Self.historyLimit))
+    }
+
+    public var hiddenHistoryCount: Int { showAllHistory ? 0 : max(0, history.count - 1 - Self.historyLimit) }
+
+    /// One decimal in the person's units, as shown
+    private static func shown(_ kg: Double, _ units: Units) -> Double { (units.weightValue(kg: kg) * 10).rounded() / 10 }
+
+    /// The pill for a change from the weigh-in before (nil: the first weigh-in has none). The rounded figure decides
+    /// the color, so "0.0" is never green or red.
+    public static func change(_ kg: Double?, units: Units) -> Change? {
+        guard let kg else { return nil }
+        let v = shown(kg, units)
+        let text = "\(String(format: "%.1f", abs(v))) \(units.weightUnit)"
+        return Change(kind: v < 0 ? .loss : v > 0 ? .gain : .none, text: text)
+    }
+
+    /// Lost so far (by the scale or the trend) as shown: a gain or nothing shows "0.0".
+    public static func lost(_ kg: Double?, units: Units) -> Lost? {
+        guard let kg else { return nil }
+        let v = max(0, shown(kg, units))
+        return Lost(text: "\(String(format: "%.1f", v)) \(units.weightUnit)", isLoss: v > 0)
+    }
+
+    /// The Est. goal date row (nil: no goal weight, so the row is hidden).
+    public static func goalDateLine(_ g: GoalDateView?, format: DateFormat, today: String) -> GoalDateLine? {
+        guard let g else { return nil }
+        switch g.status {
+        case "ok":
+            guard let date = g.date else { return nil }
+            var detail: String?
+            if let from = g.earliest, let to = g.latest {
+                // The first date drops its year when it shares the second's
+                detail = "Between \(format.short(from, today: to)) and \(format.short(to, today: today))"
+            }
+            return GoalDateLine(main: format.short(date, today: today), detail: detail)
+        case "reached": return GoalDateLine(main: "Goal reached", detail: nil)
+        case "not_enough": return GoalDateLine(main: "Not enough weigh-ins yet", detail: nil)
+        case "not_losing": return GoalDateLine(main: "Not losing at the moment", detail: nil)
+        default: return nil
+        }
+    }
 
     /// A weigh-in typed in the account's units, for today or an earlier day.
     public func logWeight(display: Double, day: String) async throws {

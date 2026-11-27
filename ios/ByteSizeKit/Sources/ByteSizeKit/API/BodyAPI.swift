@@ -52,6 +52,9 @@ public struct WeightView: Codable, Equatable, Sendable {
 public struct GoalDateView: Codable, Equatable, Sendable {
     public let status: String
     public let date: String?
+    /// The likely range around `date` (servers before 0.19.0 may not send it)
+    public let earliest: String?
+    public let latest: String?
 }
 
 public struct Shot: Codable, Equatable, Sendable {
