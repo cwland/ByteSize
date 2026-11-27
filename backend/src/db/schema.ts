@@ -228,6 +228,9 @@ export const userSettings = pgTable("user_settings", {
   weekStart: integer("week_start").notNull().default(0),
   // How the date at the top of the app is written (a key of lib/dateFormats.ts)
   dateFormat: text("date_format").notNull().default("weekday-long-month-short"),
+  // Goal estimate (Settings › Profile): a line through the scale weigh-ins or the trend, over the last 6, 12 or 26 weeks
+  goalEstimateBasis: text("goal_estimate_basis").$type<"scale" | "trend">().notNull().default("scale"),
+  goalEstimateWeeks: integer("goal_estimate_weeks").notNull().default(12),
   culuryUrl: text("culury_url"),
   culuryKeyEnc: text("culury_key_enc"), // encrypted
   // The person's RecipeHub switch (Settings › Integrations); null = never switched: on when linked

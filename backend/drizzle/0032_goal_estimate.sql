@@ -1,0 +1,2 @@
+ALTER TABLE "user_settings" ADD COLUMN "goal_estimate_basis" text DEFAULT 'scale' NOT NULL;--> statement-breakpoint
+ALTER TABLE "user_settings" ADD COLUMN "goal_estimate_weeks" integer DEFAULT 12 NOT NULL;

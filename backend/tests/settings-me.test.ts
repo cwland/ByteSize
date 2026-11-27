@@ -17,7 +17,7 @@ describe("week start setting", () => {
     const put = await t.api("PUT", "/api/settings/me", { mealWindows: windows, waterButtonsMl: [237], weekStart: 1 });
     expect(put.status).toBe(200);
     expect(put.body.weekStart).toBe(1);
-    expect((await t.api("GET", "/api/settings/me")).body).toEqual({ mealWindows: windows, waterButtonsMl: [237], weekStart: 1, dateFormat: "weekday-long-month-short", glp1On: false });
+    expect((await t.api("GET", "/api/settings/me")).body).toEqual({ mealWindows: windows, waterButtonsMl: [237], weekStart: 1, dateFormat: "weekday-long-month-short", goalEstimateBasis: "scale", goalEstimateWeeks: 12, glp1On: false });
     // leaving weekStart out keeps what was saved
     const again = await t.api("PUT", "/api/settings/me", { mealWindows: windows, waterButtonsMl: [300] });
     expect(again.body.weekStart).toBe(1);
@@ -81,5 +81,28 @@ describe("glp1On (§46): whether the person tracks a GLP-1, so the side rail nee
     const sam = await t.createUser("sam");
     const r = await t.app.inject({ method: "GET", url: "/api/settings/me", headers: { authorization: `Bearer ${sam.token}` } });
     expect(r.json().glp1On).toBe(false);
+  });
+});
+
+describe("goal estimate settings", () => {
+  const put = (body: Record<string, unknown>) => t.api("PUT", "/api/settings/me", { mealWindows: windows, waterButtonsMl: [237], ...body });
+
+  it("defaults to scale weigh-ins over 12 weeks; saves trend over 26; left out keeps what was saved", async () => {
+    expect((await t.api("GET", "/api/settings/me")).body).toMatchObject({ goalEstimateBasis: "scale", goalEstimateWeeks: 12 });
+    const saved = await put({ goalEstimateBasis: "trend", goalEstimateWeeks: 26 });
+    expect(saved.status).toBe(200);
+    expect(saved.body).toMatchObject({ goalEstimateBasis: "trend", goalEstimateWeeks: 26 });
+    expect((await put({})).body).toMatchObject({ goalEstimateBasis: "trend", goalEstimateWeeks: 26 });
+    expect((await t.api("GET", "/api/settings/me")).body).toMatchObject({ goalEstimateBasis: "trend", goalEstimateWeeks: 26 });
+  });
+
+  it("only 6, 12 or 26 weeks, and only scale or trend", async () => {
+    for (const goalEstimateWeeks of [4, 13, 0, "12"]) {
+      const res = await put({ goalEstimateWeeks });
+      expect(res.status, String(goalEstimateWeeks)).toBe(400);
+    }
+    expect((await put({ goalEstimateWeeks: 13 })).body.details).toEqual([{ path: "goalEstimateWeeks", message: "Choose 6, 12 or 26 weeks" }]);
+    expect((await put({ goalEstimateBasis: "average" })).status).toBe(400);
+    expect((await t.api("GET", "/api/settings/me")).body).toMatchObject({ goalEstimateBasis: "scale", goalEstimateWeeks: 12 });
   });
 });

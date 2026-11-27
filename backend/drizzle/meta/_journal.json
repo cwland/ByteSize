@@ -225,6 +225,13 @@
       "when": 1795621417369,
       "tag": "0031_restaurant_brands",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1795753235754,
+      "tag": "0032_goal_estimate",
+      "breakpoints": true
     }
   ]
 }

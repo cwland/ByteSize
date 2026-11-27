@@ -319,6 +319,7 @@ describe("GET /api/weight", () => {
       trendKg: null,
       goalKg: null,
       lostKg: null,
+      lostTrendKg: null,
       projection: { status: "not_enough" },
       goalDate: { status: "no_goal" },
       replanHint: false,
@@ -334,6 +335,15 @@ describe("GET /api/weight", () => {
     expect(w.goalDate.toGoKg).toBeCloseTo(w.latest.weightKg - 80, 9); // scale: from the latest weigh-in
     expect(w.goalDate.earliest <= w.goalDate.date && w.goalDate.date <= w.goalDate.latest).toBe(true);
     expect(w.goalDate.earliest > TODAY).toBe(true);
+  });
+
+  it("the goal estimate follows the person's setting: trend over 6 weeks counts to go from the trend", async () => {
+    await t.api("PUT", "/api/body", BODY); // goal 80 kg
+    for (let i = 0; i < 21; i++) await weigh(addDays(TODAY, -2 * (20 - i)), 100 - 0.2 * i);
+    await t.api("PUT", "/api/settings/me", { mealWindows: { breakfast: "10:30", lunch: "14:30", snacks: "17:00", dinner: "21:00" }, waterButtonsMl: [237], goalEstimateBasis: "trend", goalEstimateWeeks: 6 });
+    const w = (await t.api("GET", "/api/weight")).body;
+    expect(w.goalDate.toGoKg).toBeCloseTo(w.trendKg - 80, 9);
+    expect(w.goalDate.toGoKg).not.toBeCloseTo(w.latest.weightKg - 80, 3);
   });
 
   it("gives start, latest, trend, goal, lost so far and a projection; trend is over all weigh-ins, then windowed", async () => {
@@ -353,7 +363,8 @@ describe("GET /api/weight", () => {
     expect(w.latest).toEqual({ day: TODAY, weightKg: 96 });
     expect(w.trendKg).toBeCloseTo(t17, 9);
     expect(w.goalKg).toBe(80);
-    expect(w.lostKg).toBeCloseTo(100 - t17, 9);
+    expect(w.lostKg).toBeCloseTo(100 - 96, 9); // by the scale: first weigh-in − latest weigh-in
+    expect(w.lostTrendKg).toBeCloseTo(100 - t17, 9); // by the trend
     expect(w.projection.status).toBe("ok");
     expect(w.projection.date > TODAY).toBe(true);
     expect(w.projection.kgPerWeek).toBeGreaterThan(0);

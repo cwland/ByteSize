@@ -49,7 +49,7 @@ describe("GET /api/app-info", () => {
     const r = await info();
     expect(r.status).toBe(200);
     expect(r.body.you).toEqual({
-      daysLogged: 0, foodsLogged: 0, differentFoods: 0, myFoods: 0, weighIns: 0, weightLost: null, shots: null, longestStreak: 0,
+      daysLogged: 0, foodsLogged: 0, differentFoods: 0, myFoods: 0, weighIns: 0, weightLost: null, weightLostTrend: null, shots: null, longestStreak: 0,
       memberSince: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       barcodesScanned: 0, photosRead: 0, aiEstimates: 0, aiInsights: 0, lookupsSaved: 0,
       outsideLookups: { total: 0, off: 0, usda: 0, fatsecret: 0, spoonacular: 0, culury: 0 },
@@ -70,6 +70,12 @@ describe("GET /api/app-info", () => {
     expect((await info()).body.you.weightLost).toEqual({ amount: 2, unit: "kg" });
     await t.api("PUT", "/api/weigh-ins/2026-11-16", { weightKg: 101 });
     expect((await info()).body.you.weightLost).toBeNull(); // gained since the first weigh-in
+  });
+
+  it("pounds lost by the trend sits beside the scale figure", async () => {
+    await t.api("PUT", "/api/weigh-ins/2026-11-01", { weightKg: 100 });
+    await t.api("PUT", "/api/weigh-ins/2026-11-02", { weightKg: 98 }); // the trend: 100 − 2 × 0.1 = 99.8
+    expect((await info()).body.you).toMatchObject({ weightLost: { amount: 4.4, unit: "lb" }, weightLostTrend: { amount: 0.4, unit: "lb" } });
   });
 
   it("one weigh-in is no loss", async () => {

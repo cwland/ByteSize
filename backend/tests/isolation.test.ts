@@ -81,7 +81,7 @@ describe("per-user isolation", () => {
     expect((await b.as("PUT", "/api/targets", { calories: { min: 1000, max: 1100 }, protein_g: { min: 1, max: 2 }, fiber_g: { min: 1, max: 2 }, water_ml: { min: 1, max: 2 } })).status).toBe(200);
     expect((await a.as("GET", "/api/targets")).body.targets.plan).toBe("steady");
     expect((await a.as("GET", "/api/body")).body).toEqual({ body: { ...body, needsReview: false } });
-    expect((await a.as("GET", "/api/settings/me")).body).toEqual({ mealWindows: windows, waterButtonsMl: [300], weekStart: 2, dateFormat: "iso", glp1On: false });
+    expect((await a.as("GET", "/api/settings/me")).body).toEqual({ mealWindows: windows, waterButtonsMl: [300], weekStart: 2, dateFormat: "iso", goalEstimateBasis: "scale", goalEstimateWeeks: 12, glp1On: false });
   });
 
   it("a user can't see, edit or archive another user's foods or overrides, and lookups never return them", async () => {

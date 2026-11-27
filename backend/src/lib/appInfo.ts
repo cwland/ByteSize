@@ -5,6 +5,7 @@ import { addDays, localDay, vacationCheck } from "./days.js";
 import { HttpError } from "./errors.js";
 import { OUTSIDE_SOURCES, countingSince } from "./usage.js";
 import { APP_VERSION } from "./version.js";
+import { trendOf } from "./weight.js";
 
 // Settings › App info: a person's own numbers and (for the admin) the totals for everyone.
 
@@ -41,9 +42,17 @@ async function mine(app: FastifyInstance, userId: number) {
     .where(food);
   const days = (await db.selectDistinct({ day: logEntries.day }).from(logEntries).where(food)).map((r) => r.day);
   const [{ myFoods }] = await db.select({ myFoods: count() }).from(userFoods).where(and(eq(userFoods.userId, userId), eq(userFoods.archived, false)));
-  const weigh = await db.select({ kg: weighIns.weightKg }).from(weighIns).where(eq(weighIns.userId, userId)).orderBy(asc(weighIns.day));
-  const lostKg = weigh.length > 1 ? weigh[0].kg - weigh[weigh.length - 1].kg : 0;
-  const lost = me.units === "metric" ? round1(lostKg) : round1(lostKg * KG_TO_LB);
+  const weigh = await db.select({ day: weighIns.day, weightKg: weighIns.weightKg }).from(weighIns).where(eq(weighIns.userId, userId)).orderBy(asc(weighIns.day));
+  // Lost so far, as on the Weight page: by the scale (first − latest weigh-in) and by the trend (first − latest trend)
+  const trend = trendOf(weigh);
+  const unit = me.units === "metric" ? ("kg" as const) : ("lb" as const);
+  const shown = (kg: number) => {
+    const amount = unit === "kg" ? round1(kg) : round1(kg * KG_TO_LB);
+    return amount > 0 ? { amount, unit } : null;
+  };
+  const first = weigh[0];
+  const lastPoint = trend[trend.length - 1];
+  const many = weigh.length > 1;
   const [body] = await db.select({ glp1: userBody.glp1 }).from(userBody).where(eq(userBody.userId, userId));
   const [{ shots }] = await db.select({ shots: count() }).from(glp1Shots).where(eq(glp1Shots.userId, userId));
   const by = Object.fromEntries((await db.select().from(usageCounts).where(eq(usageCounts.userId, userId))).map((r) => [r.key, r.count]));
@@ -53,7 +62,8 @@ async function mine(app: FastifyInstance, userId: number) {
     differentFoods: entries.different,
     myFoods,
     weighIns: weigh.length,
-    weightLost: lost > 0 ? { amount: lost, unit: me.units === "metric" ? ("kg" as const) : ("lb" as const) } : null,
+    weightLost: many ? shown(first.weightKg - lastPoint.weightKg) : null,
+    weightLostTrend: many ? shown(first.weightKg - lastPoint.trendKg) : null,
     shots: body?.glp1 ? shots : null,
     longestStreak: longestRun(days, await vacationCheck(db, userId)),
     memberSince: localDay(me.timezone, me.createdAt),
