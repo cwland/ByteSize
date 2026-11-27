@@ -123,10 +123,11 @@ public final class GoalsModel {
     private static func shown(_ kg: Double, _ units: Units) -> Double { (units.weightValue(kg: kg) * 10).rounded() / 10 }
 
     /// The pill for a change from the weigh-in before (nil: the first weigh-in has none). The rounded figure decides
-    /// the color, so "0.0" is never green or red.
-    public static func change(_ kg: Double?, units: Units) -> Change? {
+    /// the color, so "0.0" is never green or red. Given the weigh-in's own weight, it is the difference of the two
+    /// weights as shown, so the pill always matches the numbers on screen.
+    public static func change(_ kg: Double?, weightKg: Double? = nil, units: Units) -> Change? {
         guard let kg else { return nil }
-        let v = shown(kg, units)
+        let v = weightKg.map { ((shown($0, units) - shown($0 - kg, units)) * 10).rounded() / 10 } ?? shown(kg, units)
         let text = "\(String(format: "%.1f", abs(v))) \(units.weightUnit)"
         return Change(kind: v < 0 ? .loss : v > 0 ? .gain : .none, text: text)
     }
@@ -134,7 +135,8 @@ public final class GoalsModel {
     /// Lost so far (by the scale or the trend) as shown: a gain or nothing shows "0.0".
     public static func lost(_ kg: Double?, units: Units) -> Lost? {
         guard let kg else { return nil }
-        let v = max(0, shown(kg, units))
+        let rounded = shown(kg, units)
+        let v = rounded > 0 ? rounded : 0 // never −0.0, which prints as "-0.0"
         return Lost(text: "\(String(format: "%.1f", v)) \(units.weightUnit)", isLoss: v > 0)
     }
 

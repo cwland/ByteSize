@@ -218,6 +218,7 @@ public final class HealthSync {
     /// Sends Health's first reading of each day since the account's first weigh-in, so the server can tag the older
     /// weigh-ins that came from Health. Marked done only when every batch went through.
     private func matchOnce() async throws {
+        guard stillOn(.weight) else { return }
         guard let first = try await api.send(BodyAPI.weight()).start?.day else {
             defaults.set(true, forKey: matchKey) // no weigh-ins: nothing to match, ever
             return
@@ -227,7 +228,13 @@ public final class HealthSync {
         var at = 0
         while at < items.count {
             guard stillOn(.weight) else { return }
-            _ = try await api.send(BodyAPI.healthMatch(Array(items[at..<min(at + Self.matchBatch, items.count)])))
+            do {
+                _ = try await api.send(BodyAPI.healthMatch(Array(items[at..<min(at + Self.matchBatch, items.count)])))
+            } catch APIError.server(let status, _) where (400..<500).contains(status) && status != 401 {
+                // The server can't do it (before 0.19.0, or it refuses): don't redo the long Health read every sync
+                defaults.set(true, forKey: matchKey)
+                return
+            }
             at += Self.matchBatch
         }
         defaults.set(true, forKey: matchKey)

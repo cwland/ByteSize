@@ -229,7 +229,7 @@ struct GoalsView: View {
                     .foregroundStyle(Color(red: 1, green: 0.35, blue: 0.48))
                     .accessibilityLabel("From Apple Health")
             }
-            if let change = GoalsModel.change(row.changeKg, units: units) { pill(change, big: big) }
+            if let change = GoalsModel.change(row.changeKg, weightKg: row.weightKg, units: units) { pill(change, big: big) }
         }
         .padding(.vertical, big ? 8 : 2)
         .accessibilityElement(children: .combine)
