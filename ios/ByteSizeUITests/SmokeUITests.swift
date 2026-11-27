@@ -1078,6 +1078,11 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(goal.waitForExistence(timeout: 5))
         XCTAssertTrue(goal.label.contains("3 of 5 days this week"), goal.label)
         XCTAssertTrue(reveal(app.descendants(matching: .any)["weightChart"]).exists)
+        // Lost by the scale (88 → 82.28 kg: 12.6 lb) with the trend figure under it (0.3 kg more: 11.9 lb)
+        let lost = reveal(app.descendants(matching: .any)["stat-Lost"]) // under the chart
+        XCTAssertTrue(lost.waitForExistence(timeout: 5))
+        XCTAssertTrue(lost.label.contains("12.6 lb"), lost.label)
+        XCTAssertTrue(lost.label.contains("11.9 lb by trend"), lost.label)
         app.buttons["range-All"].tap()
         shot("31-goals")
     }

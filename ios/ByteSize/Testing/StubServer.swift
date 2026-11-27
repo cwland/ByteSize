@@ -137,8 +137,10 @@ final class StubServer: URLProtocol, @unchecked Sendable {
             let list = weighIns.map { json(["day": $0.day, "weightKg": $0.kg, "trendKg": $0.kg + 0.3, "note": NSNull()]) }
             let first = weighIns.first.map { json(["day": $0.day, "weightKg": $0.kg]) } ?? "null"
             let last = weighIns.last.map { json(["day": $0.day, "weightKg": $0.kg]) } ?? "null"
-            let lost = (weighIns.first?.kg).flatMap { f in weighIns.last.map { f - $0.kg - 0.3 } }
-            return #"{"weighIns":[\#(list.joined(separator: ","))],"start":\#(first),"latest":\#(last),"trendKg":\#(weighIns.last.map { "\($0.kg + 0.3)" } ?? "null"),"goalKg":75,"lostKg":\#(lost.map { "\($0)" } ?? "null"),"goalDate":{"status":"ok","date":"\#(Self.offset(120))"}}"#
+            // Lost by the scale (first − latest weigh-in) and by the trend (the stub's trend sits 0.3 kg above)
+            let lost = (weighIns.first?.kg).flatMap { f in weighIns.last.map { f - $0.kg } }
+            let lostTrend = lost.map { $0 - 0.3 }
+            return #"{"weighIns":[\#(list.joined(separator: ","))],"start":\#(first),"latest":\#(last),"trendKg":\#(weighIns.last.map { "\($0.kg + 0.3)" } ?? "null"),"goalKg":75,"lostKg":\#(lost.map { "\($0)" } ?? "null"),"lostTrendKg":\#(lostTrend.map { "\($0)" } ?? "null"),"goalDate":{"status":"ok","date":"\#(Self.offset(120))"}}"#
         }
 
         private static var goalsJSON: String {

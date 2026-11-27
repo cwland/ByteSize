@@ -39,7 +39,10 @@ public struct WeightView: Codable, Equatable, Sendable {
     public let goalKg: Double?
     public let start: WeightPoint?
     public let trendKg: Double?
+    /// Lost so far by the scale (first − latest weigh-in)
     public let lostKg: Double?
+    /// Lost so far by the trend (first weigh-in − latest trend); older servers don't send it
+    public let lostTrendKg: Double?
     public let goalDate: GoalDateView?
 }
 
