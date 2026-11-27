@@ -220,6 +220,9 @@ struct GoalsView: View {
                         .monospacedDigit()
                     Text(units.weightUnit).font(big ? .title3 : .subheadline).foregroundStyle(palette.color("subtle"))
                 }
+                // Read as one ("180.0 lb"), not "180.0, lb"
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(units.weight(kg: row.weightKg))
                 Text(DayText.long(row.day, dateLook)).font(big ? .subheadline : .footnote).foregroundStyle(palette.color("subtle"))
             }
             Spacer(minLength: 8)
