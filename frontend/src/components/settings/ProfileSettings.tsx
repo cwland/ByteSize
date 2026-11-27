@@ -3,7 +3,11 @@ import { api } from "../../api";
 import { DEFAULT_SETTINGS, notifySettingsChanged, useSettingsMe } from "../../day";
 import { DATE_FORMATS, DEFAULT_DATE_FORMAT, formatDate } from "../../dateFormat";
 import { todayIn } from "../../selectedDay";
-import type { MealWindows, SettingsMe } from "../../types";
+import { GOAL_ESTIMATE_WEEKS, type GoalEstimateBasis, type GoalEstimateWeeks, type MealWindows, type SettingsMe } from "../../types";
+
+// The goal estimate before anyone chooses (the server's defaults)
+const DEFAULT_ESTIMATE_BASIS: GoalEstimateBasis = "scale";
+const DEFAULT_ESTIMATE_WEEKS: GoalEstimateWeeks = 12;
 import { useSession, type User } from "../../session";
 import { THEMES, applyMode, applyTheme, useTheme, type ColorMode } from "../../themes";
 import { Card } from "../ui/Card";
@@ -70,6 +74,8 @@ function AboutYou() {
   const [weekStart, setWeekStart] = useState(0);
   const [dateFormat, setDateFormat] = useState<string>(DEFAULT_DATE_FORMAT);
   const [mealWindows, setMealWindows] = useState<MealWindows>(DEFAULT_SETTINGS.mealWindows);
+  const [estimateBasis, setEstimateBasis] = useState<GoalEstimateBasis>(DEFAULT_ESTIMATE_BASIS);
+  const [estimateWeeks, setEstimateWeeks] = useState<GoalEstimateWeeks>(DEFAULT_ESTIMATE_WEEKS);
   useEffect(() => {
     api<SettingsMe>("GET", "/api/settings/me")
       .then((s) => {
@@ -77,6 +83,8 @@ function AboutYou() {
         setWeekStart(s.weekStart);
         setDateFormat(s.dateFormat ?? DEFAULT_DATE_FORMAT);
         setMealWindows(s.mealWindows);
+        setEstimateBasis(s.goalEstimateBasis ?? DEFAULT_ESTIMATE_BASIS);
+        setEstimateWeeks(s.goalEstimateWeeks ?? DEFAULT_ESTIMATE_WEEKS);
       })
       .catch(() => {});
   }, []);
@@ -88,9 +96,22 @@ function AboutYou() {
     try {
       const r = await api<{ user: User }>("PATCH", "/api/profile", { displayName: displayName.trim() || null, email: email.trim() || null, units, timezone });
       setUser(r.user);
-      const changed = settings && (weekStart !== settings.weekStart || dateFormat !== (settings.dateFormat ?? DEFAULT_DATE_FORMAT) || !sameWindows(mealWindows, settings.mealWindows));
+      const changed =
+        settings &&
+        (weekStart !== settings.weekStart ||
+          dateFormat !== (settings.dateFormat ?? DEFAULT_DATE_FORMAT) ||
+          !sameWindows(mealWindows, settings.mealWindows) ||
+          estimateBasis !== (settings.goalEstimateBasis ?? DEFAULT_ESTIMATE_BASIS) ||
+          estimateWeeks !== (settings.goalEstimateWeeks ?? DEFAULT_ESTIMATE_WEEKS));
       if (settings && changed) {
-        const saved = await api<SettingsMe>("PUT", "/api/settings/me", { mealWindows, waterButtonsMl: settings.waterButtonsMl, weekStart, dateFormat });
+        const saved = await api<SettingsMe>("PUT", "/api/settings/me", {
+          mealWindows,
+          waterButtonsMl: settings.waterButtonsMl,
+          weekStart,
+          dateFormat,
+          goalEstimateBasis: estimateBasis,
+          goalEstimateWeeks: estimateWeeks,
+        });
         setSettings(saved);
         notifySettingsChanged();
       }
@@ -158,6 +179,29 @@ function AboutYou() {
               Reset to defaults
             </button>
           </p>
+        </fieldset>
+        <fieldset className="mt-4">
+          <legend className={label}>Goal estimate</legend>
+          <div className="mt-1 grid grid-cols-2 gap-3">
+            <label className="block text-sm text-subtle">
+              Goes by
+              <select aria-label="Goal estimate goes by" value={estimateBasis} disabled={!settings} onChange={(e) => setEstimateBasis(e.target.value as GoalEstimateBasis)} className={field}>
+                <option value="scale">Scale weigh-ins</option>
+                <option value="trend">Trend</option>
+              </select>
+            </label>
+            <label className="block text-sm text-subtle">
+              Looks back
+              <select aria-label="Goal estimate looks back" value={estimateWeeks} disabled={!settings} onChange={(e) => setEstimateWeeks(Number(e.target.value) as GoalEstimateWeeks)} className={field}>
+                {GOAL_ESTIMATE_WEEKS.map((n) => (
+                  <option key={n} value={n}>
+                    {`${n} weeks`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="mt-1 text-sm text-subtle">Scale follows your weigh-ins; trend smooths day-to-day swings. A longer look-back is steadier.</p>
         </fieldset>
         <Notice msg={msg} />
         <button type="submit" disabled={busy} className={`${primaryButton} mt-5`}>

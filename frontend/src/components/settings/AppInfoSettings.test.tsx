@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, screen, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import AppInfoSettings from "./AppInfoSettings";
 import { COUNT_MS } from "../ui/CountUp";
 import { fakeServer } from "../../test/fakeServer";
@@ -53,6 +53,13 @@ describe("Settings › App info", () => {
     renderWithSession(<AppInfoSettings />, { isAdmin: false });
     await screen.findByRole("group", { name: "Shots logged" });
     expect(value("Shots logged")).toBe("0");
+  });
+
+  it("Pounds lost shows the trend figure underneath", async () => {
+    fakeServer({ "GET /api/app-info": () => info({ you: { ...you, weightLost: { amount: 24.5, unit: "lb" }, weightLostTrend: { amount: 22.3, unit: "lb" } } }) });
+    renderWithSession(<AppInfoSettings />);
+    await screen.findByRole("group", { name: "Pounds lost" });
+    await waitFor(() => expect(within(tile("Pounds lost")).getByRole("listitem")).toHaveTextContent("By trend22.3"));
   });
 
   it("Pounds lost is in the person's units and hidden when there's no loss", async () => {

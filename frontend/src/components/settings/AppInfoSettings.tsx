@@ -9,7 +9,7 @@ import { Notice, errorMsg, type Msg } from "../ui/Notice";
 
 const STAGGER_MS = 70; // each tile starts a little after the one before
 
-type TileData = { label: string; Icon: LucideIcon; value?: number; decimals?: number; text?: string; lines?: [string, number][] };
+type TileData = { label: string; Icon: LucideIcon; value?: number; decimals?: number; text?: string; lines?: [string, number, number?][] };
 
 // One number (or a date) with its label and a small icon; lines: a breakdown underneath, counted up too
 function Tile({ tile, index }: { tile: TileData; index: number }) {
@@ -23,11 +23,11 @@ function Tile({ tile, index }: { tile: TileData; index: number }) {
       <p className="text-sm text-subtle">{tile.label}</p>
       {tile.lines && (
         <ul className="mt-2 space-y-0.5 text-xs text-muted">
-          {tile.lines.map(([name, n]) => (
+          {tile.lines.map(([name, n, decimals]) => (
             <li key={name} className="flex justify-between gap-2">
               <span>{name}</span>
               <span className="tabular-nums">
-                <CountUp value={n} delayMs={delayMs} />
+                <CountUp value={n} decimals={decimals} delayMs={delayMs} />
               </span>
             </li>
           ))}
@@ -75,7 +75,9 @@ export default function AppInfoSettings() {
     { label: "Different foods", Icon: Layers, value: you.differentFoods },
     { label: "My foods", Icon: BookMarked, value: you.myFoods },
     { label: "Weigh-ins", Icon: Scale, value: you.weighIns },
-    ...(lost ? [{ label: lost.unit === "kg" ? "Kilograms lost" : "Pounds lost", Icon: TrendingDown, value: lost.amount, decimals: 1 }] : []),
+    ...(lost
+      ? [{ label: lost.unit === "kg" ? "Kilograms lost" : "Pounds lost", Icon: TrendingDown, value: lost.amount, decimals: 1, ...(you.weightLostTrend ? { lines: [["By trend", you.weightLostTrend.amount, 1] as [string, number, number]] } : {}) }]
+      : []),
     ...(you.shots !== null ? [{ label: "Shots logged", Icon: Syringe, value: you.shots }] : []),
     { label: "Longest streak", Icon: Flame, value: you.longestStreak },
     { label: "Member since", Icon: CalendarHeart, text: shortDay(you.memberSince, true) },

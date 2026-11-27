@@ -21,7 +21,7 @@ const RANGES: { id: Range; label: string; days?: number }[] = [
 const LIST_LIMIT = 7;
 
 // Where the weight is heading, in words: the Goal date widget's estimate (§40a; its pace and middle date, so the page
-// never shows two different numbers). Without a goal weight: the pace alone (the 28-day projection).
+// never shows two different numbers). Without a goal weight: the pace alone (the projection, over the look-back in Profile).
 export function projectionText(w: Weight, units: Units, dateFormat: string | undefined, today: string) {
   // A rate that rounds to 0 in the person's units would read "Losing 0 lb a week"
   const rate = (kgPerWeek: number | undefined) => (kgPerWeek !== undefined && weightValue(kgPerWeek, units) > 0 ? `Losing ${formatWeight(kgPerWeek, units)} a week` : "Losing slowly");
@@ -73,6 +73,7 @@ export default function WeightSection({ onReplan, markers }: { onReplan: () => v
   };
   const listed = showAll ? newestFirst : newestFirst.slice(0, LIST_LIMIT);
   const lost = data?.lostKg ?? null;
+  const lostTrend = data?.lostTrendKg ?? null;
 
   return (
     <section aria-label="Weight" className="rounded-2xl bg-container p-5">
@@ -108,6 +109,14 @@ export default function WeightSection({ onReplan, markers }: { onReplan: () => v
               <span className="text-subtle">{lost >= 0 ? "Lost so far" : "Gained so far"}</span>
               <span data-testid="weight-lost" className="font-semibold tabular">
                 {w(Math.abs(lost))}
+              </span>
+            </p>
+          )}
+          {lostTrend != null && (
+            <p className="mt-1 flex justify-between px-3 text-sm">
+              <span className="text-subtle">{lostTrend >= 0 ? "By trend" : "Gained by trend"}</span>
+              <span data-testid="weight-lost-trend" className="tabular">
+                {w(Math.abs(lostTrend))}
               </span>
             </p>
           )}

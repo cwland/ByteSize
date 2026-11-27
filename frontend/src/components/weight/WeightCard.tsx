@@ -57,6 +57,7 @@ export default function WeightCard({ trend = false }: { trend?: boolean }) {
             <div className="text-right text-sm text-subtle tabular">
               {data.trendKg !== null && <p>{`Trend ${w(data.trendKg)}`}</p>}
               {data.lostKg !== null && <p>{data.lostKg >= 0 ? `${w(data.lostKg)} lost so far` : `${w(-data.lostKg)} gained so far`}</p>}
+              {data.lostTrendKg != null && <p>{data.lostTrendKg >= 0 ? `${w(data.lostTrendKg)} by trend` : `${w(-data.lostTrendKg)} gained by trend`}</p>}
             </div>
           </div>
         ) : (

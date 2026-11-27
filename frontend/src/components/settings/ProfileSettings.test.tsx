@@ -205,3 +205,33 @@ describe("ProfileSettings meal times", () => {
     expect(server.writes().some((w) => w.path === "/api/settings/me")).toBe(false);
   });
 });
+
+describe("ProfileSettings goal estimate", () => {
+  it("shows the saved choice and saves a new one with the profile", async () => {
+    const server = fakeServer({
+      "GET /api/settings/me": () => ({ ...settingsMe, goalEstimateBasis: "scale", goalEstimateWeeks: 12 }),
+      "PATCH /api/profile": (b) => ({ user: userJson(b) }),
+      "PUT /api/settings/me": (b) => b,
+    });
+    renderWithSession(<ProfileSettings />);
+    const basis = screen.getByRole("combobox", { name: "Goal estimate goes by" });
+    const weeks = screen.getByRole("combobox", { name: "Goal estimate looks back" });
+    await waitFor(() => expect(basis).toHaveValue("scale"));
+    expect(weeks).toHaveValue("12");
+    expect(screen.getByText("Scale follows your weigh-ins; trend smooths day-to-day swings. A longer look-back is steadier.")).toBeInTheDocument();
+    expect(within(weeks).getAllByRole("option").map((o) => o.textContent)).toEqual(["6 weeks", "12 weeks", "26 weeks"]);
+    const user = userEvent.setup();
+    await user.selectOptions(basis, "Trend");
+    await user.selectOptions(weeks, "26 weeks");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    expect(server.writes().find((w) => w.path === "/api/settings/me")).toMatchObject({ method: "PUT", body: { goalEstimateBasis: "trend", goalEstimateWeeks: 26 } });
+  });
+
+  it("an older server without the setting shows the defaults", async () => {
+    fakeServer({ "GET /api/settings/me": () => settingsMe });
+    renderWithSession(<ProfileSettings />);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Goal estimate goes by" })).toHaveValue("scale"));
+    expect(screen.getByRole("combobox", { name: "Goal estimate looks back" })).toHaveValue("12");
+  });
+});
