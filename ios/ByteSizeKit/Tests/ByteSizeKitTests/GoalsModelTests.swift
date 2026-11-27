@@ -150,7 +150,8 @@ final class GoalsModelTests: XCTestCase {
         // With the weigh-in's own weight, the pill follows the two weights as shown: 82.24 → 82.26 kg shows
         // 82.2 → 82.3, so +0.1, not a neutral 0.0 next to two different numbers
         XCTAssertEqual(GoalsModel.change(0.02, weightKg: 82.26, units: .metric), .init(kind: .gain, text: "0.1 kg"))
-        XCTAssertEqual(GoalsModel.change(-0.02, weightKg: 82.24, units: .metric), .init(kind: .none, text: "0.0 kg"))
+        XCTAssertEqual(GoalsModel.change(-0.02, weightKg: 82.24, units: .metric), .init(kind: .loss, text: "0.1 kg")) // 82.3 → 82.2
+        XCTAssertEqual(GoalsModel.change(0.02, weightKg: 82.23, units: .metric), .init(kind: .none, text: "0.0 kg")) // 82.2 → 82.2
     }
 
     func testLostNeverGoesBelowZero() {
