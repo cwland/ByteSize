@@ -1077,7 +1077,17 @@ final class SmokeUITests: XCTestCase {
         let goal = app.descendants(matching: .any)["goal-1"]
         XCTAssertTrue(goal.waitForExistence(timeout: 5))
         XCTAssertTrue(goal.label.contains("3 of 5 days this week"), goal.label)
+        // Est. goal date sits under the goal weight in Targets
+        let estimate = app.descendants(matching: .any)["goalEstimate"]
+        XCTAssertTrue(estimate.waitForExistence(timeout: 5))
+        XCTAssertTrue(estimate.label.contains("Est. goal date"), estimate.label)
+        XCTAssertTrue(estimate.label.contains("Between"), estimate.label)
         XCTAssertTrue(reveal(app.descendants(matching: .any)["weightChart"]).exists)
+        // Under the chart: Start · Current · Lost (no Trend, no Goal date)
+        XCTAssertTrue(reveal(app.descendants(matching: .any)["stat-Current"]).label.contains("181.4 lb"))
+        XCTAssertTrue(app.descendants(matching: .any)["stat-Start"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["stat-Trend"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["stat-Goal date"].exists)
         // Lost by the scale (88 → 82.28 kg: 12.6 lb) with the trend figure under it (0.3 kg more: 11.9 lb)
         let lost = reveal(app.descendants(matching: .any)["stat-Lost"]) // under the chart
         XCTAssertTrue(lost.waitForExistence(timeout: 5))
@@ -1085,6 +1095,19 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(lost.label.contains("11.9 lb by trend"), lost.label)
         app.buttons["range-All"].tap()
         shot("31-goals")
+        // The last weigh-in has its own card: from Apple Health, down 2.7 lb (83.5 → 82.28 kg)
+        let last = reveal(app.descendants(matching: .any)["history-\(dayString(-1))"])
+        XCTAssertTrue(last.waitForExistence(timeout: 5))
+        XCTAssertTrue(label("Last weigh-in").exists)
+        XCTAssertTrue(last.label.contains("From Apple Health"), last.label)
+        XCTAssertTrue(last.label.contains("down 2.7 lb"), last.label)
+        // Recent: a gain is red "up", no change is "no change 0.0 lb", a typed one has no Health mark
+        let gain = reveal(app.descendants(matching: .any)["history-\(dayString(-9))"])
+        XCTAssertTrue(gain.label.contains("up 1.1 lb"), gain.label)
+        XCTAssertFalse(gain.label.contains("From Apple Health"), gain.label)
+        let same = reveal(app.descendants(matching: .any)["history-\(dayString(-12))"])
+        XCTAssertTrue(same.label.contains("no change 0.0 lb"), same.label)
+        shot("31b-goals-history")
     }
 
     func testLogWeightAddsToHistory() {
@@ -1522,15 +1545,15 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.textFields["barcodeField"].waitForExistence(timeout: 5), "logged: back to the camera")
     }
 
-    /// Owner: the weight history shows the last 5 weigh-ins; Show all opens the rest.
+    /// Owner: the last weigh-in has its own card, then the 5 before it; Show all opens the rest.
     func testWeightHistoryShowsFiveThenAll() {
         signedIn()
         openGoals()
         let toggle = reveal(app.buttons["historyToggle"])
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
-        XCTAssertEqual(toggle.label, "Show all 6 weigh-ins")
-        XCTAssertTrue(app.descendants(matching: .any)["history-\(dayString(-30))"].exists, "the fifth newest shows")
-        XCTAssertFalse(app.descendants(matching: .any)["history-\(dayString(-60))"].exists, "the sixth waits")
+        XCTAssertEqual(toggle.label, "Show all 8 weigh-ins")
+        XCTAssertTrue(app.descendants(matching: .any)["history-\(dayString(-21))"].exists, "the fifth after the last weigh-in shows")
+        XCTAssertFalse(app.descendants(matching: .any)["history-\(dayString(-30))"].exists, "the sixth waits")
         app.swipeUp() // to the end: the tab bar covers the last rows until then
         app.swipeUp()
         toggle.tap()
