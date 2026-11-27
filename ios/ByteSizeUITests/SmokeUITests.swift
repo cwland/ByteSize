@@ -1128,7 +1128,7 @@ final class SmokeUITests: XCTestCase {
         toggle.tap() // the oldest is past the last five
         let oldest = app.descendants(matching: .any)["history-\(dayString(-60))"]
         // The weigh-in cards are tall: scroll until the oldest is clear of the tab bar, not just on screen
-        let tabTop = app.tabBars.firstMatch.frame.minY
+        let tabTop = app.buttons["Goals"].frame.minY // the app draws its own tab bar
         for _ in 0..<6 where !(oldest.exists && oldest.isHittable && oldest.frame.maxY < tabTop) { app.swipeUp() }
         XCTAssertTrue(oldest.exists)
         oldest.swipeLeft()
