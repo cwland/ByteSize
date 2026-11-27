@@ -56,6 +56,23 @@ describe("weigh-in source", () => {
     expect(await sourceOn("2026-11-15")).toBeNull();
   });
 
+  it("typing over a weigh-in of unknown source makes it manual", async () => {
+    await t.db.insert(weighIns).values({ userId: 1, day: "2026-11-14", weightKg: 82 });
+    await typed("2026-11-14", 81.8);
+    expect(await sourceOn("2026-11-14")).toBe("manual");
+  });
+
+  it("an import that keeps existing days leaves their source", async () => {
+    await fromHealth("2026-11-15", 81);
+    const { payload, headers } = multipart([
+      { name: "existing", value: "keep" },
+      { name: "file", filename: "weights.csv", type: "text/csv", data: Buffer.from("Date,Weight (kg)\n2026-11-14,82\n2026-11-15,81.5\n") },
+    ]);
+    expect((await t.api("POST", "/api/weight/import", payload, headers)).status).toBe(200);
+    expect(await sourceOn("2026-11-15")).toBe("health");
+    expect(await sourceOn("2026-11-14")).toBeNull();
+  });
+
   it("GET /api/weight gives each weigh-in its source", async () => {
     await typed("2026-11-15", 81);
     await fromHealth("2026-11-16", 80);

@@ -24,7 +24,7 @@ const weighInBody = z.object({
   source: z.enum(["manual", "health"], { error: "Source is manual or health" }).default("manual"),
 });
 // The iPhone's one-time match against Apple Health: each day's first Health reading
-const MATCH_KG = 0.05;
+const MATCH_KG = 0.05; // plus a hair for floating point (30.07 − 30.02 comes out just over 0.05)
 const healthMatchBody = z.object({
   items: z
     .array(z.object({ day: DAY, weightKg: z.number({ error: WEIGHT }).min(30, WEIGHT).max(350, WEIGHT) }))
@@ -74,7 +74,7 @@ export default async function weightRoutes(app: FastifyInstance) {
         const done = await tx
           .update(weighIns)
           .set({ source: "health" })
-          .where(and(eq(weighIns.userId, userId), eq(weighIns.day, day), isNull(weighIns.source), sql`abs(${weighIns.weightKg} - ${weightKg}) <= ${MATCH_KG}`))
+          .where(and(eq(weighIns.userId, userId), eq(weighIns.day, day), isNull(weighIns.source), sql`abs(${weighIns.weightKg} - ${weightKg}) <= ${MATCH_KG + 1e-9}`))
           .returning({ id: weighIns.id });
         n += done.length;
       }

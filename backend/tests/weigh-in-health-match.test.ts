@@ -28,6 +28,13 @@ describe("POST /api/weigh-ins/health-match", () => {
     expect(await row("2026-11-10")).toEqual({ w: 100, s: "health" });
   });
 
+  it("counts exactly 0.05 kg off as a match", async () => {
+    await old("2026-11-10", 30.02);
+    await old("2026-11-11", 30.07);
+    // 30.07 − 30.02 comes out a hair over 0.05 in floating point: still a match
+    expect((await match([{ day: "2026-11-10", weightKg: 30.07 }, { day: "2026-11-11", weightKg: 30.02 }])).body).toEqual({ matched: 2 });
+  });
+
   it("leaves one that is 0.06 kg off", async () => {
     await old("2026-11-10", 100);
     expect((await match([{ day: "2026-11-10", weightKg: 100.06 }])).body).toEqual({ matched: 0 });
