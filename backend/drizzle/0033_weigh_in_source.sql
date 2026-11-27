@@ -1,0 +1,1 @@
+ALTER TABLE "weigh_ins" ADD COLUMN "source" text;

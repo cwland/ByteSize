@@ -537,7 +537,7 @@ export async function seedDemo(db: Db, opts: SeedOptions): Promise<SeedResult> {
     let weighed = 0;
     for (const d of plan.days) {
       if (d.weightLb === null) continue;
-      await saveWeighIn(dbx, userId, d.day, d.weightLb * KG_PER_LB, null, now);
+      await saveWeighIn(dbx, userId, d.day, d.weightLb * KG_PER_LB, null, now, "manual");
       weighed++;
     }
 

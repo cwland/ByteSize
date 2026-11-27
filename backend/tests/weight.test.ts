@@ -233,7 +233,7 @@ describe("weigh-ins", () => {
     const second = await weigh(TODAY, 99.1);
     expect(second.body).toEqual({ weighIn: { day: TODAY, weightKg: 99.1, note: null }, skipped: false });
     const got = (await t.api("GET", "/api/weight")).body;
-    expect(got.weighIns).toEqual([{ day: TODAY, weightKg: 99.1, trendKg: 99.1, note: null }]);
+    expect(got.weighIns).toEqual([{ day: TODAY, weightKg: 99.1, trendKg: 99.1, note: null, source: "manual" }]);
   });
 
   it("takes the person's local day: tomorrow (even if it is already tomorrow in UTC) is refused", async () => {
@@ -358,8 +358,8 @@ describe("GET /api/weight", () => {
     const t16 = 99.9 + (95 - 99.9) * (1 - 0.9 ** 14);
     const t17 = t16 + (96 - t16) * (1 - 0.9);
     expect(w.weighIns).toEqual([
-      { day: "2026-11-16", weightKg: 95, trendKg: expect.closeTo(t16, 9), note: null },
-      { day: TODAY, weightKg: 96, trendKg: expect.closeTo(t17, 9), note: "salty dinner" },
+      { day: "2026-11-16", weightKg: 95, trendKg: expect.closeTo(t16, 9), note: null, source: "manual" },
+      { day: TODAY, weightKg: 96, trendKg: expect.closeTo(t17, 9), note: "salty dinner", source: "manual" },
     ]);
     expect(w.start).toEqual({ day: "2026-11-01", weightKg: 100 });
     expect(w.latest).toEqual({ day: TODAY, weightKg: 96 });

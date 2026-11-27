@@ -444,6 +444,7 @@ export const recipeItems = pgTable(
 // Days are YYYY-MM-DD in the person's timezone; weights are kg.
 
 // One weigh-in per person per day
+export type WeighInSource = "manual" | "health";
 export const weighIns = pgTable(
   "weigh_ins",
   {
@@ -452,6 +453,8 @@ export const weighIns = pgTable(
     day: date("day", { mode: "string" }).notNull(),
     weightKg: doublePrecision("weight_kg").notNull(),
     note: text("note"),
+    // Where it came from: typed in ByteSize, or Apple Health; null = unknown (imported, or saved before this was kept)
+    source: text("source").$type<WeighInSource>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("weigh_ins_user_day_idx").on(t.userId, t.day)]

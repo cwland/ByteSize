@@ -50,7 +50,7 @@ export default async function weightRoutes(app: FastifyInstance) {
       } else {
         await tx.delete(weighInSkips).where(and(eq(weighInSkips.userId, userId), eq(weighInSkips.day, day)));
       }
-      const row = await saveWeighIn(tx, userId, day, weightKg, note || null, app.now());
+      const row = await saveWeighIn(tx, userId, day, weightKg, note || null, app.now(), source);
       return { weighIn: view(row), skipped: false };
     });
   });
@@ -78,7 +78,7 @@ export default async function weightRoutes(app: FastifyInstance) {
     const userId = requireUser(req);
     const { from, to } = rangeQuery.parse(req.query ?? {});
     const rows = await db
-      .select({ day: weighIns.day, weightKg: weighIns.weightKg, note: weighIns.note })
+      .select({ day: weighIns.day, weightKg: weighIns.weightKg, note: weighIns.note, source: weighIns.source })
       .from(weighIns)
       .where(eq(weighIns.userId, userId))
       .orderBy(asc(weighIns.day));
@@ -102,7 +102,7 @@ export default async function weightRoutes(app: FastifyInstance) {
     return {
       weighIns: all
         .filter((p) => (!from || p.day >= from) && (!to || p.day <= to))
-        .map((p) => ({ day: p.day, weightKg: p.weightKg, trendKg: p.trendKg, note: p.note })),
+        .map((p) => ({ day: p.day, weightKg: p.weightKg, trendKg: p.trendKg, note: p.note, source: p.source ?? null })),
       start: first ? { day: first.day, weightKg: first.weightKg } : null,
       latest: last ? { day: last.day, weightKg: last.weightKg } : null,
       trendKg: last ? last.trendKg : null,
